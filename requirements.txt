@@ -1,0 +1,5 @@
+chess>=1.11
+duckdb>=1.1
+pyarrow>=17
+requests>=2.32
+pytest>=8

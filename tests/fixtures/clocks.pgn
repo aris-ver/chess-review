@@ -1,0 +1,29 @@
+[Event "Live Chess"]
+[Site "Chess.com"]
+[Date "2024.03.02"]
+[Round "-"]
+[White "someone"]
+[Black "testuser"]
+[Result "1-0"]
+[ECO "C41"]
+[ECOUrl "https://www.chess.com/openings/Philidor-Defense-3.d4-exd4"]
+[WhiteElo "1500"]
+[BlackElo "1480"]
+[TimeControl "180+2"]
+[Termination "someone won by checkmate"]
+[UTCDate "2024.03.02"]
+[UTCTime "10:11:12"]
+[Link "https://www.chess.com/game/live/1"]
+
+1. e4 {[%clk 0:03:00]} 1... e5 {[%clk 0:02:59.5]} 2. Nf3 {[%clk 0:02:58]} 2... d6 {[%clk 0:02:50.2]} 3. d4 {[%clk 0:02:55]} 3... exd4 {[%clk 0:02:40]} 4. Bc4 {[%clk 0:02:50]} 4... Bg4 {[%clk 0:02:30]} 5. Bxf7+ {[%clk 0:02:45]} 5... Kxf7 {[%clk 0:02:20]} 6. Ng5+ {[%clk 0:02:40]} 6... Ke8 {[%clk 0:02:10]} 7. Qxg4 {[%clk 0:02:35]} 1-0
+
+[Event "Live Chess"]
+[Site "Chess.com"]
+[White "testuser"]
+[Black "other"]
+[Result "1/2-1/2"]
+[Variant "Chess960"]
+[FEN "bqnbrkrn/pppppppp/8/8/8/8/PPPPPPPP/BQNBRKRN w KQkq - 0 1"]
+[SetUp "1"]
+
+1. d4 d5 1/2-1/2
