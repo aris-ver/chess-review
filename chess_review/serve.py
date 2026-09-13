@@ -52,9 +52,9 @@ class Job:
 
 
 class Runner:
-    def __init__(self, nodes: int):
-        self.analyser = Analyser(nodes=nodes)
-        self.explorer = Explorer(nodes=nodes)
+    def __init__(self, nodes: int, workers: Optional[int] = None):
+        self.analyser = Analyser(workers=workers, nodes=nodes)
+        self.explorer = Explorer(nodes=nodes, threads=workers)
         self.job: Optional[Job] = None
         self.lock = threading.Lock()
 
@@ -243,10 +243,11 @@ def main(argv=None) -> None:
     p.add_argument("--host", default="127.0.0.1")
     p.add_argument("--port", type=int, default=8123)
     p.add_argument("--nodes", type=int, default=DEFAULT_NODES, help="nodes per position for on-demand analysis")
+    p.add_argument("--workers", type=int, default=None, help="engine processes for game analysis (default: physical cores)")
     args = p.parse_args(argv)
     if not (SITE_DIR / "index.html").exists():
         site.build()
-    Handler.runner = Runner(args.nodes)
+    Handler.runner = Runner(args.nodes, args.workers)
     handler = functools.partial(Handler, directory=str(SITE_DIR))
     srv = ThreadingHTTPServer((args.host, args.port), handler)
     log.info("serving %s at http://%s:%d/", SITE_DIR, args.host, args.port)

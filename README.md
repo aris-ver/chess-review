@@ -24,6 +24,8 @@ Sounds: `bash scripts/fetch_sounds.sh` pulls chess.com's default sound set into 
 gitignored). The brilliant-move stinger is not served publicly by chess.com: save it from your browser's
 DevTools (Network → Media, while a review plays one) as `data/site/sounds/brilliant.mp3` or `.webm` and it is picked up automatically.
 
+Docker / VM: see `deploy/DOCKER.md` (`docker compose up -d`, state in `./data`, expose via Tailscale).
+
 ## Pipeline (CLI)
 
 ```

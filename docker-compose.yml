@@ -1,0 +1,20 @@
+services:
+  chess-review:
+    build:
+      context: .
+      args:
+        SF_BUILD: x86-64-avx2      # or x86-64-bmi2 on Intel / AMD Zen3+
+    image: chess-review
+    container_name: chess-review
+    restart: unless-stopped
+    # Only on localhost: expose it over your tailnet with `sudo tailscale serve --bg 8123` on the host.
+    ports:
+      - "127.0.0.1:8123:8123"
+    volumes:
+      - ./data:/app/data
+    environment:
+      CHESS_REVIEW_USERNAME: ${CHESS_REVIEW_USERNAME:-}
+    # Analysis uses every core it is given; cap it on a shared VM.
+    cpus: 4
+    mem_limit: 3g
+    command: ["python", "-m", "chess_review", "serve", "--host", "0.0.0.0", "--port", "8123", "--workers", "4"]
