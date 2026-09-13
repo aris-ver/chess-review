@@ -51,7 +51,42 @@ td.num { text-align: right; font-variant-numeric: tabular-nums; }
 
 /* review layout */
 .review { display: grid; grid-template-columns: 30px minmax(320px, min(900px, calc(100vh - 192px))) minmax(400px, 540px); gap: 14px; align-items: start; justify-content: center; }
-@media (max-width: 1000px) { .review { grid-template-columns: 24px 1fr; } .panel { grid-column: 1 / -1; } }
+/* phones and small tablets: board on top, panel below, nav pinned to the bottom edge */
+@media (max-width: 900px) {
+  header { padding: 8px 10px; gap: 8px; }
+  header h1 { font-size: 16px; }
+  header .crumb { display: none; }
+  header .right { gap: 6px; }
+  header .right button { padding: 5px 8px; font-size: 14px; }
+  header .t, header #jobstat { display: none; }
+  header h1 { white-space: nowrap; }
+  .evalbar .lbl { display: none; }
+  main { padding: 8px 8px 84px; }
+  .review { grid-template-columns: 14px 1fr; gap: 8px; }
+  .review .panel { grid-column: 1 / -1; height: auto; min-height: 0; }
+  .evalbar { margin-top: 42px; }
+  .player { height: 34px; font-size: 14px; gap: 6px; }
+  .player .acc { display: none; }
+  .cap svg { width: 13px; height: 13px; }
+  .panel .body { max-height: 46vh; }
+  .panel .nav { position: fixed; left: 0; right: 0; bottom: 0; background: var(--panel); border-top: 1px solid var(--line); padding: 8px 10px calc(8px + env(safe-area-inset-bottom)); z-index: 6; }
+  .panel .nav button { min-width: 0; font-size: 22px; padding: 8px 4px; }
+  .coach { padding: 8px 8px 4px; }
+  .coach .avatar { display: none; }
+  .bubble::before { display: none; }
+  .actions { padding: 4px 8px 8px; }
+  .actions button { padding: 8px 4px; }
+  .pfoot { flex-wrap: wrap; }
+  .filters { gap: 6px; }
+  .filters button { padding: 5px 8px; font-size: 13px; }
+  .filters .stat { width: 100%; margin: 0; font-size: 12px; }
+  table.games th, table.games td { padding: 7px 6px; font-size: 13px; }
+  table.games th:nth-child(5), table.games td:nth-child(5),
+  table.games th:nth-child(8), table.games td:nth-child(8),
+  table.games th:nth-child(9), table.games td:nth-child(9),
+  table.games th:nth-child(10), table.games td:nth-child(10) { display: none; }
+  .opening { max-width: none; }
+}
 .evalbar { position: relative; height: 640px; background: #403d39; border-radius: 4px; overflow: hidden; align-self: start; margin-top: 46px; }
 .evalbar .w { position: absolute; left: 0; right: 0; bottom: 0; background: #f0f0f0; transition: height .25s; }
 .evalbar.flipped .w { bottom: auto; top: 0; }
@@ -130,7 +165,7 @@ svg.board.playable use.piece.own { cursor: grab; }
 .tabs { display: flex; border-bottom: 1px solid var(--line); }
 .tabs button { flex: 1; border: 0; border-radius: 0; background: transparent; padding: 10px; color: var(--muted); border-bottom: 2px solid transparent; }
 .tabs button.active { background: transparent; color: var(--text); border-bottom-color: var(--accent); }
-.panel .body { overflow: auto; flex: 1; }
+.panel .body { overflow: auto; flex: 1; position: relative; }
 .panel > :not(.body) { flex-shrink: 0; }
 svg.graph { width: 100%; height: 90px; display: block; cursor: pointer; background: #3a3733; flex-shrink: 0; }
 .summary { display: grid; grid-template-columns: 1fr auto 1fr; gap: 5px 10px; padding: 10px 14px; align-items: center; font-variant-numeric: tabular-nums; }
@@ -166,10 +201,10 @@ svg.graph { width: 100%; height: 90px; display: block; cursor: pointer; backgrou
   <span class="crumb" id="crumb"></span>
   <div class="right">
     <button id="b-sound" title="Toggle sound">🔊</button>
-    <button id="b-refresh" title="Fetch new games from chess.com">⟳ Refresh games</button>
-    <button id="b-all" title="Analyse every game that isn't analysed yet (hours)">Analyse all</button>
+    <button id="b-refresh" title="Fetch new games from chess.com"><span class="i">⟳</span><span class="t"> Refresh games</span></button>
+    <button id="b-all" title="Analyse every game that isn't analysed yet (hours)"><span class="i">⚙</span><span class="t"> Analyse all</span></button>
     <span id="jobstat" style="color:var(--muted);font-size:12px"></span>
-    <a href="insights.html">Insights →</a>
+    <a href="insights.html" title="Insights"><span class="i">📊</span><span class="t"> Insights →</span></a>
   </div>
 </header>
 <main>
@@ -632,6 +667,16 @@ function arrow(uci, color, marker) {
   return `<line class="arrow" x1="${ax}" y1="${ay}" x2="${ax + dx * k}" y2="${ay + dy * k}" stroke="${color}" stroke-width="1.6" stroke-linecap="round" marker-end="url(#ah${marker})"/>`;
 }
 
+// ---------- touch: swipe the board left/right to step ----------
+let touchStart = null;
+$('board').addEventListener('touchstart', e => { const t = e.touches[0]; touchStart = [t.clientX, t.clientY]; }, { passive: true });
+$('board').addEventListener('touchend', e => {
+  if (!touchStart) return;
+  const t = e.changedTouches[0], dx = t.clientX - touchStart[0], dy = t.clientY - touchStart[1];
+  touchStart = null;
+  if (Math.abs(dx) > 50 && Math.abs(dx) > 2 * Math.abs(dy)) { e.preventDefault(); go(dx < 0 ? state.ply + 1 : state.ply - 1); }
+});
+
 // ---------- exploring: click a piece, click a target ----------
 const legalCache = {};
 async function legalFor(fen) {
@@ -848,15 +893,20 @@ function patchMoveList() {
 function moveCell(m) {
   return `<div class="m ${m.label || ''}" data-ply="${m.ply}">${icon(m.label, 'ico sm')}<span class="san">${m.san}</span></div>`;
 }
+// Keep `el` visible inside the scrolling panel body without scrolling the page itself.
+function revealInBody(el) {
+  const body = el.closest('.body'); if (!body) return;
+  const top = el.getBoundingClientRect().top - body.getBoundingClientRect().top + body.scrollTop;
+  if (top < body.scrollTop + 8) body.scrollTop = top - 8;
+  else if (top + el.offsetHeight > body.scrollTop + body.clientHeight - 8) body.scrollTop = top + el.offsetHeight - body.clientHeight + 8;
+}
 function highlightCurrent() {
   const inVar = inVariation();
   $('movelist').querySelectorAll('.m').forEach(el => el.classList.toggle('cur', !inVar && +el.dataset.ply === state.ply - 1));
   $('movelist').querySelectorAll('.varrow .v').forEach(el => el.classList.toggle('cur', inVar && +el.dataset.ply === state.ply - 1));
   const cur = $('movelist').querySelector('.cur');
-  if (cur) cur.scrollIntoView({ block: 'nearest' });
+  if (cur) revealInBody(cur);
   $('moments').querySelectorAll('.moment').forEach(el => el.classList.toggle('current', !inVar && +el.dataset.ply === state.ply - 1));
-  const curM = $('moments').querySelector('.moment.current');
-  if (curM) curM.scrollIntoView({ block: 'nearest' });
   renderGraph();
 }
 
