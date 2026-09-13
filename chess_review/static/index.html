@@ -13,6 +13,9 @@
   --win: #81b64c; --loss: #fa412d; --draw: #9a958d;
 }
 * { box-sizing: border-box; }
+/* no double-tap zoom on anything tappable (nav buttons, moves, board); pinch-zoom and scrolling still work */
+html, button, a, svg.board, .movelist, .moments, .summary, .nav, .actions, .filters, table.games { touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+button, .nav, .m, .moment, .varrow .v, .summary .click { user-select: none; -webkit-user-select: none; }
 html, body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.45 -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
 a { color: inherit; text-decoration: none; }
 button { font: inherit; color: inherit; background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; padding: 6px 10px; cursor: pointer; }
