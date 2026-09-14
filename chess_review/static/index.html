@@ -106,10 +106,10 @@ svg.board { width: 100%; aspect-ratio: 1; display: block; border-radius: 4px; us
 .sq.last { fill: var(--hl); }
 .coord { font-size: 2.6px; font-weight: 700; pointer-events: none; }
 .coord.onlight { fill: var(--dark); } .coord.ondark { fill: var(--light); }
-.arrow { opacity: .85; }
+.arrow { opacity: 1; }
 svg.board use.piece { transition: transform .18s ease-out; }
 svg.board { overflow: visible; }
-svg.board use.badge { filter: drop-shadow(0 .4px .7px rgba(0,0,0,.55)); }
+svg.board use.badge { filter: drop-shadow(0 .3px .6px rgba(0,0,0,.45)); }
 .nav { display: flex; gap: 6px; justify-content: center; align-items: center; }
 .nav button { min-width: 44px; font-size: 16px; }
 #b-prev, #b-next { font-size: 24px; line-height: 1; padding-top: 2px; padding-bottom: 6px; }
@@ -293,17 +293,17 @@ svg.graph { width: 100%; height: 90px; display: block; cursor: pointer; backgrou
 <svg width="0" height="0" style="position:absolute"><defs id="piecedefs"></defs>
 <defs>
   <!-- chess.com-style classification icons: coloured disc + glyph, 20x20 units -->
-  <symbol id="ic-brilliant" viewBox="-1.5 -1.5 23 23"><circle cx="10" cy="10" r="10" fill="#1baca6" stroke="#fff" stroke-width="1.6"/><text x="10" y="14.5" text-anchor="middle" font-size="12" font-weight="800" fill="#fff" font-family="Arial">!!</text></symbol>
-  <symbol id="ic-great" viewBox="-1.5 -1.5 23 23"><circle cx="10" cy="10" r="10" fill="#5c8bb0" stroke="#fff" stroke-width="1.6"/><text x="10" y="14.5" text-anchor="middle" font-size="12" font-weight="800" fill="#fff" font-family="Arial">!</text></symbol>
-  <symbol id="ic-best" viewBox="-1.5 -1.5 23 23"><circle cx="10" cy="10" r="10" fill="#81b64c" stroke="#fff" stroke-width="1.6"/><path d="M10 3.6l1.9 4 4.4.6-3.2 3.1.8 4.4L10 13.6l-3.9 2.1.8-4.4L3.7 8.2l4.4-.6z" fill="#fff"/></symbol>
-  <symbol id="ic-excellent" viewBox="-1.5 -1.5 23 23"><circle cx="10" cy="10" r="10" fill="#96bc4b" stroke="#fff" stroke-width="1.6"/><path d="M5.5 10.5l3 3 6-6.5" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></symbol>
-  <symbol id="ic-good" viewBox="-1.5 -1.5 23 23"><circle cx="10" cy="10" r="10" fill="#96af8b" stroke="#fff" stroke-width="1.6"/><path d="M5.5 10.5l3 3 6-6.5" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
-  <symbol id="ic-book" viewBox="-1.5 -1.5 23 23"><circle cx="10" cy="10" r="10" fill="#a88865" stroke="#fff" stroke-width="1.6"/><path d="M5.5 5.5h3.5q1 0 1 1v8q0-1-1-1H5.5zM14.5 5.5H11q-1 0-1 1v8q0-1 1-1h3.5z" fill="#fff"/></symbol>
-  <symbol id="ic-forced" viewBox="-1.5 -1.5 23 23"><circle cx="10" cy="10" r="10" fill="#97af8b" stroke="#fff" stroke-width="1.6"/><path d="M6 10h8M11 7l3 3-3 3" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
-  <symbol id="ic-inaccuracy" viewBox="-1.5 -1.5 23 23"><circle cx="10" cy="10" r="10" fill="#f7c631" stroke="#fff" stroke-width="1.6"/><text x="10" y="14.5" text-anchor="middle" font-size="11" font-weight="800" fill="#1b1b1b" font-family="Arial">?!</text></symbol>
-  <symbol id="ic-mistake" viewBox="-1.5 -1.5 23 23"><circle cx="10" cy="10" r="10" fill="#ffa459" stroke="#fff" stroke-width="1.6"/><text x="10" y="14.5" text-anchor="middle" font-size="12" font-weight="800" fill="#1b1b1b" font-family="Arial">?</text></symbol>
-  <symbol id="ic-miss" viewBox="-1.5 -1.5 23 23"><circle cx="10" cy="10" r="10" fill="#ff7769" stroke="#fff" stroke-width="1.6"/><path d="M6.5 6.5l7 7M13.5 6.5l-7 7" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round"/></symbol>
-  <symbol id="ic-blunder" viewBox="-1.5 -1.5 23 23"><circle cx="10" cy="10" r="10" fill="#fa412d" stroke="#fff" stroke-width="1.6"/><text x="10" y="14.5" text-anchor="middle" font-size="12" font-weight="800" fill="#fff" font-family="Arial">??</text></symbol>
+  <symbol id="ic-brilliant" viewBox="0 0 20 20"><circle cx="10" cy="10" r="10" fill="#26c2a3"/><text x="10" y="14.5" text-anchor="middle" font-size="12" font-weight="800" fill="#fff" font-family="Arial">!!</text></symbol>
+  <symbol id="ic-great" viewBox="0 0 20 20"><circle cx="10" cy="10" r="10" fill="#749bbf"/><text x="10" y="14.5" text-anchor="middle" font-size="12" font-weight="800" fill="#fff" font-family="Arial">!</text></symbol>
+  <symbol id="ic-best" viewBox="0 0 20 20"><circle cx="10" cy="10" r="10" fill="#81b64c"/><path d="M10 3.6l1.9 4 4.4.6-3.2 3.1.8 4.4L10 13.6l-3.9 2.1.8-4.4L3.7 8.2l4.4-.6z" fill="#fff"/></symbol>
+  <symbol id="ic-excellent" viewBox="0 0 20 20"><circle cx="10" cy="10" r="10" fill="#96bc4b"/><path d="M5.5 10.5l3 3 6-6.5" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="ic-good" viewBox="0 0 20 20"><circle cx="10" cy="10" r="10" fill="#96af8b"/><path d="M5.5 10.5l3 3 6-6.5" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="ic-book" viewBox="0 0 20 20"><circle cx="10" cy="10" r="10" fill="#d5a47a"/><path d="M4.6 5.6q2.8-.8 5.4.9v8.2q-2.6-1.5-5.4-.7zM15.4 5.6q-2.8-.8-5.4.9v8.2q2.6-1.5 5.4-.7z" fill="#fff"/><path d="M10 6.5v8.2" stroke="#d5a47a" stroke-width=".8"/></symbol>
+  <symbol id="ic-forced" viewBox="0 0 20 20"><circle cx="10" cy="10" r="10" fill="#96af8b"/><path d="M6 10h8M11 7l3 3-3 3" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="ic-inaccuracy" viewBox="0 0 20 20"><circle cx="10" cy="10" r="10" fill="#f7c631"/><text x="10" y="14.5" text-anchor="middle" font-size="11" font-weight="800" fill="#1b1b1b" font-family="Arial">?!</text></symbol>
+  <symbol id="ic-mistake" viewBox="0 0 20 20"><circle cx="10" cy="10" r="10" fill="#ffa459"/><text x="10" y="14.5" text-anchor="middle" font-size="12" font-weight="800" fill="#1b1b1b" font-family="Arial">?</text></symbol>
+  <symbol id="ic-miss" viewBox="0 0 20 20"><circle cx="10" cy="10" r="10" fill="#ff7769"/><path d="M6.5 6.5l7 7M13.5 6.5l-7 7" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round"/></symbol>
+  <symbol id="ic-blunder" viewBox="0 0 20 20"><circle cx="10" cy="10" r="10" fill="#fa412d"/><text x="10" y="14.5" text-anchor="middle" font-size="12" font-weight="800" fill="#fff" font-family="Arial">??</text></symbol>
 </defs></svg>
 
 <script>
@@ -315,8 +315,11 @@ document.getElementById('piecedefs').innerHTML = Object.values(PIECES).join('');
 const LABEL_NAME = { brilliant:'Brilliant', great:'Great', best:'Best', excellent:'Excellent', good:'Good', book:'Book', forced:'Forced',
                      inaccuracy:'Inaccuracy', mistake:'Mistake', miss:'Miss', blunder:'Blunder' };
 const LABEL_ORDER = ['brilliant','great','best','excellent','good','book','forced','inaccuracy','mistake','miss','blunder'];
-const COLOR = { brilliant:'#1baca6', great:'#5c8bb0', best:'#81b64c', excellent:'#96bc4b', good:'#96af8b', book:'#a88865', forced:'#97af8b',
+const COLOR = { brilliant:'#26c2a3', great:'#749bbf', best:'#81b64c', excellent:'#96bc4b', good:'#96af8b', book:'#d5a47a', forced:'#96af8b',
                 inaccuracy:'#f7c631', mistake:'#ffa459', miss:'#ff7769', blunder:'#fa412d' };
+// square tint for the move just played, by verdict (chess.com style); unanalysed moves stay yellow
+const TINT = { brilliant:'rgba(38,194,163,.6)', great:'rgba(116,155,191,.6)', best:'rgba(129,182,76,.6)', excellent:'rgba(150,188,75,.55)', good:'rgba(150,175,139,.55)',
+               book:'rgba(213,164,122,.6)', forced:'rgba(150,175,139,.5)', inaccuracy:'rgba(247,198,49,.6)', mistake:'rgba(255,164,89,.65)', miss:'rgba(255,119,105,.65)', blunder:'rgba(250,65,45,.65)' };
 const BAD = new Set(['inaccuracy', 'mistake', 'miss', 'blunder']);
 const icon = (lb, cls = 'ico') => lb && LABEL_NAME[lb] ? `<svg class="${cls}"><use href="#ic-${lb}"/></svg>` : '';
 
@@ -618,7 +621,7 @@ function renderBoard() {
     const light = (f + r) % 2 === 1;
     out += `<rect class="sq ${light ? 'light' : 'dark'}" x="${x}" y="${y}" width="12.5" height="12.5"/>`;
     if (mv && (name === mv.uci.slice(0, 2) || name === mv.uci.slice(2, 4)))
-      out += `<rect class="sq last" x="${x}" y="${y}" width="12.5" height="12.5"/>`;
+      out += `<rect x="${x}" y="${y}" width="12.5" height="12.5" fill="${(mv.label && TINT[mv.label]) || 'var(--hl)'}"/>`;
     if (mv && BAD.has(mv.label) && mv.hung && mv.hung.includes(name))
       out += `<rect x="${x}" y="${y}" width="12.5" height="12.5" fill="rgba(250,65,45,.4)"/>`;
     if (state.sel === name) out += `<rect class="sq sel" x="${x}" y="${y}" width="12.5" height="12.5"/>`;
@@ -640,12 +643,12 @@ function renderBoard() {
     out += pieces[t] ? `<circle class="target ring" cx="${x + 6.25}" cy="${y + 6.25}" r="5.5"/>`
                      : `<circle class="target" cx="${x + 6.25}" cy="${y + 6.25}" r="2"/>`;
   }
-  out += `<defs>${['#fa412d', '#81b64c', '#4a90d9'].map((c, i) => `<marker id="ah${i}" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="3.2" markerHeight="3.2" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="${c}"/></marker>`).join('')}</defs>`;
-  if (state.showBest && bestMoveHere()) out += arrow(bestMoveHere(), '#81b64c', 1);
+  out += `<defs>${Object.entries(ARROW).map(([k, c]) => `<marker id="ah-${k}" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="2.2" markerHeight="2.2" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="${c}"/></marker>`).join('')}</defs>`;
+  if (state.showBest && bestMoveHere()) out += arrow(bestMoveHere(), 'best');
   if (mv) {
-    if (BAD.has(mv.label) && mv.best_uci && mv.best_uci !== mv.uci) {
-      out += arrow(mv.uci, '#fa412d', 0);
-      out += arrow(mv.best_uci, '#81b64c', 1);
+    if (BAD.has(mv.label)) {
+      if (mv.best_uci && mv.best_uci !== mv.uci) out += arrow(mv.best_uci, 'best');
+      if (mv.reply_uci) out += arrow(mv.reply_uci, 'threat');       // what the opponent does about it
     }
     if (mv.label && LABEL_NAME[mv.label]) {
       const [x, y] = sqXY(mv.uci.slice(2, 4));
@@ -666,11 +669,13 @@ function renderBoard() {
   }
   lastPly = state.ply; lastGameId = g.id; lastFlipped = state.flipped; lastFen = fen;
 }
-function arrow(uci, color, marker) {
+const ARROW = { best: 'rgba(155,199,0,.8)', threat: 'rgba(255,170,0,.8)', blue: 'rgba(72,144,217,.8)' };
+function arrow(uci, kind) {
   const [x1, y1] = sqXY(uci.slice(0, 2)), [x2, y2] = sqXY(uci.slice(2, 4));
   const ax = x1 + 6.25, ay = y1 + 6.25, bx = x2 + 6.25, by = y2 + 6.25;
-  const dx = bx - ax, dy = by - ay, len = Math.hypot(dx, dy), k = (len - 3.2) / len;
-  return `<line class="arrow" x1="${ax}" y1="${ay}" x2="${ax + dx * k}" y2="${ay + dy * k}" stroke="${color}" stroke-width="1.6" stroke-linecap="round" marker-end="url(#ah${marker})"/>`;
+  const dx = bx - ax, dy = by - ay, len = Math.hypot(dx, dy);
+  const s = 3.6 / len, e = (len - 4.6) / len;   // start a little off the piece, stop short of the head
+  return `<line class="arrow" x1="${ax + dx * s}" y1="${ay + dy * s}" x2="${ax + dx * e}" y2="${ay + dy * e}" stroke="${ARROW[kind]}" stroke-width="2.7" stroke-linecap="butt" marker-end="url(#ah-${kind})"/>`;
 }
 
 // ---------- touch: swipe the board left/right to step ----------

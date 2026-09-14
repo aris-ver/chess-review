@@ -118,5 +118,6 @@ class Explorer:
             "best_san": m["best_san"], "best_uci": before_main["best_move"],
             "clock": None, "spent": None,
             "comment": explain.comment(facts), "hung": [h["square"] for h in facts.hung_pieces],
+            "reply_uci": facts.refutation_uci[0] if facts.refutation_uci else None,
             "game_over": after.is_game_over(),
         }

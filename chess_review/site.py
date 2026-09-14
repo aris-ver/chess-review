@@ -95,6 +95,7 @@ def build_game(game: dict, positions: list[dict], moves: list[dict], critical: l
             "clock": m["clock_remaining"], "spent": m["time_spent"],
             "comment": explain.comment(facts, game["opening_name"] if m["in_book"] else None) if facts else [],
             "hung": [h["square"] for h in facts.hung_pieces] if facts else [],
+            "reply_uci": facts.refutation_uci[0] if facts and facts.refutation_uci else None,
         })
         c = crit_by_ply.get(m["ply"])
         if c and facts:
