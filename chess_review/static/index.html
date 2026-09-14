@@ -132,7 +132,7 @@ svg.arrows { position: absolute; inset: 0; width: 100%; height: 100%; pointer-ev
 .hint { position: absolute; }
 .hint::after { content: ""; position: absolute; inset: 33.33%; border-radius: 50%; background: rgba(0, 0, 0, 0.14); }   /* disc = 1/3 of the square, centred */
 .capture-hint { box-shadow: inset 0 0 0 calc(var(--sq) * 0.0836) rgba(0, 0, 0, 0.14); border-radius: 50%; background: transparent; }
-.hover-square { outline: 3px solid rgba(255, 255, 255, 0.55); outline-offset: -3px; }
+.hover-rect { fill: none; stroke: rgba(255, 255, 255, 0.55); stroke-width: 0.5; pointer-events: none; }   /* drawn in the squares SVG so it aligns exactly */
 svg.board.playable use.piece.own { cursor: grab; }
 .varrow { grid-column: 1 / -1; background: #2b2926; padding: 4px 8px 4px 16px; font-size: 13px; border-left: 3px solid var(--c-great); display: flex; flex-wrap: wrap; gap: 2px 8px; align-items: center; }
 .varrow .v { cursor: pointer; padding: 1px 4px; border-radius: 3px; display: inline-flex; gap: 4px; align-items: center; }
@@ -699,15 +699,21 @@ function renderPieces(pieces, turn) {
   for (const el of [...layer.children]) if (!keep.has(el)) el.remove();
 }
 // --- overlay pool: created once, positioned with percentage translates, toggled on/off
-const pool = { last: [], sel: null, hints: [], hover: null };
+const pool = { last: [], sel: null, hints: [] };
 (function makePool() {
   const layer = $('overlays');
   const mk = cls => { const d = document.createElement('div'); d.className = 'ov ' + cls; layer.appendChild(d); return d; };
   pool.last = [mk('highlight'), mk('highlight')];
   pool.sel = mk('highlight');
   for (let i = 0; i < 64; i++) pool.hints.push(mk('hint'));
-  pool.hover = mk('hover-square');
 })();
+function setHover(sq) {
+  let r = $('board').querySelector('.hover-rect');
+  if (!sq) { if (r) r.remove(); return; }
+  if (!r) { r = document.createElementNS('http://www.w3.org/2000/svg', 'rect'); r.setAttribute('class', 'hover-rect'); r.setAttribute('width', '12'); r.setAttribute('height', '12'); $('board').appendChild(r); }
+  const [x, y] = sqXY(sq);
+  r.setAttribute('x', x + 0.25); r.setAttribute('y', y + 0.25);
+}
 function place(el, sq, on = true) {
   if (sq) el.style.transform = pieceTf(sq);
   el.classList.toggle('on', !!(on && sq));
@@ -723,7 +729,7 @@ function renderOverlays(pieces, mv) {
     if (sq) el.className = 'ov on ' + (pieces[sq] ? 'capture-hint' : 'hint');
     place(el, sq, !!sq);
   });
-  if (!drag) place(pool.hover, null, false);
+  if (!drag) setHover(null);
 }
 // piece div position: translate in multiples of its own size (12.5% of the board)
 function pieceTf(name) {
@@ -841,7 +847,7 @@ $('boardbox').addEventListener('pointermove', e => {
   if (Math.hypot(e.clientX - drag.x0, e.clientY - drag.y0) > 4) drag.moved = true;
   drag.piece.style.transform = `translate(${e.clientX - drag.rect.left - drag.size / 2}px, ${e.clientY - drag.rect.top - drag.size / 2}px)`;
   const sq = squareAt(e);
-  if (sq !== drag.hoverSq) { drag.hoverSq = sq; place(pool.hover, sq, !!sq && drag.moved); }
+  if (sq !== drag.hoverSq) { drag.hoverSq = sq; setHover(drag.moved ? sq : null); }
 });
 async function pointerEnd(e, cancelled) {
   if (!drag) return;
@@ -851,7 +857,7 @@ async function pointerEnd(e, cancelled) {
     if (!cancelled && Math.abs(dx) > 50 && Math.abs(dx) > 2 * Math.abs(dy)) go(dx < 0 ? state.ply + 1 : state.ply - 1);
     return;
   }
-  $('boardbox').classList.remove('dragging'); place(pool.hover, null, false);
+  $('boardbox').classList.remove('dragging'); setHover(null);
   try { $('boardbox').releasePointerCapture(d.id); } catch (err) {}
   const dest = cancelled ? null : squareAt(e);
   const uci = dest && dest !== d.sq && d.moved ? legalTo(d.sq, dest) : null;
