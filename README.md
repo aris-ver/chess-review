@@ -15,7 +15,7 @@ The board, graph, move list and key moments fill in while it runs. **⟳ Refresh
 the current month from chess.com. `scripts/restart_server.sh --nodes 500000` halves analysis time.
 
 In the review: ← → step (buttons grey out at the ends), space jumps between key moments, click a count in the
-summary to step through that side's moves of that kind, and **click a piece then a target square to try a
+summary to step through that side's moves of that kind, and **click (or drag) a piece to a target square to try a
 different move** — it is evaluated on the spot (`explore.py`, one multi-threaded engine, ~1 s) and shown as a
 variation under the move it branches from; stepping back before the branch discards it.
 `index.html?selftest=1#/game/<id>` runs an in-page smoke test of navigation + exploration.

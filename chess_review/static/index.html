@@ -70,7 +70,7 @@ td.num { text-align: right; font-variant-numeric: tabular-nums; }
   .evalbar { margin-top: 42px; }
   .player { height: 34px; font-size: 14px; gap: 6px; }
   .player .acc { display: none; }
-  .cap svg { width: 13px; height: 13px; }
+  .cap svg, .cap img { width: 14px; height: 14px; }
   .panel .body { max-height: 46vh; }
   .panel .nav { position: fixed; left: 0; right: 0; bottom: 0; background: var(--panel); border-top: 1px solid var(--line); padding: 8px 10px calc(8px + env(safe-area-inset-bottom)); z-index: 6; }
   .panel .nav button { min-width: 0; font-size: 22px; padding: 8px 4px; }
@@ -107,7 +107,8 @@ svg.board { position: absolute; inset: 0; width: 100%; height: 100%; display: bl
 svg.arrows { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
 .pc { position: absolute; left: 0; top: 0; width: 12.5%; height: 12.5%; background-size: contain; background-repeat: no-repeat; background-position: center; transition: transform .18s ease-out; will-change: transform; }
 .pc svg { width: 100%; height: 100%; display: block; }
-.boardbox.playable .pc.own { cursor: grab; }
+.boardbox.playable .pc.own { cursor: grab; pointer-events: auto; touch-action: none; }
+.pc.dragging { cursor: grabbing; transition: none; z-index: 2; filter: drop-shadow(0 6px 6px rgba(0,0,0,.35)); }
 .badge { position: absolute; width: 5.75%; height: 5.75%; transform: translate(-50%, -50%); filter: drop-shadow(0 .5px 1px rgba(0,0,0,.35)); }
 .badge img, .badge svg { width: 100%; height: 100%; display: block; }
 .ico img { width: 100%; height: 100%; display: block; }
@@ -123,8 +124,8 @@ svg.arrows { position: absolute; inset: 0; width: 100%; height: 100%; pointer-ev
 #b-play.playing { background: var(--accent); color: #1b1b1b; border-color: var(--accent); }
 .nav button:disabled { opacity: .35; }
 .sq.sel { fill: rgba(255, 255, 51, .55); }
-.target { fill: rgba(235, 235, 235, .55); pointer-events: none; }
-.target.ring { fill: none; stroke: rgba(235, 235, 235, .6); stroke-width: 1.1; }
+.target { fill: rgba(150, 150, 150, .6); pointer-events: none; }
+.target.ring { fill: none; stroke: rgba(150, 150, 150, .65); stroke-width: 1.1; }
 svg.board.playable use.piece.own { cursor: grab; }
 .varrow { grid-column: 1 / -1; background: #2b2926; padding: 4px 8px 4px 16px; font-size: 13px; border-left: 3px solid var(--c-great); display: flex; flex-wrap: wrap; gap: 2px 8px; align-items: center; }
 .varrow .v { cursor: pointer; padding: 1px 4px; border-radius: 3px; display: inline-flex; gap: 4px; align-items: center; }
@@ -169,8 +170,8 @@ svg.board.playable use.piece.own { cursor: grab; }
 .panel .nav { padding: 8px 10px 4px; }
 .panel .nav button { flex: 1; }
 .cap { display: inline-flex; align-items: center; gap: 0; margin-left: 4px; }
-.cap svg { width: 16px; height: 16px; margin-right: -5px; }
-.cap svg.blk { filter: drop-shadow(0 0 .6px #d8d8d8) drop-shadow(0 0 .6px #d8d8d8); }
+.cap svg, .cap img { width: 16px; height: 16px; margin-right: -5px; display: inline-block; }
+.cap .blk { filter: drop-shadow(0 0 .7px #e0e0e0) drop-shadow(0 0 .7px #e0e0e0); }
 .cap .diff { margin-left: 8px; color: var(--muted); font-size: 12px; }
 .panel .head { padding: 12px 14px; border-bottom: 1px solid var(--line); }
 .panel .head .title { font-weight: 700; font-size: 15px; }
@@ -342,6 +343,9 @@ const assetsReady = (async () => {
   const ok = async u => { try { return (await fetch(u, { method: 'HEAD' })).ok; } catch (e) { return false; } };
   ASSETS.hasPieces = await ok(`${ASSETS.pieces}/wk.png`);
   ASSETS.hasIcons = await ok(`${ASSETS.icons}/best.svg`);
+  // warm the caches so badges and pieces never pop in
+  if (ASSETS.hasIcons) for (const lb of LABEL_ORDER.concat(['winner', 'equal'])) new Image().src = iconSrc(lb);
+  if (ASSETS.hasPieces) for (const c of ['wp','wn','wb','wr','wq','wk','bp','bn','bb','br','bq','bk']) new Image().src = `${ASSETS.pieces}/${c}.png`;
 })();
 const ICON_FILE = { great: 'great-find' };   // our label names -> icon set names
 const iconSrc = lb => `${ASSETS.icons}/${ICON_FILE[lb] || lb}.svg`;
@@ -466,7 +470,7 @@ async function showGame(id) {
   const g = await loadGame(id);
   const same = state.game && state.game.id === id;
   state.game = g;
-  if (!same) { stopPlay(); state.ply = 0; state.flipped = g.my_colour === 'black'; dropVariation(); state.sel = null; state.cycle = {}; }
+  if (!same) { stopPlay(); state.ply = 0; state.flipped = g.my_colour === 'black'; dropVariation(); state.sel = null; state.cycle = {}; $('pieces').innerHTML = ''; }
   $('list').classList.add('hidden'); $('review').classList.remove('hidden');
   $('crumb').textContent = `${g.white.name} vs ${g.black.name}`;
   $('ginfo').innerHTML = `${fmtDate(g.played_at)} · ${g.time_class} ${g.time_control || ''} · ${esc(g.termination || '')}` +
@@ -668,29 +672,41 @@ function renderBoard() {
   $('board').innerHTML = out;
   $('boardbox').classList.toggle('playable', !state.exploring);
 
-  // --- pieces: one positioned div per piece (PNG set as background, else the built-in SVG)
-  const pcs = [];
-  for (const [name, ch] of Object.entries(pieces)) {
-    const own = (ch === ch.toUpperCase()) === (turn === 'white');
-    const code = (ch === ch.toUpperCase() ? 'w' : 'b') + ch.toLowerCase();
-    const inner = ASSETS.hasPieces ? '' : `<svg viewBox="0 0 45 45"><use href="#${PIECE_ID[ch]}"/></svg>`;
-    const bg = ASSETS.hasPieces ? `background-image:url('${ASSETS.pieces}/${code}.png');` : '';
-    pcs.push(`<div class="pc ${own ? 'own' : ''}" data-sq="${name}" style="${bg}transform:${pieceTf(name)}">${inner}</div>`);
-  }
-  $('pieces').innerHTML = pcs.join('');
-  for (const [from, to] of animPairs()) {
-    const el = $('pieces').querySelector(`.pc[data-sq="${to}"]`);
-    if (!el) continue;
-    $('pieces').appendChild(el);                            // moving piece on top
-    el.style.transition = 'none';
-    el.style.transform = pieceTf(from);
-    el.getBoundingClientRect();
-    el.style.transition = '';
-    el.style.transform = pieceTf(to);
-  }
+  // --- pieces: reconcile the existing divs with the new position (no rebuild => no flicker on phones)
+  if (!drag) renderPieces(pieces, turn);
 
   renderArrows(); renderBadges();
   lastPly = state.ply; lastGameId = g.id; lastFlipped = state.flipped; lastFen = fen;
+}
+function pieceEl(code) {
+  const el = document.createElement('div');
+  el.className = 'pc'; el.dataset.code = code;
+  if (ASSETS.hasPieces) el.style.backgroundImage = `url('${ASSETS.pieces}/${code}.png')`;
+  else el.innerHTML = `<svg viewBox="0 0 45 45"><use href="#${PIECE_ID[code[0] === 'w' ? code[1].toUpperCase() : code[1]]}"/></svg>`;
+  return el;
+}
+function renderPieces(pieces, turn) {
+  const layer = $('pieces'), pairs = animPairs();
+  const bySq = new Map([...layer.children].map(el => [el.dataset.sq, el]));
+  const keep = new Set();
+  for (const [name, ch] of Object.entries(pieces)) {
+    const code = (ch === ch.toUpperCase() ? 'w' : 'b') + ch.toLowerCase();
+    const own = (ch === ch.toUpperCase()) === (turn === 'white');
+    const pair = pairs.find(([, to]) => to === name);
+    let el = null;
+    if (pair && bySq.get(pair[0]) && bySq.get(pair[0]).dataset.code === code && !keep.has(bySq.get(pair[0]))) el = bySq.get(pair[0]);   // the moving piece
+    else if (bySq.get(name) && bySq.get(name).dataset.code === code) el = bySq.get(name);
+    if (!el) {
+      el = pieceEl(code);
+      el.style.transition = 'none'; el.style.transform = pieceTf(name);
+      layer.appendChild(el); el.getBoundingClientRect(); el.style.transition = '';
+    } else {
+      if (pair) layer.appendChild(el);                       // moving piece on top
+      el.style.transform = pieceTf(name);
+    }
+    el.dataset.sq = name; el.classList.toggle('own', own); keep.add(el);
+  }
+  for (const el of [...layer.children]) if (!keep.has(el)) el.remove();
 }
 // piece div position: translate in multiples of its own size (12.5% of the board)
 function pieceTf(name) {
@@ -756,9 +772,59 @@ function renderBadges() {
   $('badges').innerHTML = out;
 }
 
+// ---------- drag & drop: pick up one of the side-to-move's pieces, drop it on a legal square ----------
+let drag = null, suppressClick = false;
+function squareAtPoint(clientX, clientY) {
+  const r = $('boardbox').getBoundingClientRect();
+  let f = Math.floor((clientX - r.left) / r.width * 8), rk = 7 - Math.floor((clientY - r.top) / r.height * 8);
+  if (state.flipped) { f = 7 - f; rk = 7 - rk; }
+  return (f < 0 || f > 7 || rk < 0 || rk > 7) ? null : sqName(f, rk);
+}
+$('pieces').addEventListener('pointerdown', async e => {
+  const el = e.target.closest('.pc.own');
+  if (!el || !state.game || state.exploring || e.button) return;
+  e.preventDefault();
+  const sq = el.dataset.sq, fen = currentFen();
+  state.sel = sq;
+  renderBoard();                                   // shows the selection; recreates the piece divs
+  const piece = $('pieces').querySelector(`.pc[data-sq="${sq}"]`);
+  const r = $('boardbox').getBoundingClientRect();
+  drag = { sq, piece, size: r.width / 8, rect: r, moved: false, x0: e.clientX, y0: e.clientY };
+  piece.classList.add('dragging');
+  $('pieces').appendChild(piece);
+  piece.setPointerCapture(e.pointerId);
+  state.legal = await legalFor(fen);
+  if (drag && drag.sq === sq) renderBoard();     // targets appear; the pieces layer is left alone while dragging
+});
+function positionDrag(e) {
+  if (!drag) return;
+  const x = e.clientX - drag.rect.left - drag.size / 2, y = e.clientY - drag.rect.top - drag.size / 2;
+  drag.piece.style.transform = `translate(${x}px, ${y}px)`;
+}
+$('pieces').addEventListener('pointermove', e => {
+  if (!drag) return;
+  if (Math.hypot(e.clientX - drag.x0, e.clientY - drag.y0) > 4) drag.moved = true;
+  positionDrag(e);
+});
+async function endDrag(e, cancelled) {
+  if (!drag) return;
+  const d = drag; drag = null;
+  d.piece.classList.remove('dragging');
+  const to = cancelled ? null : squareAtPoint(e.clientX, e.clientY);
+  if (d.moved) suppressClick = true;
+  if (to && to !== d.sq && d.moved) {
+    const cand = (state.legal || []).filter(u => u.startsWith(d.sq) && u.slice(2, 4) === to);
+    if (cand.length) { const uci = cand.find(u => u.endsWith('q')) || cand[0]; state.sel = null; state.legal = null; await explore(currentFen(), uci); return; }
+    play('illegal');
+  }
+  if (d.moved) { state.sel = null; state.legal = null; renderBoard(); }   // snap back; a tap without movement keeps the selection
+}
+$('pieces').addEventListener('pointerup', e => endDrag(e, false));
+$('pieces').addEventListener('pointercancel', e => endDrag(e, true));
+
 // ---------- touch: swipe the board left/right to step ----------
 let touchStart = null;
-$('boardbox').addEventListener('touchstart', e => { const t = e.touches[0]; touchStart = [t.clientX, t.clientY]; }, { passive: true });
+$('boardbox').addEventListener('touchstart', e => { if (e.target.closest('.pc.own')) { touchStart = null; return; } const t = e.touches[0]; touchStart = [t.clientX, t.clientY]; }, { passive: true });
 $('boardbox').addEventListener('touchend', e => {
   if (!touchStart) return;
   const t = e.changedTouches[0], dx = t.clientX - touchStart[0], dy = t.clientY - touchStart[1];
@@ -773,7 +839,8 @@ async function legalFor(fen) {
   return legalCache[fen];
 }
 $('boardbox').addEventListener('click', async e => {
-  if (!state.game || state.exploring) return;
+  if (suppressClick) { suppressClick = false; return; }
+  if (!state.game || state.exploring || drag) return;
   const r = $('boardbox').getBoundingClientRect();
   let f = Math.floor((e.clientX - r.left) / r.width * 8), rk = 7 - Math.floor((e.clientY - r.top) / r.height * 8);
   if (state.flipped) { f = 7 - f; rk = 7 - rk; }
@@ -843,7 +910,11 @@ function renderPlayers() {
   for (const [el, side] of [[$('ptop'), top], [$('pbot'), bot]]) {
     const p = g[side], c = clockAt(side);
     const diff = side === 'white' ? cap.mat : -cap.mat;
-    const caps = cap.out[side].map(ch => `<svg viewBox="0 0 45 45" class="${ch === ch.toLowerCase() ? 'blk' : ''}"><use href="#${PIECE_ID[ch]}"/></svg>`).join('');
+    const caps = cap.out[side].map(ch => {
+      const blk = ch === ch.toLowerCase() ? 'blk' : '';
+      if (ASSETS.hasPieces) return `<img class="${blk}" src="${ASSETS.pieces}/${blk ? 'b' : 'w'}${ch.toLowerCase()}.png" alt="">`;
+      return `<svg viewBox="0 0 45 45" class="${blk}"><use href="#${PIECE_ID[ch]}"/></svg>`;
+    }).join('');
     el.innerHTML = `<span class="dot ${side}"></span><span class="name">${esc(p.name)}</span><span class="rating">${p.rating ?? ''}</span>` +
       (p.accuracy != null && g.analysed >= 0.999 ? `<span class="acc">${p.accuracy.toFixed(1)}%</span>` : '') +
       `<span class="cap">${caps}${diff > 0 ? `<span class="diff">+${diff}</span>` : ''}</span>` +
@@ -1041,7 +1112,7 @@ $('b-first').onclick = () => go(0);
 $('b-prev').onclick = () => go(state.ply - 1);
 $('b-next').onclick = () => go(state.ply + 1);
 $('b-last').onclick = () => go(line().length);
-$('b-flip').onclick = () => { state.flipped = !state.flipped; update(false); };
+$('b-flip').onclick = () => { state.flipped = !state.flipped; $('pieces').innerHTML = ''; update(false); };
 $('b-play').onclick = togglePlay;
 $('b-key').onclick = nextKey;
 document.addEventListener('keydown', e => {
