@@ -25,7 +25,16 @@ import chess
 import chess.engine
 import duckdb
 
-from .config import DEFAULT_HASH_MB, DEFAULT_NODES, EVALS_DB, EVALS_PARQUET, MULTIPV_N, POSITIONS_PARQUET, STOCKFISH, sql_path
+from .config import (
+    DEFAULT_HASH_MB,
+    DEFAULT_NODES,
+    EVALS_DB,
+    EVALS_PARQUET,
+    MULTIPV_N,
+    POSITIONS_PARQUET,
+    STOCKFISH,
+    sql_path,
+)
 from .fen import board_from_key
 
 log = logging.getLogger("analyse")

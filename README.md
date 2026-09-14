@@ -42,12 +42,12 @@ python -m chess_review ingest    --username <me>       # 1  chess.com archives -
 python -m chess_review ingest    --pgn-file game.pgn   #    or a pasted PGN -> data/pgn/<hash>.pgn
 python -m chess_review normalise --username <me>       # 2  -> data/games.parquet, data/positions.parquet, data/meta.json
 python -m chess_review analyse   [--workers 6] [--nodes 1000000] [--limit N]   # 3  batch: every pending position -> data/evals.duckdb
-python -m chess_review review                          # 4  classify -> critical -> site -> aggregates
+python -m chess_review review                          # 4  classify -> site -> aggregates
 python -m chess_review serve   [--port 8123] [--nodes N]                       #    server + on-demand analysis API
 python -m pytest                                       #    32 tests, some use the real engine
 ```
 
-Individual stage 4 steps: `classify`, `critical`, `site`, `aggregates`. `export` dumps step-1 CSVs.
+Individual stage 4 steps: `classify`, `site`, `aggregates`. `export` dumps step-1 CSVs.
 Server API: `GET /api/status`, `POST /api/analyse/<game>`, `POST /api/refresh`, `POST /api/stop`.
 
 ## Layout
@@ -60,7 +60,7 @@ Server API: `GET /api/status`, `POST /api/analyse/<game>`, `POST /api/refresh`, 
 | `pov.py` | **the only place eval signs are flipped**; win% formula; mate never enters cp arithmetic |
 | `book.py` | lichess `chess-openings` TSVs (`scripts/fetch_book.sh`) -> set of book positions |
 | `classify.py` | win%-delta labels per move -> `moves.parquet` (brilliant / great / best / excellent / good / book / forced / inaccuracy / mistake / miss / blunder; definitions in the module docstring) |
-| `critical.py` | top 3-5 decisive moves per game (boundary crossings first) -> `critical.parquet` |
+| `critical.py` | top 3-5 decisive moves per game (boundary crossings first), selected live by `site.py` |
 | `facts.py` | `MoveFacts`: refutation, SEE-based hung pieces, material swing, missed/allowed mate, only-move, fork/pin/skewer/discovered |
 | `explain.py` | format strings over `MoveFacts` |
 | `site.py` + `static/index.html` | static review site: game list, board, arrows, eval bar/graph, move list, key moments |

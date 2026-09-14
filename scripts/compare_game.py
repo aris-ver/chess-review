@@ -1,8 +1,14 @@
 """Print our review of one game (by opponent name or id) move by move, with alternative accuracy aggregations."""
-import glob, json, math, statistics, sys
+import glob
+import json
+import math
+import pathlib
+import statistics
+import sys
 
 needle = sys.argv[1] if len(sys.argv) > 1 else "nagibator0044"
-g = next(json.load(open(f)) for f in glob.glob("data/site/games/*.json") if needle in open(f).read())
+texts = {f: pathlib.Path(f).read_text(encoding="utf-8") for f in glob.glob("data/site/games/*.json")}
+g = next(json.loads(t) for f, t in texts.items() if needle in t)
 print(g["id"], g["played_at"][:10], "me:", g["my_colour"], "result:", g["result"])
 for side in ("white", "black"):
     print(f"  {side:5} {g[side]['name']:16} acc={g[side]['accuracy']}  {g[side]['counts']}")

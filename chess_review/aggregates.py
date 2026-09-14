@@ -16,12 +16,12 @@ import chess
 from .accuracy import game_accuracy
 from .config import META_JSON, SITE_DIR
 from .db import connect
+from .pov import pov_win_pct
 
 log = logging.getLogger("aggregates")
 
 CLOCK_BUCKETS = [(0, 10, "< 10s"), (10, 30, "10-30s"), (30, 60, "30-60s"), (60, 180, "1-3 min"), (180, 300, "3-5 min"), (300, 10 ** 9, "5+ min")]
 PLY_BUCKETS = [(0, 10, "1-5"), (10, 20, "6-10"), (20, 30, "11-15"), (30, 40, "16-20"), (40, 60, "21-30"), (60, 10 ** 9, "31+")]
-NONPAWN = {chess.KNIGHT: 3, chess.BISHOP: 3, chess.ROOK: 5, chess.QUEEN: 9}
 
 
 def _case(col: str, buckets) -> str:
@@ -67,7 +67,7 @@ def query_all(con) -> dict:
         FROM my
     """).fetchone()
 
-    out["by_eco"] = con.execute(f"""
+    out["by_eco"] = con.execute("""
         SELECT substr(eco, 1, 3) eco, any_value(opening_name) AS opening, count(DISTINCT game_id) games,
                round(avg(wp_loss), 2) bleed, round(100.0 * sum(label='blunder') / count(*), 1) blunder_pct,
                round(100.0 * count(DISTINCT CASE WHEN result='win' THEN game_id END) / count(DISTINCT game_id), 0) win_rate
@@ -135,10 +135,9 @@ def endgame_conversion(con) -> list[tuple]:
         FROM positions p JOIN games g USING (game_id) LEFT JOIN evals e USING (fen_key)
         ORDER BY p.game_id, p.ply
     """).fetchall()
-    from .pov import pov_win_pct
     entries: dict[str, list[tuple[float, float]]] = {}
     seen = set()
-    for gid, ply, fen, colour, result, cp, mate, stm in rows:
+    for gid, _ply, fen, colour, result, cp, mate, stm in rows:
         if gid in seen or (cp is None and mate is None):
             continue
         b = chess.Board(fen)

@@ -25,11 +25,11 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from typing import Optional
 from urllib.parse import parse_qs, urlparse
 
-from . import aggregates, classify, critical, ingest, normalise, site
-from .explore import Explorer
+from . import aggregates, classify, ingest, normalise, site
 from .analyse import Analyser, export_parquet, open_db, pending_keys
 from .config import DEFAULT_NODES, ENGINE_IDLE_SECONDS, META_JSON, SITE_DIR
 from .db import base_views
+from .explore import Explorer
 
 log = logging.getLogger("serve")
 
@@ -105,7 +105,7 @@ class Runner:
                 "SELECT fen_key, min(ply) FROM positions WHERE game_id = ? GROUP BY 1 ORDER BY 2", [job.game_id]).fetchall())}
             keys.sort(key=lambda k: order.get(k, 1 << 30))
 
-            def progress(done: int, total: int) -> None:
+            def progress(done: int, _total: int) -> None:
                 job.done = done
                 site.update_index(site.write_game(con, job.game_id))
 
@@ -115,9 +115,8 @@ class Runner:
             export_parquet(con)
         finally:
             con.close()
-        # keep the batch tables current for the insights page (cheap, no engine)
+        # keep moves.parquet and the insights page current (cheap, no engine)
         classify.build()
-        critical.build()
         aggregates.build()
 
     def _analyse_all(self, job: Job) -> None:
@@ -140,7 +139,7 @@ class Runner:
                     "SELECT fen_key, min(ply) FROM positions WHERE game_id = ? GROUP BY 1 ORDER BY 2", [gid]).fetchall())}
                 keys.sort(key=lambda k: order.get(k, 1 << 30))
 
-                def progress(done: int, total: int) -> None:
+                def progress(done: int, _total: int) -> None:
                     job.game_done = done
 
                 self.analyser.run(keys, con, on_progress=progress, batch=self.analyser.workers * 2,
@@ -153,7 +152,6 @@ class Runner:
         finally:
             con.close()
         classify.build()
-        critical.build()
         aggregates.build()
 
     def _refresh(self, job: Job) -> None:
@@ -166,7 +164,6 @@ class Runner:
         job.done = 2
         site.build()
         classify.build()
-        critical.build()
         aggregates.build()
         job.done = 3
 
@@ -271,7 +268,7 @@ def main(argv=None) -> None:
     srv = ThreadingHTTPServer((args.host, args.port), handler)
     log.info("serving %s at http://%s:%d/", SITE_DIR, args.host, args.port)
 
-    def shutdown(signum, frame):
+    def shutdown(signum, _frame):
         log.info("signal %d: shutting down", signum)
         Handler.runner.analyser.close()
         Handler.runner.explorer.close()

@@ -3,20 +3,19 @@
 import logging
 import sys
 
-from . import aggregates, analyse, classify, critical, export, ingest, normalise, serve, site
+from . import aggregates, analyse, classify, export, ingest, normalise, serve, site
 
 
 def review(argv):
-    """classify -> critical -> site, in one go."""
+    """classify -> site -> aggregates, in one go."""
     classify.main(argv)
-    critical.main(argv)
     site.main(argv)
     aggregates.main(argv)
 
 
 STAGES = {
     "ingest": ingest.main, "normalise": normalise.main, "analyse": analyse.main, "export": export.main,
-    "classify": classify.main, "critical": critical.main, "site": site.main, "aggregates": aggregates.main, "review": review, "serve": serve.main,
+    "classify": classify.main, "site": site.main, "aggregates": aggregates.main, "review": review, "serve": serve.main,
 }
 
 if __name__ == "__main__":

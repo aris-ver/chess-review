@@ -4,22 +4,28 @@ import logging
 
 import duckdb
 
-from .config import CRITICAL_PARQUET, EVALS_DB, EVALS_PARQUET, GAMES_PARQUET, MOVES_PARQUET, POSITIONS_PARQUET, sql_path
+from .config import (
+    EVALS_DB,
+    EVALS_PARQUET,
+    GAMES_PARQUET,
+    MOVES_PARQUET,
+    POSITIONS_PARQUET,
+    sql_path,
+)
 
 log = logging.getLogger("db")
 
 
 def base_views(con: duckdb.DuckDBPyConnection) -> None:
-    """games/positions (+ moves/critical when built) as views over the parquet files, on any connection."""
+    """games/positions (+ moves when built) as views over the parquet files, on any connection."""
     con.execute(f"CREATE OR REPLACE VIEW games AS SELECT * FROM read_parquet({sql_path(GAMES_PARQUET)})")
     con.execute(f"""
         CREATE OR REPLACE VIEW positions AS
         SELECT *, array_to_string(list_slice(string_split(fen, ' '), 1, 4), ' ') AS fen_key
         FROM read_parquet({sql_path(POSITIONS_PARQUET)})
     """)
-    for name, path in (("moves", MOVES_PARQUET), ("critical", CRITICAL_PARQUET)):
-        if path.exists():
-            con.execute(f"CREATE OR REPLACE VIEW {name} AS SELECT * FROM read_parquet({sql_path(path)})")
+    if MOVES_PARQUET.exists():
+        con.execute(f"CREATE OR REPLACE VIEW moves AS SELECT * FROM read_parquet({sql_path(MOVES_PARQUET)})")
 
 
 def connect() -> duckdb.DuckDBPyConnection:

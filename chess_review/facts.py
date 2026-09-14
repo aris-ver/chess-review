@@ -4,7 +4,7 @@ Everything here is a pure function of (position, played move, evals, multipv).
 No prose; see explain.py for the format strings.
 """
 
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from typing import Optional
 
 import chess
@@ -39,13 +39,8 @@ class MoveFacts:
     was_only_move: Optional[bool] = None                      # best was the only move (MultiPV gap) and was missed
     motif: Optional[str] = None                               # fork | pin | discovered | skewer, on the reply
     motif_detail: Optional[str] = None
-    is_forced: bool = False
-    in_book: bool = False
     clock_remaining: Optional[int] = None
     time_spent: Optional[int] = None
-
-    def to_dict(self) -> dict:
-        return asdict(self)
 
 
 # --- board geometry -----------------------------------------------------------
@@ -229,7 +224,6 @@ def extract(move: dict, board: chess.Board, eval_before: dict, eval_after: Optio
         game_id=move["game_id"], ply=move["ply"], side=move["side_to_move"], is_mine=move["is_mine"],
         san=move["san"], best_san=move["best_san"], label=move["label"],
         wp_before=move["wp_before"], wp_after=move["wp_after"], wp_loss=move["wp_loss"],
-        is_forced=move["is_forced"], in_book=move["in_book"],
         clock_remaining=move["clock_remaining"], time_spent=move["time_spent"],
     )
     f.best_line = _sans(board, eval_before.get("pv") or [], REFUTATION_PLIES)

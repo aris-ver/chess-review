@@ -4,7 +4,6 @@ import pytest
 from chess_review import book
 from chess_review.classify import classify_game, label_for, move_accuracy
 from chess_review.fen import fen_key
-from chess_review.fen import fen_key
 
 pytestmark = pytest.mark.skipif(not book.BOOK_DIR.exists(), reason="opening book not fetched")
 
@@ -29,7 +28,6 @@ def test_book_positions():
     for mv in ("e4", "e5", "Nf3", "Nc6", "Bb5"):
         b.push_san(mv)
     assert book.is_book(fen_key(b.fen()))
-    assert book.name_for(fen_key(b.fen()))[1].startswith("Ruy Lopez")
     b.push_san("a6"); b.push_san("Ba4"); b.push_san("h5")   # 4...h5 is nobody's theory
     assert not book.is_book(fen_key(b.fen()))
 

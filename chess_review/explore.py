@@ -5,9 +5,11 @@ node count as the batch, so a move is answered in about a second. Results are
 kept in memory only: the DuckDB cache stays strictly single-threaded-search data.
 """
 
+import contextlib
 import logging
 import os
 import threading
+import time
 from typing import Optional
 
 import chess
@@ -43,10 +45,8 @@ class Explorer:
 
     def close(self) -> None:
         if self._engine is not None:
-            try:
+            with contextlib.suppress(Exception):
                 self._engine.quit()
-            except Exception:  # noqa: BLE001
-                pass
             self._engine = None
 
     def legal(self, fen: str) -> dict:
@@ -76,7 +76,6 @@ class Explorer:
         if hit is not None:
             return hit
         with self._lock:
-            import time
             self.last_used = time.time()
             limit = chess.engine.Limit(nodes=self.nodes)
             res = robust_multipv(board, self.engine, limit, self._restart)

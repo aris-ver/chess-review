@@ -1,4 +1,4 @@
-"""Stage 4b: pick the 3-5 moves per game that decided it -> data/critical.parquet.
+"""Stage 4b: pick the 3-5 moves per game that decided it (selected live by site.py).
 
 Candidates are unforced moves (either side) losing >= MISTAKE win%, ignoring
 the first OPENING_SKIP_PLIES unless the move is already a blunder. Ranked by
@@ -6,28 +6,10 @@ whether the move crossed a decision boundary (winning / equal / losing bands of
 the mover's win%), then by win% loss. A game may have zero.
 """
 
-import argparse
-import logging
-
-import pyarrow as pa
-import pyarrow.parquet as pq
-
-from .config import BLUNDER, CRITICAL_MAX, CRITICAL_PARQUET, MISTAKE, OPENING_SKIP_PLIES
-from .db import connect
-
-log = logging.getLogger("critical")
+from .config import BLUNDER, CRITICAL_MAX, MISTAKE, OPENING_SKIP_PLIES
 
 WINNING = 65.0
 LOSING = 35.0
-
-SCHEMA = pa.schema([
-    ("game_id", pa.string()),
-    ("ply", pa.int32()),
-    ("rank", pa.int32()),
-    ("band_before", pa.string()),
-    ("band_after", pa.string()),
-    ("crosses_boundary", pa.bool_()),
-])
 
 
 def band(wp: float) -> str:
@@ -61,29 +43,3 @@ def select(moves: list[dict]) -> list[dict]:
         out.append({**c, "rank": rank})
     return out
 
-
-def build() -> dict:
-    con = connect()
-    rows = con.execute("SELECT * FROM moves ORDER BY game_id, ply").fetch_arrow_table().to_pylist()
-    by_game: dict[str, list[dict]] = {}
-    for r in rows:
-        by_game.setdefault(r["game_id"], []).append(r)
-    out = []
-    for gid, ms in by_game.items():
-        out.extend(select(ms))
-    CRITICAL_PARQUET.parent.mkdir(parents=True, exist_ok=True)
-    pq.write_table(pa.Table.from_pylist(out, schema=SCHEMA), CRITICAL_PARQUET)
-    per_game = [len([c for c in out if c["game_id"] == g]) for g in by_game]
-    hist = {k: per_game.count(k) for k in range(CRITICAL_MAX + 1)}
-    return {"games": len(by_game), "critical": len(out), "per_game_histogram": hist}
-
-
-def main(argv=None) -> None:
-    p = argparse.ArgumentParser(prog="critical", description=__doc__)
-    p.parse_args(argv)
-    log.info("done: %s", build())
-
-
-if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(message)s")
-    main()

@@ -12,7 +12,6 @@ POSITIONS_PARQUET = DATA / "positions.parquet"
 EVALS_DB = DATA / "evals.duckdb"        # incremental, resumable engine cache
 EVALS_PARQUET = DATA / "evals.parquet"  # snapshot written at the end of each analyse run
 MOVES_PARQUET = DATA / "moves.parquet"             # stage 4a: classified moves
-CRITICAL_PARQUET = DATA / "critical.parquet"       # stage 4b: selected critical moments
 META_JSON = DATA / "meta.json"                    # {"username": ...} written by normalise
 SITE_DIR = DATA / "site"                           # stage 4c: static review site
 
@@ -23,7 +22,6 @@ DEFAULT_NODES = 1_000_000
 BLUNDER = 20.0
 MISTAKE = 10.0
 INACCURACY = 5.0
-GOOD = 5.0               # <= this loss and not the engine move: "good"
 EXCELLENT = 2.0          # <= this: "excellent"
 CP_MISTAKE = 300         # material floor: a move that hangs material AND drops the eval this much is at least a mistake
 CP_BLUNDER = 800         # ... and this much is a blunder, however won the position already was

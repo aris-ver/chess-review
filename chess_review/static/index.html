@@ -113,7 +113,6 @@ svg.arrows { position: absolute; inset: 0; width: 100%; height: 100%; pointer-ev
 .badge img, .badge svg { width: 100%; height: 100%; display: block; }
 .ico img { width: 100%; height: 100%; display: block; }
 .sq.light { fill: var(--light); } .sq.dark { fill: var(--dark); }
-.sq.last { fill: var(--hl); }
 .coord { font-size: 2.6px; font-weight: 700; pointer-events: none; }
 .coord.onlight { fill: var(--dark); } .coord.ondark { fill: var(--light); }
 .arrow { opacity: 1; }
@@ -134,7 +133,6 @@ svg.board.playable use.piece.own { cursor: grab; }
 .now .var { font-size: 11px; color: var(--c-great); border: 1px solid var(--c-great); border-radius: 3px; padding: 0 5px; }
 .summary .l.click, .summary .r.click { cursor: pointer; text-decoration: underline dotted; text-underline-offset: 3px; }
 .summary .l.click:hover, .summary .r.click:hover { color: var(--accent); }
-.hint { text-align: center; color: var(--muted); font-size: 12px; }
 .progress { height: 6px; background: var(--panel2); border-radius: 3px; overflow: hidden; }
 .progress > div { height: 100%; background: var(--accent); transition: width .3s; }
 
@@ -173,12 +171,6 @@ svg.board.playable use.piece.own { cursor: grab; }
 .cap svg, .cap img { width: 16px; height: 16px; margin-right: -5px; display: inline-block; }
 .cap .blk { filter: drop-shadow(0 0 .7px #e0e0e0) drop-shadow(0 0 .7px #e0e0e0); }
 .cap .diff { margin-left: 8px; color: var(--muted); font-size: 12px; }
-.panel .head { padding: 12px 14px; border-bottom: 1px solid var(--line); }
-.panel .head .title { font-weight: 700; font-size: 15px; }
-.panel .head .sub { color: var(--muted); font-size: 12px; }
-.tabs { display: flex; border-bottom: 1px solid var(--line); }
-.tabs button { flex: 1; border: 0; border-radius: 0; background: transparent; padding: 10px; color: var(--muted); border-bottom: 2px solid transparent; }
-.tabs button.active { background: transparent; color: var(--text); border-bottom-color: var(--accent); }
 .panel .body { overflow: auto; flex: 1; position: relative; }
 .panel > :not(.body) { flex-shrink: 0; }
 svg.graph { width: 100%; height: 90px; display: block; cursor: pointer; background: #3a3733; flex-shrink: 0; }
@@ -196,7 +188,6 @@ svg.graph { width: 100%; height: 90px; display: block; cursor: pointer; backgrou
 .moment.current { outline: 2px solid var(--accent); }
 .moment .mv { font-weight: 700; } .moment .hd { color: var(--muted); font-size: 12px; margin-left: 6px; }
 .moment p { margin: 4px 0 0; }
-.section { padding: 8px 14px 4px; color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
 .movelist { display: grid; grid-template-columns: 40px 1fr 1fr; font-variant-numeric: tabular-nums; }
 .movelist .n { color: var(--muted); padding: 3px 8px; background: #2b2926; }
 .movelist .m { padding: 3px 8px; cursor: pointer; display: flex; gap: 6px; align-items: center; }
@@ -353,7 +344,7 @@ const icon = (lb, cls = 'ico') => !lb || !LABEL_NAME[lb] ? '' :
   ASSETS.hasIcons ? `<span class="${cls}"><img src="${iconSrc(lb)}" alt="${LABEL_NAME[lb]}"></span>` : `<svg class="${cls}"><use href="#ic-${lb}"/></svg>`;
 
 const $ = id => document.getElementById(id);
-const state = { games: null, username: '', filters: { result:'', colour:'', analysed:'', brilliant:'' }, game: null, ply: 0, flipped: false, tab: 'review',
+const state = { games: null, username: '', filters: { result:'', colour:'', analysed:'', brilliant:'' }, game: null, ply: 0, flipped: false,
                 sound: true, poll: null,
                 variation: null,      // { basePly, moves: [...] } - a "what if" line branching after basePly main-line moves
                 sel: null, legal: null, exploring: false, cycle: {}, playing: null, explain: false, showBest: false };
@@ -619,8 +610,7 @@ function sqXY(name) {
 }
 function currentFen() { const ln = line(); return state.ply === 0 ? state.game.start_fen : ln[state.ply - 1].fen; }
 function currentMove() { return state.ply > 0 ? line()[state.ply - 1] : null; }
-const tf = (x, y) => `translate(${x}px, ${y}px) scale(${12.5 / 45})`;
-let lastPly = null, lastGameId = null, lastFlipped = null, lastFen = null;
+let lastPly = null, lastGameId = null, lastFlipped = null;
 // Squares whose piece should glide in from another square when stepping one ply forward or back.
 function animPairs() {
   const g = state.game, ln = line();
@@ -676,7 +666,7 @@ function renderBoard() {
   if (!drag) renderPieces(pieces, turn);
 
   renderArrows(); renderBadges();
-  lastPly = state.ply; lastGameId = g.id; lastFlipped = state.flipped; lastFen = fen;
+  lastPly = state.ply; lastGameId = g.id; lastFlipped = state.flipped;
 }
 function pieceEl(code) {
   const el = document.createElement('div');

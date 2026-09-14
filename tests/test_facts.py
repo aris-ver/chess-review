@@ -1,5 +1,4 @@
 import chess
-import pytest
 
 from chess_review.facts import extract, hung_pieces, material_swing, motif, see
 

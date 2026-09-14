@@ -34,15 +34,22 @@ import pyarrow.parquet as pq
 
 from . import book
 from .accuracy import move_accuracy
-from .config import BLUNDER, CP_BLUNDER, CP_MISTAKE, EXCELLENT, INACCURACY, MISTAKE, MOVES_PARQUET, ONLY_MOVE_GAP
+from .config import (
+    BLUNDER,
+    CP_BLUNDER,
+    CP_MISTAKE,
+    EXCELLENT,
+    INACCURACY,
+    MISTAKE,
+    MOVES_PARQUET,
+    ONLY_MOVE_GAP,
+)
 from .db import connect
 from .facts import see
 from .fen import fen_key
 from .pov import pov_win_pct
 
 log = logging.getLogger("classify")
-
-LABELS = ["brilliant", "great", "best", "excellent", "good", "book", "forced", "inaccuracy", "mistake", "miss", "blunder"]
 
 SCHEMA = pa.schema([
     ("game_id", pa.string()),

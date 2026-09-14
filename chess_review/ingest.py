@@ -11,6 +11,7 @@ import json
 import logging
 import sys
 import time
+from pathlib import Path
 
 import requests
 
@@ -85,7 +86,7 @@ def main(argv=None) -> None:
     args = p.parse_args(argv)
 
     if args.pgn_file:
-        text = sys.stdin.read() if args.pgn_file == "-" else open(args.pgn_file, encoding="utf-8").read()
+        text = sys.stdin.read() if args.pgn_file == "-" else Path(args.pgn_file).read_text(encoding="utf-8")
         digest = store_pgn(text)
         log.info("stored pasted PGN as %s.pgn", digest)
         return
