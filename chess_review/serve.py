@@ -3,7 +3,7 @@
     GET  /api/status          current job (or null)
     POST /api/analyse/<id>    analyse one game (MultiPV=3, fixed nodes), streaming progress into games/<id>.json
     POST /api/stop            stop the running analysis
-    POST /api/refresh         re-fetch the latest chess.com month, normalise, rebuild the site
+    POST /api/refresh         re-fetch the latest chess.com month, normalise, rebuild the site, analyse new games
     POST /api/analyse_all     analyse every game that isn't fully analysed yet, newest first
     GET  /api/legal?fen=      legal moves in a position (for the board UI)
     POST /api/explore         {fen, uci, my_colour} -> the move evaluated and classified on the spot
@@ -120,6 +120,7 @@ class Runner:
         aggregates.build()
 
     def _analyse_all(self, job: Job) -> None:
+        job.kind, job.done, job.total = "analyse_all", 0, 0
         con = open_db()
         base_views(con)
         try:
@@ -163,9 +164,9 @@ class Runner:
         normalise.build(username)
         job.done = 2
         site.build()
-        classify.build()
-        aggregates.build()
         job.done = 3
+        # new games are analysed right away (same job; the UI switches to the batch progress display)
+        self._analyse_all(job)
 
 
 class Handler(SimpleHTTPRequestHandler):

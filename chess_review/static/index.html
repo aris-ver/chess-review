@@ -129,9 +129,10 @@ svg.arrows { position: absolute; inset: 0; width: 100%; height: 100%; pointer-ev
 .ov.on { display: block; }
 .highlight { background: rgb(255, 255, 51); opacity: 0.5; }
 /* INTENTIONAL: opacity, not a pre-blended rgba, so the highlight reads darker on dark squares (chess.com behaviour) */
-.hint { background: rgba(0, 0, 0, 0.14); border-radius: 50%; }
+.hint { position: absolute; }
+.hint::after { content: ""; position: absolute; inset: 33.33%; border-radius: 50%; background: rgba(0, 0, 0, 0.14); }   /* disc = 1/3 of the square, centred */
 .capture-hint { box-shadow: inset 0 0 0 calc(var(--sq) * 0.0836) rgba(0, 0, 0, 0.14); border-radius: 50%; background: transparent; }
-.hover-square { outline: 2px solid rgba(0, 0, 0, 0.3); outline-offset: -2px; }
+.hover-square { outline: 3px solid rgba(255, 255, 255, 0.55); outline-offset: -3px; }
 svg.board.playable use.piece.own { cursor: grab; }
 .varrow { grid-column: 1 / -1; background: #2b2926; padding: 4px 8px 4px 16px; font-size: 13px; border-left: 3px solid var(--c-great); display: flex; flex-wrap: wrap; gap: 2px 8px; align-items: center; }
 .varrow .v { cursor: pointer; padding: 1px 4px; border-radius: 3px; display: inline-flex; gap: 4px; align-items: center; }
@@ -213,7 +214,7 @@ svg.graph { width: 100%; height: 90px; display: block; cursor: pointer; backgrou
   <span class="crumb" id="crumb"></span>
   <div class="right">
     <button id="b-sound" title="Toggle sound">🔊</button>
-    <button id="b-refresh" title="Fetch new games from chess.com"><span class="i">⟳</span><span class="t"> Refresh games</span></button>
+    <button id="b-refresh" title="Fetch new games from chess.com and analyse them"><span class="i">⟳</span><span class="t"> Refresh games</span></button>
     <button id="b-all" title="Analyse every game that isn't analysed yet (hours)"><span class="i">⚙</span><span class="t"> Analyse all</span></button>
     <span id="jobstat" style="color:var(--muted);font-size:12px"></span>
     <a href="insights.html" title="Insights"><span class="i">📊</span><span class="t"> Insights →</span></a>
@@ -547,7 +548,7 @@ $('b-refresh').onclick = async () => {
   const r = await fetch('api/refresh', { method: 'POST' });
   const d = await r.json();
   if (!r.ok) { toast(d.error === 'busy' ? `Busy: ${jobText(d.job)}` : d.error); return; }
-  toast('Fetching new games from chess.com…');
+  toast('Fetching new games from chess.com — new ones are analysed automatically…');
   pollStatus();
 };
 $('b-all').onclick = async () => {
@@ -807,6 +808,7 @@ async function commitMove(uci, instant) {
 }
 function deselect() { state.sel = null; state.legal = null; renderOverlays(parseFen(currentFen()), currentMove()); }
 
+$('boardbox').addEventListener('dragstart', e => e.preventDefault());
 $('boardbox').addEventListener('pointerdown', async e => {
   if (!state.game || state.exploring || e.button) return;
   const sq = squareAt(e); if (!sq) return;
