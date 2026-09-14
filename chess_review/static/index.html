@@ -101,14 +101,15 @@ td.num { text-align: right; font-variant-numeric: tabular-nums; }
 .player .clock { margin-left: auto; font-variant-numeric: tabular-nums; background: var(--panel2); padding: 3px 10px; border-radius: 4px; min-width: 64px; text-align: center; }
 .player .clock.low { color: var(--c-blunder); }
 .player .acc { background: var(--panel2); padding: 3px 8px; border-radius: 4px; font-size: 12px; }
-.boardbox { position: relative; width: 100%; aspect-ratio: 1; user-select: none; }
+.boardbox { position: relative; width: 100%; aspect-ratio: 1; user-select: none; touch-action: none; }
 svg.board { position: absolute; inset: 0; width: 100%; height: 100%; display: block; border-radius: 4px; }
 .pieces, .badges { position: absolute; inset: 0; pointer-events: none; }
 svg.arrows { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
 .pc { position: absolute; left: 0; top: 0; width: 12.5%; height: 12.5%; background-size: contain; background-repeat: no-repeat; background-position: center; transition: transform .18s ease-out; will-change: transform; }
 .pc svg { width: 100%; height: 100%; display: block; }
-.boardbox.playable .pc.own { cursor: grab; pointer-events: auto; touch-action: none; }
-.pc.dragging { cursor: grabbing; transition: none; z-index: 2; filter: drop-shadow(0 6px 6px rgba(0,0,0,.35)); }
+.boardbox.playable { cursor: default; }
+.pc.dragging { transition: none; z-index: 2; filter: drop-shadow(0 6px 6px rgba(0,0,0,.35)); }
+.boardbox.dragging { cursor: grabbing; }
 .badge { position: absolute; width: 5.75%; height: 5.75%; transform: translate(-50%, -50%); filter: drop-shadow(0 .5px 1px rgba(0,0,0,.35)); }
 .badge img, .badge svg { width: 100%; height: 100%; display: block; }
 .ico img { width: 100%; height: 100%; display: block; }
@@ -122,9 +123,15 @@ svg.arrows { position: absolute; inset: 0; width: 100%; height: 100%; pointer-ev
 #b-prev, #b-next { font-size: 24px; line-height: 1; padding-top: 2px; padding-bottom: 6px; }
 #b-play.playing { background: var(--accent); color: #1b1b1b; border-color: var(--accent); }
 .nav button:disabled { opacity: .35; }
-.sq.sel { fill: rgba(255, 255, 51, .55); }
-.target { fill: rgba(150, 150, 150, .6); pointer-events: none; }
-.target.ring { fill: none; stroke: rgba(150, 150, 150, .65); stroke-width: 1.1; }
+/* pooled overlay nodes: 2 last-move highlights, 1 selection highlight, 64 hints, 1 hover square */
+.overlays { position: absolute; inset: 0; pointer-events: none; }
+.ov { position: absolute; left: 0; top: 0; width: 12.5%; height: 12.5%; box-sizing: border-box; display: none; }
+.ov.on { display: block; }
+.highlight { background: rgb(255, 255, 51); opacity: 0.5; }
+/* INTENTIONAL: opacity, not a pre-blended rgba, so the highlight reads darker on dark squares (chess.com behaviour) */
+.hint { background: rgba(0, 0, 0, 0.14); border-radius: 50%; }
+.capture-hint { box-shadow: inset 0 0 0 calc(var(--sq) * 0.0836) rgba(0, 0, 0, 0.14); border-radius: 50%; background: transparent; }
+.hover-square { outline: 2px solid rgba(0, 0, 0, 0.3); outline-offset: -2px; }
 svg.board.playable use.piece.own { cursor: grab; }
 .varrow { grid-column: 1 / -1; background: #2b2926; padding: 4px 8px 4px 16px; font-size: 13px; border-left: 3px solid var(--c-great); display: flex; flex-wrap: wrap; gap: 2px 8px; align-items: center; }
 .varrow .v { cursor: pointer; padding: 1px 4px; border-radius: 3px; display: inline-flex; gap: 4px; align-items: center; }
@@ -246,6 +253,7 @@ svg.graph { width: 100%; height: 90px; display: block; cursor: pointer; backgrou
         <div class="player" id="ptop"></div>
         <div class="boardbox" id="boardbox">
           <svg class="board" id="board" viewBox="0 0 100 100"></svg>
+          <div class="overlays" id="overlays"></div>
           <div class="pieces" id="pieces"></div>
           <svg class="arrows" id="arrows" viewBox="0 0 100 100"></svg>
           <div class="badges" id="badges"></div>
@@ -321,9 +329,6 @@ const LABEL_NAME = { brilliant:'Brilliant', great:'Great', best:'Best', excellen
 const LABEL_ORDER = ['brilliant','great','best','excellent','good','book','forced','inaccuracy','mistake','miss','blunder'];
 const COLOR = { brilliant:'#26c2a3', great:'#749bbf', best:'#81b64c', excellent:'#96bc4b', good:'#96af8b', book:'#d5a47a', forced:'#96af8b',
                 inaccuracy:'#f7c631', mistake:'#ffa459', miss:'#ff7769', blunder:'#fa412d' };
-// square tint for the move just played, by verdict (chess.com style); unanalysed moves stay yellow
-const TINT = { brilliant:'rgba(38,194,163,.6)', great:'rgba(116,155,191,.6)', best:'rgba(129,182,76,.6)', excellent:'rgba(150,188,75,.55)', good:'rgba(150,175,139,.55)',
-               book:'rgba(213,164,122,.6)', forced:'rgba(150,175,139,.5)', inaccuracy:'rgba(247,198,49,.6)', mistake:'rgba(255,164,89,.65)', miss:'rgba(255,119,105,.65)', blunder:'rgba(250,65,45,.65)' };
 const BAD = new Set(['inaccuracy', 'mistake', 'miss', 'blunder']);
 
 // Swappable asset sets. chess.com's pieces/icons are for local personal use only; point these at
@@ -612,7 +617,9 @@ function currentFen() { const ln = line(); return state.ply === 0 ? state.game.s
 function currentMove() { return state.ply > 0 ? line()[state.ply - 1] : null; }
 let lastPly = null, lastGameId = null, lastFlipped = null;
 // Squares whose piece should glide in from another square when stepping one ply forward or back.
+let skipAnim = false;
 function animPairs() {
+  if (skipAnim) { skipAnim = false; return []; }
   const g = state.game, ln = line();
   if (lastGameId !== g.id || lastFlipped !== state.flipped || lastPly === null || Math.abs(state.ply - lastPly) !== 1) return [];
   const forward = state.ply > lastPly;
@@ -633,7 +640,6 @@ function renderBoard() {
   const fen = currentFen(), pieces = parseFen(fen);
   const turn = fen.split(' ')[1] === 'w' ? 'white' : 'black';
   const mv = currentMove();
-  const targets = new Set(state.sel && state.legal ? state.legal.filter(u => u.startsWith(state.sel)).map(u => u.slice(2, 4)) : []);
 
   // --- squares, highlights, coordinates, legal-move markers
   let out = '';
@@ -641,11 +647,8 @@ function renderBoard() {
     const name = sqName(f, r), [x, y] = sqXY(name);
     const light = (f + r) % 2 === 1;
     out += `<rect class="sq ${light ? 'light' : 'dark'}" x="${x}" y="${y}" width="12.5" height="12.5"/>`;
-    if (mv && (name === mv.uci.slice(0, 2) || name === mv.uci.slice(2, 4)))
-      out += `<rect x="${x}" y="${y}" width="12.5" height="12.5" fill="${(mv.label && TINT[mv.label]) || 'var(--hl)'}"/>`;
     if (mv && BAD.has(mv.label) && mv.hung && mv.hung.includes(name))
       out += `<rect x="${x}" y="${y}" width="12.5" height="12.5" fill="rgba(250,65,45,.4)"/>`;
-    if (state.sel === name) out += `<rect class="sq sel" x="${x}" y="${y}" width="12.5" height="12.5"/>`;
   }
   for (let i = 0; i < 8; i++) {
     const file = state.flipped ? 7 - i : i, rank = state.flipped ? i : 7 - i;
@@ -654,16 +657,12 @@ function renderBoard() {
     out += `<text class="coord ${bottomLight ? 'onlight' : 'ondark'}" x="${i * 12.5 + 11.6}" y="99.1" text-anchor="middle">${'abcdefgh'[file]}</text>`;
     out += `<text class="coord ${leftLight ? 'onlight' : 'ondark'}" x="0.7" y="${i * 12.5 + 3.1}">${rank + 1}</text>`;
   }
-  for (const t of targets) {
-    const [x, y] = sqXY(t);
-    out += pieces[t] ? `<circle class="target ring" cx="${x + 6.25}" cy="${y + 6.25}" r="5.5"/>`
-                     : `<circle class="target" cx="${x + 6.25}" cy="${y + 6.25}" r="2"/>`;
-  }
   $('board').innerHTML = out;
   $('boardbox').classList.toggle('playable', !state.exploring);
+  renderOverlays(pieces, mv);
 
   // --- pieces: reconcile the existing divs with the new position (no rebuild => no flicker on phones)
-  if (!drag) renderPieces(pieces, turn);
+  if (!drag || drag.swipe) renderPieces(pieces, turn);
 
   renderArrows(); renderBadges();
   lastPly = state.ply; lastGameId = g.id; lastFlipped = state.flipped;
@@ -697,6 +696,33 @@ function renderPieces(pieces, turn) {
     el.dataset.sq = name; el.classList.toggle('own', own); keep.add(el);
   }
   for (const el of [...layer.children]) if (!keep.has(el)) el.remove();
+}
+// --- overlay pool: created once, positioned with percentage translates, toggled on/off
+const pool = { last: [], sel: null, hints: [], hover: null };
+(function makePool() {
+  const layer = $('overlays');
+  const mk = cls => { const d = document.createElement('div'); d.className = 'ov ' + cls; layer.appendChild(d); return d; };
+  pool.last = [mk('highlight'), mk('highlight')];
+  pool.sel = mk('highlight');
+  for (let i = 0; i < 64; i++) pool.hints.push(mk('hint'));
+  pool.hover = mk('hover-square');
+})();
+function place(el, sq, on = true) {
+  if (sq) el.style.transform = pieceTf(sq);
+  el.classList.toggle('on', !!(on && sq));
+}
+function renderOverlays(pieces, mv) {
+  // last move: both squares, verdict colour when the move has one, chess.com yellow otherwise
+  const col = mv && mv.label && COLOR[mv.label] ? COLOR[mv.label] : 'rgb(255, 255, 51)';
+  pool.last.forEach((el, i) => { el.style.background = col; place(el, mv ? mv.uci.slice(2 * i, 2 * i + 2) : null, !!mv); });
+  place(pool.sel, state.sel, !!state.sel);
+  const dests = state.sel && state.legal ? [...new Set(state.legal.filter(u => u.startsWith(state.sel)).map(u => u.slice(2, 4)))] : [];
+  pool.hints.forEach((el, i) => {
+    const sq = dests[i];
+    if (sq) el.className = 'ov on ' + (pieces[sq] ? 'capture-hint' : 'hint');
+    place(el, sq, !!sq);
+  });
+  if (!drag) place(pool.hover, null, false);
 }
 // piece div position: translate in multiples of its own size (12.5% of the board)
 function pieceTf(name) {
@@ -762,94 +788,86 @@ function renderBadges() {
   $('badges').innerHTML = out;
 }
 
-// ---------- drag & drop: pick up one of the side-to-move's pieces, drop it on a legal square ----------
-let drag = null, suppressClick = false;
-function squareAtPoint(clientX, clientY) {
+// ---------- pointer interaction: click-to-move, drag-to-move and swipe share one path ----------
+let drag = null;
+function squareAt(e) {
   const r = $('boardbox').getBoundingClientRect();
-  let f = Math.floor((clientX - r.left) / r.width * 8), rk = 7 - Math.floor((clientY - r.top) / r.height * 8);
-  if (state.flipped) { f = 7 - f; rk = 7 - rk; }
-  return (f < 0 || f > 7 || rk < 0 || rk > 7) ? null : sqName(f, rk);
+  let f = Math.floor((e.clientX - r.left) / (r.width / 8)), k = 7 - Math.floor((e.clientY - r.top) / (r.height / 8));
+  if (state.flipped) { f = 7 - f; k = 7 - k; }
+  return (f >= 0 && f < 8 && k >= 0 && k < 8) ? sqName(f, k) : null;
 }
-$('pieces').addEventListener('pointerdown', async e => {
-  const el = e.target.closest('.pc.own');
-  if (!el || !state.game || state.exploring || e.button) return;
+function legalTo(from, to) {
+  const cand = (state.legal || []).filter(u => u.startsWith(from) && u.slice(2, 4) === to);
+  return cand.length ? (cand.find(u => u.endsWith('q')) || cand[0]) : null;
+}
+async function commitMove(uci, instant) {
+  state.sel = null; state.legal = null;
+  if (instant) skipAnim = true;
+  await explore(currentFen(), uci);
+}
+function deselect() { state.sel = null; state.legal = null; renderOverlays(parseFen(currentFen()), currentMove()); }
+
+$('boardbox').addEventListener('pointerdown', async e => {
+  if (!state.game || state.exploring || e.button) return;
+  const sq = squareAt(e); if (!sq) return;
   e.preventDefault();
-  const sq = el.dataset.sq, fen = currentFen();
-  state.sel = sq;
-  renderBoard();                                   // shows the selection; recreates the piece divs
+  const fen = currentFen(), pieces = parseFen(fen), turn = fen.split(' ')[1] === 'w';
+  // second click of click-to-move (or a click on a capturable piece): commit
+  if (state.sel && sq !== state.sel) {
+    const uci = legalTo(state.sel, sq);
+    if (uci) { commitMove(uci, false); return; }
+  }
+  const ch = pieces[sq], own = ch && (ch === ch.toUpperCase()) === turn;
+  if (!own) {
+    if (state.sel) deselect();
+    drag = { swipe: true, x0: e.clientX, y0: e.clientY };            // a swipe from a non-piece square steps the game
+    return;
+  }
+  // select and pick up
+  state.sel = sq; state.legal = null;
+  renderOverlays(pieces, currentMove());
   const piece = $('pieces').querySelector(`.pc[data-sq="${sq}"]`);
   const r = $('boardbox').getBoundingClientRect();
-  drag = { sq, piece, size: r.width / 8, rect: r, moved: false, x0: e.clientX, y0: e.clientY };
-  piece.classList.add('dragging');
-  $('pieces').appendChild(piece);
-  piece.setPointerCapture(e.pointerId);
+  drag = { sq, piece, size: r.width / 8, rect: r, moved: false, x0: e.clientX, y0: e.clientY, hoverSq: null, id: e.pointerId };
+  piece.classList.add('dragging'); $('pieces').appendChild(piece); $('boardbox').classList.add('dragging');
+  $('boardbox').setPointerCapture(e.pointerId);
   state.legal = await legalFor(fen);
-  if (drag && drag.sq === sq) renderBoard();     // targets appear; the pieces layer is left alone while dragging
+  if (drag && drag.sq === sq) renderOverlays(pieces, currentMove());
 });
-function positionDrag(e) {
-  if (!drag) return;
-  const x = e.clientX - drag.rect.left - drag.size / 2, y = e.clientY - drag.rect.top - drag.size / 2;
-  drag.piece.style.transform = `translate(${x}px, ${y}px)`;
-}
-$('pieces').addEventListener('pointermove', e => {
-  if (!drag) return;
+$('boardbox').addEventListener('pointermove', e => {
+  if (!drag || drag.swipe) return;
   if (Math.hypot(e.clientX - drag.x0, e.clientY - drag.y0) > 4) drag.moved = true;
-  positionDrag(e);
+  drag.piece.style.transform = `translate(${e.clientX - drag.rect.left - drag.size / 2}px, ${e.clientY - drag.rect.top - drag.size / 2}px)`;
+  const sq = squareAt(e);
+  if (sq !== drag.hoverSq) { drag.hoverSq = sq; place(pool.hover, sq, !!sq && drag.moved); }
 });
-async function endDrag(e, cancelled) {
+async function pointerEnd(e, cancelled) {
   if (!drag) return;
   const d = drag; drag = null;
-  d.piece.classList.remove('dragging');
-  const to = cancelled ? null : squareAtPoint(e.clientX, e.clientY);
-  if (d.moved) suppressClick = true;
-  if (to && to !== d.sq && d.moved) {
-    const cand = (state.legal || []).filter(u => u.startsWith(d.sq) && u.slice(2, 4) === to);
-    if (cand.length) { const uci = cand.find(u => u.endsWith('q')) || cand[0]; state.sel = null; state.legal = null; await explore(currentFen(), uci); return; }
-    play('illegal');
+  if (d.swipe) {
+    const dx = e.clientX - d.x0, dy = e.clientY - d.y0;
+    if (!cancelled && Math.abs(dx) > 50 && Math.abs(dx) > 2 * Math.abs(dy)) go(dx < 0 ? state.ply + 1 : state.ply - 1);
+    return;
   }
-  if (d.moved) { state.sel = null; state.legal = null; renderBoard(); }   // snap back; a tap without movement keeps the selection
+  $('boardbox').classList.remove('dragging'); place(pool.hover, null, false);
+  try { $('boardbox').releasePointerCapture(d.id); } catch (err) {}
+  const dest = cancelled ? null : squareAt(e);
+  const uci = dest && dest !== d.sq && d.moved ? legalTo(d.sq, dest) : null;
+  if (uci) { d.piece.classList.remove('dragging'); commitMove(uci, true); return; }     // drop on a legal square: instant
+  d.piece.classList.remove('dragging');                                                  // snap back with the transition
+  d.piece.style.transform = pieceTf(d.sq);
+  if (d.moved && dest !== d.sq) { if (!(dest && legalTo(d.sq, dest))) play('illegal'); deselect(); }
+  // released on the origin square (a plain click): selection and hints stay
 }
-$('pieces').addEventListener('pointerup', e => endDrag(e, false));
-$('pieces').addEventListener('pointercancel', e => endDrag(e, true));
+$('boardbox').addEventListener('pointerup', e => pointerEnd(e, false));
+$('boardbox').addEventListener('pointercancel', e => pointerEnd(e, true));
 
-// ---------- touch: swipe the board left/right to step ----------
-let touchStart = null;
-$('boardbox').addEventListener('touchstart', e => { if (e.target.closest('.pc.own')) { touchStart = null; return; } const t = e.touches[0]; touchStart = [t.clientX, t.clientY]; }, { passive: true });
-$('boardbox').addEventListener('touchend', e => {
-  if (!touchStart) return;
-  const t = e.changedTouches[0], dx = t.clientX - touchStart[0], dy = t.clientY - touchStart[1];
-  touchStart = null;
-  if (Math.abs(dx) > 50 && Math.abs(dx) > 2 * Math.abs(dy)) { e.preventDefault(); go(dx < 0 ? state.ply + 1 : state.ply - 1); }
-});
-
-// ---------- exploring: click a piece, click a target ----------
+// ---------- exploring ----------
 const legalCache = {};
 async function legalFor(fen) {
   if (!legalCache[fen]) legalCache[fen] = (await (await fetch(`api/legal?fen=${encodeURIComponent(fen)}`)).json()).moves;
   return legalCache[fen];
 }
-$('boardbox').addEventListener('click', async e => {
-  if (suppressClick) { suppressClick = false; return; }
-  if (!state.game || state.exploring || drag) return;
-  const r = $('boardbox').getBoundingClientRect();
-  let f = Math.floor((e.clientX - r.left) / r.width * 8), rk = 7 - Math.floor((e.clientY - r.top) / r.height * 8);
-  if (state.flipped) { f = 7 - f; rk = 7 - rk; }
-  if (f < 0 || f > 7 || rk < 0 || rk > 7) return;
-  const sq = sqName(f, rk);
-  const fen = currentFen(), pieces = parseFen(fen), turn = fen.split(' ')[1] === 'w';
-  const ch = pieces[sq], own = ch && (ch === ch.toUpperCase()) === turn;
-  if (state.sel && state.sel !== sq) {
-    const legal = state.legal || [];
-    const cand = legal.filter(u => u.startsWith(state.sel) && u.slice(2, 4) === sq);
-    if (cand.length) { const uci = cand.find(u => u.endsWith('q')) || cand[0]; state.sel = null; state.legal = null; await explore(fen, uci); return; }
-  }
-  if (own) {
-    state.sel = state.sel === sq ? null : sq;
-    state.legal = state.sel ? await legalFor(fen) : null;
-    if (state.sel && !state.legal.some(u => u.startsWith(sq))) { state.sel = null; state.legal = null; }
-  } else { state.sel = null; state.legal = null; }
-  renderBoard();
-});
 async function explore(fen, uci) {
   stopPlay();
   state.exploring = true;
@@ -916,6 +934,7 @@ function renderEvalBar() {
   const wp = wpAt(state.ply), bar = $('evalbar');
   bar.classList.toggle('flipped', state.flipped);
   bar.style.height = $('boardbox').clientHeight + 'px';
+  $('boardbox').style.setProperty('--sq', ($('boardbox').clientWidth / 8) + 'px');
   bar.querySelector('.w').style.height = (wp ?? 50) + '%';
   const mv = currentMove();
   const ev = state.ply === 0 ? (state.game.start_wp_white == null ? '' : '0.0') : (mv.eval ?? '');
@@ -1087,7 +1106,7 @@ function go(ply) {
   const target = Math.max(0, Math.min(line().length, ply));
   if (target === state.ply) { renderNav(); return; }        // nothing to do: no re-render, no sound
   state.ply = target;
-  state.sel = null; state.legal = null; state.showBest = false; $('b-best').classList.remove('active');
+  state.sel = null; state.legal = null; state.showBest = false; $('b-best').classList.remove('active'); drag = null;
   if (state.variation && state.ply < state.variation.basePly) { dropVariation(); renderMoveList(); }
   update();
 }
