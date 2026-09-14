@@ -64,7 +64,7 @@ class Explorer:
                 return None
             main = dict(zip(("nodes", "eval_cp", "mate_in", "best_move", "pv"), row))
             ranks = [dict(zip(("fen_key", "rank", "move", "eval_cp", "mate_in", "pv"), r)) for r in
-                     con.execute("SELECT * FROM evals_multipv WHERE fen_key = ? ORDER BY rank", [key]).fetchall()]
+                     con.execute("SELECT * FROM evals_multipv WHERE fen_key = ? AND rank > 0 ORDER BY rank", [key]).fetchall()]
             return main, ranks
         except Exception as e:  # noqa: BLE001 - locked/missing cache is not fatal here
             log.debug("cache lookup failed for %s: %s", key, e)

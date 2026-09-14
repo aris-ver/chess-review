@@ -221,6 +221,7 @@ def classify_game(game: dict, rows: list[dict], multipv: Optional[dict[str, list
 
 def load_multipv(con, game_id: Optional[str] = None) -> dict[str, list[dict]]:
     where = "WHERE fen_key IN (SELECT fen_key FROM positions WHERE game_id = ?)" if game_id else ""
+    where = (where + " AND" if where else "WHERE") + " rank > 0"     # rank 0 = terminal-position sentinel
     rows = con.execute(f"SELECT * FROM evals_multipv {where}", [game_id] if game_id else []).fetch_arrow_table().to_pylist()
     out: dict[str, list[dict]] = {}
     for r in rows:

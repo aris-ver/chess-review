@@ -159,6 +159,8 @@ def write_results(con: duckdb.DuckDBPyConnection, results: list[tuple[str, dict,
     con.executemany("INSERT OR IGNORE INTO evals VALUES (?, ?, ?, ?, ?, ?)",
                     [(k, m["nodes"], m["eval_cp"], m["mate_in"], m["best_move"], m["pv"]) for k, m, _ in results])
     rows = [(k, r["rank"], r["move"], r["eval_cp"], r["mate_in"], r["pv"]) for k, _, ranks in results for r in ranks]
+    # terminal positions have no lines: a rank-0 sentinel marks them as done so they are never re-queued
+    rows += [(k, 0, None, m["eval_cp"], m["mate_in"], []) for k, m, ranks in results if not ranks]
     if rows:
         con.executemany("INSERT OR IGNORE INTO evals_multipv VALUES (?, ?, ?, ?, ?, ?)", rows)
 
