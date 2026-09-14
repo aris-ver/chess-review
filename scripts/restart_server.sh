@@ -2,15 +2,25 @@
 # (Re)start the review server detached from the terminal session. Log: data/serve.log
 set -euo pipefail
 cd "$(dirname "$0")/.."
-# setsid makes the server a process-group leader: kill the whole group so the
-# worker pool and its Stockfish children die with it (orphans eat ~1.5 GB per pool).
-if [ -f data/serve.pid ] && kill -0 "$(cat data/serve.pid)" 2>/dev/null; then
-  kill -TERM -- "-$(cat data/serve.pid)" 2>/dev/null || kill "$(cat data/serve.pid)"; sleep 2
-fi
-pkill -f "chess_review/.venv/bin/python -c from multiprocessing" 2>/dev/null || true   # any stray pool workers
+PORT=8123
+prev=""
+for a in "$@"; do [ "$prev" = "--port" ] && PORT="$a"; prev="$a"; done
+
+# Stop whatever currently serves the port (and its process group: pool workers + Stockfish children),
+# plus anything recorded in the pid file. Orphaned engines eat ~1.5 GB per pool.
+for pid in $(ss -ltnp 2>/dev/null | awk -v p=":$PORT" '$4 ~ p"$" {print $NF}' | grep -oE 'pid=[0-9]+' | cut -d= -f2) \
+           $(cat data/serve.pid 2>/dev/null || true); do
+  kill -0 "$pid" 2>/dev/null || continue
+  pgid=$(ps -o pgid= -p "$pid" | tr -d ' ')
+  kill -TERM -- "-$pgid" 2>/dev/null || kill -TERM "$pid" 2>/dev/null || true
+done
+sleep 2
+pkill -f "chess_review serve" 2>/dev/null || true
 pkill -x stockfish 2>/dev/null || true
-# 0.0.0.0 inside WSL (NAT mode) is only reachable via Windows localhost and the WSL Tailscale IP.
-setsid nohup .venv/bin/python -m chess_review serve --host 0.0.0.0 "$@" > data/serve.log 2>&1 < /dev/null &
-echo $! > data/serve.pid
+sleep 1
+
+# setsid forks when the caller leads a process group, so record the pid from inside the new session.
+setsid nohup bash -c 'echo $$ > data/serve.pid; exec .venv/bin/python -m chess_review serve --host 0.0.0.0 "$@"' _ "$@" \
+  > data/serve.log 2>&1 < /dev/null &
 sleep 2
 tail -1 data/serve.log
