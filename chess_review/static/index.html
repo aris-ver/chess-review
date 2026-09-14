@@ -108,6 +108,8 @@ svg.arrows { position: absolute; inset: 0; width: 100%; height: 100%; pointer-ev
 .pc { position: absolute; left: 0; top: 0; width: 12.5%; height: 12.5%; background-size: contain; background-repeat: no-repeat; background-position: center; transition: transform .18s ease-out; will-change: transform; }
 .pc svg { width: 100%; height: 100%; display: block; }
 .boardbox.playable { cursor: default; }
+.pc.top { z-index: 1; }
+.pc.snap { transition-duration: .09s; }
 .pc.dragging { transition: none; z-index: 2; filter: drop-shadow(0 6px 6px rgba(0,0,0,.35)); }
 .boardbox.dragging { cursor: grabbing; }
 .badge { position: absolute; width: 5.75%; height: 5.75%; transform: translate(-50%, -50%); filter: drop-shadow(0 .5px 1px rgba(0,0,0,.35)); }
@@ -162,6 +164,13 @@ svg.board.playable use.piece.own { cursor: grab; }
 .bubble p { margin: 6px 0 0; font-size: 13px; color: #333; }
 .bubble .var { font-size: 11px; color: var(--c-great); border: 1px solid var(--c-great); border-radius: 3px; padding: 0 5px; }
 .bubble .unanalysed { color: #777; }
+.bubble.loading .top { align-items: center; }
+.skel { background: #dedede; border-radius: 4px; height: 12px; position: relative; overflow: hidden; }
+.skel::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, rgba(255,255,255,.7), transparent); animation: shimmer 1.2s infinite; }
+@keyframes shimmer { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
+.skel.dot { width: 20px; height: 20px; border-radius: 50%; }
+.skel.w1 { width: 34%; height: 14px; } .skel.w2 { width: 22%; height: 14px; margin-left: auto; }
+.skel.line { width: 100%; margin-top: 8px; } .skel.short { width: 55%; margin-top: 8px; }
 .actions { display: flex; gap: 8px; padding: 6px 12px 10px; }
 .actions button { flex: 1; padding: 9px 6px; font-weight: 600; background: var(--panel2); }
 .actions button.active { background: var(--accent); color: #1b1b1b; }
@@ -691,7 +700,7 @@ function renderPieces(pieces, turn) {
       el.style.transition = 'none'; el.style.transform = pieceTf(name);
       layer.appendChild(el); el.getBoundingClientRect(); el.style.transition = '';
     } else {
-      if (pair) layer.appendChild(el);                       // moving piece on top
+      el.classList.toggle('top', !!pair);                    // moving piece on top (re-inserting the node would kill the transition)
       el.style.transform = pieceTf(name);
     }
     el.dataset.sq = name; el.classList.toggle('own', own); keep.add(el);
@@ -807,6 +816,29 @@ function legalTo(from, to) {
   const cand = (state.legal || []).filter(u => u.startsWith(from) && u.slice(2, 4) === to);
   return cand.length ? (cand.find(u => u.endsWith('q')) || cand[0]) : null;
 }
+// Provisional position after `uci` (castling, en passant and promotion handled) - for display until the server answers.
+function applyMove(fen, uci) {
+  const parts = fen.split(' '), pieces = parseFen(fen);
+  const from = uci.slice(0, 2), to = uci.slice(2, 4), promo = uci[4];
+  const pc = pieces[from]; if (!pc) return null;
+  const white = pc === pc.toUpperCase(), isPawn = pc.toLowerCase() === 'p', isKing = pc.toLowerCase() === 'k';
+  const capture = !!pieces[to] || (isPawn && from[0] !== to[0]);
+  if (isPawn && from[0] !== to[0] && !pieces[to]) delete pieces[to[0] + from[1]];          // en passant
+  delete pieces[from];
+  pieces[to] = promo ? (white ? promo.toUpperCase() : promo) : pc;
+  if (isKing && Math.abs(from.charCodeAt(0) - to.charCodeAt(0)) === 2) {                     // castling: move the rook too
+    const rank = from[1], long = to[0] === 'c';
+    delete pieces[(long ? 'a' : 'h') + rank]; pieces[(long ? 'd' : 'f') + rank] = white ? 'R' : 'r';
+  }
+  const rows = [];
+  for (let r = 8; r >= 1; r--) { let row = '', empty = 0; for (const f of 'abcdefgh') { const p = pieces[f + r]; if (p) { if (empty) row += empty; empty = 0; row += p; } else empty++; } if (empty) row += empty; rows.push(row); }
+  const newFen = `${rows.join('/')} ${parts[1] === 'w' ? 'b' : 'w'} ${parts[2]} - 0 1`;
+  let san;
+  if (isKing && Math.abs(from.charCodeAt(0) - to.charCodeAt(0)) === 2) san = to[0] === 'c' ? 'O-O-O' : 'O-O';
+  else if (isPawn) san = (capture ? from[0] + 'x' : '') + to + (promo ? '=' + promo.toUpperCase() : '');
+  else san = pc.toUpperCase() + (capture ? 'x' : '') + to;
+  return { fen: newFen, san, capture };
+}
 async function commitMove(uci, instant) {
   state.sel = null; state.legal = null;
   if (instant) skipAnim = true;
@@ -837,7 +869,7 @@ $('boardbox').addEventListener('pointerdown', async e => {
   const piece = $('pieces').querySelector(`.pc[data-sq="${sq}"]`);
   const r = $('boardbox').getBoundingClientRect();
   drag = { sq, piece, size: r.width / 8, rect: r, moved: false, x0: e.clientX, y0: e.clientY, hoverSq: null, id: e.pointerId };
-  piece.classList.add('dragging'); $('pieces').appendChild(piece); $('boardbox').classList.add('dragging');
+  piece.classList.add('dragging'); $('boardbox').classList.add('dragging');
   $('boardbox').setPointerCapture(e.pointerId);
   state.legal = await legalFor(fen);
   if (drag && drag.sq === sq) renderOverlays(pieces, currentMove());
@@ -862,8 +894,9 @@ async function pointerEnd(e, cancelled) {
   const dest = cancelled ? null : squareAt(e);
   const uci = dest && dest !== d.sq && d.moved ? legalTo(d.sq, dest) : null;
   if (uci) { d.piece.classList.remove('dragging'); commitMove(uci, true); return; }     // drop on a legal square: instant
-  d.piece.classList.remove('dragging');                                                  // snap back with the transition
+  d.piece.classList.remove('dragging'); d.piece.classList.add('snap');                   // snap back, twice as fast
   d.piece.style.transform = pieceTf(d.sq);
+  setTimeout(() => d.piece.classList.remove('snap'), 120);
   if (d.moved && dest !== d.sq) { if (!(dest && legalTo(d.sq, dest))) play('illegal'); deselect(); }
   // released on the origin square (a plain click): selection and hints stay
 }
@@ -877,24 +910,35 @@ async function legalFor(fen) {
   return legalCache[fen];
 }
 async function explore(fen, uci) {
-  stopPlay();
+  const prov = applyMove(fen, uci);
+  if (!prov) return;
+  const mover = fen.split(' ')[1] === 'w' ? 'white' : 'black';
+  const basePly = state.variation ? state.variation.basePly : state.ply;
+  const keep = state.variation ? state.variation.moves.slice(0, state.ply - basePly) : [];
+  const move = { ply: basePly + keep.length, san: prov.san, uci, fen: prov.fen, label: null, pending: true,
+                 is_mine: mover === state.game.my_colour, wp_white: null, eval: null, wp_loss: null,
+                 best_san: null, best_uci: null, clock: null, spent: null, comment: [], hung: [], reply_uci: null };
+  state.variation = { basePly, moves: keep.concat([move]) };
   state.exploring = true;
-  $('now').innerHTML = `<div class="top"><span class="best">Analysing ${uci}…</span></div>`;
-  renderBoard();
-  let d, ok = false;
+  renderMoveList();
+  go(state.ply + 1);                       // the move is made right away, with its sound; the bubble shows the skeleton
+  let d = null, ok = false;
   try {
-    const r = await fetch('api/explore', { method: 'POST', body: JSON.stringify({ fen, uci, my_colour: state.game.my_colour, ply: state.ply }) });
+    const r = await fetch('api/explore', { method: 'POST', body: JSON.stringify({ fen, uci, my_colour: state.game.my_colour, ply: move.ply }) });
     d = await r.json(); ok = r.ok;
   } catch (e) { d = { error: String(e) }; }
   state.exploring = false;
-  if (!ok) { toast(d.error); play('illegal'); renderBoard(); renderNow(); return; }
-  const basePly = state.variation ? state.variation.basePly : state.ply;
-  const keep = state.variation ? state.variation.moves.slice(0, state.ply - basePly) : [];
-  state.variation = { basePly, moves: keep };
-  d.ply = basePly + keep.length;
-  state.variation.moves.push(d);
+  if (!ok) {
+    toast(d.error); play('illegal');
+    const i = state.variation ? state.variation.moves.indexOf(move) : -1;
+    if (i >= 0) { state.variation.moves.splice(i); if (!state.variation.moves.length) state.variation = null; }
+    renderMoveList(); go(Math.min(state.ply, line().length)); update(false);
+    return;
+  }
+  Object.assign(move, d, { ply: move.ply, pending: false });
   renderMoveList();
-  go(state.ply + 1);            // renders once: the piece glides in and the move sound plays
+  if (currentMove() === move) { renderBoard(); renderPlayers(); renderEvalBar(); renderNow(); highlightCurrent(); renderNav(); }
+  else highlightCurrent();
 }
 
 // ---------- players / eval ----------
@@ -964,6 +1008,7 @@ function fmtEvalBox(ev) {
 }
 function renderNow() {
   const g = state.game, el = $('now');
+  el.classList.remove('loading');
   if (state.ply === 0) {
     el.innerHTML = `<div class="top"><span class="verdict">${g.opening_name ? esc(g.opening_name) : 'Start of the game'}</span><span class="evbox">0.00</span></div>` +
       (g.analysed >= 0.999 ? `<p>${g.key_moments.length ? `${g.key_moments.length} key moment${g.key_moments.length > 1 ? 's' : ''} — press space to jump to the first.` : 'No decisive mistakes in this game.'}</p>` : `<p>Not analysed yet — press Analyse game.</p>`);
@@ -971,6 +1016,12 @@ function renderNow() {
   }
   const m = currentMove();
   const vtag = inVariation() ? ` <span class="var">variation</span>` : '';
+  el.classList.toggle('loading', !!m.pending);
+  if (m.pending) {
+    el.innerHTML = `<div class="top"><span class="skel dot"></span><span class="skel w1"></span><span class="skel w2"></span></div>` +
+      `<div class="skel line"></div><div class="skel short"></div>`;
+    return;
+  }
   if (!m.label) { el.innerHTML = `<div class="top"><span class="verdict">${moveLabel(m.ply, m.san)}${vtag}</span><span class="unanalysed">not analysed</span></div>`; return; }
   let html = `<div class="top">${icon(m.label)}<span class="verdict" style="color:${COLOR[m.label]}">${verdict(m)}</span>${vtag}<span class="evbox">${esc(fmtEvalBox(m.eval))}</span></div>`;
   const lines = m.comment || [];
