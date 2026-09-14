@@ -73,7 +73,8 @@ td.num { text-align: right; font-variant-numeric: tabular-nums; }
   .cap svg, .cap img { width: 14px; height: 14px; }
   .panel .body { max-height: 46vh; }
   .panel .nav { position: fixed; left: 0; right: 0; bottom: 0; background: var(--panel); border-top: 1px solid var(--line); padding: 8px 10px calc(8px + env(safe-area-inset-bottom)); z-index: 6; }
-  .panel .nav button { min-width: 0; font-size: 22px; padding: 8px 4px; }
+  .panel .nav button { min-width: 0; padding: 10px 4px; }
+  .nav button svg { width: 26px; height: 26px; }
   .coach { padding: 8px 8px 4px; }
   .coach .avatar { display: none; }
   .bubble::before { display: none; }
@@ -122,7 +123,9 @@ svg.arrows { position: absolute; inset: 0; width: 100%; height: 100%; pointer-ev
 
 .nav { display: flex; gap: 6px; justify-content: center; align-items: center; }
 .nav button { min-width: 44px; font-size: 16px; }
-#b-prev, #b-next { font-size: 24px; line-height: 1; padding-top: 2px; padding-bottom: 6px; }
+.nav button svg { width: 22px; height: 22px; fill: currentColor; display: block; margin: 0 auto; }
+#b-play .i-pause { display: none; }
+#b-play.playing .i-play { display: none; } #b-play.playing .i-pause { display: block; }
 #b-play.playing { background: var(--accent); color: #1b1b1b; border-color: var(--accent); }
 .nav button:disabled { opacity: .35; }
 /* pooled overlay nodes: 2 last-move highlights, 1 selection highlight, 64 hints, 1 hover square */
@@ -293,11 +296,11 @@ svg.graph { width: 100%; height: 90px; display: block; cursor: pointer; backgrou
         </div>
         <svg class="graph" id="graph"></svg>
         <div class="nav">
-          <button id="b-first" title="Start (Home)">⏮</button>
-          <button id="b-prev" title="Previous (←)">‹</button>
-          <button id="b-play" title="Autoplay (p)">▶</button>
-          <button id="b-next" title="Next (→)">›</button>
-          <button id="b-last" title="End (End)">⏭</button>
+          <button id="b-first" title="Start (Home)"><svg viewBox="0 0 24 24"><path d="M6 5h2v14H6zM18 6v12L9 12z"/></svg></button>
+          <button id="b-prev" title="Previous (←)"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+          <button id="b-play" title="Autoplay (p)"><svg viewBox="0 0 24 24"><path class="i-play" d="M8 5v14l11-7z"/><path class="i-pause" d="M7 5h4v14H7zM13 5h4v14h-4z"/></svg></button>
+          <button id="b-next" title="Next (→)"><svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+          <button id="b-last" title="End (End)"><svg viewBox="0 0 24 24"><path d="M16 5h2v14h-2zM6 6v12l9-6z"/></svg></button>
         </div>
         <div class="pfoot">
           <button class="primary" id="b-analyse">Analyse game</button>
@@ -510,7 +513,6 @@ function renderNav() {
   $('b-next').disabled = $('b-last').disabled = state.ply >= n;
   $('b-key').disabled = !state.game.key_moments.length;
   $('b-play').disabled = n === 0;
-  $('b-play').textContent = state.playing ? '❚❚' : '▶';
   $('b-play').classList.toggle('playing', !!state.playing);
 }
 // Autoplay: one move every 1.5 s; stepping manually keeps it running, the end (or a click to pause) stops it.
