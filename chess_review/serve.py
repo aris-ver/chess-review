@@ -28,7 +28,7 @@ from urllib.parse import parse_qs, urlparse
 from . import aggregates, classify, critical, ingest, normalise, site
 from .explore import Explorer
 from .analyse import Analyser, export_parquet, open_db, pending_keys
-from .config import DEFAULT_NODES, META_JSON, SITE_DIR
+from .config import DEFAULT_NODES, ENGINE_IDLE_SECONDS, META_JSON, SITE_DIR
 from .db import base_views
 
 log = logging.getLogger("serve")
@@ -60,6 +60,16 @@ class Runner:
 
     def busy(self) -> bool:
         return self.job is not None and self.job.status in ("queued", "running", "finishing")
+
+    def reap_idle(self) -> None:
+        """Free engine memory when nothing has used the engines for a while."""
+        now = time.time()
+        if not self.busy() and self.analyser._pool is not None and now - self.analyser.last_used > ENGINE_IDLE_SECONDS:
+            log.info("idle: shutting down the analysis pool")
+            self.analyser.close()
+        if self.explorer._engine is not None and now - self.explorer.last_used > ENGINE_IDLE_SECONDS and not self.explorer._lock.locked():
+            log.info("idle: shutting down the exploration engine")
+            self.explorer.close()
 
     def start(self, job: Job) -> bool:
         with self.lock:
@@ -248,6 +258,15 @@ def main(argv=None) -> None:
     if not (SITE_DIR / "index.html").exists():
         site.build()
     Handler.runner = Runner(args.nodes, args.workers)
+
+    def reaper():
+        while True:
+            time.sleep(30)
+            try:
+                Handler.runner.reap_idle()
+            except Exception:  # noqa: BLE001
+                log.debug("reaper: %s", traceback.format_exc())
+    threading.Thread(target=reaper, daemon=True).start()
     handler = functools.partial(Handler, directory=str(SITE_DIR))
     srv = ThreadingHTTPServer((args.host, args.port), handler)
     log.info("serving %s at http://%s:%d/", SITE_DIR, args.host, args.port)

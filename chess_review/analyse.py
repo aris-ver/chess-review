@@ -191,6 +191,7 @@ class Analyser:
         self.nodes, self.hash_mb = nodes, hash_mb
         self._pool = None
         self._lock = threading.Lock()
+        self.last_used = 0.0
 
     def pool(self):
         if self._pool is None:
@@ -214,10 +215,12 @@ class Analyser:
         with self._lock:
             buf, done = [], 0
             t0 = time.time()
+            self.last_used = t0
             it = self.pool().imap_unordered(_analyse_key, keys, chunksize=1)
             for res in it:
                 buf.append(res)
                 done += 1
+                self.last_used = time.time()
                 if len(buf) >= batch or done == len(keys):
                     write_results(con, buf)
                     buf = []

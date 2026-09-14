@@ -31,7 +31,8 @@ ONLY_MOVE_GAP = 15.0     # win% gap between MultiPV #1 and #2 -> "great" / "only
 MULTIPV_N = 3
 OPENING_SKIP_PLIES = 8   # ignore early moves unless already a blunder
 CRITICAL_MAX = 5
-DEFAULT_HASH_MB = 256           # per worker process; hash is cleared before every position
+DEFAULT_HASH_MB = 64            # per worker; cleared before every 1M-node search, so bigger buys nothing
+ENGINE_IDLE_SECONDS = 600       # server shuts engines down after this long without work (they restart in ~1 s)
 USER_AGENT = "chess-review/0.1 (personal offline game analysis tool)"  # cloudflare 403s anything mentioning python-requests
 
 

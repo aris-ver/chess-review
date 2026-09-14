@@ -33,11 +33,12 @@ class Explorer:
         self._engine: Optional[chess.engine.SimpleEngine] = None
         self._lock = threading.Lock()
         self._cache: dict[str, tuple[dict, list[dict]]] = {}     # fen_key -> (evals row, multipv rows)
+        self.last_used = 0.0
 
     def engine(self) -> chess.engine.SimpleEngine:
         if self._engine is None:
             self._engine = chess.engine.SimpleEngine.popen_uci(str(STOCKFISH))
-            self._engine.configure({"Threads": self.threads, "Hash": 512})
+            self._engine.configure({"Threads": self.threads, "Hash": 256})
         return self._engine
 
     def close(self) -> None:
@@ -75,6 +76,8 @@ class Explorer:
         if hit is not None:
             return hit
         with self._lock:
+            import time
+            self.last_used = time.time()
             limit = chess.engine.Limit(nodes=self.nodes)
             res = robust_multipv(board, self.engine, limit, self._restart)
         if res[0]["eval_cp"] is None and res[0]["mate_in"] is None:

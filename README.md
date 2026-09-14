@@ -76,4 +76,5 @@ Server API: `GET /api/status`, `POST /api/analyse/<game>`, `POST /api/refresh`, 
 
 - Long runs in WSL: `setsid nohup python -m chess_review analyse > data/analyse.log 2>&1 < /dev/null & disown` — plain `nohup` children still get SIGHUP when the terminal session closes.
 - Whoever is analysing (CLI batch or the server's job) holds the DuckDB write lock; readers fall back to `data/evals.parquet`, refreshed at the end of each job. The server only holds the lock while a job runs.
+- Memory: the server idles at ~100 MB; engines add ~64 MB hash + ~100 MB net per worker while analysing and are shut down after `ENGINE_IDLE_SECONDS` (10 min) without work. `scripts/mem.sh` shows what is using WSL's memory.
 - Throughput on a 6-core laptop: ~1.6-2 positions/s at 1M nodes with 6 workers (one per physical core; hyperthreads hurt).

@@ -108,6 +108,8 @@ svg.board { width: 100%; aspect-ratio: 1; display: block; border-radius: 4px; us
 .coord.onlight { fill: var(--dark); } .coord.ondark { fill: var(--light); }
 .arrow { opacity: .85; }
 svg.board use.piece { transition: transform .18s ease-out; }
+svg.board { overflow: visible; }
+svg.board use.badge { filter: drop-shadow(0 .4px .7px rgba(0,0,0,.55)); }
 .nav { display: flex; gap: 6px; justify-content: center; align-items: center; }
 .nav button { min-width: 44px; font-size: 16px; }
 #b-prev, #b-next { font-size: 24px; line-height: 1; padding-top: 2px; padding-bottom: 6px; }
@@ -161,6 +163,7 @@ svg.board.playable use.piece.own { cursor: grab; }
 .panel .nav button { flex: 1; }
 .cap { display: inline-flex; align-items: center; gap: 0; margin-left: 4px; }
 .cap svg { width: 16px; height: 16px; margin-right: -5px; }
+.cap svg.blk { filter: drop-shadow(0 0 .6px #d8d8d8) drop-shadow(0 0 .6px #d8d8d8); }
 .cap .diff { margin-left: 8px; color: var(--muted); font-size: 12px; }
 .panel .head { padding: 12px 14px; border-bottom: 1px solid var(--line); }
 .panel .head .title { font-weight: 700; font-size: 15px; }
@@ -290,17 +293,17 @@ svg.graph { width: 100%; height: 90px; display: block; cursor: pointer; backgrou
 <svg width="0" height="0" style="position:absolute"><defs id="piecedefs"></defs>
 <defs>
   <!-- chess.com-style classification icons: coloured disc + glyph, 20x20 units -->
-  <symbol id="ic-brilliant" viewBox="0 0 20 20"><circle cx="10" cy="10" r="10" fill="#1baca6"/><text x="10" y="14.5" text-anchor="middle" font-size="12" font-weight="800" fill="#fff" font-family="Arial">!!</text></symbol>
-  <symbol id="ic-great" viewBox="0 0 20 20"><circle cx="10" cy="10" r="10" fill="#5c8bb0"/><text x="10" y="14.5" text-anchor="middle" font-size="12" font-weight="800" fill="#fff" font-family="Arial">!</text></symbol>
-  <symbol id="ic-best" viewBox="0 0 20 20"><circle cx="10" cy="10" r="10" fill="#81b64c"/><path d="M10 3.6l1.9 4 4.4.6-3.2 3.1.8 4.4L10 13.6l-3.9 2.1.8-4.4L3.7 8.2l4.4-.6z" fill="#fff"/></symbol>
-  <symbol id="ic-excellent" viewBox="0 0 20 20"><circle cx="10" cy="10" r="10" fill="#96bc4b"/><path d="M5.5 10.5l3 3 6-6.5" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></symbol>
-  <symbol id="ic-good" viewBox="0 0 20 20"><circle cx="10" cy="10" r="10" fill="#96af8b"/><path d="M5.5 10.5l3 3 6-6.5" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
-  <symbol id="ic-book" viewBox="0 0 20 20"><circle cx="10" cy="10" r="10" fill="#a88865"/><path d="M5.5 5.5h3.5q1 0 1 1v8q0-1-1-1H5.5zM14.5 5.5H11q-1 0-1 1v8q0-1 1-1h3.5z" fill="#fff"/></symbol>
-  <symbol id="ic-forced" viewBox="0 0 20 20"><circle cx="10" cy="10" r="10" fill="#97af8b"/><path d="M6 10h8M11 7l3 3-3 3" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
-  <symbol id="ic-inaccuracy" viewBox="0 0 20 20"><circle cx="10" cy="10" r="10" fill="#f7c631"/><text x="10" y="14.5" text-anchor="middle" font-size="11" font-weight="800" fill="#1b1b1b" font-family="Arial">?!</text></symbol>
-  <symbol id="ic-mistake" viewBox="0 0 20 20"><circle cx="10" cy="10" r="10" fill="#ffa459"/><text x="10" y="14.5" text-anchor="middle" font-size="12" font-weight="800" fill="#1b1b1b" font-family="Arial">?</text></symbol>
-  <symbol id="ic-miss" viewBox="0 0 20 20"><circle cx="10" cy="10" r="10" fill="#ff7769"/><path d="M6.5 6.5l7 7M13.5 6.5l-7 7" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round"/></symbol>
-  <symbol id="ic-blunder" viewBox="0 0 20 20"><circle cx="10" cy="10" r="10" fill="#fa412d"/><text x="10" y="14.5" text-anchor="middle" font-size="12" font-weight="800" fill="#fff" font-family="Arial">??</text></symbol>
+  <symbol id="ic-brilliant" viewBox="-1.5 -1.5 23 23"><circle cx="10" cy="10" r="10" fill="#1baca6" stroke="#fff" stroke-width="1.6"/><text x="10" y="14.5" text-anchor="middle" font-size="12" font-weight="800" fill="#fff" font-family="Arial">!!</text></symbol>
+  <symbol id="ic-great" viewBox="-1.5 -1.5 23 23"><circle cx="10" cy="10" r="10" fill="#5c8bb0" stroke="#fff" stroke-width="1.6"/><text x="10" y="14.5" text-anchor="middle" font-size="12" font-weight="800" fill="#fff" font-family="Arial">!</text></symbol>
+  <symbol id="ic-best" viewBox="-1.5 -1.5 23 23"><circle cx="10" cy="10" r="10" fill="#81b64c" stroke="#fff" stroke-width="1.6"/><path d="M10 3.6l1.9 4 4.4.6-3.2 3.1.8 4.4L10 13.6l-3.9 2.1.8-4.4L3.7 8.2l4.4-.6z" fill="#fff"/></symbol>
+  <symbol id="ic-excellent" viewBox="-1.5 -1.5 23 23"><circle cx="10" cy="10" r="10" fill="#96bc4b" stroke="#fff" stroke-width="1.6"/><path d="M5.5 10.5l3 3 6-6.5" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="ic-good" viewBox="-1.5 -1.5 23 23"><circle cx="10" cy="10" r="10" fill="#96af8b" stroke="#fff" stroke-width="1.6"/><path d="M5.5 10.5l3 3 6-6.5" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="ic-book" viewBox="-1.5 -1.5 23 23"><circle cx="10" cy="10" r="10" fill="#a88865" stroke="#fff" stroke-width="1.6"/><path d="M5.5 5.5h3.5q1 0 1 1v8q0-1-1-1H5.5zM14.5 5.5H11q-1 0-1 1v8q0-1 1-1h3.5z" fill="#fff"/></symbol>
+  <symbol id="ic-forced" viewBox="-1.5 -1.5 23 23"><circle cx="10" cy="10" r="10" fill="#97af8b" stroke="#fff" stroke-width="1.6"/><path d="M6 10h8M11 7l3 3-3 3" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="ic-inaccuracy" viewBox="-1.5 -1.5 23 23"><circle cx="10" cy="10" r="10" fill="#f7c631" stroke="#fff" stroke-width="1.6"/><text x="10" y="14.5" text-anchor="middle" font-size="11" font-weight="800" fill="#1b1b1b" font-family="Arial">?!</text></symbol>
+  <symbol id="ic-mistake" viewBox="-1.5 -1.5 23 23"><circle cx="10" cy="10" r="10" fill="#ffa459" stroke="#fff" stroke-width="1.6"/><text x="10" y="14.5" text-anchor="middle" font-size="12" font-weight="800" fill="#1b1b1b" font-family="Arial">?</text></symbol>
+  <symbol id="ic-miss" viewBox="-1.5 -1.5 23 23"><circle cx="10" cy="10" r="10" fill="#ff7769" stroke="#fff" stroke-width="1.6"/><path d="M6.5 6.5l7 7M13.5 6.5l-7 7" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round"/></symbol>
+  <symbol id="ic-blunder" viewBox="-1.5 -1.5 23 23"><circle cx="10" cy="10" r="10" fill="#fa412d" stroke="#fff" stroke-width="1.6"/><text x="10" y="14.5" text-anchor="middle" font-size="12" font-weight="800" fill="#fff" font-family="Arial">??</text></symbol>
 </defs></svg>
 
 <script>
@@ -646,7 +649,7 @@ function renderBoard() {
     }
     if (mv.label && LABEL_NAME[mv.label]) {
       const [x, y] = sqXY(mv.uci.slice(2, 4));
-      out += `<use href="#ic-${mv.label}" x="${x + 7.6}" y="${y - 0.9}" width="5.8" height="5.8"/>`;
+      out += `<use class="badge" href="#ic-${mv.label}" x="${x + 8.1}" y="${y - 1.9}" width="6.2" height="6.2"/>`;
     }
   }
   svg.innerHTML = out;
@@ -757,7 +760,7 @@ function renderPlayers() {
   for (const [el, side] of [[$('ptop'), top], [$('pbot'), bot]]) {
     const p = g[side], c = clockAt(side);
     const diff = side === 'white' ? cap.mat : -cap.mat;
-    const caps = cap.out[side].map(ch => `<svg viewBox="0 0 45 45"><use href="#${PIECE_ID[ch]}"/></svg>`).join('');
+    const caps = cap.out[side].map(ch => `<svg viewBox="0 0 45 45" class="${ch === ch.toLowerCase() ? 'blk' : ''}"><use href="#${PIECE_ID[ch]}"/></svg>`).join('');
     el.innerHTML = `<span class="dot ${side}"></span><span class="name">${esc(p.name)}</span><span class="rating">${p.rating ?? ''}</span>` +
       (p.accuracy != null && g.analysed >= 0.999 ? `<span class="acc">${p.accuracy.toFixed(1)}%</span>` : '') +
       `<span class="cap">${caps}${diff > 0 ? `<span class="diff">+${diff}</span>` : ''}</span>` +
