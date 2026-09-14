@@ -21,6 +21,7 @@ import chess
 import chess.svg
 
 from . import explain
+from .accuracy import game_accuracy
 from .classify import classify_game, load_multipv
 from .config import META_JSON, SITE_DIR
 from .critical import select
@@ -62,9 +63,8 @@ def _wp_white(p: dict) -> Optional[float]:
     return round(pov_win_pct(p["eval_cp"], p["mate_in"], p["side_to_move"], "white"), 1)
 
 
-def _accuracy(moves: list[dict], side: str) -> Optional[float]:
-    vals = [m["accuracy"] for m in moves if m["side_to_move"] == side and m["accuracy"] is not None and not m["in_book"]]
-    return round(sum(vals) / len(vals), 1) if vals else None
+def _accuracy(moves: list[dict], side: str, start_wp_white: Optional[float] = 50.0) -> Optional[float]:
+    return game_accuracy(moves, side, start_wp_white)
 
 
 def _counts(moves: list[dict], side: str) -> dict:
@@ -117,8 +117,8 @@ def build_game(game: dict, positions: list[dict], moves: list[dict], critical: l
         "time_control": game["time_control"], "time_class": game["time_class"],
         "my_colour": game["my_colour"], "result": game["result"], "termination": game["termination"],
         "eco": game["eco"], "opening_name": game["opening_name"], "left_book_ply": left_book,
-        "white": {**white, "accuracy": _accuracy(moves, "white"), "counts": _counts(moves, "white")},
-        "black": {**black, "accuracy": _accuracy(moves, "black"), "counts": _counts(moves, "black")},
+        "white": {**white, "accuracy": _accuracy(moves, "white", _wp_white(p0)), "counts": _counts(moves, "white")},
+        "black": {**black, "accuracy": _accuracy(moves, "black", _wp_white(p0)), "counts": _counts(moves, "black")},
         "start_fen": p0["fen"], "start_wp_white": _wp_white(p0),
         "analysed": round(evaluated / len(positions), 3) if positions else 0.0,
         "moves": out_moves, "key_moments": sorted(key_moments, key=lambda k: k["ply"]),

@@ -67,6 +67,7 @@ Server API: `GET /api/status`, `POST /api/analyse/<game>`, `POST /api/refresh`, 
 - `positions.clock_remaining` is the mover's clock **after** the move (the `[%clk]` on that move); `time_spent` is derived.
 - `positions` has a terminal row per game with `move_played = NULL` so the last move has an "after" eval.
 - Thresholds live in `config.py` (`BLUNDER`/`MISTAKE`/`INACCURACY` win%, `ONLY_MOVE_GAP`, `OPENING_SKIP_PLIES`, `CRITICAL_MAX`).
+- Accuracy is lichess's game formula (`accuracy.py`): half harmonic mean, half volatility-weighted mean of per-move accuracies, book moves excluded. It lands within ~5-10 points of chess.com's unpublished CAPS2, usually above it.
 - Material floor (`CP_MISTAKE`/`CP_BLUNDER`): a move that hangs material per SEE and drops the eval that much is at least a mistake/blunder even in a won position, where win% alone would call it "good".
 - Stockfish 18 segfaults on a few rare positions (e.g. `3k4/4r3/8/8/8/8/3Q4/3K4 w`); engines are restarted and the position retried with fewer nodes (`CRASH_RETRY_NODES`), then stored without an eval.
 - Golden file: `tests/golden/clocks.json`; regenerate with `UPDATE_GOLDEN=1 pytest tests/test_golden.py` after intentional changes.

@@ -13,6 +13,7 @@ import logging
 
 import chess
 
+from .accuracy import game_accuracy
 from .config import META_JSON, SITE_DIR
 from .db import connect
 
@@ -31,7 +32,24 @@ def _order(buckets) -> str:
     return "CASE " + " ".join(f"WHEN '{lbl}' THEN {i}" for i, (_, _, lbl) in enumerate(buckets)) + " END"
 
 
+def game_accuracies(con) -> dict[str, float]:
+    """game_id -> my game accuracy (lichess aggregation), same number the review pages show."""
+    rows = con.execute("SELECT m.*, g.my_colour FROM moves m JOIN games g USING (game_id) ORDER BY game_id, ply").fetch_arrow_table().to_pylist()
+    by: dict[str, list[dict]] = {}
+    for r in rows:
+        by.setdefault(r["game_id"], []).append(r)
+    out = {}
+    for gid, ms in by.items():
+        a = game_accuracy(ms, ms[0]["my_colour"])
+        if a is not None:
+            out[gid] = a
+    return out
+
+
 def query_all(con) -> dict:
+    acc = game_accuracies(con)
+    con.execute("CREATE TEMP TABLE game_acc (game_id TEXT, accuracy DOUBLE)")
+    con.executemany("INSERT INTO game_acc VALUES (?, ?)", list(acc.items()))
     con.execute("""
         CREATE TEMP VIEW my AS
         SELECT m.*, g.eco, g.opening_name, g.time_class, g.my_colour, g.result, g.played_at, g.my_rating
@@ -43,7 +61,7 @@ def query_all(con) -> dict:
     out["headline"] = con.execute("""
         SELECT count(DISTINCT game_id) games,
                round(100.0 * count(DISTINCT CASE WHEN result='win' THEN game_id END) / count(DISTINCT game_id), 1) win_rate,
-               round(avg(accuracy), 1) accuracy,
+               (SELECT round(avg(accuracy), 1) FROM game_acc) accuracy,
                round(avg(wp_loss), 2) bleed,
                round(1.0 * sum(label='blunder') / count(DISTINCT game_id), 2) blunders_per_game
         FROM my
@@ -79,20 +97,22 @@ def query_all(con) -> dict:
     out["by_colour"] = con.execute("""
         SELECT my_colour, count(DISTINCT game_id) games,
                round(100.0 * count(DISTINCT CASE WHEN result='win' THEN game_id END) / count(DISTINCT game_id), 1) win_rate,
-               round(avg(accuracy), 1) accuracy, round(avg(wp_loss), 2) bleed,
+               (SELECT round(avg(accuracy), 1) FROM game_acc a JOIN games g2 USING (game_id) WHERE g2.my_colour = my.my_colour) accuracy,
+               round(avg(wp_loss), 2) bleed,
                round(100.0 * sum(label='blunder') / count(*), 1) blunder_pct
         FROM my GROUP BY 1 ORDER BY 1 DESC
     """).fetchall()
 
     out["by_time_class"] = con.execute("""
-        SELECT time_class, count(DISTINCT game_id) games, round(avg(accuracy), 1) accuracy,
+        SELECT time_class, count(DISTINCT game_id) games,
+               (SELECT round(avg(accuracy), 1) FROM game_acc a JOIN games g2 USING (game_id) WHERE g2.time_class = my.time_class) accuracy,
                round(avg(wp_loss), 2) bleed, round(100.0 * sum(label='blunder') / count(*), 1) blunder_pct
         FROM my GROUP BY 1 ORDER BY games DESC
     """).fetchall()
 
     out["over_time"] = con.execute("""
-        SELECT game_id, played_at, round(avg(accuracy), 1) accuracy, any_value(result) result, any_value(my_rating) rating
-        FROM my GROUP BY 1, 2 ORDER BY played_at
+        SELECT g.game_id, g.played_at, round(a.accuracy, 1) accuracy, g.result, g.my_rating
+        FROM games g JOIN game_acc a USING (game_id) ORDER BY g.played_at
     """).fetchall()
 
     out["endgames"] = endgame_conversion(con)

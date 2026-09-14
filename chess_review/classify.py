@@ -14,7 +14,8 @@ Labels (chess.com vocabulary, deterministic definitions):
   good        loss <= GOOD
   inaccuracy  loss <= MISTAKE
   mistake     loss <= BLUNDER
-  miss        mistake-range loss right after the opponent erred, or a missed forced mate
+  miss        a missed win: the opponent just erred or a forced mate was on, the move gave part of it
+              back but the mover is still ahead (any size of loss - chess.com's "Miss")
   blunder     loss > BLUNDER
 
 Material floor: win% barely moves in a decided position, so a move that hangs
@@ -25,7 +26,6 @@ the eval, so they are unaffected.
 
 import argparse
 import logging
-import math
 from typing import Optional
 
 import chess
@@ -33,6 +33,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 
 from . import book
+from .accuracy import move_accuracy
 from .config import BLUNDER, CP_BLUNDER, CP_MISTAKE, EXCELLENT, INACCURACY, MISTAKE, MOVES_PARQUET, ONLY_MOVE_GAP
 from .db import connect
 from .facts import see
@@ -77,11 +78,6 @@ def label_for(wp_loss: float) -> str:
     if wp_loss > EXCELLENT:
         return "good"
     return "excellent"
-
-
-def move_accuracy(wp_loss: float) -> float:
-    """Lichess: 103.1668 * exp(-0.04354 * loss) - 3.1669, clamped to [0, 100]."""
-    return max(0.0, min(100.0, 103.1668 * math.exp(-0.04354 * wp_loss) - 3.1669))
 
 
 def is_sacrifice(board: chess.Board, move: chess.Move) -> bool:
@@ -188,9 +184,8 @@ def classify_game(game: dict, rows: list[dict], multipv: Optional[dict[str, list
                 label = "excellent"
         else:
             label = label_for(wp_loss)
-            if label == "mistake" and ((prev_loss is not None and prev_loss > MISTAKE) or missed_mate):
-                label = "miss"
-            elif label in ("good", "inaccuracy") and missed_mate:
+            opportunity = (prev_loss is not None and prev_loss > MISTAKE) or missed_mate
+            if opportunity and wp_after >= 50 and (label in ("mistake", "blunder") or (missed_mate and label in ("good", "inaccuracy"))):
                 label = "miss"
 
         if label in ("best", "excellent", "good", "inaccuracy", "great") and not is_best                 and r["eval_cp"] is not None and nxt["eval_cp"] is not None:
