@@ -101,15 +101,22 @@ td.num { text-align: right; font-variant-numeric: tabular-nums; }
 .player .clock { margin-left: auto; font-variant-numeric: tabular-nums; background: var(--panel2); padding: 3px 10px; border-radius: 4px; min-width: 64px; text-align: center; }
 .player .clock.low { color: var(--c-blunder); }
 .player .acc { background: var(--panel2); padding: 3px 8px; border-radius: 4px; font-size: 12px; }
-svg.board { width: 100%; aspect-ratio: 1; display: block; border-radius: 4px; user-select: none; }
+.boardbox { position: relative; width: 100%; aspect-ratio: 1; user-select: none; }
+svg.board { position: absolute; inset: 0; width: 100%; height: 100%; display: block; border-radius: 4px; }
+.pieces, .badges { position: absolute; inset: 0; pointer-events: none; }
+svg.arrows { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
+.pc { position: absolute; left: 0; top: 0; width: 12.5%; height: 12.5%; background-size: contain; background-repeat: no-repeat; background-position: center; transition: transform .18s ease-out; will-change: transform; }
+.pc svg { width: 100%; height: 100%; display: block; }
+.boardbox.playable .pc.own { cursor: grab; }
+.badge { position: absolute; width: 5.75%; height: 5.75%; transform: translate(-50%, -50%); filter: drop-shadow(0 .5px 1px rgba(0,0,0,.35)); }
+.badge img, .badge svg { width: 100%; height: 100%; display: block; }
+.ico img { width: 100%; height: 100%; display: block; }
 .sq.light { fill: var(--light); } .sq.dark { fill: var(--dark); }
 .sq.last { fill: var(--hl); }
 .coord { font-size: 2.6px; font-weight: 700; pointer-events: none; }
 .coord.onlight { fill: var(--dark); } .coord.ondark { fill: var(--light); }
 .arrow { opacity: 1; }
-svg.board use.piece { transition: transform .18s ease-out; }
-svg.board { overflow: visible; }
-svg.board use.badge { filter: drop-shadow(0 .3px .6px rgba(0,0,0,.45)); }
+
 .nav { display: flex; gap: 6px; justify-content: center; align-items: center; }
 .nav button { min-width: 44px; font-size: 16px; }
 #b-prev, #b-next { font-size: 24px; line-height: 1; padding-top: 2px; padding-bottom: 6px; }
@@ -245,7 +252,12 @@ svg.graph { width: 100%; height: 90px; display: block; cursor: pointer; backgrou
       <div class="evalbar" id="evalbar"><div class="w"></div><div class="lbl top"></div><div class="lbl bot"></div></div>
       <div class="boardwrap">
         <div class="player" id="ptop"></div>
-        <svg class="board" id="board" viewBox="0 0 100 100"></svg>
+        <div class="boardbox" id="boardbox">
+          <svg class="board" id="board" viewBox="0 0 100 100"></svg>
+          <div class="pieces" id="pieces"></div>
+          <svg class="arrows" id="arrows" viewBox="0 0 100 100"></svg>
+          <div class="badges" id="badges"></div>
+        </div>
         <div class="player" id="pbot"></div>
       </div>
       <div class="panel">
@@ -321,7 +333,20 @@ const COLOR = { brilliant:'#26c2a3', great:'#749bbf', best:'#81b64c', excellent:
 const TINT = { brilliant:'rgba(38,194,163,.6)', great:'rgba(116,155,191,.6)', best:'rgba(129,182,76,.6)', excellent:'rgba(150,188,75,.55)', good:'rgba(150,175,139,.55)',
                book:'rgba(213,164,122,.6)', forced:'rgba(150,175,139,.5)', inaccuracy:'rgba(247,198,49,.6)', mistake:'rgba(255,164,89,.65)', miss:'rgba(255,119,105,.65)', blunder:'rgba(250,65,45,.65)' };
 const BAD = new Set(['inaccuracy', 'mistake', 'miss', 'blunder']);
-const icon = (lb, cls = 'ico') => lb && LABEL_NAME[lb] ? `<svg class="${cls}"><use href="#ic-${lb}"/></svg>` : '';
+
+// Swappable asset sets. chess.com's pieces/icons are for local personal use only; point these at
+// Lichess pieces / your own icons before exposing the page beyond localhost. Missing sets fall
+// back to the built-in cburnett pieces and inline badge symbols.
+const ASSETS = { pieces: 'assets/pieces', icons: 'assets/icons' };
+const assetsReady = (async () => {
+  const ok = async u => { try { return (await fetch(u, { method: 'HEAD' })).ok; } catch (e) { return false; } };
+  ASSETS.hasPieces = await ok(`${ASSETS.pieces}/wk.png`);
+  ASSETS.hasIcons = await ok(`${ASSETS.icons}/best.svg`);
+})();
+const ICON_FILE = { great: 'great-find' };   // our label names -> icon set names
+const iconSrc = lb => `${ASSETS.icons}/${ICON_FILE[lb] || lb}.svg`;
+const icon = (lb, cls = 'ico') => !lb || !LABEL_NAME[lb] ? '' :
+  ASSETS.hasIcons ? `<span class="${cls}"><img src="${iconSrc(lb)}" alt="${LABEL_NAME[lb]}"></span>` : `<svg class="${cls}"><use href="#ic-${lb}"/></svg>`;
 
 const $ = id => document.getElementById(id);
 const state = { games: null, username: '', filters: { result:'', colour:'', analysed:'', brilliant:'' }, game: null, ply: 0, flipped: false, tab: 'review',
@@ -387,7 +412,7 @@ $('b-sound2').textContent = $('b-sound').textContent; try { localStorage.setItem
 $('b-sound').textContent = state.sound ? '🔊' : '🔇';
 
 // ---------- routing ----------
-window.addEventListener('hashchange', route);
+window.addEventListener('hashchange', () => assetsReady.then(route));
 async function route() {
   const h = location.hash || '#/';
   const m = h.match(/^#\/game\/([^/?]+)/);
@@ -610,11 +635,13 @@ function animPairs() {
 }
 
 function renderBoard() {
-  const g = state.game, svg = $('board');
+  const g = state.game;
   const fen = currentFen(), pieces = parseFen(fen);
   const turn = fen.split(' ')[1] === 'w' ? 'white' : 'black';
   const mv = currentMove();
   const targets = new Set(state.sel && state.legal ? state.legal.filter(u => u.startsWith(state.sel)).map(u => u.slice(2, 4)) : []);
+
+  // --- squares, highlights, coordinates, legal-move markers
   let out = '';
   for (let r = 0; r < 8; r++) for (let f = 0; f < 8; f++) {
     const name = sqName(f, r), [x, y] = sqXY(name);
@@ -633,55 +660,106 @@ function renderBoard() {
     out += `<text class="coord ${bottomLight ? 'onlight' : 'ondark'}" x="${i * 12.5 + 11.6}" y="99.1" text-anchor="middle">${'abcdefgh'[file]}</text>`;
     out += `<text class="coord ${leftLight ? 'onlight' : 'ondark'}" x="0.7" y="${i * 12.5 + 3.1}">${rank + 1}</text>`;
   }
-  for (const [name, ch] of Object.entries(pieces)) {
-    const [x, y] = sqXY(name);
-    const own = (ch === ch.toUpperCase()) === (turn === 'white');
-    out += `<use class="piece ${own ? 'own' : ''}" data-sq="${name}" href="#${PIECE_ID[ch]}" style="transform:${tf(x, y)}"/>`;
-  }
   for (const t of targets) {
     const [x, y] = sqXY(t);
     out += pieces[t] ? `<circle class="target ring" cx="${x + 6.25}" cy="${y + 6.25}" r="5.5"/>`
                      : `<circle class="target" cx="${x + 6.25}" cy="${y + 6.25}" r="2"/>`;
   }
-  out += `<defs>${Object.entries(ARROW).map(([k, c]) => `<marker id="ah-${k}" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="2.2" markerHeight="2.2" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="${c}"/></marker>`).join('')}</defs>`;
-  if (state.showBest && bestMoveHere()) out += arrow(bestMoveHere(), 'best');
-  if (mv) {
-    if (BAD.has(mv.label)) {
-      if (mv.best_uci && mv.best_uci !== mv.uci) out += arrow(mv.best_uci, 'best');
-      if (mv.reply_uci) out += arrow(mv.reply_uci, 'threat');       // what the opponent does about it
-    }
-    if (mv.label && LABEL_NAME[mv.label]) {
-      const [x, y] = sqXY(mv.uci.slice(2, 4));
-      out += `<use class="badge" href="#ic-${mv.label}" x="${x + 8.1}" y="${y - 1.9}" width="6.2" height="6.2"/>`;
-    }
+  $('board').innerHTML = out;
+  $('boardbox').classList.toggle('playable', !state.exploring);
+
+  // --- pieces: one positioned div per piece (PNG set as background, else the built-in SVG)
+  const pcs = [];
+  for (const [name, ch] of Object.entries(pieces)) {
+    const own = (ch === ch.toUpperCase()) === (turn === 'white');
+    const code = (ch === ch.toUpperCase() ? 'w' : 'b') + ch.toLowerCase();
+    const inner = ASSETS.hasPieces ? '' : `<svg viewBox="0 0 45 45"><use href="#${PIECE_ID[ch]}"/></svg>`;
+    const bg = ASSETS.hasPieces ? `background-image:url('${ASSETS.pieces}/${code}.png');` : '';
+    pcs.push(`<div class="pc ${own ? 'own' : ''}" data-sq="${name}" style="${bg}transform:${pieceTf(name)}">${inner}</div>`);
   }
-  svg.innerHTML = out;
-  svg.classList.toggle('playable', !state.exploring);
+  $('pieces').innerHTML = pcs.join('');
   for (const [from, to] of animPairs()) {
-    const el = svg.querySelector(`use[data-sq="${to}"]`);
+    const el = $('pieces').querySelector(`.pc[data-sq="${to}"]`);
     if (!el) continue;
-    svg.appendChild(el);
+    $('pieces').appendChild(el);                            // moving piece on top
     el.style.transition = 'none';
-    el.style.transform = tf(...sqXY(from));
+    el.style.transform = pieceTf(from);
     el.getBoundingClientRect();
     el.style.transition = '';
-    el.style.transform = tf(...sqXY(to));
+    el.style.transform = pieceTf(to);
   }
+
+  renderArrows(); renderBadges();
   lastPly = state.ply; lastGameId = g.id; lastFlipped = state.flipped; lastFen = fen;
 }
-const ARROW = { best: 'rgba(155,199,0,.8)', threat: 'rgba(255,170,0,.8)', blue: 'rgba(72,144,217,.8)' };
+// piece div position: translate in multiples of its own size (12.5% of the board)
+function pieceTf(name) {
+  let f = 'abcdefgh'.indexOf(name[0]), r = +name[1] - 1;
+  if (state.flipped) { f = 7 - f; r = 7 - r; }
+  return `translate(${f * 100}%, ${(7 - r) * 100}%)`;
+}
+
+// --- arrows: one 7-point polygon each, authored pointing down and rotated into place
+const ARROW = {
+  best:   'rgba(159, 207, 63, 0.8)',   // green  - engine's preferred move
+  threat: 'rgba(255, 170, 0, 0.8)',    // orange - attack/defence overlay
+  punish: 'rgba(248, 85, 63, 0.8)',    // red    - refutation of a blunder
+};
 function arrow(uci, kind) {
-  const [x1, y1] = sqXY(uci.slice(0, 2)), [x2, y2] = sqXY(uci.slice(2, 4));
-  const ax = x1 + 6.25, ay = y1 + 6.25, bx = x2 + 6.25, by = y2 + 6.25;
-  const dx = bx - ax, dy = by - ay, len = Math.hypot(dx, dy);
-  const s = 3.6 / len, e = (len - 4.6) / len;   // start a little off the piece, stop short of the head
-  return `<line class="arrow" x1="${ax + dx * s}" y1="${ay + dy * s}" x2="${ax + dx * e}" y2="${ay + dy * e}" stroke="${ARROW[kind]}" stroke-width="2.7" stroke-linecap="butt" marker-end="url(#ah-${kind})"/>`;
+  const [x1, y1] = sqXY(uci.slice(0, 2)).map(v => v + 6.25), [x2, y2] = sqXY(uci.slice(2, 4)).map(v => v + 6.25);
+  const len = Math.hypot(x2 - x1, y2 - y1);
+  // rotation taking the down-pointing polygon onto (dx, dy) in y-down SVG coords (SVG rotate is clockwise)
+  const deg = Math.atan2(-(x2 - x1), y2 - y1) * 180 / Math.PI;
+  const sw = 1.375, hw = 3.25, hl = 4.5, gap = 4.5;
+  const end = y1 + len - hl;
+  const pts = [[x1 - sw, y1 + gap], [x1 - sw, end], [x1 - hw, end], [x1, y1 + len], [x1 + hw, end], [x1 + sw, end], [x1 + sw, y1 + gap]]
+    .map(p => p.join(',')).join(' ');
+  return `<polygon points="${pts}" transform="rotate(${deg} ${x1} ${y1})" style="fill:${ARROW[kind]}"/>`;
+}
+let arrowsFor = null;
+function renderArrows() {
+  const mv = currentMove(), fen = currentFen();
+  const list = [];
+  if (state.showBest && bestMoveHere()) list.push([bestMoveHere(), 'best']);
+  if (mv && BAD.has(mv.label)) {
+    if (mv.best_uci && mv.best_uci !== mv.uci) list.push([mv.best_uci, 'best']);
+    if (mv.reply_uci) list.push([mv.reply_uci, 'punish']);
+  }
+  $('arrows').innerHTML = list.map(([u, k]) => arrow(u, k)).join('');
+  // threats: legal captures onto pieces the move left hanging (computed from the legal-move set, not the PV)
+  arrowsFor = fen;
+  if (mv && BAD.has(mv.label) && mv.hung && mv.hung.length) {
+    legalFor(fen).then(legal => {
+      if (arrowsFor !== fen) return;
+      const extra = legal.filter(u => mv.hung.includes(u.slice(2, 4)) && u !== mv.reply_uci && !(mv.reply_uci && u.slice(0, 4) === mv.reply_uci.slice(0, 4)));
+      $('arrows').innerHTML += [...new Set(extra.map(u => u.slice(0, 4)))].map(u => arrow(u, 'threat')).join('');
+    });
+  }
+}
+
+// --- badges: on the destination square of the played move; winner/equal on the kings at the end
+function badgeAt(name, lb, dx = 11.3, dy = 1.2) {
+  const [x, y] = sqXY(name);
+  const img = ASSETS.hasIcons ? `<img src="${iconSrc(lb)}" alt="${lb}">` : `<svg><use href="#ic-${lb}"/></svg>`;
+  return `<div class="badge" style="left:${x + dx}%;top:${y + dy}%">${img}</div>`;
+}
+function renderBadges() {
+  const g = state.game, mv = currentMove();
+  let out = '';
+  if (mv && mv.label && LABEL_NAME[mv.label]) out += badgeAt(mv.uci.slice(2, 4), mv.label);
+  if (ASSETS.hasIcons && !inVariation() && state.ply === g.moves.length && g.moves.length && g.result) {
+    const pieces = parseFen(currentFen());
+    const kings = Object.entries(pieces).filter(([, ch]) => ch.toLowerCase() === 'k');
+    const winner = g.result === 'draw' ? null : (g.result === 'win') === (g.my_colour === 'white') ? 'K' : 'k';
+    for (const [sq, ch] of kings) if (winner ? ch === winner : true) out += badgeAt(sq, winner ? 'winner' : 'equal', 6.25, 0.6);
+  }
+  $('badges').innerHTML = out;
 }
 
 // ---------- touch: swipe the board left/right to step ----------
 let touchStart = null;
-$('board').addEventListener('touchstart', e => { const t = e.touches[0]; touchStart = [t.clientX, t.clientY]; }, { passive: true });
-$('board').addEventListener('touchend', e => {
+$('boardbox').addEventListener('touchstart', e => { const t = e.touches[0]; touchStart = [t.clientX, t.clientY]; }, { passive: true });
+$('boardbox').addEventListener('touchend', e => {
   if (!touchStart) return;
   const t = e.changedTouches[0], dx = t.clientX - touchStart[0], dy = t.clientY - touchStart[1];
   touchStart = null;
@@ -694,9 +772,9 @@ async function legalFor(fen) {
   if (!legalCache[fen]) legalCache[fen] = (await (await fetch(`api/legal?fen=${encodeURIComponent(fen)}`)).json()).moves;
   return legalCache[fen];
 }
-$('board').addEventListener('click', async e => {
+$('boardbox').addEventListener('click', async e => {
   if (!state.game || state.exploring) return;
-  const svg = $('board'), r = svg.getBoundingClientRect();
+  const r = $('boardbox').getBoundingClientRect();
   let f = Math.floor((e.clientX - r.left) / r.width * 8), rk = 7 - Math.floor((e.clientY - r.top) / r.height * 8);
   if (state.flipped) { f = 7 - f; rk = 7 - rk; }
   if (f < 0 || f > 7 || rk < 0 || rk > 7) return;
@@ -776,7 +854,7 @@ function wpAt(ply) { const ln = line(); return ply === 0 ? state.game.start_wp_w
 function renderEvalBar() {
   const wp = wpAt(state.ply), bar = $('evalbar');
   bar.classList.toggle('flipped', state.flipped);
-  bar.style.height = $('board').clientHeight + 'px';
+  bar.style.height = $('boardbox').clientHeight + 'px';
   bar.querySelector('.w').style.height = (wp ?? 50) + '%';
   const mv = currentMove();
   const ev = state.ply === 0 ? (state.game.start_wp_white == null ? '' : '0.0') : (mv.eval ?? '');
@@ -987,7 +1065,7 @@ function fmtClock(s) { const m = Math.floor(s / 60), r = s % 60; return `${m}:${
 function moveNo(ply) { const n = Math.floor(ply / 2) + 1; return ply % 2 === 0 ? `${n}.` : `${n}...`; }
 function moveLabel(ply, san) { return `${moveNo(ply)} ${san}`; }
 
-route();
+assetsReady.then(route);
 pollStatus();
 
 // Developer smoke test: index.html?selftest=1#/game/<id> drives navigation + exploration and writes results to #selftest.
@@ -1006,7 +1084,7 @@ if (location.search.includes('selftest')) (async () => {
     await explore(fen, uci);
     say(`variation: base ${state.variation && state.variation.basePly}, moves ${state.variation && state.variation.moves.length}, ply ${state.ply}, inVariation=${inVariation()}`);
     say(`now panel: ${$('now').textContent.trim().slice(0, 120)}`);
-    say(`varrow present: ${!!document.querySelector('.varrow')}`);
+    say(`varrow present: ${!!document.querySelector('.varrow')}; pieces=${document.querySelectorAll('.pc').length} arrows=${$('arrows').children.length} badges=${$('badges').children.length} assets=${ASSETS.hasPieces}/${ASSETS.hasIcons}`);
     const legal2 = await legalFor(currentFen()); await explore(currentFen(), legal2[0]);
     say(`second explore: variation moves ${state.variation.moves.length}, ply ${state.ply}`);
     go(state.ply - 1); say(`back one: ply ${state.ply}, inVariation=${inVariation()}, moves kept ${state.variation.moves.length}`);

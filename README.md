@@ -20,6 +20,14 @@ different move** — it is evaluated on the spot (`explore.py`, one multi-thread
 variation under the move it branches from; stepping back before the branch discards it.
 `index.html?selftest=1#/game/<id>` runs an in-page smoke test of navigation + exploration.
 
+Pieces and badge icons: the page uses `data/site/assets/pieces/{w,b}{p,n,b,r,q,k}.png` and
+`data/site/assets/icons/<classification>.svg` when present (`bash scripts/install_assets.sh <icons> [pieces]`),
+otherwise the built-in cburnett pieces and inline badges. The single config is `ASSETS` at the top of
+`static/index.html`. **chess.com's piece and icon files are proprietary — local personal use only**; before
+exposing the page beyond localhost swap in Lichess pieces (github.com/lichess-org/lila, free licence) and
+your own icons. `data/` is gitignored, so they never enter the repo. The arrow geometry is an independent
+reimplementation.
+
 Sounds: `bash scripts/fetch_sounds.sh` pulls chess.com's default sound set into `data/site/sounds/` (personal use,
 gitignored). The brilliant-move stinger is not served publicly by chess.com: save it from your browser's
 DevTools (Network → Media, while a review plays one) as `data/site/sounds/brilliant.mp3` or `.webm` and it is picked up automatically.
