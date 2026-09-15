@@ -4,6 +4,7 @@
     GET  /api/profiles                  saved profiles with game counts
     POST /api/profiles                  {source, username} -> create the profile and fetch its games (job "ingest")
     POST /api/profiles/<id>/delete      remove a profile and everything under it (the engine cache is shared and stays)
+    POST /api/profiles/<id>/pin         {pinned: bool} keep it at the top of the home screen
     POST /api/p/<id>/analyse/<slug>     analyse one game (MultiPV=3, fixed nodes), streaming progress into its JSON
     POST /api/p/<id>/refresh            {analyse?: bool} re-fetch the latest chess.com month, normalise, rebuild the
                                         site; with analyse=true the new games are analysed in the same job
@@ -14,6 +15,7 @@
     POST /api/explore                   {fen, uci, my_colour} -> the move evaluated and classified on the spot
     POST /api/pgn                       {pgn, review_as} -> stored in the "Pasted games" profile and reviewable at once
     GET  /api/engine                    {name, nodes, multipv} of the on-demand engine (shown next to results)
+    GET  /api/fetch_image?url=          proxy an image so the board reader can inspect it on a canvas
     GET  /api/eval?fen=                 the engine's eval and best move in a position, no move required (sandbox)
 
     /                                   the app (data/site)
@@ -39,10 +41,11 @@ from typing import Optional
 from urllib.parse import parse_qs, unquote, urlparse
 
 import chess
+import requests
 
 from . import aggregates, classify, ingest, normalise, profiles, site
 from .analyse import Analyser, export_parquet, open_db, pending_keys
-from .config import DEFAULT_NODES, ENGINE_IDLE_SECONDS, MULTIPV_N, SITE_DIR
+from .config import DEFAULT_NODES, ENGINE_IDLE_SECONDS, MULTIPV_N, SITE_DIR, USER_AGENT
 from .db import base_views
 from .explore import Explorer
 from .pov import pov_win_pct
@@ -295,6 +298,28 @@ class Handler(SimpleHTTPRequestHandler):
             return self._json({"eval": eval_text(main["eval_cp"], main["mate_in"], side),
                                "wp_white": round(wp, 1) if wp is not None else None,
                                "best_uci": best_uci, "best_san": best_san})
+        if url.path == "/api/fetch_image":
+            # the browser reads the board off a canvas, and a cross-origin image would taint it: fetch it server-side
+            target = parse_qs(url.query).get("url", [""])[0]
+            if not target.startswith(("http://", "https://")):
+                return self._json({"error": "http(s) URL required"}, 400)
+            try:
+                resp = requests.get(target, timeout=20, headers={"User-Agent": USER_AGENT}, stream=True)
+                resp.raise_for_status()
+                ctype = resp.headers.get("Content-Type", "")
+                if not ctype.startswith("image/"):
+                    return self._json({"error": f"not an image ({ctype or 'unknown type'})"}, 415)
+                body = resp.raw.read(MAX_IMAGE_BYTES + 1, decode_content=True)
+            except requests.RequestException as e:
+                return self._json({"error": str(e)}, 502)
+            if len(body) > MAX_IMAGE_BYTES:
+                return self._json({"error": "image larger than 10 MB"}, 413)
+            self.send_response(200)
+            self.send_header("Content-Type", ctype)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
         if url.path == "/api/engine":
             try:
                 return self._json({"name": self.runner.explorer.name(), "nodes": self.runner.explorer.nodes, "multipv": MULTIPV_N})
@@ -369,6 +394,10 @@ class Handler(SimpleHTTPRequestHandler):
             if (p.site_dir / "games.json").exists():
                 return self._json({"profile": p.summary(), "job": None})   # already set up: just open it
             return self._start(Job("ingest", p))
+        m = re.match(r"^/api/profiles/([A-Za-z0-9_.-]+)/pin$", path)
+        if m:
+            out = profiles.set_pinned(m.group(1), bool(self._body().get("pinned", True)))
+            return self._json({"profile": out}) if out else self._json({"error": "unknown profile"}, 404)
         m = re.match(r"^/api/profiles/([A-Za-z0-9_.-]+)/delete$", path)
         if m:
             if r.busy() and r.job.profile.id == m.group(1):
@@ -405,6 +434,7 @@ class Handler(SimpleHTTPRequestHandler):
         return self._json({"error": "not found"}, 404)
 
 
+MAX_IMAGE_BYTES = 10 * 1024 * 1024
 PGN_PROFILE_NAME = "Pasted games"   # every pasted PGN lands in profile pgn-pasted-games
 
 

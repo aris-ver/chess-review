@@ -44,8 +44,8 @@ main { padding: 16px 18px; max-width: 1800px; margin: 0 auto; }
 .home h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 26px 0 10px; }
 .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
 .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; cursor: default; position: relative; min-height: 96px; display: flex; flex-direction: column; gap: 4px; }
-.card.prof, .card#card-setup { cursor: pointer; }
-.card.prof:hover, .card#card-setup:hover { border-color: var(--accent); }
+.card#card-setup { cursor: pointer; }
+.card#card-setup:hover { border-color: var(--accent); }
 .card.soon { opacity: .55; }
 .card .src { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
 .card .who { font-size: 17px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-right: 22px; }
@@ -58,31 +58,59 @@ main { padding: 16px 18px; max-width: 1800px; margin: 0 auto; }
 .card.add select, .card.add input, .card.fen input { font: inherit; color: var(--text); background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; width: 100%; }
 .card.add input::placeholder, .card.fen input::placeholder { color: var(--muted); }
 .card.add button, .card.fen button { align-self: flex-start; }
+.card.img form { flex-direction: row; } .card.img form button { align-self: auto; }
+.card.img .drop { border: 1px dashed var(--muted); border-radius: 6px; padding: 14px 10px; text-align: center; color: var(--muted); font-size: 13px; cursor: pointer; }
+.card.img .drop:hover, .card.img .drop.over, .card.img .drop:focus { border-color: var(--accent); color: var(--text); outline: none; }
+.card.img .row { display: flex; gap: 8px; align-items: center; } .card.img .row label { color: var(--muted); font-size: 13px; }
+.card.img .row select { font: inherit; color: var(--text); background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px; }
+.card.img .st { color: var(--muted); font-size: 12px; margin-left: auto; }
 .card.pgn textarea { font: 12px/1.4 ui-monospace, monospace; color: var(--text); background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; width: 100%; resize: vertical; }
 .card.pgn .row { display: flex; gap: 8px; align-items: center; }
 .card.pgn .row label { color: var(--muted); font-size: 13px; }
 .card.pgn .row select { font: inherit; color: var(--text); background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px; }
 .card.pgn .row button { margin-left: auto; }
 .card .desc { color: var(--muted); font-size: 13px; }
+/* profile list: pinned ones first (in the order they were pinned), then the rest newest first */
+.plist { display: flex; flex-direction: column; gap: 4px; }
+.plist .prow { display: flex; align-items: center; gap: 10px; padding: 8px 12px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; cursor: pointer; }
+.plist .prow:hover { border-color: var(--accent); }
+.plist .pin { color: var(--muted); padding: 2px 6px; border-radius: 4px; font-size: 14px; line-height: 1; }
+.plist .pin:hover { background: var(--panel2); color: var(--text); } .plist .prow.pinned .pin { color: var(--accent); }
+.plist .src { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); min-width: 64px; }
+.plist .who { font-weight: 700; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.plist .meta { color: var(--muted); font-size: 12px; white-space: nowrap; }
+.plist .progress { width: 120px; }
+.plist .x { color: var(--muted); padding: 2px 6px; border-radius: 4px; font-size: 14px; }
+.plist .x:hover { background: var(--panel2); color: var(--c-blunder); }
+.plist .empty { padding: 10px 12px; color: var(--muted); font-size: 13px; }
 
 /* board setup editor */
-.setup { display: grid; grid-template-columns: minmax(280px, 560px) 260px; gap: 20px; justify-content: center; max-width: 900px; margin: 24px auto 0; align-items: start; }
+.setup { display: grid; grid-template-columns: minmax(280px, 560px) 300px; gap: 20px; justify-content: center; max-width: 920px; margin: 24px auto 0; align-items: start; }
 .setup-board { display: grid; grid-template-columns: repeat(8, 1fr); aspect-ratio: 1; border-radius: 4px; overflow: hidden; }
-.setup-board .sq { position: relative; aspect-ratio: 1; cursor: pointer; }
+.setup-board .sq { position: relative; aspect-ratio: 1; }
+.setup-board.tooling .sq { cursor: none; }
 .setup-board .sq.light { background: var(--light); } .setup-board .sq.dark { background: var(--dark); }
 .setup-board .sq img, .setup-board .sq svg { position: absolute; inset: 6%; width: 88%; height: 88%; pointer-events: none; }
-.setup-panel { display: flex; flex-direction: column; gap: 14px; }
-.palette { display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px; background: var(--panel); border-radius: 8px; padding: 8px; }
-.palette button { padding: 4px; height: 40px; display: flex; align-items: center; justify-content: center; background: var(--panel2); }
-.palette button img, .palette button svg { width: 26px; height: 26px; }
-.palette button.active { background: var(--accent); }
-.palette button.erase { grid-column: span 6; font-size: 12px; }
+.setup-panel { display: flex; flex-direction: column; gap: 12px; }
+.palette { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; background: var(--panel); border-radius: 8px; padding: 8px; }
+.palette button { padding: 4px; height: 46px; display: flex; align-items: center; justify-content: center; background: transparent; border-color: transparent; }
+.palette button:hover { background: var(--panel2); }
+.palette button img, .palette button svg { width: 34px; height: 34px; }
+.palette button.active { background: var(--accent); border-color: var(--accent); }
+.palette button.erase { grid-row: span 2; align-self: stretch; height: auto; color: var(--muted); }
+.palette button.erase svg { width: 24px; height: 24px; } .palette button.erase.active { color: #1b1b1b; }
 .setup-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.setup-row label { color: var(--muted); font-size: 13px; }
 .setup-row select { font: inherit; color: var(--text); background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; }
-.setup-fen { font-family: ui-monospace, monospace; font-size: 12px; color: var(--muted); background: var(--panel); border-radius: 6px; padding: 8px 10px; word-break: break-all; }
+.setup-row.tools select { flex: 1; }
 .setup-row button.icon { padding: 6px; }
 .setup-row button.icon svg { width: 18px; height: 18px; display: block; }
+.castling { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; font-size: 13px; }
+.castling .h { color: var(--muted); font-size: 12px; margin-bottom: 4px; }
+.castling label { display: flex; align-items: center; gap: 6px; padding: 2px 0; }
+.castling label.off { color: var(--muted); }
+.castling input { accent-color: var(--accent); }
+.fenbox { font: 12px/1.4 ui-monospace, monospace; color: var(--text); background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; width: 100%; }
+.fenbox.bad { border-color: var(--c-blunder); }
 .ghost-piece { position: fixed; left: 0; top: 0; width: 34px; height: 34px; pointer-events: none; transform: translate(-50%, -50%); z-index: 50; opacity: .85; filter: drop-shadow(0 2px 5px rgba(0,0,0,.5)); }
 .ghost-piece img, .ghost-piece svg { width: 100%; height: 100%; display: block; }
 .ghost-piece svg { color: var(--text); }
@@ -327,10 +355,16 @@ svg.graph { width: 100%; height: 90px; display: block; cursor: pointer; backgrou
 <main>
   <section id="home" class="hidden">
     <div class="home">
-      <h2>Profiles</h2>
-      <div class="cards" id="profiles"></div>
-      <h2>Analyse something else</h2>
+      <h2>Analyse</h2>
       <div class="cards">
+        <div class="card add">
+          <span class="src">chess.com</span><span class="who">Add a profile</span>
+          <form id="addform">
+            <select name="source"><option value="chesscom">chess.com</option><option value="lichess" disabled>lichess (soon)</option></select>
+            <input name="username" placeholder="username" autocomplete="off" spellcheck="false" required>
+            <button class="primary" type="submit">Add profile</button>
+          </form>
+        </div>
         <div class="card fen pgn">
           <span class="src">PGN</span><span class="who">Paste a PGN</span>
           <form id="pgnform">
@@ -338,15 +372,17 @@ svg.graph { width: 100%; height: 90px; display: block; cursor: pointer; backgrou
             <div class="row"><label>I played</label><select name="review_as"><option value="white">White</option><option value="black">Black</option></select><button class="primary" type="submit">Review</button></div>
           </form>
         </div>
-        <div class="card fen">
-          <span class="src">FEN</span><span class="who">From a position</span>
-          <form id="fenform">
-            <input name="fen" placeholder="Paste a FEN" autocomplete="off" spellcheck="false" required>
-            <button class="primary" type="submit">Explore</button>
-          </form>
+        <div class="card" id="card-setup"><span class="src">Board</span><span class="who">Set up a position</span><span class="desc">Place the pieces, or paste a FEN, then analyse.</span></div>
+        <div class="card fen img" id="card-image">
+          <span class="src">Image</span><span class="who">From a screenshot</span>
+          <div class="drop" id="imgdrop" tabindex="0">Drop or paste (Ctrl+V) a picture of a board here, or click to pick a file</div>
+          <input type="file" id="imgfile" accept="image/*" class="hidden">
+          <form id="imgurl"><input name="url" placeholder="…or an image URL" autocomplete="off" spellcheck="false"><button type="submit">Read</button></form>
+          <div class="row"><label>Side to move</label><select id="imgstm"><option value="w">White</option><option value="b">Black</option></select><span class="st" id="imgstatus"></span></div>
         </div>
-        <div class="card" id="card-setup"><span class="src">Board</span><span class="who">Set up a board</span><span class="desc">Place the pieces yourself, then analyse.</span></div>
       </div>
+      <h2>Profiles</h2>
+      <div class="plist" id="profiles"></div>
     </div>
   </section>
   <section id="editor" class="hidden">
@@ -354,19 +390,23 @@ svg.graph { width: 100%; height: 90px; display: block; cursor: pointer; backgrou
       <div class="setup-board" id="setupboard"></div>
       <div class="setup-panel">
         <div class="palette" id="palette"></div>
-        <div class="setup-row">
-          <button id="s-undo" class="icon" title="Undo" disabled></button>
-          <button id="s-redo" class="icon" title="Redo" disabled></button>
-          <label for="stm" style="margin-left:auto">Side to move</label>
-          <select id="stm"><option value="w">White</option><option value="b">Black</option></select>
+        <div class="setup-row tools">
+          <select id="stm"><option value="w">White to move</option><option value="b">Black to move</option></select>
+          <button id="s-flip" class="icon" title="Flip the board (view only)"></button>
+          <button id="s-undo" class="icon" title="Undo (Ctrl+Z)" disabled></button>
+          <button id="s-redo" class="icon" title="Redo (Ctrl+Y)" disabled></button>
+          <button id="s-clear" class="icon" title="Clear the board"></button>
         </div>
+        <div class="castling">
+          <div><div class="h">White</div><label><input type="checkbox" id="c-K" checked> O-O</label><label><input type="checkbox" id="c-Q" checked> O-O-O</label></div>
+          <div><div class="h">Black</div><label><input type="checkbox" id="c-k" checked> O-O</label><label><input type="checkbox" id="c-q" checked> O-O-O</label></div>
+        </div>
+        <input id="setupfen" class="fenbox" spellcheck="false" autocomplete="off" title="FEN — edit or paste one here to load it">
         <div class="setup-row">
           <button id="s-start">Starting position</button>
-          <button id="s-clear">Clear board</button>
-          <button id="s-flip" title="Flip the board (doesn't change the position)">⇅ Flip</button>
+          <span style="margin-left:auto"></span>
+          <a href="#/" class="pbtn">← Cancel</a><button class="primary" id="s-go">Analyse this position</button>
         </div>
-        <div class="setup-fen" id="setupfen"></div>
-        <div class="setup-row"><a href="#/" class="pbtn">← Cancel</a><button class="primary" id="s-go">Analyse this position</button></div>
       </div>
     </div>
   </section>
@@ -579,7 +619,8 @@ async function route() {
   const h = location.hash || '#/';
   const sm = h.match(/^#\/sandbox\/(.+)$/);
   if (sm) return showSandbox(decodeURIComponent(sm[1]));
-  if (h === '#/setup') return showEditor();
+  const em = h.match(/^#\/setup(?:\?fen=(.+))?$/);
+  if (em) { if (em[1] && loadFen(decodeURIComponent(em[1]))) pendingSetup = setupSnapshot(); return showEditor(); }
   const m = h.match(/^#\/p\/([A-Za-z0-9_.-]+)(?:\/game\/([^/?]+))?/);
   if (!m) return showHome();
   if (state.profile !== m[1]) { state.profile = m[1]; state.games = null; state.game = null; }
@@ -609,7 +650,6 @@ async function showHome() {
   await renderProfiles();
   pollStatus();
 }
-$('fenform').onsubmit = e => { e.preventDefault(); const fen = e.target.fen.value.trim(); if (fen) location.hash = '#/sandbox/' + encodeURIComponent(fen); };
 $('card-setup').onclick = () => location.hash = '#/setup';
 $('pgnform').onsubmit = async e => {
   e.preventDefault();
@@ -627,24 +667,27 @@ $('pgnform').onsubmit = async e => {
 };
 async function renderProfiles() {
   let d; try { d = await (await fetch('api/profiles')).json(); } catch (e) { d = { profiles: [] }; }
-  const cards = d.profiles.map(p => `
-    <div class="card prof" data-id="${p.id}">
+  const ps = d.profiles.slice().sort((a, b) => {
+    if (!!a.pinned !== !!b.pinned) return a.pinned ? -1 : 1;
+    if (a.pinned) return a.pinned < b.pinned ? -1 : 1;             // pins keep the order they were made in
+    return (b.created || '') < (a.created || '') ? -1 : 1;          // the rest: newest first
+  });
+  $('profiles').innerHTML = ps.map(p => `
+    <div class="prow ${p.pinned ? 'pinned' : ''}" data-id="${p.id}">
+      <span class="pin" title="${p.pinned ? 'Unpin' : 'Pin to the top'}">${p.pinned ? '★' : '☆'}</span>
       <span class="src">${SOURCE_NAME[p.source] || p.source}</span>
       <span class="who" title="${esc(p.username)}">${esc(p.username)}</span>
-      <span class="meta">${p.games} games · ${p.analysed} analysed</span>
       <div class="progress hidden"><div></div></div>
+      <span class="meta">${p.games} games · ${p.analysed} analysed</span>
       <span class="x" title="Remove this profile (the engine cache is kept)">✕</span>
-    </div>`).join('');
-  $('profiles').innerHTML = cards + `
-    <div class="card add">
-      <form id="addform">
-        <select name="source"><option value="chesscom">chess.com</option><option value="lichess" disabled>lichess (soon)</option></select>
-        <input name="username" placeholder="username" autocomplete="off" spellcheck="false" required>
-        <button class="primary" type="submit">Add profile</button>
-      </form>
-    </div>`;
-  $('profiles').querySelectorAll('.card.prof').forEach(c => {
+    </div>`).join('') || `<div class="empty">No profiles yet — add a chess.com username above.</div>`;
+  $('profiles').querySelectorAll('.prow').forEach(c => {
     c.onclick = () => location.hash = '#/p/' + c.dataset.id;
+    c.querySelector('.pin').onclick = async e => {
+      e.stopPropagation();
+      await fetch(`api/profiles/${c.dataset.id}/pin`, { method: 'POST', body: JSON.stringify({ pinned: !c.classList.contains('pinned') }) });
+      renderProfiles();
+    };
     c.querySelector('.x').onclick = async e => {
       e.stopPropagation();
       if (!confirm(`Remove ${c.querySelector('.who').textContent} and its games? Engine evaluations are shared and stay cached.`)) return;
@@ -751,30 +794,40 @@ async function showSandbox(fen) {
   update(false);
 }
 
-// ---------- board setup: click-to-place editor -> a FEN handed to the sandbox ----------
+// ---------- board setup: a chess.com-style editor -> a FEN handed to the sandbox ----------
 const START_BOARD = { a1:'R', b1:'N', c1:'B', d1:'Q', e1:'K', f1:'B', g1:'N', h1:'R',
                       a8:'r', b8:'n', c8:'b', d8:'q', e8:'k', f8:'b', g8:'n', h8:'r' };
 for (const f of 'abcdefgh') { START_BOARD[f + '2'] = 'P'; START_BOARD[f + '7'] = 'p'; }
+const START_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 const ERASE_ICON = `<svg viewBox="0 0 24 24"><path d="M3 17l7-7 7 7-3 3H8l-5-3z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M10 10l7-7a2 2 0 0 1 3 0l1 1a2 2 0 0 1 0 3l-7 7" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M5 20h14" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>`;
 const UNDO_ICON = `<svg viewBox="0 0 24 24"><path d="M4 9a8 8 0 1 1 2 8.8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M4 4v5h5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 const REDO_ICON = `<svg viewBox="0 0 24 24"><path d="M20 9a8 8 0 1 0-2 8.8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M20 4v5h-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
-$('s-undo').innerHTML = UNDO_ICON; $('s-redo').innerHTML = REDO_ICON;
-const setup = { board: {}, turn: 'w', flipped: false, tool: null, undo: [], redo: [] };
+const TRASH_ICON = `<svg viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+const FLIP_ICON = `<svg viewBox="0 0 24 24"><path d="M7 4v13M4 14l3 3 3-3M17 20V7M14 10l3-3 3 3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+$('s-undo').innerHTML = UNDO_ICON; $('s-redo').innerHTML = REDO_ICON; $('s-clear').innerHTML = TRASH_ICON; $('s-flip').innerHTML = FLIP_ICON;
+// tool: a piece letter to place, 'erase', or null (nothing armed: clicking the board does nothing)
+const setup = { board: {}, turn: 'w', castle: { K: true, Q: true, k: true, q: true }, flipped: false, tool: null, undo: [], redo: [] };
+let pendingSetup = null;   // a position handed to the editor by the image reader (consumed by showEditor)
 function pieceHTML(ch) {
   const code = (ch === ch.toUpperCase() ? 'w' : 'b') + ch.toLowerCase();
   return ASSETS.hasPieces ? `<img src="${ASSETS.pieces}/${code}.png" alt="">` : `<svg viewBox="0 0 45 45"><use href="#${PIECE_ID[ch]}"/></svg>`;
 }
 function renderPalette() {
-  const order = ['K', 'Q', 'R', 'B', 'N', 'P'];
+  const order = ['P', 'B', 'N', 'R', 'Q', 'K'];
   const row = colour => order.map(t => colour === 'w' ? t : t.toLowerCase())
     .map(ch => `<button data-ch="${ch}" title="${ch}">${pieceHTML(ch)}</button>`).join('');
-  $('palette').innerHTML = row('w') + row('b') + `<button class="erase" data-ch="" title="Remove piece">${ERASE_ICON}</button>`;
-  $('palette').querySelectorAll('button').forEach(b => b.onclick = () => {
-    setup.tool = b.dataset.ch || null;
-    $('palette').querySelectorAll('button').forEach(x => x.classList.toggle('active', x === b));
-  });
-  $('palette').querySelector('.erase').classList.add('active');
+  // black row on top like the real thing; the eraser spans both rows at the end
+  $('palette').innerHTML = row('b') + `<button class="erase" data-ch="erase" title="Remove piece">${ERASE_ICON}</button>` + row('w');
+  $('palette').querySelectorAll('button').forEach(b => b.onclick = () => setTool(setup.tool === b.dataset.ch ? null : b.dataset.ch));
+  setTool(setup.tool);
 }
+function setTool(tool) {   // clicking the armed button again disarms it
+  setup.tool = tool;
+  $('palette').querySelectorAll('button').forEach(x => x.classList.toggle('active', x.dataset.ch === tool));
+  $('setupboard').classList.toggle('tooling', !!tool);
+}
+const CASTLE_SQ = { K: ['e1', 'K', 'h1', 'R'], Q: ['e1', 'K', 'a1', 'R'], k: ['e8', 'k', 'h8', 'r'], q: ['e8', 'k', 'a8', 'r'] };
+function castleAllowed(c) { const [ks, k, rs, r] = CASTLE_SQ[c]; return setup.board[ks] === k && setup.board[rs] === r; }
 function setupFen() {
   let rows = [];
   for (let r = 7; r >= 0; r--) {
@@ -788,10 +841,20 @@ function setupFen() {
     if (empty) row += empty;
     rows.push(row);
   }
-  const has = (sq, ch) => setup.board[sq] === ch;
-  let castle = (has('e1', 'K') && has('h1', 'R') ? 'K' : '') + (has('e1', 'K') && has('a1', 'R') ? 'Q' : '') +
-               (has('e8', 'k') && has('h8', 'r') ? 'k' : '') + (has('e8', 'k') && has('a8', 'r') ? 'q' : '');
+  const castle = ['K', 'Q', 'k', 'q'].filter(c => setup.castle[c] && castleAllowed(c)).join('');
   return `${rows.join('/')} ${setup.turn} ${castle || '-'} - 0 1`;
+}
+// Load a FEN typed/pasted into the box (or handed in by a route). Returns false if it doesn't look like one.
+function loadFen(fen) {
+  const parts = fen.trim().split(/\s+/);
+  if (!/^[pnbrqkPNBRQK1-8]+(\/[pnbrqkPNBRQK1-8]+){7}$/.test(parts[0] || '')) return false;
+  const board = parseFen(parts[0]);
+  if (Object.keys(board).length === 0 && parts[0] !== '8/8/8/8/8/8/8/8') return false;
+  setup.board = board;
+  setup.turn = parts[1] === 'b' ? 'b' : 'w';
+  const rights = parts[2] || '-';
+  for (const c of ['K', 'Q', 'k', 'q']) setup.castle[c] = rights.includes(c);
+  return true;
 }
 function renderSetupBoard() {
   const cells = [];
@@ -804,16 +867,24 @@ function renderSetupBoard() {
   $('setupboard').innerHTML = cells.join('');
   $('setupboard').querySelectorAll('.sq').forEach(el => el.onclick = () => {
     const sq = el.dataset.sq;
-    if (!setup.tool && !setup.board[sq]) return;   // erase tool on an empty square: nothing to undo
+    if (!setup.tool) return;
+    if (setup.tool === 'erase' && !setup.board[sq]) return;   // nothing to erase, nothing to undo
+    if (setup.tool !== 'erase' && setup.board[sq] === setup.tool) return;
     pushSetupHistory();
-    if (setup.tool) setup.board[sq] = setup.tool; else delete setup.board[sq];
+    if (setup.tool === 'erase') delete setup.board[sq]; else setup.board[sq] = setup.tool;
     renderSetupBoard();
   });
-  $('setupfen').textContent = setupFen();
+  $('stm').value = setup.turn;
+  for (const c of ['K', 'Q', 'k', 'q']) {
+    const box = $('c-' + c), ok = castleAllowed(c);
+    box.checked = setup.castle[c] && ok; box.disabled = !ok; box.parentElement.classList.toggle('off', !ok);
+  }
+  $('setupfen').value = setupFen(); $('setupfen').classList.remove('bad');
 }
-// ---- undo / redo: snapshot {board, turn} before every position-changing edit (flip is view-only, not tracked)
+// ---- undo / redo: snapshot the position before every edit (flip is view-only, not tracked)
+function setupSnapshot() { return { board: { ...setup.board }, turn: setup.turn, castle: { ...setup.castle } }; }
 function pushSetupHistory() {
-  setup.undo.push({ board: { ...setup.board }, turn: setup.turn });
+  setup.undo.push(setupSnapshot());
   if (setup.undo.length > 200) setup.undo.shift();
   setup.redo = [];
   renderUndoRedo();
@@ -821,10 +892,8 @@ function pushSetupHistory() {
 function renderUndoRedo() { $('s-undo').disabled = !setup.undo.length; $('s-redo').disabled = !setup.redo.length; }
 function applySetupHistory(from, to) {
   if (!from.length) return;
-  to.push({ board: { ...setup.board }, turn: setup.turn });
-  const snap = from.pop();
-  setup.board = snap.board; setup.turn = snap.turn;
-  $('stm').value = setup.turn;
+  to.push(setupSnapshot());
+  Object.assign(setup, from.pop());
   renderSetupBoard(); renderUndoRedo();
 }
 $('s-undo').onclick = () => applySetupHistory(setup.undo, setup.redo);
@@ -832,15 +901,24 @@ $('s-redo').onclick = () => applySetupHistory(setup.redo, setup.undo);
 function showEditor() {
   $('home').classList.add('hidden'); $('review').classList.add('hidden'); $('list').classList.add('hidden'); $('editor').classList.remove('hidden');
   document.body.classList.remove('sandbox'); stopSandboxStream();
-  setContext(false); $('crumb').textContent = 'Set up a board';
-  setup.board = { ...START_BOARD }; setup.turn = 'w'; setup.flipped = false; setup.tool = null; setup.undo = []; setup.redo = [];
-  $('stm').value = 'w';
+  setContext(false); $('crumb').textContent = 'Set up a position';
+  setup.flipped = false; setup.tool = null; setup.undo = []; setup.redo = [];
+  if (pendingSetup) { Object.assign(setup, pendingSetup); pendingSetup = null; }
+  else if (!Object.keys(setup.board).length) loadFen(START_FEN);
   renderPalette();
   renderSetupBoard();
   renderUndoRedo();
 }
-$('stm').onchange = () => { pushSetupHistory(); setup.turn = $('stm').value; $('setupfen').textContent = setupFen(); };
-$('s-start').onclick = () => { pushSetupHistory(); setup.board = { ...START_BOARD }; renderSetupBoard(); };
+$('stm').onchange = () => { pushSetupHistory(); setup.turn = $('stm').value; renderSetupBoard(); };
+['K', 'Q', 'k', 'q'].forEach(c => $('c-' + c).onchange = () => { pushSetupHistory(); setup.castle[c] = $('c-' + c).checked; renderSetupBoard(); });
+$('setupfen').onchange = () => {
+  const snap = setupSnapshot();
+  if (!loadFen($('setupfen').value)) { $('setupfen').classList.add('bad'); toast('Not a valid FEN'); return; }
+  setup.undo.push(snap); setup.redo = []; renderUndoRedo();
+  renderSetupBoard();
+};
+$('setupfen').onfocus = () => $('setupfen').select();
+$('s-start').onclick = () => { pushSetupHistory(); loadFen(START_FEN); renderSetupBoard(); };
 $('s-clear').onclick = () => { pushSetupHistory(); setup.board = {}; renderSetupBoard(); };
 $('s-flip').onclick = () => { setup.flipped = !setup.flipped; renderSetupBoard(); };
 $('s-go').onclick = () => {
@@ -849,18 +927,233 @@ $('s-go').onclick = () => {
   location.hash = '#/sandbox/' + encodeURIComponent(setupFen());
 };
 document.addEventListener('keydown', e => {
-  if ($('editor').classList.contains('hidden')) return;
+  if ($('editor').classList.contains('hidden') || e.target.tagName === 'INPUT') return;
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); (e.shiftKey ? $('s-redo') : $('s-undo')).onclick(); }
   else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') { e.preventDefault(); $('s-redo').onclick(); }
+  else if (e.key === 'Escape') setTool(null);
 });
-// the selected piece (or eraser) follows the cursor over the board, so it's obvious what a click will place
+// the armed piece (or eraser) follows the cursor over the board, so it's obvious what a click will do
 document.addEventListener('pointermove', e => {
   const gp = $('ghostpiece');
-  if ($('editor').classList.contains('hidden') || !e.target.closest('#setupboard')) { gp.classList.add('hidden'); return; }
+  if ($('editor').classList.contains('hidden') || !setup.tool || !e.target.closest('#setupboard')) { gp.classList.add('hidden'); return; }
   gp.classList.remove('hidden');
   gp.style.left = e.clientX + 'px'; gp.style.top = e.clientY + 'px';
-  gp.innerHTML = setup.tool ? pieceHTML(setup.tool) : ERASE_ICON;
+  gp.innerHTML = setup.tool === 'erase' ? ERASE_ICON : pieceHTML(setup.tool);
 });
+
+// ---------- read a position off a picture of a board (screenshot, photo of a screen) ----------
+// All in the browser on a canvas: find the 8x8 grid (the strongest set of 7 evenly spaced interior edge
+// lines in x and y, checked against the light/dark checkerboard), then classify each square by separating
+// the piece from the square's own background colour and matching its silhouette against the piece sets the
+// page already has. Mistakes are expected on odd piece sets: the result opens in the editor, not the engine.
+const MASK_N = 32;
+let pieceTemplates = null;   // [{type, mask: Uint8Array(32*32), aspect}] from the built-in and (if installed) chess.com pieces
+function normaliseMask(mask, w, h) {
+  // crop to the bounding box, scale by height into a MASK_N square, centred horizontally -> keeps the width/height ratio
+  let x0 = w, x1 = -1, y0 = h, y1 = -1;
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (mask[y * w + x]) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+  if (x1 < 0) return null;
+  const bw = x1 - x0 + 1, bh = y1 - y0 + 1, scale = MASK_N / Math.max(bw, bh);
+  const out = new Uint8Array(MASK_N * MASK_N), ox = (MASK_N - bw * scale) / 2, oy = (MASK_N - bh * scale) / 2;
+  for (let y = 0; y < MASK_N; y++) for (let x = 0; x < MASK_N; x++) {
+    const sx = Math.floor(x0 + (x - ox) / scale), sy = Math.floor(y0 + (y - oy) / scale);
+    if (sx >= x0 && sx <= x1 && sy >= y0 && sy <= y1 && mask[sy * w + sx]) out[y * MASK_N + x] = 1;
+  }
+  return { mask: out, aspect: bw / bh };
+}
+// keep the biggest blob (and any nearly as big): drops coordinate labels, dust, and slivers of a neighbour's piece
+function largestComponents(mask, w, h) {
+  const label = new Int32Array(w * h), sizes = [0];
+  const stack = [];
+  for (let i = 0; i < w * h; i++) {
+    if (!mask[i] || label[i]) continue;
+    const id = sizes.length; sizes.push(0); label[i] = id; stack.push(i);
+    while (stack.length) {
+      const k = stack.pop(); sizes[id]++;
+      const x = k % w, y = (k - x) / w;
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const nx = x + dx, ny = y + dy;
+        if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+        const n = ny * w + nx;
+        if (mask[n] && !label[n]) { label[n] = id; stack.push(n); }
+      }
+    }
+  }
+  const biggest = Math.max(...sizes);
+  const out = new Uint8Array(w * h);
+  for (let i = 0; i < w * h; i++) if (label[i] && sizes[label[i]] >= biggest * 0.15) out[i] = 1;
+  return out;
+}
+function maskIoU(a, b) {
+  let inter = 0, uni = 0;
+  for (let i = 0; i < a.length; i++) { if (a[i] & b[i]) inter++; if (a[i] | b[i]) uni++; }
+  return uni ? inter / uni : 0;
+}
+async function buildTemplates() {
+  if (pieceTemplates) return pieceTemplates;
+  const out = [], N = 96, cv = document.createElement('canvas'); cv.width = cv.height = N;
+  const cx = cv.getContext('2d', { willReadFrequently: true });
+  const load = src => new Promise((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = rej; im.src = src; });
+  const grab = () => { const d = cx.getImageData(0, 0, N, N).data, m = new Uint8Array(N * N); for (let i = 0; i < N * N; i++) m[i] = d[i * 4 + 3] > 96 ? 1 : 0; return normaliseMask(m, N, N); };
+  for (const t of ['p', 'n', 'b', 'r', 'q', 'k']) {
+    for (const colour of ['w', 'b']) {
+      const sources = [`data:image/svg+xml;charset=utf-8,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 45 45">${PIECES[colour === 'w' ? t.toUpperCase() : t]}</svg>`)}`];
+      if (ASSETS.hasPieces) sources.push(`${ASSETS.pieces}/${colour}${t}.png`);
+      for (const src of sources) {
+        try { const im = await load(src); cx.clearRect(0, 0, N, N); cx.drawImage(im, 0, 0, N, N); const nm = grab(); if (nm) out.push({ type: t, ...nm }); } catch (e) {}
+      }
+    }
+  }
+  pieceTemplates = out;
+  return out;
+}
+function findBoard(gray, W, H) {
+  // edge profiles: how much the image changes across each column / row
+  const px = new Float32Array(W), py = new Float32Array(H);
+  for (let y = 0; y < H; y++) for (let x = 0; x < W - 1; x++) { const d = Math.abs(gray[y * W + x + 1] - gray[y * W + x]); px[x] += d; }
+  for (let y = 0; y < H - 1; y++) for (let x = 0; x < W; x++) { const d = Math.abs(gray[(y + 1) * W + x] - gray[y * W + x]); py[y] += d; }
+  const peak = (p, i) => Math.max(p[i - 1] || 0, p[i] || 0, p[i + 1] || 0);
+  const floorX = px.reduce((a, b) => a + b, 0) / W * 0.5, floorY = py.reduce((a, b) => a + b, 0) / H * 0.5;
+  const bestOffset = (p, len, s, floor) => {   // best start for square size s along one axis: the 9 grid lines vs the local average
+    let best = { score: 0, o: 0 };
+    for (let o = 0; o + 8 * s <= len; o++) {
+      let inner = 0, all = 0;
+      for (let k = 1; k < 8; k++) inner += peak(p, o + k * s);
+      // the two border lines tell a grid apart from the same grid shifted by one square; a board that runs
+      // right up to the picture's edge has no border edge there, so that side counts as neutral
+      const edge = i => (i >= 1 && i <= len - 2) ? peak(p, i) : inner / 7;
+      const lines = inner + edge(o) + edge(o + 8 * s);
+      for (let x = o; x < o + 8 * s; x += 4) all += p[x];
+      const score = lines / 9 / (all / (2 * s) + floor);   // the floor stops flat, empty regions from scoring high
+      if (score > best.score) best = { score, o };
+    }
+    return best;
+  };
+  const cands = [];
+  for (let s = 24; s <= Math.floor(Math.min(W, H) / 8); s++) {
+    const bx = bestOffset(px, W, s, floorX), by = bestOffset(py, H, s, floorY);
+    cands.push({ s, ox: bx.o, oy: by.o, score: bx.score + by.score });
+  }
+  cands.sort((a, b) => b.score - a.score);
+  // the checkerboard test breaks ties in favour of a real board (and rejects text, tables, other grids)
+  let best = null;
+  for (const c of cands.slice(0, 12)) {
+    let corr = 0, n = 0;
+    const means = [];
+    // each cell's colour is judged from its four corners (median of them): pieces sit in the middle of a
+    // square, so a full opening position still reads as a checkerboard; a label in one corner is outvoted
+    const pad = Math.max(1, Math.round(c.s * 0.08)), patch = Math.max(2, Math.round(c.s * 0.12));
+    for (let i = 0; i < 8; i++) for (let j = 0; j < 8; j++) {
+      const x0 = c.ox + j * c.s, y0 = c.oy + i * c.s, corners = [];
+      for (const [cx, cy] of [[x0 + pad, y0 + pad], [x0 + c.s - pad - patch, y0 + pad], [x0 + pad, y0 + c.s - pad - patch], [x0 + c.s - pad - patch, y0 + c.s - pad - patch]]) {
+        let sum = 0, cnt = 0;
+        for (let y = cy; y < cy + patch; y++) for (let x = cx; x < cx + patch; x++) { sum += gray[y * W + x]; cnt++; }
+        corners.push(sum / cnt);
+      }
+      corners.sort((a, b) => a - b);
+      means.push((corners[1] + corners[2]) / 2);
+    }
+    const avg = means.reduce((a, b) => a + b, 0) / 64;
+    let num = 0, den = 0;
+    means.forEach((m, k) => { const parity = ((k >> 3) + (k & 7)) % 2 ? -1 : 1; num += (m - avg) * parity; den += Math.abs(m - avg); });
+    corr = den ? Math.abs(num / den) : 0;
+    const total = c.score * (0.3 + corr);
+    c.corr = corr; c.total = total;
+    if (corr > 0.25 && (!best || total > best.total)) best = { ...c };   // only something that looks like a checkerboard
+  }
+  findBoard.last = cands.slice(0, 12);   // for debugging in the console
+  return best;
+}
+async function readBoardImage(blob) {
+  const im = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error('not an image')); i.src = URL.createObjectURL(blob); });
+  const scale = Math.min(1, 1200 / Math.max(im.naturalWidth, im.naturalHeight));
+  const W = Math.round(im.naturalWidth * scale), H = Math.round(im.naturalHeight * scale);
+  const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+  const cx = cv.getContext('2d', { willReadFrequently: true }); cx.drawImage(im, 0, 0, W, H);
+  URL.revokeObjectURL(im.src);
+  const d = cx.getImageData(0, 0, W, H).data, gray = new Float32Array(W * H);
+  for (let i = 0; i < W * H; i++) gray[i] = 0.299 * d[i * 4] + 0.587 * d[i * 4 + 1] + 0.114 * d[i * 4 + 2];
+  const grid = findBoard(gray, W, H);
+  if (!grid) throw new Error("Couldn't find an 8×8 board in that picture");
+  const templates = await buildTemplates();
+  const board = {}, s = grid.s;
+  let whiteTop = 0, whiteBottom = 0;
+  for (let i = 0; i < 8; i++) for (let j = 0; j < 8; j++) {
+    const x0 = grid.ox + j * s, y0 = grid.oy + i * s, inset = Math.max(1, Math.round(s * 0.06));
+    // the square's own colour: median of a ring just inside the cell (highlights and odd board colours included)
+    const ring = [[], [], []];
+    for (let y = y0 + inset; y < y0 + s - inset; y++) for (let x = x0 + inset; x < x0 + s - inset; x++) {
+      const edge = y < y0 + inset + 2 || y >= y0 + s - inset - 2 || x < x0 + inset + 2 || x >= x0 + s - inset - 2;
+      if (edge) { const k = (y * W + x) * 4; ring[0].push(d[k]); ring[1].push(d[k + 1]); ring[2].push(d[k + 2]); }
+    }
+    const med = a => { a.sort((u, v) => u - v); return a[a.length >> 1]; };
+    const bg = [med(ring[0]), med(ring[1]), med(ring[2])];
+    const w = s - 2 * inset, raw = new Uint8Array(w * w);
+    for (let y = 0; y < w; y++) for (let x = 0; x < w; x++) {
+      const k = ((y0 + inset + y) * W + x0 + inset + x) * 4;
+      if (Math.hypot(d[k] - bg[0], d[k + 1] - bg[1], d[k + 2] - bg[2]) > 70) raw[y * w + x] = 1;
+    }
+    const mask = largestComponents(raw, w, w);
+    let area = 0; const lum = [], sat = [];
+    for (let y = 0; y < w; y++) for (let x = 0; x < w; x++) {
+      if (!mask[y * w + x]) continue;
+      const k = ((y0 + inset + y) * W + x0 + inset + x) * 4, r = d[k], g = d[k + 1], b = d[k + 2], mx = Math.max(r, g, b);
+      area++; lum.push(0.299 * r + 0.587 * g + 0.114 * b); sat.push(mx ? (mx - Math.min(r, g, b)) / mx : 0);
+    }
+    if (area < w * w * 0.05) continue;                    // empty
+    if (med(sat) > 0.45) continue;                        // a flat, saturated blob: an arrow or a highlight, not a piece
+    const nm = normaliseMask(mask, w, w);
+    if (!nm) continue;
+    let bestT = null, bestIoU = 0;
+    for (const t of templates) { const iou = maskIoU(nm.mask, t.mask) - 0.15 * Math.abs(Math.log(nm.aspect / t.aspect)); if (iou > bestIoU) { bestIoU = iou; bestT = t; } }
+    if (!bestT || bestIoU < 0.3) continue;
+    const white = med(lum) > 128;
+    board[sqName(j, 7 - i)] = white ? bestT.type.toUpperCase() : bestT.type;
+    if (white) { if (i < 4) whiteTop++; else whiteBottom++; }
+  }
+  if (!Object.keys(board).length) throw new Error('Found a board but no pieces on it');
+  if (whiteTop > whiteBottom) {   // black was at the bottom of the picture: rotate the board 180°
+    const rot = {};
+    for (const [sq, ch] of Object.entries(board)) rot[sqName(7 - 'abcdefgh'.indexOf(sq[0]), 8 - +sq[1])] = ch;
+    return rot;
+  }
+  return board;
+}
+async function importBoardImage(blob) {
+  const st = $('imgstatus');
+  st.textContent = 'Reading…';
+  try {
+    const board = await readBoardImage(blob);
+    st.textContent = '';
+    pendingSetup = { board, turn: $('imgstm').value, castle: { K: true, Q: true, k: true, q: true } };
+    toast(`Read ${Object.keys(board).length} pieces — check the board, then analyse`, 6000);
+    location.hash = '#/setup';
+  } catch (e) { st.textContent = ''; toast(e.message || String(e), 6000); }
+}
+$('imgdrop').onclick = () => $('imgfile').click();
+$('imgfile').onchange = () => { if ($('imgfile').files[0]) importBoardImage($('imgfile').files[0]); $('imgfile').value = ''; };
+$('imgdrop').ondragover = e => { e.preventDefault(); $('imgdrop').classList.add('over'); };
+$('imgdrop').ondragleave = () => $('imgdrop').classList.remove('over');
+$('imgdrop').ondrop = e => {
+  e.preventDefault(); $('imgdrop').classList.remove('over');
+  const f = [...e.dataTransfer.files].find(x => x.type.startsWith('image/'));
+  if (f) importBoardImage(f);
+  else { const u = e.dataTransfer.getData('text/uri-list') || e.dataTransfer.getData('text/plain'); if (/^https?:\/\//.test(u)) importBoardUrl(u); }
+};
+document.addEventListener('paste', e => {
+  if ($('home').classList.contains('hidden')) return;
+  const it = [...(e.clipboardData?.items || [])].find(x => x.type.startsWith('image/'));
+  if (it) { e.preventDefault(); importBoardImage(it.getAsFile()); }
+});
+async function importBoardUrl(url) {
+  const st = $('imgstatus'); st.textContent = 'Fetching…';
+  try {
+    const r = await fetch(`api/fetch_image?url=${encodeURIComponent(url)}`);
+    if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(d.error || `HTTP ${r.status}`); }
+    await importBoardImage(await r.blob());
+  } catch (e) { st.textContent = ''; toast(e.message || String(e), 6000); }
+}
+$('imgurl').onsubmit = e => { e.preventDefault(); const u = e.target.url.value.trim(); if (u) importBoardUrl(u); };
 
 // ---------- review ----------
 async function loadGame(id) { return (await fetch(`${P()}/games/${id}.json`)).json(); }
@@ -984,7 +1277,7 @@ async function pollStatus() {
     $('jobstat').textContent = active ? jobText(j) : '';
     const mine = j && j.profile === state.profile;   // jobs belong to a profile; only react to the one being viewed
     if (j && j.kind === 'ingest') {
-      const card = $('profiles') && $('profiles').querySelector(`.card[data-id="${j.profile}"]`);
+      const card = $('profiles') && $('profiles').querySelector(`.prow[data-id="${j.profile}"]`);
       if (card) {
         const prog = card.querySelector('.progress');
         prog.classList.toggle('hidden', !active);

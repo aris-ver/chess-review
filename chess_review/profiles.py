@@ -85,7 +85,7 @@ class Profile:
                 pass
         meta = json.loads(self.meta_json.read_text(encoding="utf-8")) if self.meta_json.exists() else {}
         return {"id": self.id, "source": self.source, "username": self.username, "games": games,
-                "analysed": analysed, "created": meta.get("created")}
+                "analysed": analysed, "created": meta.get("created"), "pinned": meta.get("pinned")}
 
 
 def profile_id(source: str, username: str) -> str:
@@ -118,6 +118,20 @@ def create(source: str, username: str) -> Profile:
                                            "created": datetime.now(timezone.utc).isoformat(timespec="seconds")}),
                                encoding="utf-8")
     return p
+
+
+def set_pinned(pid: str, on: bool) -> Optional[dict]:
+    """Pin (stamp the time, so pins keep the order they were made in) or unpin a profile on the home screen."""
+    p = load(pid)
+    if p is None:
+        return None
+    meta = json.loads(p.meta_json.read_text(encoding="utf-8"))
+    if on:
+        meta.setdefault("pinned", datetime.now(timezone.utc).isoformat(timespec="seconds"))
+    else:
+        meta.pop("pinned", None)
+    p.meta_json.write_text(json.dumps(meta), encoding="utf-8")
+    return p.summary()
 
 
 def delete(pid: str) -> bool:
