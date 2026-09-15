@@ -1,6 +1,6 @@
 """Stage 2: parse raw archives + pasted PGNs into games.parquet and positions.parquet.
 
-A pure function of data/raw and data/pgn; both parquet files are rebuilt from
+A pure function of the profile's raw/ and pgn/ dirs; both parquet files are rebuilt from
 scratch on every run, which makes the stage trivially idempotent.
 
 positions.clock_remaining is the `[%clk]` annotation attached to move_played,
@@ -21,7 +21,8 @@ import chess.pgn
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-from .config import DATA, GAMES_PARQUET, META_JSON, PGN_DIR, POSITIONS_PARQUET, RAW_DIR
+from . import profiles
+from .profiles import Profile
 
 log = logging.getLogger("normalise")
 
@@ -203,12 +204,13 @@ def parse_pgn_text(text: str, username: str, digest: str) -> Iterator[tuple[dict
         yield game_row, extract_positions(game, game_id)
 
 
-def build(username: str) -> dict:
+def build(profile: Profile) -> dict:
+    username = profile.username
     games: dict[str, dict] = {}
     positions: list[dict] = []
     stats = {"raw_games": 0, "skipped_variant_or_other": 0, "pgn_files": 0}
 
-    for f in sorted(RAW_DIR.glob("*.json")):
+    for f in sorted(profile.raw_dir.glob("*.json")) if profile.raw_dir.exists() else []:
         for g in json.loads(f.read_text(encoding="utf-8")).get("games", []):
             stats["raw_games"] += 1
             parsed = parse_chesscom(g, username)
@@ -221,7 +223,7 @@ def build(username: str) -> dict:
             games[row["game_id"]] = row
             positions.extend(pos)
 
-    for f in sorted(PGN_DIR.glob("*.pgn")):
+    for f in sorted(profile.pgn_dir.glob("*.pgn")) if profile.pgn_dir.exists() else []:
         stats["pgn_files"] += 1
         for row, pos in parse_pgn_text(f.read_text(encoding="utf-8"), username, f.stem):
             if row["game_id"] in games:
@@ -229,10 +231,9 @@ def build(username: str) -> dict:
             games[row["game_id"]] = row
             positions.extend(pos)
 
-    DATA.mkdir(parents=True, exist_ok=True)
-    META_JSON.write_text(json.dumps({"username": username}), encoding="utf-8")
-    pq.write_table(pa.Table.from_pylist(list(games.values()), schema=GAMES_SCHEMA), GAMES_PARQUET)
-    pq.write_table(pa.Table.from_pylist(positions, schema=POSITIONS_SCHEMA), POSITIONS_PARQUET)
+    profile.dir.mkdir(parents=True, exist_ok=True)
+    pq.write_table(pa.Table.from_pylist(list(games.values()), schema=GAMES_SCHEMA), profile.games_parquet)
+    pq.write_table(pa.Table.from_pylist(positions, schema=POSITIONS_SCHEMA), profile.positions_parquet)
     stats["games"] = len(games)
     stats["positions"] = len(positions)
     return stats
@@ -240,9 +241,11 @@ def build(username: str) -> dict:
 
 def main(argv=None) -> None:
     p = argparse.ArgumentParser(prog="normalise", description=__doc__)
-    p.add_argument("--username", required=True, help="your chess.com username (decides my_colour)")
+    p.add_argument("--profile", help="profile id (default: the only profile)")
+    p.add_argument("--username", help="(legacy) chess.com username, same as --profile chesscom-<username>")
     args = p.parse_args(argv)
-    stats = build(args.username)
+    profile = profiles.resolve(profiles.profile_id("chesscom", args.username) if args.username else args.profile)
+    stats = build(profile)
     log.info("done: %s", stats)
 
 

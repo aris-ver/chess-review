@@ -1,8 +1,8 @@
-"""Stage 4d: emit the static review site -> data/site/.
+"""Stage 4d: emit the review site.
 
-    index.html            the app (vanilla JS, no framework, no board library)
-    games.json            {username, games: [summary...]}
-    games/<slug>.json     full review: every move with eval/label/clock/comment, key moments
+    data/site/index.html                    the app (vanilla JS, no framework, no board library), shared
+    data/profiles/<id>/site/games.json      {username, games: [summary...]}   served at /p/<id>/games.json
+    data/profiles/<id>/site/games/<slug>.json   full review: every move with eval/label/clock/comment, key moments
 
 Each game is classified live from positions ⋈ evals, so `write_game` can be
 called for one game while the server is still analysing it.
@@ -23,9 +23,11 @@ import chess.svg
 from . import explain
 from .accuracy import game_accuracy
 from .classify import classify_game, load_multipv
-from .config import META_JSON, SITE_DIR
+from . import profiles
+from .config import SITE_DIR
 from .critical import select
 from .db import connect
+from .profiles import Profile
 from .facts import extract
 from .pov import pov_win_pct, to_white_pov
 
@@ -139,29 +141,25 @@ def index_entry(game: dict, review: dict) -> dict:
     }
 
 
-def _username() -> str:
-    return json.loads(META_JSON.read_text())["username"] if META_JSON.exists() else "me"
-
-
-def game_review(con, game: dict) -> dict:
+def game_review(con, profile: Profile, game: dict) -> dict:
     positions = con.execute(POSITIONS_SQL.format(where="WHERE p.game_id = ?"), [game["game_id"]]).fetch_arrow_table().to_pylist()
     multipv = load_multipv(con, game["game_id"])
     moves = classify_game(game, positions, multipv)
-    return build_game(game, positions, moves, select(moves), multipv, _username())
+    return build_game(game, positions, moves, select(moves), multipv, profile.username)
 
 
-def write_game(con, game_id: str) -> dict:
+def write_game(con, profile: Profile, game_id: str) -> dict:
     """Rebuild one game's JSON (used by the server during on-demand analysis). Returns the index entry."""
     game = con.execute("SELECT * FROM games WHERE game_id = ?", [game_id]).fetch_arrow_table().to_pylist()[0]
-    review = game_review(con, game)
-    (SITE_DIR / "games").mkdir(parents=True, exist_ok=True)
-    (SITE_DIR / "games" / f"{review['id']}.json").write_text(json.dumps(review, ensure_ascii=False), encoding="utf-8")
+    review = game_review(con, profile, game)
+    (profile.site_dir / "games").mkdir(parents=True, exist_ok=True)
+    (profile.site_dir / "games" / f"{review['id']}.json").write_text(json.dumps(review, ensure_ascii=False), encoding="utf-8")
     return index_entry(game, review)
 
 
-def update_index(entry: dict) -> None:
-    path = SITE_DIR / "games.json"
-    data = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {"username": _username(), "games": []}
+def update_index(profile: Profile, entry: dict) -> None:
+    path = profile.site_dir / "games.json"
+    data = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {"username": profile.username, "games": []}
     data["games"] = [entry if g["id"] == entry["id"] else g for g in data["games"]]
     if entry["id"] not in {g["id"] for g in data["games"]}:
         data["games"].append(entry)
@@ -176,8 +174,9 @@ def write_static() -> None:
     (SITE_DIR / "index.html").write_text(html, encoding="utf-8")
 
 
-def build() -> dict:
-    con = connect()
+def build(profile: Profile) -> dict:
+    """Every game's review JSON + the index for one profile; also refreshes the shared index.html."""
+    con = connect(profile)
     games = con.execute("SELECT * FROM games ORDER BY played_at DESC").fetch_arrow_table().to_pylist()
     positions = con.execute(POSITIONS_SQL.format(where="")).fetch_arrow_table().to_pylist()
     multipv = load_multipv(con)
@@ -185,8 +184,8 @@ def build() -> dict:
     for r in positions:
         pos_g.setdefault(r["game_id"], []).append(r)
 
-    username = _username()
-    (SITE_DIR / "games").mkdir(parents=True, exist_ok=True)
+    username = profile.username
+    (profile.site_dir / "games").mkdir(parents=True, exist_ok=True)
     index = []
     for g in games:
         pos = pos_g.get(g["game_id"])
@@ -194,20 +193,22 @@ def build() -> dict:
             continue
         moves = classify_game(g, pos, multipv)
         review = build_game(g, pos, moves, select(moves), multipv, username)
-        (SITE_DIR / "games" / f"{review['id']}.json").write_text(json.dumps(review, ensure_ascii=False), encoding="utf-8")
+        (profile.site_dir / "games" / f"{review['id']}.json").write_text(json.dumps(review, ensure_ascii=False), encoding="utf-8")
         index.append(index_entry(g, review))
-    (SITE_DIR / "games.json").write_text(json.dumps({"username": username, "games": index}, ensure_ascii=False), encoding="utf-8")
+    (profile.site_dir / "games.json").write_text(json.dumps({"username": username, "games": index}, ensure_ascii=False), encoding="utf-8")
     write_static()
-    return {"games": len(index), "dir": str(SITE_DIR)}
+    return {"games": len(index), "dir": str(profile.site_dir)}
 
 
 def main(argv=None) -> None:
     p = argparse.ArgumentParser(prog="site", description=__doc__)
-    p.add_argument("--clean", action="store_true", help="remove data/site first")
+    p.add_argument("--clean", action="store_true", help="remove the profile's site dir first")
+    p.add_argument("--profile", help="profile id (default: the only profile)")
     args = p.parse_args(argv)
-    if args.clean and SITE_DIR.exists():
-        shutil.rmtree(SITE_DIR)
-    log.info("done: %s", build())
+    profile = profiles.resolve(args.profile)
+    if args.clean and profile.site_dir.exists():
+        shutil.rmtree(profile.site_dir)
+    log.info("done: %s", build(profile))
 
 
 if __name__ == "__main__":
