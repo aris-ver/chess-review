@@ -1,12 +1,20 @@
 """Local server: static site + a tiny JSON API for on-demand work. Stdlib only.
 
-    GET  /api/status          current job (or null)
-    POST /api/analyse/<id>    analyse one game (MultiPV=3, fixed nodes), streaming progress into games/<id>.json
-    POST /api/stop            stop the running analysis
-    POST /api/refresh         re-fetch the latest chess.com month, normalise, rebuild the site, analyse new games
-    POST /api/analyse_all     analyse every game that isn't fully analysed yet, newest first
-    GET  /api/legal?fen=      legal moves in a position (for the board UI)
-    POST /api/explore         {fen, uci, my_colour} -> the move evaluated and classified on the spot
+    GET  /api/status                    current job (or null)
+    GET  /api/profiles                  saved profiles with game counts
+    POST /api/profiles                  {source, username} -> create the profile and fetch its games (job "ingest")
+    POST /api/profiles/<id>/delete      remove a profile and everything under it (the engine cache is shared and stays)
+    POST /api/p/<id>/analyse/<slug>     analyse one game (MultiPV=3, fixed nodes), streaming progress into its JSON
+    POST /api/p/<id>/refresh            {analyse?: bool} re-fetch the latest chess.com month, normalise, rebuild the
+                                        site; with analyse=true the new games are analysed in the same job
+    POST /api/p/<id>/analyse_all        analyse every game that isn't fully analysed yet, newest first (no UI button;
+                                        `python -m chess_review analyse` does the same from the CLI)
+    POST /api/stop                      stop the running job
+    GET  /api/legal?fen=                legal moves in a position (for the board UI)
+    POST /api/explore                   {fen, uci, my_colour} -> the move evaluated and classified on the spot
+
+    /                                   the app (data/site)
+    /p/<id>/...                         a profile's games.json, games/<slug>.json, insights.html
 
 One job at a time: analysis uses every core. The DuckDB write lock is held only
 while a job runs, so the CLI stages still work in between.
@@ -16,6 +24,8 @@ import argparse
 import functools
 import json
 import logging
+import posixpath
+import re
 import signal
 import sys
 import threading
@@ -23,20 +33,24 @@ import time
 import traceback
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from typing import Optional
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, unquote, urlparse
 
-from . import aggregates, classify, ingest, normalise, site
+from . import aggregates, classify, ingest, normalise, profiles, site
 from .analyse import Analyser, export_parquet, open_db, pending_keys
-from .config import DEFAULT_NODES, ENGINE_IDLE_SECONDS, META_JSON, SITE_DIR
+from .config import DEFAULT_NODES, ENGINE_IDLE_SECONDS, SITE_DIR
 from .db import base_views
 from .explore import Explorer
+from .profiles import Profile
 
 log = logging.getLogger("serve")
+_PROFILE_PATH = re.compile(r"^/p/([A-Za-z0-9_.-]+)/(.*)$")
 
 
 class Job:
-    def __init__(self, kind: str, game_id: Optional[str] = None, slug: Optional[str] = None):
-        self.kind, self.game_id, self.slug = kind, game_id, slug
+    def __init__(self, kind: str, profile: Profile, game_id: Optional[str] = None, slug: Optional[str] = None,
+                 analyse: bool = False):
+        self.kind, self.profile, self.game_id, self.slug = kind, profile, game_id, slug
+        self.analyse = analyse                 # refresh: analyse the new games afterwards
         self.status = "queued"          # queued | running | finishing | done | error | stopped
         self.done, self.total = 0, 0
         self.error: Optional[str] = None
@@ -46,8 +60,8 @@ class Job:
         self.game_done, self.game_total = 0, 0   # analyse_all: position progress within the current game
 
     def to_dict(self) -> dict:
-        return {"kind": self.kind, "game": self.slug, "status": self.status, "done": self.done, "total": self.total,
-                "game_done": self.game_done, "game_total": self.game_total,
+        return {"kind": self.kind, "profile": self.profile.id, "game": self.slug, "status": self.status,
+                "done": self.done, "total": self.total, "game_done": self.game_done, "game_total": self.game_total,
                 "error": self.error, "elapsed": round(time.time() - self.started, 1)}
 
 
@@ -86,20 +100,28 @@ class Runner:
                 self._analyse(job)
             elif job.kind == "analyse_all":
                 self._analyse_all(job)
+            elif job.kind == "ingest":
+                self._ingest(job)
             else:
                 self._refresh(job)
             job.status = "stopped" if job.stop_requested else "done"
         except Exception as e:  # noqa: BLE001 - surfaced to the UI
             log.error("job failed: %s", traceback.format_exc())
             job.status, job.error = "error", str(e)
+            if job.kind == "ingest" and not (job.profile.site_dir / "games.json").exists():
+                # a profile that never got its games (typo, unknown user) shouldn't linger on the home screen
+                if "404" in job.error:
+                    job.error = f"chess.com has no user called {job.profile.username}"
+                profiles.delete(job.profile.id)
 
     def _analyse(self, job: Job) -> None:
+        p = job.profile
         con = open_db()
-        base_views(con)
+        base_views(con, p)
         try:
-            keys, stats = pending_keys(con, job.game_id)
+            keys, stats = pending_keys(con, p, job.game_id)
             job.total = len(keys)
-            log.info("analyse %s: %s", job.slug, stats)
+            log.info("analyse %s/%s: %s", p.id, job.slug, stats)
             # positions in game order so the review fills in from move 1
             order = {r[0]: i for i, r in enumerate(con.execute(
                 "SELECT fen_key, min(ply) FROM positions WHERE game_id = ? GROUP BY 1 ORDER BY 2", [job.game_id]).fetchall())}
@@ -107,31 +129,32 @@ class Runner:
 
             def progress(done: int, _total: int) -> None:
                 job.done = done
-                site.update_index(site.write_game(con, job.game_id))
+                site.update_index(p, site.write_game(con, p, job.game_id))
 
             self.analyser.run(keys, con, on_progress=progress, batch=self.analyser.workers, should_stop=lambda: job.stop_requested)
             job.status = "finishing"
-            site.update_index(site.write_game(con, job.game_id))
+            site.update_index(p, site.write_game(con, p, job.game_id))
             export_parquet(con)
         finally:
             con.close()
         # keep moves.parquet and the insights page current (cheap, no engine)
-        classify.build()
-        aggregates.build()
+        classify.build(p)
+        aggregates.build(p)
 
     def _analyse_all(self, job: Job) -> None:
+        p = job.profile
         job.kind, job.done, job.total = "analyse_all", 0, 0
         con = open_db()
-        base_views(con)
+        base_views(con, p)
         try:
             games = con.execute("SELECT game_id FROM games ORDER BY played_at DESC").fetchall()
             todo = []
             for (gid,) in games:
-                keys, _ = pending_keys(con, gid)
+                keys, _ = pending_keys(con, p, gid)
                 if keys:
                     todo.append((gid, keys))
             job.total = len(todo)
-            log.info("analyse_all: %d games need work", len(todo))
+            log.info("analyse_all %s: %d games need work", p.id, len(todo))
             for gid, keys in todo:
                 if job.stop_requested:
                     break
@@ -145,28 +168,52 @@ class Runner:
 
                 self.analyser.run(keys, con, on_progress=progress, batch=self.analyser.workers * 2,
                                   should_stop=lambda: job.stop_requested)
-                site.update_index(site.write_game(con, gid))
+                site.update_index(p, site.write_game(con, p, gid))
                 job.done += 1
                 log.info("analyse_all: %d/%d games done (%s)", job.done, job.total, job.slug)
             job.status = "finishing"
             export_parquet(con)
         finally:
             con.close()
-        classify.build()
-        aggregates.build()
+        classify.build(p)
+        aggregates.build(p)
+
+    def _rebuild(self, job: Job) -> None:
+        """normalise -> site -> classify -> aggregates for the job's profile (no engine work)."""
+        p = job.profile
+        normalise.build(p)
+        job.done += 1
+        site.build(p)
+        job.done += 1
+        classify.build(p)
+        aggregates.build(p)
+        job.done += 1
+
+    def _ingest(self, job: Job) -> None:
+        """New profile: fetch every archive, then build its site. done/total count months while fetching."""
+        p = job.profile
+        if p.source != "chesscom":
+            raise ValueError(f"{p.source} profiles can't be fetched yet")
+
+        def progress(done: int, total: int) -> None:
+            job.done, job.total = done, total + 3
+
+        stats = ingest.fetch_archives(p, on_progress=progress)
+        log.info("ingest %s: %s", p.id, stats)
+        job.total = max(job.total, 3)
+        job.done = job.total - 3
+        self._rebuild(job)
 
     def _refresh(self, job: Job) -> None:
-        username = json.loads(META_JSON.read_text())["username"]
-        job.total = 3
-        stats = ingest.fetch_archives(username, refresh_latest=True)
-        log.info("refresh: %s", stats)
+        p = job.profile
+        job.total = 4
+        stats = ingest.fetch_archives(p, refresh_latest=True)
+        log.info("refresh %s: %s", p.id, stats)
         job.done = 1
-        normalise.build(username)
-        job.done = 2
-        site.build()
-        job.done = 3
-        # new games are analysed right away (same job; the UI switches to the batch progress display)
-        self._analyse_all(job)
+        self._rebuild(job)
+        if job.analyse:
+            # the UI switches to the batch progress display for the rest of the job
+            self._analyse_all(job)
 
 
 class Handler(SimpleHTTPRequestHandler):
@@ -178,6 +225,17 @@ class Handler(SimpleHTTPRequestHandler):
 
     def log_message(self, fmt, *args):
         log.debug(fmt, *args)
+
+    def translate_path(self, path: str) -> str:
+        """/p/<id>/<file> comes from that profile's site dir; everything else from data/site."""
+        m = _PROFILE_PATH.match(urlparse(path).path)
+        if m:
+            p = profiles.load(m.group(1))
+            rel = posixpath.normpath("/" + unquote(m.group(2))).lstrip("/")
+            if p is None:
+                return str(SITE_DIR / "__missing__")
+            return str(p.site_dir / rel)
+        return super().translate_path(path)
 
     def _json(self, obj, code: int = 200) -> None:
         body = json.dumps(obj).encode()
@@ -191,9 +249,16 @@ class Handler(SimpleHTTPRequestHandler):
         n = int(self.headers.get("Content-Length") or 0)
         return json.loads(self.rfile.read(n) or b"{}") if n else {}
 
+    def _start(self, job: Job) -> None:
+        if not self.runner.start(job):
+            return self._json({"error": "busy", "job": self.runner.job.to_dict()}, 409)
+        return self._json({"job": job.to_dict()})
+
     def do_GET(self):
         if self.path.startswith("/api/status"):
             return self._json({"job": self.runner.job.to_dict() if self.runner.job else None})
+        if self.path.startswith("/api/profiles"):
+            return self._json({"profiles": [p.summary() for p in profiles.list_profiles()]})
         if self.path.startswith("/api/legal"):
             fen = parse_qs(urlparse(self.path).query).get("fen", [""])[0]
             try:
@@ -204,26 +269,40 @@ class Handler(SimpleHTTPRequestHandler):
 
     def do_POST(self):
         r = self.runner
-        if self.path.startswith("/api/analyse/"):
-            slug = self.path.rsplit("/", 1)[-1]
-            game_id = _game_id_for(slug)
-            if game_id is None:
-                return self._json({"error": "unknown game"}, 404)
-            job = Job("analyse", game_id, slug)
-            if not r.start(job):
+        path = urlparse(self.path).path
+        if path == "/api/profiles":
+            b = self._body()
+            source, username = b.get("source", "chesscom"), (b.get("username") or "").strip()
+            if source != "chesscom":
+                return self._json({"error": "only chess.com profiles can be added for now"}, 400)
+            try:
+                p = profiles.create(source, username)
+            except ValueError as e:
+                return self._json({"error": str(e)}, 400)
+            if (p.site_dir / "games.json").exists():
+                return self._json({"profile": p.summary(), "job": None})   # already set up: just open it
+            return self._start(Job("ingest", p))
+        m = re.match(r"^/api/profiles/([A-Za-z0-9_.-]+)/delete$", path)
+        if m:
+            if r.busy() and r.job.profile.id == m.group(1):
                 return self._json({"error": "busy", "job": r.job.to_dict()}, 409)
-            return self._json({"job": job.to_dict()})
-        if self.path.startswith("/api/analyse_all"):
-            job = Job("analyse_all")
-            if not r.start(job):
-                return self._json({"error": "busy", "job": r.job.to_dict()}, 409)
-            return self._json({"job": job.to_dict()})
-        if self.path.startswith("/api/refresh"):
-            job = Job("refresh")
-            if not r.start(job):
-                return self._json({"error": "busy", "job": r.job.to_dict()}, 409)
-            return self._json({"job": job.to_dict()})
-        if self.path.startswith("/api/explore"):
+            return self._json({"ok": profiles.delete(m.group(1))})
+        m = re.match(r"^/api/p/([A-Za-z0-9_.-]+)/(analyse_all|refresh|analyse/([^/]+))$", path)
+        if m:
+            p = profiles.load(m.group(1))
+            if p is None:
+                return self._json({"error": "unknown profile"}, 404)
+            action = m.group(2)
+            if action.startswith("analyse/"):
+                slug = m.group(3)
+                game_id = _game_id_for(p, slug)
+                if game_id is None:
+                    return self._json({"error": "unknown game"}, 404)
+                return self._start(Job("analyse", p, game_id, slug))
+            if action == "analyse_all":
+                return self._start(Job("analyse_all", p))
+            return self._start(Job("refresh", p, analyse=bool(self._body().get("analyse"))))
+        if path.startswith("/api/explore"):
             b = self._body()
             try:
                 return self._json(r.explorer.move(b["fen"], b["uci"], b.get("my_colour", "white"), int(b.get("ply", 0))))
@@ -232,16 +311,16 @@ class Handler(SimpleHTTPRequestHandler):
             except Exception as e:  # noqa: BLE001
                 log.error("explore failed: %s", traceback.format_exc())
                 return self._json({"error": str(e)}, 500)
-        if self.path.startswith("/api/stop"):
+        if path.startswith("/api/stop"):
             if r.job:
                 r.job.stop_requested = True
             return self._json({"ok": True})
         return self._json({"error": "not found"}, 404)
 
 
-def _game_id_for(slug: str) -> Optional[str]:
-    path = SITE_DIR / "games" / f"{slug}.json"
-    if not path.exists():
+def _game_id_for(profile: Profile, slug: str) -> Optional[str]:
+    path = profile.site_dir / "games" / f"{slug}.json"
+    if not path.exists() or "/" in slug or ".." in slug:
         return None
     return json.loads(path.read_text(encoding="utf-8"))["url"]
 
@@ -253,8 +332,8 @@ def main(argv=None) -> None:
     p.add_argument("--nodes", type=int, default=DEFAULT_NODES, help="nodes per position for on-demand analysis")
     p.add_argument("--workers", type=int, default=None, help="engine processes for game analysis (default: physical cores)")
     args = p.parse_args(argv)
-    if not (SITE_DIR / "index.html").exists():
-        site.build()
+    profiles.migrate_legacy()
+    site.write_static()     # index.html is a pure copy of static/, so it is always current after a restart
     Handler.runner = Runner(args.nodes, args.workers)
 
     def reaper():
@@ -267,7 +346,7 @@ def main(argv=None) -> None:
     threading.Thread(target=reaper, daemon=True).start()
     handler = functools.partial(Handler, directory=str(SITE_DIR))
     srv = ThreadingHTTPServer((args.host, args.port), handler)
-    log.info("serving %s at http://%s:%d/", SITE_DIR, args.host, args.port)
+    log.info("serving %s (%d profiles) at http://%s:%d/", SITE_DIR, len(profiles.list_profiles()), args.host, args.port)
 
     def shutdown(signum, _frame):
         log.info("signal %d: shutting down", signum)

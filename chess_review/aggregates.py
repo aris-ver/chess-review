@@ -1,4 +1,4 @@
-"""Stage 5: GROUP BY queries over my classified moves -> data/site/insights.html.
+"""Stage 5: GROUP BY queries over my classified moves -> the profile's site/insights.html.
 
 Everything here is my moves only (moves.is_mine). "Bleed" is average win% lost
 per move. Endgame conversion compares the result actually scored against the
@@ -8,14 +8,14 @@ non-pawn material, queens off).
 
 import argparse
 import html
-import json
 import logging
 
 import chess
 
 from .accuracy import game_accuracy
-from .config import META_JSON, SITE_DIR
+from . import profiles
 from .db import connect
+from .profiles import Profile
 from .pov import pov_win_pct
 
 log = logging.getLogger("aggregates")
@@ -239,7 +239,7 @@ def _heatmap(eco_ply) -> str:
     return f'<table class="t heat"><thead><tr>{head}</tr></thead><tbody>{"".join(rows)}</tbody></table><div class="note">avg win% lost per move; darker = worse. Move ranges are move numbers.</div>'
 
 
-def render(d: dict, username: str) -> str:
+def render(d: dict, username: str, profile_id: str = "") -> str:
     h = d["headline"]
     tiles = "".join(f'<div class="tile"><div class="v">{v}</div><div class="k">{k}</div></div>' for k, v in (
         ("games", h[0]), ("win rate", f"{h[1]}%"), ("avg accuracy", f"{h[2]}%"),
@@ -263,7 +263,7 @@ table.heat td.num {{ text-align:center; }} .note {{ color:var(--muted); font-siz
 .legend {{ color:var(--muted); font-size:12px; margin-top:6px; }} .sw {{ display:inline-block; width:10px; height:10px; margin:0 4px 0 10px; vertical-align:-1px; }}
 .empty {{ color:var(--muted); padding:16px; }}
 </style></head><body>
-<header><h1><a href="index.html">♞ Chess Review</a></h1><span class="nav"><a href="index.html">Games</a><a href="insights.html" style="color:var(--text)">Insights</a></span></header>
+<header><h1><a href="../../">♞ Chess Review</a></h1><span class="nav"><a href="../../#/p/{profile_id}">Games</a><a href="insights.html" style="color:var(--text)">Insights</a></span></header>
 <main>
 <div class="tiles">{tiles}</div>
 
@@ -294,19 +294,19 @@ table.heat td.num {{ text-align:center; }} .note {{ color:var(--muted); font-siz
 </main></body></html>"""
 
 
-def build() -> dict:
-    con = connect()
+def build(profile: Profile) -> dict:
+    con = connect(profile)
     d = query_all(con)
-    username = json.loads(META_JSON.read_text())["username"] if META_JSON.exists() else "me"
-    SITE_DIR.mkdir(parents=True, exist_ok=True)
-    (SITE_DIR / "insights.html").write_text(render(d, username), encoding="utf-8")
-    return {"games": d["headline"][0], "out": str(SITE_DIR / "insights.html")}
+    profile.site_dir.mkdir(parents=True, exist_ok=True)
+    (profile.site_dir / "insights.html").write_text(render(d, profile.username, profile.id), encoding="utf-8")
+    return {"games": d["headline"][0], "out": str(profile.site_dir / "insights.html")}
 
 
 def main(argv=None) -> None:
     p = argparse.ArgumentParser(prog="aggregates", description=__doc__)
-    p.parse_args(argv)
-    log.info("done: %s", build())
+    p.add_argument("--profile", help="profile id (default: the only profile)")
+    args = p.parse_args(argv)
+    log.info("done: %s", build(profiles.resolve(args.profile)))
 
 
 if __name__ == "__main__":

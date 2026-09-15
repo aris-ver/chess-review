@@ -32,6 +32,26 @@ main { padding: 16px 18px; max-width: 1800px; margin: 0 auto; }
 .hidden { display: none !important; }
 #toast { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); background: var(--panel2); border: 1px solid var(--line); padding: 8px 14px; border-radius: 8px; z-index: 10; }
 
+/* home: saved profiles + ad-hoc entries */
+.home { max-width: 900px; margin: 24px auto 0; }
+.home h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 26px 0 10px; }
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; cursor: pointer; position: relative; min-height: 96px; display: flex; flex-direction: column; gap: 4px; }
+.card:hover { border-color: var(--accent); }
+.card.soon { cursor: default; opacity: .55; } .card.soon:hover { border-color: var(--line); }
+.card .src { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+.card .who { font-size: 17px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-right: 22px; }
+.card .meta { color: var(--muted); font-size: 12px; margin-top: auto; }
+.card .x { position: absolute; top: 8px; right: 8px; color: var(--muted); font-size: 14px; padding: 2px 6px; border-radius: 4px; }
+.card .x:hover { background: var(--panel2); color: var(--c-blunder); }
+.card .progress { margin-top: 6px; }
+.card.add { border-style: dashed; justify-content: center; }
+.card.add form { display: flex; flex-direction: column; gap: 8px; }
+.card.add select, .card.add input { font: inherit; color: var(--text); background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; width: 100%; }
+.card.add input::placeholder { color: var(--muted); }
+.card.add button { align-self: flex-start; }
+.card .desc { color: var(--muted); font-size: 13px; }
+
 /* game list */
 .filters { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; align-items: center; }
 .filters .sep { width: 1px; height: 22px; background: var(--line); margin: 0 4px; }
@@ -244,13 +264,25 @@ svg.graph { width: 100%; height: 90px; display: block; cursor: pointer; backgrou
   <span class="crumb" id="crumb"></span>
   <div class="right">
     <button id="b-sound" title="Toggle sound">🔊</button>
-    <button id="b-refresh" title="Fetch new games from chess.com and analyse them"><span class="i">⟳</span><span class="t"> Refresh games</span></button>
-    <button id="b-all" title="Analyse every game that isn't analysed yet (hours)"><span class="i">⚙</span><span class="t"> Analyse all</span></button>
+    <button id="b-refresh" class="pctx" title="Fetch new games from chess.com"><span class="i">⟳</span><span class="t"> Refresh games</span></button>
+    <button id="b-auto" class="pctx" title="Analyse newly fetched games automatically after a refresh (off: analyse each game on demand)"><span class="i">⚙</span><span class="t"> Auto-analyse: off</span></button>
     <span id="jobstat" style="color:var(--muted);font-size:12px"></span>
-    <a href="insights.html" title="Insights"><span class="i">📊</span><span class="t"> Insights →</span></a>
+    <a id="a-insights" class="pctx" href="#" title="Insights"><span class="i">📊</span><span class="t"> Insights →</span></a>
   </div>
 </header>
 <main>
+  <section id="home" class="hidden">
+    <div class="home">
+      <h2>Profiles</h2>
+      <div class="cards" id="profiles"></div>
+      <h2>Analyse something else</h2>
+      <div class="cards">
+        <div class="card soon" title="Coming next"><span class="src">PGN</span><span class="who">Paste a PGN</span><span class="desc">Review any game from its PGN text.</span></div>
+        <div class="card soon" title="Coming next"><span class="src">FEN</span><span class="who">From a position</span><span class="desc">Paste a FEN and explore it with the engine.</span></div>
+        <div class="card soon" title="Coming next"><span class="src">Board</span><span class="who">Set up a board</span><span class="desc">Place the pieces yourself, then analyse.</span></div>
+      </div>
+    </div>
+  </section>
   <section id="list">
     <div class="filters">
       <button data-f="result" data-v="" class="active">All</button>
@@ -293,7 +325,7 @@ svg.graph { width: 100%; height: 90px; display: block; cursor: pointer; backgrou
       </div>
       <div class="panel">
         <div class="phead">
-          <a href="#/" class="pbtn" title="Back to games (Esc)">←</a>
+          <a href="#/" class="pbtn" id="a-back" title="Back to games (Esc)">←</a>
           <span class="ptitle"><svg class="ico"><use href="#ic-best"/></svg> Game Review</span>
           <span class="pright"><button class="pbtn" id="b-sound2" title="Sound">🔊</button><button class="pbtn" id="b-flip" title="Flip (f)">⇅</button></span>
         </div>
@@ -324,7 +356,7 @@ svg.graph { width: 100%; height: 90px; display: block; cursor: pointer; backgrou
           <button class="primary" id="b-analyse">Analyse game</button>
           <span id="astatus"></span>
           <button id="b-key" title="Next key moment (space)">Key ▸</button>
-          <a href="insights.html" class="pbtn" title="Insights">📊</a>
+          <a href="#" class="pbtn" id="a-insights2" title="Insights">📊</a>
         </div>
         <div class="progress hidden" id="aprog"><div style="width:0%"></div></div>
       </div>
@@ -380,11 +412,13 @@ const icon = (lb, cls = 'ico') => !lb || !LABEL_NAME[lb] ? '' :
   ASSETS.hasIcons ? `<span class="${cls}"><img src="${iconSrc(lb)}" alt="${LABEL_NAME[lb]}"></span>` : `<svg class="${cls}"><use href="#ic-${lb}"/></svg>`;
 
 const $ = id => document.getElementById(id);
-const state = { games: null, username: '', filters: { result:'', colour:'', analysed:'', brilliant:'' }, game: null, ply: 0, flipped: false,
+const state = { profile: null, games: null, username: '', filters: { result:'', colour:'', analysed:'', brilliant:'' }, game: null, ply: 0, flipped: false,
                 sound: true, poll: null,
                 variation: null,      // { basePly, moves: [...] } - a "what if" line branching after basePly main-line moves
                 sel: null, legal: null, exploring: false, cycle: {}, playing: null, explain: false, showBest: false };
 try { state.sound = localStorage.getItem('sound') !== 'off'; } catch (e) {}
+state.autoAnalyse = false; try { state.autoAnalyse = localStorage.getItem('autoAnalyse') === 'on'; } catch (e) {}
+const P = () => `p/${state.profile}`;   // URL prefix of the current profile's files and API
 
 // The line being viewed: main-line moves up to the branch point, then the variation.
 function line() {
@@ -446,19 +480,79 @@ $('b-sound').textContent = state.sound ? '🔊' : '🔇';
 window.addEventListener('hashchange', () => assetsReady.then(route));
 async function route() {
   const h = location.hash || '#/';
-  const m = h.match(/^#\/game\/([^/?]+)/);
-  if (m) await showGame(m[1]); else await showList();
+  const m = h.match(/^#\/p\/([A-Za-z0-9_.-]+)(?:\/game\/([^/?]+))?/);
+  if (!m) return showHome();
+  if (state.profile !== m[1]) { state.profile = m[1]; state.games = null; state.game = null; }
+  if (m[2]) await showGame(m[2]); else await showList();
 }
 async function loadGames(force) {
-  if (!state.games || force) { const d = await (await fetch('games.json')).json(); state.games = d.games; state.username = d.username; }
+  if (!state.games || force) { const d = await (await fetch(`${P()}/games.json`)).json(); state.games = d.games; state.username = d.username; }
   return state.games;
+}
+function setContext(on) {   // profile-scoped header controls only make sense inside a profile
+  document.querySelectorAll('header .pctx').forEach(el => el.classList.toggle('hidden', !on));
+  if (on) $('a-insights').href = `${P()}/insights.html`;
+}
+
+// ---------- home ----------
+const SOURCE_NAME = { chesscom: 'chess.com', lichess: 'lichess', pgn: 'PGN' };
+async function showHome() {
+  $('review').classList.add('hidden'); $('list').classList.add('hidden'); $('home').classList.remove('hidden');
+  state.game = null; state.profile = null; state.games = null; dropVariation(); stopPlay();
+  setContext(false); $('crumb').textContent = '';
+  await renderProfiles();
+  pollStatus();
+}
+async function renderProfiles() {
+  let d; try { d = await (await fetch('api/profiles')).json(); } catch (e) { d = { profiles: [] }; }
+  const cards = d.profiles.map(p => `
+    <div class="card prof" data-id="${p.id}">
+      <span class="src">${SOURCE_NAME[p.source] || p.source}</span>
+      <span class="who" title="${esc(p.username)}">${esc(p.username)}</span>
+      <span class="meta">${p.games} games · ${p.analysed} analysed</span>
+      <div class="progress hidden"><div></div></div>
+      <span class="x" title="Remove this profile (the engine cache is kept)">✕</span>
+    </div>`).join('');
+  $('profiles').innerHTML = cards + `
+    <div class="card add">
+      <form id="addform">
+        <select name="source"><option value="chesscom">chess.com</option><option value="lichess" disabled>lichess (soon)</option></select>
+        <input name="username" placeholder="username" autocomplete="off" spellcheck="false" required>
+        <button class="primary" type="submit">Add profile</button>
+      </form>
+    </div>`;
+  $('profiles').querySelectorAll('.card.prof').forEach(c => {
+    c.onclick = () => location.hash = '#/p/' + c.dataset.id;
+    c.querySelector('.x').onclick = async e => {
+      e.stopPropagation();
+      if (!confirm(`Remove ${c.querySelector('.who').textContent} and its games? Engine evaluations are shared and stay cached.`)) return;
+      const r = await fetch(`api/profiles/${c.dataset.id}/delete`, { method: 'POST' });
+      const d = await r.json();
+      if (!r.ok) { toast(d.error === 'busy' ? `Busy: ${jobText(d.job)}` : d.error); return; }
+      renderProfiles();
+    };
+  });
+  $('addform').onsubmit = async e => {
+    e.preventDefault();
+    const f = e.target, body = { source: f.source.value, username: f.username.value.trim() };
+    if (!body.username) return;
+    const r = await fetch('api/profiles', { method: 'POST', body: JSON.stringify(body) });
+    const d = await r.json();
+    if (!r.ok) { toast(d.error === 'busy' ? `Busy: ${jobText(d.job)}` : d.error); return; }
+    if (!d.job) { location.hash = '#/p/' + d.profile.id; return; }
+    toast(`Fetching ${body.username}'s games from chess.com…`);
+    await renderProfiles();
+    pollStatus();
+  };
 }
 
 // ---------- list ----------
 async function showList() {
-  $('review').classList.add('hidden'); $('list').classList.remove('hidden');
+  $('review').classList.add('hidden'); $('home').classList.add('hidden'); $('list').classList.remove('hidden');
   state.game = null; dropVariation(); stopPolling(); stopPlay();
-  const games = await loadGames(true);
+  setContext(true);
+  let games;
+  try { games = await loadGames(true); } catch (e) { location.hash = '#/'; return; }
   $('crumb').textContent = state.username || '';
   const f = state.filters;
   const rows = games.filter(g => (!f.result || g.result === f.result) && (!f.colour || g.my_colour === f.colour) &&
@@ -478,7 +572,8 @@ async function showList() {
       <td class="num ${g.blunders ? 'blunders' : ''}">${g.analysed >= 0.999 ? (g.blunders || '0') : ''}</td>
       <td class="num">${g.brilliants ? `<span style="color:var(--c-brilliant);font-weight:700">${g.brilliants}</span>` : ''}</td>
     </tr>`).join('');
-  $('rows').querySelectorAll('tr.row').forEach(tr => tr.onclick = () => location.hash = '#/game/' + tr.dataset.id);
+  $('rows').querySelectorAll('tr.row').forEach(tr => tr.onclick = () => location.hash = `#/p/${state.profile}/game/${tr.dataset.id}`);
+  pollStatus();
 }
 function analysedPill(a) {
   if (a >= 0.999) return '<span class="pill full">analysed</span>';
@@ -492,9 +587,10 @@ document.querySelectorAll('.filters button').forEach(b => b.onclick = () => {
 });
 
 // ---------- review ----------
-async function loadGame(id) { return (await fetch(`games/${id}.json`)).json(); }
+async function loadGame(id) { return (await fetch(`${P()}/games/${id}.json`)).json(); }
 async function showGame(id) {
-  const g = await loadGame(id);
+  let g; try { g = await loadGame(id); } catch (e) { location.hash = state.profile ? `#/p/${state.profile}` : '#/'; return; }
+  $('a-back').href = `#/p/${state.profile}`; $('a-insights2').href = `${P()}/insights.html`; setContext(true);
   const same = state.game && state.game.id === id;
   state.game = g;
   if (!same) { stopPlay(); state.ply = 0; state.flipped = g.my_colour === 'black'; dropVariation(); state.sel = null; state.cycle = {}; $('pieces').innerHTML = ''; }
@@ -566,7 +662,7 @@ function renderAnalyseBox(job) {
   else { btn.textContent = g.analysed > 0 ? 'Continue analysis' : 'Analyse game'; btn.disabled = false; btn.classList.add('primary'); st.textContent = g.analysed > 0 ? `${Math.round(g.analysed * 100)}% analysed` : 'Not analysed yet'; }
 }
 $('b-analyse').onclick = async () => {
-  const r = await fetch(`api/analyse/${state.game.id}`, { method: 'POST' });
+  const r = await fetch(`api/${P()}/analyse/${state.game.id}`, { method: 'POST' });
   const d = await r.json();
   if (!r.ok) { toast(d.error === 'busy' ? `Busy: ${jobText(d.job)}` : d.error); return; }
   lastJobDone = -1;
@@ -574,22 +670,26 @@ $('b-analyse').onclick = async () => {
   pollStatus();
 };
 $('b-refresh').onclick = async () => {
-  const r = await fetch('api/refresh', { method: 'POST' });
+  const r = await fetch(`api/${P()}/refresh`, { method: 'POST', body: JSON.stringify({ analyse: state.autoAnalyse }) });
   const d = await r.json();
   if (!r.ok) { toast(d.error === 'busy' ? `Busy: ${jobText(d.job)}` : d.error); return; }
-  toast('Fetching new games from chess.com — new ones are analysed automatically…');
+  toast(state.autoAnalyse ? 'Fetching new games from chess.com — new ones are analysed automatically…' : 'Fetching new games from chess.com…');
   pollStatus();
 };
-$('b-all').onclick = async () => {
-  if (!confirm('Analyse every game that is not fully analysed yet? This takes a few hours and uses all CPU cores.')) return;
-  const r = await fetch('api/analyse_all', { method: 'POST' });
-  const d = await r.json();
-  if (!r.ok) { toast(d.error === 'busy' ? `Busy: ${jobText(d.job)}` : d.error); return; }
-  toast('Analysing all games…');
-  pollStatus();
+function renderAuto() {
+  $('b-auto').classList.toggle('active', state.autoAnalyse);
+  $('b-auto').querySelector('.t').textContent = ` Auto-analyse: ${state.autoAnalyse ? 'on' : 'off'}`;
+}
+$('b-auto').onclick = () => {
+  state.autoAnalyse = !state.autoAnalyse;
+  try { localStorage.setItem('autoAnalyse', state.autoAnalyse ? 'on' : 'off'); } catch (e) {}
+  renderAuto();
+  toast(state.autoAnalyse ? 'New games will be analysed after each refresh' : 'Games are analysed on demand only');
 };
+renderAuto();
 function jobText(j) {
   if (j.kind === 'analyse_all') return `analysing all games: ${j.done}/${j.total} done, current ${j.game} ${j.game_done}/${j.game_total}`;
+  if (j.kind === 'ingest') return `fetching ${j.profile} (${j.done}/${j.total})`;
   return j.kind === 'analyse' ? `analysing game ${j.game} (${j.done}/${j.total})` : `refreshing games (${j.done}/${j.total})`;
 }
 let lastJobStatus = null, lastJobDone = -1;
@@ -600,14 +700,27 @@ async function pollStatus() {
     try { d = await (await fetch('api/status')).json(); } catch (e) { return; }
     const j = d.job;
     const active = j && ['queued', 'running', 'finishing'].includes(j.status);
-    $('b-refresh').disabled = !!active; $('b-all').disabled = !!active;
+    $('b-refresh').disabled = !!active;
     $('jobstat').textContent = active ? jobText(j) : '';
-    if (j && j.kind === 'analyse_all') {
+    const mine = j && j.profile === state.profile;   // jobs belong to a profile; only react to the one being viewed
+    if (j && j.kind === 'ingest') {
+      const card = $('profiles') && $('profiles').querySelector(`.card[data-id="${j.profile}"]`);
+      if (card) {
+        const prog = card.querySelector('.progress');
+        prog.classList.toggle('hidden', !active);
+        if (active) prog.firstElementChild.style.width = (j.total ? 100 * j.done / j.total : 0) + '%';
+      }
+      if (!active && lastJobStatus && lastJobStatus !== j.status) {
+        if (j.status === 'done') { toast('Profile ready'); if (!state.profile) location.hash = '#/p/' + j.profile; }
+        else { toast(`Fetch ${j.status}` + (j.error ? ': ' + j.error : '')); if (!state.profile) renderProfiles(); }
+      }
+    }
+    if (j && j.kind === 'analyse_all' && mine) {
       if (active && state.game && j.game === state.game.id && j.game_done !== lastJobDone) { lastJobDone = j.game_done; await reloadGame(); }
       if (active && !state.game && j.done !== lastJobDone) { lastJobDone = j.done; showList(); }
       if (!active && lastJobStatus && lastJobStatus !== j.status) { toast(j.status === 'done' ? 'All games analysed' : `Batch ${j.status}` + (j.error ? ': ' + j.error : '')); if (state.game) reloadGame(); else showList(); }
     }
-    if (j && j.kind === 'analyse' && state.game && j.game === state.game.id) {
+    if (j && j.kind === 'analyse' && mine && state.game && j.game === state.game.id) {
       renderAnalyseBox(active ? j : null);
       if (active) {
         if (j.done !== lastJobDone) { lastJobDone = j.done; await reloadGame(); renderAnalyseBox(j); }
@@ -615,7 +728,7 @@ async function pollStatus() {
         await reloadGame(); renderAnalyseBox(null);
         if (j.status === 'error') toast('Analysis failed: ' + j.error); else play('notify');
       }
-    } else if (j && j.kind === 'refresh' && lastJobStatus && lastJobStatus !== j.status && !active) {
+    } else if (j && j.kind === 'refresh' && mine && lastJobStatus && lastJobStatus !== j.status && !active) {
       toast(j.status === 'done' ? 'Games refreshed' : 'Refresh failed: ' + j.error);
       if (!state.game) showList(); else reloadGame();
     }
@@ -1233,7 +1346,7 @@ document.addEventListener('keydown', e => {
   else if (e.key === 'f') $('b-flip').onclick();
   else if (e.key === 'p') togglePlay();
   else if (e.key === ' ') { nextKey(); e.preventDefault(); }
-  else if (e.key === 'Escape') { if (state.variation) { const p = Math.min(state.ply, state.variation.basePly); dropVariation(); renderMoveList(); go(p); update(false); } else location.hash = '#/'; }
+  else if (e.key === 'Escape') { if (state.variation) { const p = Math.min(state.ply, state.variation.basePly); dropVariation(); renderMoveList(); go(p); update(false); } else location.hash = `#/p/${state.profile}`; }
 });
 window.addEventListener('resize', () => state.game && renderEvalBar());
 
@@ -1248,7 +1361,7 @@ function moveLabel(ply, san) { return `${moveNo(ply)} ${san}`; }
 assetsReady.then(route);
 pollStatus();
 
-// Developer smoke test: index.html?selftest=1#/game/<id> drives navigation + exploration and writes results to #selftest.
+// Developer smoke test: index.html?selftest=1#/p/<profile>/game/<id> drives navigation + exploration and writes results to #selftest.
 if (location.search.includes('selftest')) (async () => {
   const log = [], el = document.createElement('pre'); el.id = 'selftest'; document.body.appendChild(el);
   const say = m => { log.push(m); el.textContent = log.join(String.fromCharCode(10)); };

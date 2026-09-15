@@ -41,10 +41,11 @@ from .config import (
     EXCELLENT,
     INACCURACY,
     MISTAKE,
-    MOVES_PARQUET,
     ONLY_MOVE_GAP,
 )
+from . import profiles
 from .db import connect
+from .profiles import Profile
 from .facts import see
 from .fen import fen_key
 from .pov import pov_win_pct
@@ -247,12 +248,12 @@ def classify_all(con) -> list[dict]:
     return out
 
 
-def build() -> dict:
-    con = connect()
+def build(profile: Profile) -> dict:
+    con = connect(profile)
     out = classify_all(con)
-    MOVES_PARQUET.parent.mkdir(parents=True, exist_ok=True)
-    pq.write_table(pa.Table.from_pylist(out, schema=SCHEMA), MOVES_PARQUET)
-    con = connect()
+    profile.moves_parquet.parent.mkdir(parents=True, exist_ok=True)
+    pq.write_table(pa.Table.from_pylist(out, schema=SCHEMA), profile.moves_parquet)
+    con = connect(profile)
     dist = con.execute("""
         SELECT label, count(*) n, round(100.0 * count(*) / sum(count(*)) OVER (), 1) pct
         FROM moves GROUP BY label ORDER BY n DESC
@@ -262,8 +263,9 @@ def build() -> dict:
 
 def main(argv=None) -> None:
     p = argparse.ArgumentParser(prog="classify", description=__doc__)
-    p.parse_args(argv)
-    stats = build()
+    p.add_argument("--profile", help="profile id (default: the only profile)")
+    args = p.parse_args(argv)
+    stats = build(profiles.resolve(args.profile))
     log.info("moves=%d games=%d", stats["moves"], stats["games"])
     for label, n, pct in stats["distribution"]:
         log.info("  %-11s %6d  %5.1f%%", label, n, pct)

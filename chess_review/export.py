@@ -7,7 +7,8 @@ directly eyeballable; the stored cache stays side-to-move POV.
 import argparse
 import logging
 
-from .config import EXPORT_DIR, sql_path
+from . import profiles
+from .config import sql_path
 from .db import connect
 
 log = logging.getLogger("export")
@@ -15,9 +16,12 @@ log = logging.getLogger("export")
 
 def main(argv=None) -> None:
     p = argparse.ArgumentParser(prog="export", description=__doc__)
-    p.parse_args(argv)
+    p.add_argument("--profile", help="profile id (default: the only profile)")
+    args = p.parse_args(argv)
+    profile = profiles.resolve(args.profile)
+    EXPORT_DIR = profile.export_dir
     EXPORT_DIR.mkdir(parents=True, exist_ok=True)
-    con = connect()
+    con = connect(profile)
 
     con.execute(f"COPY (SELECT * FROM games ORDER BY played_at) TO {sql_path(EXPORT_DIR / 'games.csv')} (HEADER)")
     con.execute(f"""

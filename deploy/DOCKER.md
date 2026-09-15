@@ -18,7 +18,7 @@ Or start empty and ingest inside the container:
 
 ```bash
 docker compose run --rm chess-review python -m chess_review ingest --username <me>
-docker compose run --rm chess-review python -m chess_review normalise --username <me>
+docker compose run --rm chess-review python -m chess_review normalise
 docker compose run --rm chess-review python -m chess_review review
 ```
 

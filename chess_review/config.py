@@ -3,17 +3,11 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 DATA = Path(os.environ.get("CHESS_REVIEW_DATA", ROOT / "data"))
-RAW_DIR = DATA / "raw"          # verbatim chess.com monthly archives, {YYYY-MM}.json
-PGN_DIR = DATA / "pgn"          # pasted PGNs, {content_hash}.pgn
-EXPORT_DIR = DATA / "export"
-
-GAMES_PARQUET = DATA / "games.parquet"
-POSITIONS_PARQUET = DATA / "positions.parquet"
-EVALS_DB = DATA / "evals.duckdb"        # incremental, resumable engine cache
+# Shared across profiles. Per-player paths (raw archives, games/positions/moves parquet, review JSON)
+# live under data/profiles/<id>/ and come from profiles.Profile.
+EVALS_DB = DATA / "evals.duckdb"        # incremental, resumable engine cache, keyed by position
 EVALS_PARQUET = DATA / "evals.parquet"  # snapshot written at the end of each analyse run
-MOVES_PARQUET = DATA / "moves.parquet"             # stage 4a: classified moves
-META_JSON = DATA / "meta.json"                    # {"username": ...} written by normalise
-SITE_DIR = DATA / "site"                           # stage 4c: static review site
+SITE_DIR = DATA / "site"                # the static app: index.html, assets, sounds
 
 STOCKFISH = Path(os.environ.get("STOCKFISH", ROOT / "bin" / "stockfish"))
 DEFAULT_NODES = 1_000_000

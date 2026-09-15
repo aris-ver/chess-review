@@ -1,0 +1,171 @@
+"""Profiles: one per (source, username). Everything that belongs to one player lives in
+data/profiles/<id>/; the Stockfish cache (evals.duckdb), the opening book and the static
+app (data/site: index.html, assets, sounds) are shared, so two players in the same openings
+reuse each other's engine work.
+
+    data/profiles/<id>/
+        meta.json               {"source": "chesscom", "username": "...", "created": iso}
+        raw/                    chess.com monthly archives (chesscom profiles)
+        pgn/                    pasted PGNs keyed by content hash
+        games.parquet, positions.parquet, moves.parquet
+        site/games.json, site/games/<slug>.json, site/insights.html   (served at /p/<id>/...)
+
+The id is derived from source + username, so the directory listing is the registry.
+"""
+
+import json
+import logging
+import re
+import shutil
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Optional
+
+from .config import DATA, SITE_DIR
+
+log = logging.getLogger("profiles")
+PROFILES_DIR = DATA / "profiles"
+SOURCES = ("chesscom", "lichess", "pgn")
+_ID_RE = re.compile(r"^[a-z0-9][a-z0-9_.-]{0,80}$")
+
+
+@dataclass(frozen=True)
+class Profile:
+    id: str
+    source: str
+    username: str
+
+    @property
+    def dir(self) -> Path:
+        return PROFILES_DIR / self.id
+
+    @property
+    def raw_dir(self) -> Path:
+        return self.dir / "raw"
+
+    @property
+    def pgn_dir(self) -> Path:
+        return self.dir / "pgn"
+
+    @property
+    def games_parquet(self) -> Path:
+        return self.dir / "games.parquet"
+
+    @property
+    def positions_parquet(self) -> Path:
+        return self.dir / "positions.parquet"
+
+    @property
+    def moves_parquet(self) -> Path:
+        return self.dir / "moves.parquet"
+
+    @property
+    def meta_json(self) -> Path:
+        return self.dir / "meta.json"
+
+    @property
+    def site_dir(self) -> Path:
+        return self.dir / "site"
+
+    @property
+    def export_dir(self) -> Path:
+        return self.dir / "export"
+
+    def summary(self) -> dict:
+        """What the home screen shows: id, source, username, game counts."""
+        games, analysed = 0, 0
+        idx = self.site_dir / "games.json"
+        if idx.exists():
+            try:
+                for g in json.loads(idx.read_text(encoding="utf-8"))["games"]:
+                    games += 1
+                    analysed += g.get("analysed", 0) >= 0.999
+            except (ValueError, KeyError):
+                pass
+        meta = json.loads(self.meta_json.read_text(encoding="utf-8")) if self.meta_json.exists() else {}
+        return {"id": self.id, "source": self.source, "username": self.username, "games": games,
+                "analysed": analysed, "created": meta.get("created")}
+
+
+def profile_id(source: str, username: str) -> str:
+    slug = re.sub(r"[^a-z0-9_.-]+", "-", username.strip().lower()).strip("-")
+    pid = f"{source}-{slug}"
+    if source not in SOURCES or not slug or not _ID_RE.match(pid):
+        raise ValueError(f"bad profile: source={source!r} username={username!r}")
+    return pid
+
+
+def valid_id(pid: str) -> bool:
+    return bool(_ID_RE.match(pid)) and ".." not in pid
+
+
+def load(pid: str) -> Optional[Profile]:
+    if not valid_id(pid):
+        return None
+    meta = PROFILES_DIR / pid / "meta.json"
+    if not meta.exists():
+        return None
+    m = json.loads(meta.read_text(encoding="utf-8"))
+    return Profile(pid, m["source"], m["username"])
+
+
+def create(source: str, username: str) -> Profile:
+    p = Profile(profile_id(source, username), source, username.strip())
+    p.dir.mkdir(parents=True, exist_ok=True)
+    if not p.meta_json.exists():
+        p.meta_json.write_text(json.dumps({"source": source, "username": p.username,
+                                           "created": datetime.now(timezone.utc).isoformat(timespec="seconds")}),
+                               encoding="utf-8")
+    return p
+
+
+def delete(pid: str) -> bool:
+    p = load(pid)
+    if p is None:
+        return False
+    shutil.rmtree(p.dir)
+    return True
+
+
+def list_profiles() -> list[Profile]:
+    if not PROFILES_DIR.exists():
+        return []
+    out = [load(d.name) for d in sorted(PROFILES_DIR.iterdir()) if d.is_dir()]
+    return [p for p in out if p is not None]
+
+
+def resolve(pid: Optional[str]) -> Profile:
+    """CLI helper: the named profile, or the only one when there is exactly one."""
+    migrate_legacy()
+    if pid:
+        p = load(pid)
+        if p is None:
+            raise SystemExit(f"no such profile: {pid} (have: {', '.join(x.id for x in list_profiles()) or 'none'})")
+        return p
+    ps = list_profiles()
+    if len(ps) == 1:
+        return ps[0]
+    raise SystemExit("--profile required" + (f" (one of: {', '.join(p.id for p in ps)})" if ps else " (none exist yet; create one from the UI or with `ingest --username`)"))
+
+
+def migrate_legacy() -> Optional[Profile]:
+    """Move a pre-profiles data/ layout (one user, tables at the top level) into data/profiles/<id>/.
+    Nothing is re-analysed: evals.duckdb stays where it is."""
+    meta = DATA / "meta.json"
+    if not meta.exists():
+        return None
+    username = json.loads(meta.read_text(encoding="utf-8")).get("username") or "me"
+    p = create("chesscom", username)
+    moves = [(DATA / "raw", p.raw_dir), (DATA / "pgn", p.pgn_dir),
+             (DATA / "games.parquet", p.games_parquet), (DATA / "positions.parquet", p.positions_parquet),
+             (DATA / "moves.parquet", p.moves_parquet),
+             (SITE_DIR / "games", p.site_dir / "games"), (SITE_DIR / "games.json", p.site_dir / "games.json"),
+             (SITE_DIR / "insights.html", p.site_dir / "insights.html")]
+    p.site_dir.mkdir(parents=True, exist_ok=True)
+    for src, dst in moves:
+        if src.exists() and not dst.exists():
+            shutil.move(str(src), str(dst))
+    meta.unlink()
+    log.info("migrated legacy data for %s into %s", username, p.dir)
+    return p

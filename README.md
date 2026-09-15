@@ -10,9 +10,17 @@ Design: `chess-review-spec.md`.
 bash scripts/restart_server.sh          # http://127.0.0.1:8123/  (log: data/serve.log)
 ```
 
-Open a game → **Analyse game** (≈1-2 min for a rapid game: MultiPV=3, 1M nodes/position, 6 engines).
-The board, graph, move list and key moments fill in while it runs. **⟳ Refresh games** re-fetches
-the current month from chess.com. `scripts/restart_server.sh --nodes 500000` halves analysis time.
+The home screen lists **profiles** (one per chess.com user; add any username, remove with ✕) plus
+placeholders for PGN / FEN / board-setup analysis. Open a profile → its games; open a game → **Analyse game**
+(≈1-2 min for a rapid game: MultiPV=3, 1M nodes/position, 6 engines). The board, graph, move list and key
+moments fill in while it runs. **⟳ Refresh games** re-fetches the current month from chess.com; nothing is
+analysed unless you ask — the **⚙ Auto-analyse** toggle in the header makes a refresh analyse the new games
+too (off by default, remembered in the browser). `scripts/restart_server.sh --nodes 500000` halves analysis time.
+
+Data layout: everything belonging to one player is in `data/profiles/<source>-<username>/` (raw archives,
+parquet tables, review JSON, insights); the Stockfish cache `data/evals.duckdb` is shared across profiles
+because it is keyed by position, so players in the same openings reuse each other's engine work. A pre-profiles
+`data/` layout is migrated automatically on the next server start or CLI run.
 
 In the review: ← → step (buttons grey out at the ends), space jumps between key moments, click a count in the
 summary to step through that side's moves of that kind, and **click (or drag) a piece to a target square to try a
@@ -38,17 +46,20 @@ Docker / VM: see `deploy/DOCKER.md` (`docker compose up -d`, state in `./data`, 
 
 ```
 source .venv/bin/activate
-python -m chess_review ingest    --username <me>       # 1  chess.com archives -> data/raw/*.json  (skips months on disk; --refresh-latest)
-python -m chess_review ingest    --pgn-file game.pgn   #    or a pasted PGN -> data/pgn/<hash>.pgn
-python -m chess_review normalise --username <me>       # 2  -> data/games.parquet, data/positions.parquet, data/meta.json
-python -m chess_review analyse   [--workers 6] [--nodes 1000000] [--limit N]   # 3  batch: every pending position -> data/evals.duckdb
+python -m chess_review ingest    --username <me>       # 1  creates profile chesscom-<me>; chess.com archives -> its raw/*.json (skips months on disk; --refresh-latest)
+python -m chess_review ingest    --pgn-file game.pgn   #    or a pasted PGN -> the profile's pgn/<hash>.pgn
+python -m chess_review normalise                       # 2  -> games.parquet, positions.parquet in the profile dir
+python -m chess_review analyse   [--workers 6] [--nodes 1000000] [--limit N]   # 3  batch: every pending position -> data/evals.duckdb (shared)
 python -m chess_review review                          # 4  classify -> site -> aggregates
 python -m chess_review serve   [--port 8123] [--nodes N]                       #    server + on-demand analysis API
-python -m pytest                                       #    32 tests, some use the real engine
+python -m pytest                                       #    33 tests, some use the real engine
 ```
 
-Individual stage 4 steps: `classify`, `site`, `aggregates`. `export` dumps step-1 CSVs.
-Server API: `GET /api/status`, `POST /api/analyse/<game>`, `POST /api/refresh`, `POST /api/stop`.
+Every stage takes `--profile <id>`; with exactly one profile it is the default. Individual stage 4 steps:
+`classify`, `site`, `aggregates`. `export` dumps step-1 CSVs.
+Server API: `GET /api/profiles`, `POST /api/profiles`, `POST /api/profiles/<id>/delete`, `GET /api/status`,
+`POST /api/p/<id>/analyse/<game>`, `POST /api/p/<id>/refresh` (`{"analyse": true}` to analyse the new games),
+`POST /api/stop`; profile files are served under `/p/<id>/`.
 
 ## Layout
 
@@ -65,7 +76,8 @@ Server API: `GET /api/status`, `POST /api/analyse/<game>`, `POST /api/refresh`, 
 | `explain.py` | format strings over `MoveFacts` |
 | `site.py` + `static/index.html` | static review site: game list, board, arrows, eval bar/graph, move list, key moments |
 | `aggregates.py` | GROUP BY insights -> `site/insights.html` |
-| `serve.py` | stdlib server: static site + JSON API, one background job at a time (analyse a game / all games / refresh) |
+| `serve.py` | stdlib server: static site + JSON API, one background job at a time (analyse a game / all games / refresh / fetch a new profile) |
+| `profiles.py` | `Profile` = per-player paths under `data/profiles/<id>/`; create/list/delete; legacy layout migration |
 | `explore.py` | on-the-spot evaluation + classification of a move made on the board (memory cache only) |
 
 ## Conventions

@@ -31,11 +31,12 @@ from .config import (
     EVALS_DB,
     EVALS_PARQUET,
     MULTIPV_N,
-    POSITIONS_PARQUET,
     STOCKFISH,
     sql_path,
 )
+from . import profiles
 from .fen import board_from_key
+from .profiles import Profile
 
 log = logging.getLogger("analyse")
 
@@ -169,16 +170,17 @@ def export_parquet(con: duckdb.DuckDBPyConnection) -> None:
     con.execute(f"COPY evals TO {sql_path(EVALS_PARQUET)} (FORMAT PARQUET)")
 
 
-def pending_keys(con: duckdb.DuckDBPyConnection, game_id: Optional[str] = None) -> tuple[list[str], dict]:
+def pending_keys(con: duckdb.DuckDBPyConnection, profile: Profile, game_id: Optional[str] = None) -> tuple[list[str], dict]:
     """Distinct position keys (optionally for one game) that lack an eval or MultiPV rows."""
     # DDL can't take bind parameters, so the game id goes in as a quoted literal
     where = "WHERE game_id = " + sql_path(game_id) if game_id else ""
+    positions = sql_path(profile.positions_parquet)
     con.execute(f"""
         CREATE OR REPLACE TEMP VIEW position_keys AS
         SELECT DISTINCT array_to_string(list_slice(string_split(fen, ' '), 1, 4), ' ') AS fen_key
-        FROM read_parquet({sql_path(POSITIONS_PARQUET)}) {where}
+        FROM read_parquet({positions}) {where}
     """)
-    total = con.execute(f"SELECT count(*) FROM read_parquet({sql_path(POSITIONS_PARQUET)}) {where}").fetchone()[0]
+    total = con.execute(f"SELECT count(*) FROM read_parquet({positions}) {where}").fetchone()[0]
     distinct = con.execute("SELECT count(*) FROM position_keys").fetchone()[0]
     keys = [r[0] for r in con.execute("""
         SELECT k.fen_key FROM position_keys k
@@ -254,9 +256,9 @@ def default_workers() -> int:
 
 # --- CLI batch ----------------------------------------------------------------
 
-def run(workers: int, nodes: int, hash_mb: int, limit: Optional[int] = None) -> dict:
+def run(profile: Profile, workers: int, nodes: int, hash_mb: int, limit: Optional[int] = None) -> dict:
     con = open_db()
-    keys, stats = pending_keys(con)
+    keys, stats = pending_keys(con, profile)
     log.info("positions: %s", stats)
     if limit:
         keys = keys[:limit]
@@ -278,10 +280,11 @@ def main(argv=None) -> None:
     p.add_argument("--nodes", type=int, default=DEFAULT_NODES)
     p.add_argument("--hash", type=int, default=DEFAULT_HASH_MB, help="MB per worker")
     p.add_argument("--limit", type=int, help="analyse at most N pending positions (smoke test)")
+    p.add_argument("--profile", help="profile id (default: the only profile)")
     args = p.parse_args(argv)
     if not STOCKFISH.exists():
         p.error(f"stockfish not found at {STOCKFISH} (set STOCKFISH env var)")
-    log.info("done: %s", run(args.workers, args.nodes, args.hash, args.limit))
+    log.info("done: %s", run(profiles.resolve(args.profile), args.workers, args.nodes, args.hash, args.limit))
 
 
 if __name__ == "__main__":

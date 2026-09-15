@@ -4,33 +4,27 @@ import logging
 
 import duckdb
 
-from .config import (
-    EVALS_DB,
-    EVALS_PARQUET,
-    GAMES_PARQUET,
-    MOVES_PARQUET,
-    POSITIONS_PARQUET,
-    sql_path,
-)
+from .config import EVALS_DB, EVALS_PARQUET, sql_path
+from .profiles import Profile
 
 log = logging.getLogger("db")
 
 
-def base_views(con: duckdb.DuckDBPyConnection) -> None:
-    """games/positions (+ moves when built) as views over the parquet files, on any connection."""
-    con.execute(f"CREATE OR REPLACE VIEW games AS SELECT * FROM read_parquet({sql_path(GAMES_PARQUET)})")
+def base_views(con: duckdb.DuckDBPyConnection, profile: Profile) -> None:
+    """games/positions (+ moves when built) as views over the profile's parquet files, on any connection."""
+    con.execute(f"CREATE OR REPLACE VIEW games AS SELECT * FROM read_parquet({sql_path(profile.games_parquet)})")
     con.execute(f"""
         CREATE OR REPLACE VIEW positions AS
         SELECT *, array_to_string(list_slice(string_split(fen, ' '), 1, 4), ' ') AS fen_key
-        FROM read_parquet({sql_path(POSITIONS_PARQUET)})
+        FROM read_parquet({sql_path(profile.positions_parquet)})
     """)
-    if MOVES_PARQUET.exists():
-        con.execute(f"CREATE OR REPLACE VIEW moves AS SELECT * FROM read_parquet({sql_path(MOVES_PARQUET)})")
+    if profile.moves_parquet.exists():
+        con.execute(f"CREATE OR REPLACE VIEW moves AS SELECT * FROM read_parquet({sql_path(profile.moves_parquet)})")
 
 
-def connect() -> duckdb.DuckDBPyConnection:
+def connect(profile: Profile) -> duckdb.DuckDBPyConnection:
     con = duckdb.connect()
-    base_views(con)
+    base_views(con, profile)
 
     # The live cache is preferred; while `analyse` holds its write lock, fall
     # back to the parquet snapshot it exports at the end of every run.

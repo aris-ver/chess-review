@@ -37,7 +37,7 @@ ingest → normalise → analyse → review
 Pull all monthly archives from the chess.com public API:
 
 - `https://api.chess.com/pub/player/{username}/games/archives` returns archive URLs
-- Fetch each archive URL, dump raw JSON verbatim to `data/raw/{YYYY-MM}.json`
+- Fetch each archive URL, dump raw JSON verbatim to `data/profiles/<id>/raw/{YYYY-MM}.json` (one profile per chess.com user; see `profiles.py`)
 
 Rules:
 - **Serialise requests.** Parallel requests trigger 429s. One at a time, with a small delay.
