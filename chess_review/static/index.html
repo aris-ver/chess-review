@@ -6,8 +6,8 @@
 <title>Chess Review</title>
 <style>
 :root {
-  --bg: #262421; --panel: #302e2b; --panel2: #3a3733; --line: #45423d; --text: #e6e3de; --muted: #9a958d;
-  --light: #ecdab9; --dark: #ae8a68; --hl: rgba(255, 255, 51, .45); --accent: #81b64c;
+  --bg: #302e2b; --panel: #262522; --panel2: #3a3733; --line: #45423d; --text: #e6e3de; --muted: #9a958d;
+  --light: #edd6b0; --dark: #b88762; --hl: rgba(255, 255, 51, .45); --accent: #81b64c;
   --c-brilliant: #1baca6; --c-great: #5c8bb0; --c-best: #81b64c; --c-excellent: #96bc4b; --c-good: #96af8b;
   --c-book: #a88865; --c-forced: #97af8b; --c-inaccuracy: #f7c631; --c-mistake: #ffa459; --c-miss: #ff7769; --c-blunder: #fa412d;
   --win: #81b64c; --loss: #fa412d; --draw: #9a958d;
@@ -105,13 +105,15 @@ td.num { text-align: right; font-variant-numeric: tabular-nums; }
 .boardbox { position: relative; width: 100%; aspect-ratio: 1; user-select: none; touch-action: none; }
 svg.board { position: absolute; inset: 0; width: 100%; height: 100%; display: block; border-radius: 4px; }
 .pieces, .badges { position: absolute; inset: 0; pointer-events: none; }
-svg.arrows { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
-.pc { position: absolute; left: 0; top: 0; width: 12.5%; height: 12.5%; background-size: contain; background-repeat: no-repeat; background-position: center; transition: transform .18s ease-out; will-change: transform; }
+/* stacking: squares < overlays < pieces (moved piece 1) < arrows 3 < badges 4 < dragged piece 5 */
+svg.arrows { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; z-index: 3; }
+.badges { z-index: 4; }
+.pc { position: absolute; left: 0; top: 0; width: 12.5%; height: 12.5%; background-size: contain; background-repeat: no-repeat; background-position: center; transition: transform .18s ease-out; will-change: transform; filter: saturate(1.2) contrast(1.06); }   /* the piece PNGs read a little washed out on the dark page */
 .pc svg { width: 100%; height: 100%; display: block; }
 .boardbox.playable { cursor: default; }
 .pc.top { z-index: 1; }
 .pc.snap { transition-duration: .09s; }
-.pc.dragging { transition: none; z-index: 2; filter: drop-shadow(0 6px 6px rgba(0,0,0,.35)); }
+.pc.dragging { transition: none; z-index: 5; filter: saturate(1.2) contrast(1.06) drop-shadow(0 6px 6px rgba(0,0,0,.35)); }
 .boardbox.dragging { cursor: grabbing; }
 .badge { position: absolute; width: 5.75%; height: 5.75%; transform: translate(-50%, -50%); filter: drop-shadow(0 .5px 1px rgba(0,0,0,.35)); }
 .badge img, .badge svg { width: 100%; height: 100%; display: block; }
@@ -139,13 +141,11 @@ svg.arrows { position: absolute; inset: 0; width: 100%; height: 100%; pointer-ev
 .capture-hint { box-shadow: inset 0 0 0 calc(var(--sq) * 0.0836) rgba(0, 0, 0, 0.14); border-radius: 50%; background: transparent; }
 .hover-rect { fill: none; stroke: rgba(255, 255, 255, 0.55); stroke-width: 0.5; pointer-events: none; }   /* drawn in the squares SVG so it aligns exactly */
 svg.board.playable use.piece.own { cursor: grab; }
-.varrow { grid-column: 1 / -1; background: #2b2926; padding: 4px 8px 4px 16px; font-size: 13px; border-left: 3px solid var(--c-great); display: flex; flex-wrap: wrap; gap: 2px 8px; align-items: center; }
+.varrow { grid-column: 1 / -1; background: #2e2c29; padding: 4px 8px 4px 16px; font-size: 13px; border-left: 3px solid var(--c-great); display: flex; flex-wrap: wrap; gap: 2px 8px; align-items: center; }
 .varrow .v { cursor: pointer; padding: 1px 4px; border-radius: 3px; display: inline-flex; gap: 4px; align-items: center; }
 .varrow .v:hover { background: var(--panel2); } .varrow .v.cur { background: #4b4844; }
 .varrow .x { margin-left: auto; color: var(--muted); cursor: pointer; }
 .now .var { font-size: 11px; color: var(--c-great); border: 1px solid var(--c-great); border-radius: 3px; padding: 0 5px; }
-.summary .l.click, .summary .r.click { cursor: pointer; text-decoration: underline dotted; text-underline-offset: 3px; }
-.summary .l.click:hover, .summary .r.click:hover { color: var(--accent); }
 .progress { height: 6px; background: var(--panel2); border-radius: 3px; overflow: hidden; }
 .progress > div { height: 100%; background: var(--accent); transition: width .3s; }
 
@@ -187,18 +187,33 @@ svg.board.playable use.piece.own { cursor: grab; }
 .pfoot #astatus { flex: 1; color: var(--muted); font-size: 12px; }
 .panel .nav { padding: 8px 10px 4px; }
 .panel .nav button { flex: 1; }
-.cap { display: inline-flex; align-items: center; gap: 0; margin-left: 4px; }
-.cap svg, .cap img { width: 16px; height: 16px; margin-right: -5px; display: inline-block; }
-.cap .blk { filter: drop-shadow(0 0 .35px #d8d8d8); }   /* one thin light edge, not a glow */
-.cap .diff { margin-left: 8px; color: var(--muted); font-size: 12px; }
+.cap { display: inline-flex; align-items: center; gap: 4px; margin-left: 4px; }
+.cap .grp { display: inline-flex; align-items: center; }
+.cap svg, .cap img { width: 15px; height: 15px; display: block; }
+.cap .grp > :not(:first-child) { margin-left: -9px; }   /* same type stacks into one overlapping cluster */
+/* any piece art -> flat silhouette: light for white pieces, grey for black ones */
+.cap svg, .cap img { filter: brightness(0) invert(.88); }
+.cap .blk { filter: brightness(0) invert(.42); }
+.cap .diff { margin-left: 2px; color: var(--muted); font-size: 12px; }
 .panel .body { overflow: auto; flex: 1; position: relative; }
 .panel > :not(.body) { flex-shrink: 0; }
 svg.graph { width: 100%; height: 90px; display: block; cursor: pointer; background: #3a3733; flex-shrink: 0; }
-.summary { display: grid; grid-template-columns: 1fr auto 1fr; gap: 5px 10px; padding: 10px 14px; align-items: center; font-variant-numeric: tabular-nums; }
-.summary .h { color: var(--muted); font-size: 12px; text-align: center; }
-.summary .l { text-align: right; } .summary .r { text-align: left; }
-.summary .k { text-align: center; color: var(--muted); font-size: 12px; display: flex; align-items: center; gap: 6px; justify-content: center; }
-.summary .big { font-size: 20px; font-weight: 700; }
+/* summary: label | white | icon | black, like chess.com's review card */
+.summary { padding: 6px 14px 12px; font-variant-numeric: tabular-nums; }
+.summary .row { display: grid; grid-template-columns: 96px 72px 48px 72px; justify-content: center; align-items: center; padding: 5px 0; }
+.summary .lbl { font-size: 14px; font-weight: 600; }
+.summary .w, .summary .b, .summary .i { text-align: center; }
+.summary .i { display: flex; justify-content: center; }
+.summary .name { font-weight: 700; font-size: 13px; line-height: 1.2; padding: 4px 0 6px; overflow-wrap: anywhere; }
+.summary .avatar { display: flex; align-items: center; justify-content: center; width: 52px; height: 52px; margin: 0 auto 6px; border-radius: 6px; }
+.summary .avatar { background: #d6d3cf; border: 2px solid transparent; } .summary .avatar.me { border-color: var(--accent); }   /* green ring = me */
+.summary .avatar img, .summary .avatar svg { width: 40px; height: 40px; display: block; }
+.summary .accbox { display: inline-block; min-width: 62px; padding: 4px 6px; border-radius: 4px; font-weight: 800; font-size: 17px; }
+.summary .w .accbox { background: #fff; color: #1b1b1b; } .summary .b .accbox { background: #454340; color: #fff; }
+.summary .cnt { font-weight: 700; font-size: 16px; }
+.summary .i .ico { width: 22px; height: 22px; }
+.summary .sep { border-top: 1px solid var(--line); margin: 8px 0; }
+.summary .click { cursor: pointer; } .summary .click:hover { text-decoration: underline; text-underline-offset: 3px; }
 .ico { display: inline-block; width: 18px; height: 18px; vertical-align: -4px; }
 .ico.sm { width: 14px; height: 14px; vertical-align: -3px; }
 .moments { padding: 8px 14px; display: flex; flex-direction: column; gap: 8px; }
@@ -209,8 +224,11 @@ svg.graph { width: 100%; height: 90px; display: block; cursor: pointer; backgrou
 .moment .mv { font-weight: 700; } .moment .hd { color: var(--muted); font-size: 12px; margin-left: 6px; }
 .moment p { margin: 4px 0 0; }
 .movelist { display: grid; grid-template-columns: 40px 1fr 1fr; font-variant-numeric: tabular-nums; }
-.movelist .n { color: var(--muted); padding: 3px 8px; background: #2b2926; }
+.movelist .n { color: var(--muted); padding: 3px 8px; background: #222120; }
 .movelist .m { padding: 3px 8px; cursor: pointer; display: flex; gap: 6px; align-items: center; }
+.movelist .mrow { display: contents; }
+/* every other move pair a shade darker so the rows are easy to tell apart (before hover/cur so those still win) */
+.mrow.alt > .n { background: #1b1a18; } .mrow.alt > .m, .mrow.alt > .e { background: #1f1e1b; }
 .movelist .m:hover { background: var(--panel2); }
 .movelist .m.cur { background: #4b4844; border-radius: 3px; }
 .m.brilliant .san { color: var(--c-brilliant); font-weight: 700; } .m.great .san { color: var(--c-great); font-weight: 700; }
@@ -755,26 +773,39 @@ const ARROW = {
   threat: 'rgba(255, 170, 0, 0.8)',    // orange - attack/defence overlay
   punish: 'rgba(248, 85, 63, 0.8)',    // red    - refutation of a blunder
 };
+const ARROW_SW = 1.375, ARROW_HW = 3.25, ARROW_HL = 4.5, ARROW_GAP = 4.5;   // half shaft, half head, head length, gap at the tail
 function arrow(uci, kind) {
   const [x1, y1] = sqXY(uci.slice(0, 2)).map(v => v + 6.25), [x2, y2] = sqXY(uci.slice(2, 4)).map(v => v + 6.25);
   const len = Math.hypot(x2 - x1, y2 - y1);
+  const dx = Math.round((x2 - x1) / 12.5), dy = Math.round((y2 - y1) / 12.5);
+  if (Math.abs(dx) + Math.abs(dy) === 3 && dx && dy) return knightArrow(x1, y1, dx, dy, kind);
   // rotation taking the down-pointing polygon onto (dx, dy) in y-down SVG coords (SVG rotate is clockwise)
   const deg = Math.atan2(-(x2 - x1), y2 - y1) * 180 / Math.PI;
-  const sw = 1.375, hw = 3.25, hl = 4.5, gap = 4.5;
+  const sw = ARROW_SW, hw = ARROW_HW, hl = ARROW_HL, gap = ARROW_GAP;
   const end = y1 + len - hl;
   const pts = [[x1 - sw, y1 + gap], [x1 - sw, end], [x1 - hw, end], [x1, y1 + len], [x1 + hw, end], [x1 + sw, end], [x1 + sw, y1 + gap]]
     .map(p => p.join(',')).join(' ');
   return `<polygon points="${pts}" transform="rotate(${deg} ${x1} ${y1})" style="fill:${ARROW[kind]}"/>`;
+}
+// Knight moves bend like on chess.com: two squares along the long axis, then one square sideways with the head.
+// Authored as "down 2, then right 1" and mapped onto the real axes with a matrix (mirroring falls out for free).
+function knightArrow(x1, y1, dx, dy, kind) {
+  const sw = ARROW_SW, hw = ARROW_HW, hl = ARROW_HL, L = 25, S = 12.5;
+  const pts = [[-sw, ARROW_GAP], [-sw, L + sw], [S - hl, L + sw], [S - hl, L + hw], [S, L], [S - hl, L - hw], [S - hl, L - sw], [sw, L - sw], [sw, ARROW_GAP]]
+    .map(p => p.join(',')).join(' ');
+  // local x (sideways) -> short axis unit vector B, local y (forward) -> long axis unit vector A
+  const vertical = Math.abs(dy) === 2;
+  const A = vertical ? [0, Math.sign(dy)] : [Math.sign(dx), 0], B = vertical ? [Math.sign(dx), 0] : [0, Math.sign(dy)];
+  return `<polygon points="${pts}" transform="matrix(${B[0]} ${B[1]} ${A[0]} ${A[1]} ${x1} ${y1})" style="fill:${ARROW[kind]}"/>`;
 }
 let arrowsFor = null;
 function renderArrows() {
   const mv = currentMove(), fen = currentFen();
   const list = [];
   if (state.showBest && bestMoveHere()) list.push([bestMoveHere(), 'best']);
-  if (mv && BAD.has(mv.label)) {
-    if (mv.best_uci && mv.best_uci !== mv.uci) list.push([mv.best_uci, 'best']);
-    if (mv.reply_uci) list.push([mv.reply_uci, 'punish']);
-  }
+  // the engine's preferred move whenever the played one wasn't it (same rule as the "X was better" text in the bubble)
+  if (mv && mv.best_uci && mv.best_uci !== mv.uci && mv.label && !['book', 'forced'].includes(mv.label)) list.push([mv.best_uci, 'best']);
+  if (mv && BAD.has(mv.label) && mv.reply_uci) list.push([mv.reply_uci, 'punish']);
   $('arrows').innerHTML = list.map(([u, k]) => arrow(u, k)).join('');
   // threats: legal captures onto pieces the move left hanging (computed from the legal-move set, not the PV)
   arrowsFor = fen;
@@ -972,11 +1003,14 @@ function renderPlayers() {
   for (const [el, side] of [[$('ptop'), top], [$('pbot'), bot]]) {
     const p = g[side], c = clockAt(side);
     const diff = side === 'white' ? cap.mat : -cap.mat;
-    const caps = cap.out[side].map(ch => {
+    // flat silhouettes, same piece type stacked into one overlapping group (chess.com style)
+    const groups = [];
+    for (const ch of cap.out[side]) { const last = groups[groups.length - 1]; if (last && last[0] === ch) last.push(ch); else groups.push([ch]); }
+    const caps = groups.map(grp => `<span class="grp">` + grp.map(ch => {
       const blk = ch === ch.toLowerCase() ? 'blk' : '';
       if (ASSETS.hasPieces) return `<img class="${blk}" src="${ASSETS.pieces}/${blk ? 'b' : 'w'}${ch.toLowerCase()}.png" alt="">`;
       return `<svg viewBox="0 0 45 45" class="${blk}"><use href="#${PIECE_ID[ch]}"/></svg>`;
-    }).join('');
+    }).join('') + `</span>`).join('');
     el.innerHTML = `<span class="dot ${side}"></span><span class="name">${esc(p.name)}</span><span class="rating">${p.rating ?? ''}</span>` +
       (p.accuracy != null && g.analysed >= 0.999 ? `<span class="acc">${p.accuracy.toFixed(1)}%</span>` : '') +
       `<span class="cap">${caps}${diff > 0 ? `<span class="diff">+${diff}</span>` : ''}</span>` +
@@ -1050,15 +1084,20 @@ $('b-nextm').onclick = () => go(state.ply + 1);
 // ---------- panel ----------
 function renderSummary() {
   const g = state.game, w = g.white, b = g.black;
-  let html = `<div class="l"><span class="dot white"></span>${esc(w.name)}</div><div class="h">Players</div><div class="r">${esc(b.name)}<span class="dot black" style="margin-left:6px"></span></div>`;
   const full = g.analysed >= 0.999;
-  html += `<div class="l big">${full ? fmtAcc(w.accuracy) : '–'}</div><div class="k">Accuracy</div><div class="r big">${full ? fmtAcc(b.accuracy) : '–'}</div>`;
+  const acc = a => full && a != null ? a.toFixed(1) : '–';
+  // a pawn of each colour above the name, like chess.com's avatar tiles; names wrap rather than truncate
+  const pawn = c => `<span class="avatar${c === g.my_colour ? ' me' : ''}">${ASSETS.hasPieces ? `<img src="${ASSETS.pieces}/${c[0]}p.png" alt="">` : `<svg viewBox="0 0 45 45"><use href="#${c}-pawn"/></svg>`}</span>`;
+  let html = `<div class="row"><div class="lbl">Players</div>` +
+    `<div class="w name">${pawn('white')}${esc(w.name)}</div><div></div>` +
+    `<div class="b name">${pawn('black')}${esc(b.name)}</div></div>`;
+  html += `<div class="row"><div class="lbl">Accuracy</div><div class="w"><span class="accbox">${acc(w.accuracy)}</span></div><div></div>` +
+    `<div class="b"><span class="accbox">${acc(b.accuracy)}</span></div></div><div class="sep"></div>`;
   for (const lb of LABEL_ORDER) {
     const cw = w.counts[lb] || 0, cb = b.counts[lb] || 0;
-    if (!cw && !cb) continue;
-    html += `<div class="l ${cw ? 'click' : ''}" data-side="white" data-label="${lb}" title="click to step through">${cw}</div>` +
-            `<div class="k">${icon(lb)}${LABEL_NAME[lb]}</div>` +
-            `<div class="r ${cb ? 'click' : ''}" data-side="black" data-label="${lb}" title="click to step through">${cb}</div>`;
+    if (lb === 'forced' && !cw && !cb) continue;   // every other class is listed even at 0, like chess.com
+    const cell = (side, n) => `<div class="${side} cnt ${n ? 'click' : ''}" style="color:${COLOR[lb]}" data-side="${side === 'w' ? 'white' : 'black'}" data-label="${lb}" title="click to step through">${n}</div>`;
+    html += `<div class="row"><div class="lbl">${LABEL_NAME[lb]}</div>${cell('w', cw)}<div class="i">${icon(lb)}</div>${cell('b', cb)}</div>`;
   }
   $('summary').innerHTML = html;
   $('summary').querySelectorAll('.click').forEach(el => el.onclick = () => cycleLabel(el.dataset.side, el.dataset.label));
@@ -1103,7 +1142,7 @@ function renderMoveList() {
   if (v && v.basePly === 0) html += varRow();
   for (let i = 0; i < g.moves.length; i += 2) {
     const w = g.moves[i], b = g.moves[i + 1];
-    html += `<div class="n">${i / 2 + 1}.</div>${moveCell(w)}${b ? moveCell(b) : '<div></div>'}`;
+    html += `<div class="mrow${i % 4 ? ' alt' : ''}"><div class="n">${i / 2 + 1}.</div>${moveCell(w)}${b ? moveCell(b) : '<div class="e"></div>'}</div>`;
     if (v && (v.basePly === i + 1 || v.basePly === i + 2)) html += varRow();
   }
   $('movelist').innerHTML = html;
