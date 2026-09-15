@@ -110,7 +110,7 @@ def build_game(game: dict, positions: list[dict], moves: list[dict], critical: l
             })
 
     left_book = next((m["ply"] for m in moves if not m["in_book"]), len(moves))
-    me = {"name": username, "rating": game["my_rating"]}
+    me = {"name": game.get("my_name") or username, "rating": game["my_rating"]}
     them = {"name": game["opponent"] or "opponent", "rating": game["opponent_rating"]}
     white, black = (me, them) if game["my_colour"] == "white" else (them, me)
     evaluated = sum(1 for p in positions if p["eval_cp"] is not None or p["mate_in"] is not None)

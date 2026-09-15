@@ -67,6 +67,10 @@ class Explorer:
             self._engine.configure({"Threads": self.threads, "Hash": 256})
         return self._engine
 
+    def name(self) -> str:
+        """The engine's UCI id, e.g. "Stockfish 17.1" (starts it if needed)."""
+        return self.engine().id.get("name", "engine")
+
     def close(self) -> None:
         if self._engine is not None:
             with contextlib.suppress(Exception):
@@ -122,6 +126,7 @@ class Explorer:
             limit = chess.engine.Limit(nodes=self.nodes)
             lines: dict[int, dict] = {}
             last_emit = 0.0
+            name = self.name()
             try:
                 with self.engine().analysis(board, limit, multipv=multipv, game=object()) as analysis:
                     for info in analysis:
@@ -132,12 +137,12 @@ class Explorer:
                         if now - last_emit < 0.12:   # throttle: ~8 snapshots/s is plenty for a smooth-looking update
                             continue
                         last_emit = now
-                        yield _lines_snapshot(board, lines)
+                        yield {"engine": name, "nodes": self.nodes, **_lines_snapshot(board, lines)}
             except chess.engine.EngineError:
                 self._restart()
                 return
             if lines:
-                yield _lines_snapshot(board, lines, done=True)
+                yield {"engine": name, "nodes": self.nodes, **_lines_snapshot(board, lines, done=True)}
 
     def move(self, fen: str, uci: str, my_colour: str, ply: int = 0) -> dict:
         board = chess.Board(fen)

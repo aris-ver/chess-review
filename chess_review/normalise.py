@@ -41,6 +41,7 @@ GAMES_SCHEMA = pa.schema([
     ("eco", pa.string()),
     ("opening_name", pa.string()),
     ("opponent", pa.string()),      # not in the spec schema; needed to label games in the UI
+    ("my_name", pa.string()),       # the profile's username for chess.com games; the PGN header name for pasted ones
 ])
 
 POSITIONS_SCHEMA = pa.schema([
@@ -156,6 +157,7 @@ def parse_chesscom(g: dict, username: str) -> Optional[tuple[dict, list[dict]]]:
         "eco": h.get("ECO") or None,
         "opening_name": _opening_name(h),
         "opponent": them.get("username"),
+        "my_name": me.get("username") or username,
     }
     return game_row, extract_positions(game, g["url"])
 
@@ -169,7 +171,10 @@ def parse_pgn_text(text: str, username: str, digest: str) -> Iterator[tuple[dict
             continue
         h = game.headers
         uname = username.lower()
-        if h.get("White", "").lower() == uname:
+        # a pasted game carries the side to review as a custom tag (the UI asks); otherwise match the username
+        if h.get("ReviewAs", "").lower() in ("white", "black"):
+            colour = h["ReviewAs"].lower()
+        elif h.get("White", "").lower() == uname:
             colour = "white"
         elif h.get("Black", "").lower() == uname:
             colour = "black"
@@ -200,6 +205,7 @@ def parse_pgn_text(text: str, username: str, digest: str) -> Iterator[tuple[dict
             "eco": h.get("ECO") or None,
             "opening_name": _opening_name(h),
             "opponent": h.get(them),
+            "my_name": h.get(me) or username,
         }
         yield game_row, extract_positions(game, game_id)
 

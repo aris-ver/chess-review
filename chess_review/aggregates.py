@@ -49,7 +49,8 @@ def game_accuracies(con) -> dict[str, float]:
 def query_all(con) -> dict:
     acc = game_accuracies(con)
     con.execute("CREATE TEMP TABLE game_acc (game_id TEXT, accuracy DOUBLE)")
-    con.executemany("INSERT INTO game_acc VALUES (?, ?)", list(acc.items()))
+    if acc:   # executemany rejects an empty list; a profile with no analysed game yet simply has no accuracies
+        con.executemany("INSERT INTO game_acc VALUES (?, ?)", list(acc.items()))
     con.execute("""
         CREATE TEMP VIEW my AS
         SELECT m.*, g.eco, g.opening_name, g.time_class, g.my_colour, g.result, g.played_at, g.my_rating
