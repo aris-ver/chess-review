@@ -308,19 +308,19 @@ class Handler(SimpleHTTPRequestHandler):
         return super().do_GET()
 
     def _stream_eval(self, board: chess.Board, multipv: int) -> None:
-        """NDJSON over chunked transfer encoding: one line per snapshot as the engine iterates, so the
-        client can draw live-updating arrows instead of waiting for the final, settled result."""
+        """NDJSON, one line per snapshot as the engine iterates, so the client can draw live-updating
+        arrows instead of waiting for the final, settled result. This server speaks HTTP/1.0, so the body
+        is simply delimited by the connection closing: no Content-Length and no chunked framing (browsers
+        don't decode Transfer-Encoding on a 1.0 response and would hand the chunk sizes to the client)."""
         self.send_response(200)
         self.send_header("Content-Type", "application/x-ndjson")
-        self.send_header("Transfer-Encoding", "chunked")
+        self.send_header("X-Content-Type-Options", "nosniff")
         self.end_headers()
         gen = self.runner.explorer.analyse_stream(board, multipv)
         try:
             for snapshot in gen:
-                chunk = (json.dumps(snapshot) + "\n").encode()
-                self.wfile.write(f"{len(chunk):x}\r\n".encode() + chunk + b"\r\n")
+                self.wfile.write((json.dumps(snapshot) + "\n").encode())
                 self.wfile.flush()
-            self.wfile.write(b"0\r\n\r\n")
         except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
             pass   # client moved on; closing the generator below stops the search rather than burning the node budget unwatched
         except Exception:  # noqa: BLE001

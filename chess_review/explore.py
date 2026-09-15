@@ -26,6 +26,7 @@ from .pov import pov_win_pct
 from .site import eval_text
 
 log = logging.getLogger("explore")
+PV_PLIES = 16   # how much of each engine line the sandbox shows
 
 
 def _lines_snapshot(board: chess.Board, lines: dict[int, dict], done: bool = False) -> dict:
@@ -36,12 +37,17 @@ def _lines_snapshot(board: chess.Board, lines: dict[int, dict], done: bool = Fal
         info = lines[rank]
         move = info["pv"][0]
         cp, mate = _score(info)
-        try:
-            san = board.san(move)
-        except ValueError:
-            san = move.uci()
+        # the whole line in SAN (capped: the tail of a deep PV is noise in the UI)
+        pv, b = [], board.copy(stack=False)
+        for m in info["pv"][:PV_PLIES]:
+            try:
+                pv.append(b.san(m))
+                b.push(m)
+            except (ValueError, AssertionError):
+                break
         wp_white = pov_win_pct(cp, mate, side, "white") if (cp is not None or mate is not None) else None
-        out.append({"rank": rank, "uci": move.uci(), "san": san, "eval": eval_text(cp, mate, side),
+        out.append({"rank": rank, "uci": move.uci(), "san": pv[0] if pv else move.uci(), "pv": pv,
+                    "eval": eval_text(cp, mate, side),
                     "wp_white": round(wp_white, 1) if wp_white is not None else None, "depth": info.get("depth")})
     return {"lines": out, "done": done}
 
