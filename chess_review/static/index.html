@@ -52,12 +52,33 @@ main { padding: 16px 18px; max-width: 1800px; margin: 0 auto; }
 .card .x { position: absolute; top: 8px; right: 8px; color: var(--muted); font-size: 14px; padding: 2px 6px; border-radius: 4px; }
 .card .x:hover { background: var(--panel2); color: var(--c-blunder); }
 .card .progress { margin-top: 6px; }
-.card.add { border-style: dashed; justify-content: center; }
-.card.add form { display: flex; flex-direction: column; gap: 8px; }
-.card.add select, .card.add input { font: inherit; color: var(--text); background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; width: 100%; }
-.card.add input::placeholder { color: var(--muted); }
-.card.add button { align-self: flex-start; }
+.card.add, .card.fen { border-style: dashed; justify-content: center; }
+.card.add form, .card.fen form { display: flex; flex-direction: column; gap: 8px; }
+.card.add select, .card.add input, .card.fen input { font: inherit; color: var(--text); background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; width: 100%; }
+.card.add input::placeholder, .card.fen input::placeholder { color: var(--muted); }
+.card.add button, .card.fen button { align-self: flex-start; }
 .card .desc { color: var(--muted); font-size: 13px; }
+
+/* board setup editor */
+.setup { display: grid; grid-template-columns: minmax(280px, 560px) 260px; gap: 20px; justify-content: center; max-width: 900px; margin: 24px auto 0; align-items: start; }
+.setup-board { display: grid; grid-template-columns: repeat(8, 1fr); aspect-ratio: 1; border-radius: 4px; overflow: hidden; }
+.setup-board .sq { position: relative; aspect-ratio: 1; cursor: pointer; }
+.setup-board .sq.light { background: var(--light); } .setup-board .sq.dark { background: var(--dark); }
+.setup-board .sq img, .setup-board .sq svg { position: absolute; inset: 6%; width: 88%; height: 88%; pointer-events: none; }
+.setup-panel { display: flex; flex-direction: column; gap: 14px; }
+.palette { display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px; background: var(--panel); border-radius: 8px; padding: 8px; }
+.palette button { padding: 4px; height: 40px; display: flex; align-items: center; justify-content: center; background: var(--panel2); }
+.palette button img, .palette button svg { width: 26px; height: 26px; }
+.palette button.active { background: var(--accent); }
+.palette button.erase { grid-column: span 6; font-size: 12px; }
+.setup-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.setup-row label { color: var(--muted); font-size: 13px; }
+.setup-row select { font: inherit; color: var(--text); background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; }
+.setup-fen { font-family: ui-monospace, monospace; font-size: 12px; color: var(--muted); background: var(--panel); border-radius: 6px; padding: 8px 10px; word-break: break-all; }
+
+/* sandbox review: hide the game-specific chrome that doesn't apply to a free position */
+body.sandbox .sections, body.sandbox svg.graph, body.sandbox .pfoot, body.sandbox #b-explain, body.sandbox #b-nextm, body.sandbox #b-key { display: none !important; }
+body.sandbox .actions { padding-bottom: 10px; }
 
 /* game list */
 .filters { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; align-items: center; }
@@ -285,8 +306,33 @@ svg.graph { width: 100%; height: 90px; display: block; cursor: pointer; backgrou
       <h2>Analyse something else</h2>
       <div class="cards">
         <div class="card soon" title="Coming next"><span class="src">PGN</span><span class="who">Paste a PGN</span><span class="desc">Review any game from its PGN text.</span></div>
-        <div class="card soon" title="Coming next"><span class="src">FEN</span><span class="who">From a position</span><span class="desc">Paste a FEN and explore it with the engine.</span></div>
-        <div class="card soon" title="Coming next"><span class="src">Board</span><span class="who">Set up a board</span><span class="desc">Place the pieces yourself, then analyse.</span></div>
+        <div class="card fen">
+          <span class="src">FEN</span><span class="who">From a position</span>
+          <form id="fenform">
+            <input name="fen" placeholder="Paste a FEN" autocomplete="off" spellcheck="false" required>
+            <button class="primary" type="submit">Explore</button>
+          </form>
+        </div>
+        <div class="card" id="card-setup"><span class="src">Board</span><span class="who">Set up a board</span><span class="desc">Place the pieces yourself, then analyse.</span></div>
+      </div>
+    </div>
+  </section>
+  <section id="editor" class="hidden">
+    <div class="setup">
+      <div class="setup-board" id="setupboard"></div>
+      <div class="setup-panel">
+        <div class="palette" id="palette"></div>
+        <div class="setup-row">
+          <label for="stm">Side to move</label>
+          <select id="stm"><option value="w">White</option><option value="b">Black</option></select>
+        </div>
+        <div class="setup-row">
+          <button id="s-start">Starting position</button>
+          <button id="s-clear">Clear board</button>
+          <button id="s-flip" title="Flip the board (doesn't change the position)">⇅ Flip</button>
+        </div>
+        <div class="setup-fen" id="setupfen"></div>
+        <div class="setup-row"><a href="#/" class="pbtn">← Cancel</a><button class="primary" id="s-go">Analyse this position</button></div>
       </div>
     </div>
   </section>
@@ -333,7 +379,7 @@ svg.graph { width: 100%; height: 90px; display: block; cursor: pointer; backgrou
       <div class="panel">
         <div class="phead">
           <a href="#/" class="pbtn" id="a-back" title="Back to games (Esc)">←</a>
-          <span class="ptitle"><svg class="ico"><use href="#ic-best"/></svg> Game Review</span>
+          <span class="ptitle"><svg class="ico"><use href="#ic-best"/></svg> <span id="ptitle-t">Game Review</span></span>
           <span class="pright"><button class="pbtn" id="b-sound2" title="Sound">🔊</button><button class="pbtn" id="b-flip" title="Flip (f)">⇅</button></span>
         </div>
         <div class="ginfo" id="ginfo"></div>
@@ -487,6 +533,9 @@ $('b-sound').textContent = state.sound ? '🔊' : '🔇';
 window.addEventListener('hashchange', () => assetsReady.then(route));
 async function route() {
   const h = location.hash || '#/';
+  const sm = h.match(/^#\/sandbox\/(.+)$/);
+  if (sm) return showSandbox(decodeURIComponent(sm[1]));
+  if (h === '#/setup') return showEditor();
   const m = h.match(/^#\/p\/([A-Za-z0-9_.-]+)(?:\/game\/([^/?]+))?/);
   if (!m) return showHome();
   if (state.profile !== m[1]) { state.profile = m[1]; state.games = null; state.game = null; }
@@ -504,12 +553,15 @@ function setContext(on) {   // profile-scoped header controls only make sense in
 // ---------- home ----------
 const SOURCE_NAME = { chesscom: 'chess.com', lichess: 'lichess', pgn: 'PGN' };
 async function showHome() {
-  $('review').classList.add('hidden'); $('list').classList.add('hidden'); $('home').classList.remove('hidden');
+  $('review').classList.add('hidden'); $('editor').classList.add('hidden'); $('list').classList.add('hidden'); $('home').classList.remove('hidden');
+  document.body.classList.remove('sandbox');
   state.game = null; state.profile = null; state.games = null; dropVariation(); stopPlay();
   setContext(false); $('crumb').textContent = '';
   await renderProfiles();
   pollStatus();
 }
+$('fenform').onsubmit = e => { e.preventDefault(); const fen = e.target.fen.value.trim(); if (fen) location.hash = '#/sandbox/' + encodeURIComponent(fen); };
+$('card-setup').onclick = () => location.hash = '#/setup';
 async function renderProfiles() {
   let d; try { d = await (await fetch('api/profiles')).json(); } catch (e) { d = { profiles: [] }; }
   const cards = d.profiles.map(p => `
@@ -555,7 +607,8 @@ async function renderProfiles() {
 
 // ---------- list ----------
 async function showList() {
-  $('review').classList.add('hidden'); $('home').classList.add('hidden'); $('list').classList.remove('hidden');
+  $('review').classList.add('hidden'); $('home').classList.add('hidden'); $('editor').classList.add('hidden'); $('list').classList.remove('hidden');
+  document.body.classList.remove('sandbox');
   state.game = null; dropVariation(); stopPolling(); stopPlay();
   setContext(true);
   let games;
@@ -593,11 +646,113 @@ document.querySelectorAll('.filters button').forEach(b => b.onclick = () => {
   showList();
 });
 
+// ---------- sandbox: any FEN, played free-form through the same explore() the review board already uses ----------
+function sandboxGame(fen) {
+  return { id: 'sandbox', url: null, sandbox: true, played_at: null, time_control: null, time_class: null, termination: null,
+           my_colour: 'white', result: null, eco: null, opening_name: null, left_book_ply: 0,
+           white: { name: 'White', rating: null, accuracy: null, counts: {} }, black: { name: 'Black', rating: null, accuracy: null, counts: {} },
+           start_fen: fen, start_wp_white: null, start_eval_text: null, analysed: 1, moves: [], key_moments: [] };
+}
+async function fenLegalMoves(fen) {
+  try { const r = await fetch(`api/legal?fen=${encodeURIComponent(fen)}`); const d = await r.json(); return r.ok ? d.moves : null; }
+  catch (e) { return null; }
+}
+async function showSandbox(fen) {
+  fen = (fen || '').trim();
+  const moves = await fenLegalMoves(fen);
+  if (!moves) { toast('Not a valid FEN'); location.hash = '#/'; return; }
+  legalCache[fen] = moves;
+  sandboxEval = {};
+  stopPolling(); stopPlay();
+  state.profile = null; state.games = null; state.game = sandboxGame(fen);
+  state.ply = 0; state.flipped = false; dropVariation(); state.sel = null; state.cycle = {}; $('pieces').innerHTML = '';
+  $('home').classList.add('hidden'); $('editor').classList.add('hidden'); $('list').classList.add('hidden'); $('review').classList.remove('hidden');
+  document.body.classList.add('sandbox');
+  setContext(false); $('crumb').textContent = 'Sandbox';
+  $('a-back').href = '#/'; $('ginfo').textContent = ''; $('ptitle-t').textContent = 'Sandbox';
+  renderMoveList();
+  update(false);
+}
+
+// ---------- board setup: click-to-place editor -> a FEN handed to the sandbox ----------
+const START_BOARD = { a1:'R', b1:'N', c1:'B', d1:'Q', e1:'K', f1:'B', g1:'N', h1:'R',
+                      a8:'r', b8:'n', c8:'b', d8:'q', e8:'k', f8:'b', g8:'n', h8:'r' };
+for (const f of 'abcdefgh') { START_BOARD[f + '2'] = 'P'; START_BOARD[f + '7'] = 'p'; }
+const setup = { board: {}, turn: 'w', flipped: false, tool: null };
+function pieceHTML(ch) {
+  const code = (ch === ch.toUpperCase() ? 'w' : 'b') + ch.toLowerCase();
+  return ASSETS.hasPieces ? `<img src="${ASSETS.pieces}/${code}.png" alt="">` : `<svg viewBox="0 0 45 45"><use href="#${PIECE_ID[ch]}"/></svg>`;
+}
+function renderPalette() {
+  const order = ['K', 'Q', 'R', 'B', 'N', 'P'];
+  const row = colour => order.map(t => colour === 'w' ? t : t.toLowerCase())
+    .map(ch => `<button data-ch="${ch}" title="${ch}">${pieceHTML(ch)}</button>`).join('');
+  $('palette').innerHTML = row('w') + row('b') + `<button class="erase" data-ch="">✕ Remove piece</button>`;
+  $('palette').querySelectorAll('button').forEach(b => b.onclick = () => {
+    setup.tool = b.dataset.ch || null;
+    $('palette').querySelectorAll('button').forEach(x => x.classList.toggle('active', x === b));
+  });
+  $('palette').querySelector('.erase').classList.add('active');
+}
+function setupFen() {
+  let rows = [];
+  for (let r = 7; r >= 0; r--) {
+    let row = '', empty = 0;
+    for (let f = 0; f < 8; f++) {
+      const ch = setup.board[sqName(f, r)];
+      if (!ch) { empty++; continue; }
+      if (empty) { row += empty; empty = 0; }
+      row += ch;
+    }
+    if (empty) row += empty;
+    rows.push(row);
+  }
+  const has = (sq, ch) => setup.board[sq] === ch;
+  let castle = (has('e1', 'K') && has('h1', 'R') ? 'K' : '') + (has('e1', 'K') && has('a1', 'R') ? 'Q' : '') +
+               (has('e8', 'k') && has('h8', 'r') ? 'k' : '') + (has('e8', 'k') && has('a8', 'r') ? 'q' : '');
+  return `${rows.join('/')} ${setup.turn} ${castle || '-'} - 0 1`;
+}
+function renderSetupBoard() {
+  const cells = [];
+  for (let r = 7; r >= 0; r--) for (let f = 0; f < 8; f++) {
+    let ff = f, rr = r;
+    if (setup.flipped) { ff = 7 - f; rr = 7 - r; }
+    const sq = sqName(ff, rr), ch = setup.board[sq];
+    cells.push(`<div class="sq ${(ff + rr) % 2 ? 'dark' : 'light'}" data-sq="${sq}">${ch ? pieceHTML(ch) : ''}</div>`);
+  }
+  $('setupboard').innerHTML = cells.join('');
+  $('setupboard').querySelectorAll('.sq').forEach(el => el.onclick = () => {
+    const sq = el.dataset.sq;
+    if (setup.tool) setup.board[sq] = setup.tool; else delete setup.board[sq];
+    renderSetupBoard(); $('setupfen').textContent = setupFen();
+  });
+  $('setupfen').textContent = setupFen();
+}
+function showEditor() {
+  $('home').classList.add('hidden'); $('review').classList.add('hidden'); $('list').classList.add('hidden'); $('editor').classList.remove('hidden');
+  document.body.classList.remove('sandbox');
+  setContext(false); $('crumb').textContent = 'Set up a board';
+  setup.board = { ...START_BOARD }; setup.turn = 'w'; setup.flipped = false; setup.tool = null;
+  $('stm').value = 'w';
+  renderPalette();
+  renderSetupBoard();
+}
+$('stm').onchange = () => { setup.turn = $('stm').value; $('setupfen').textContent = setupFen(); };
+$('s-start').onclick = () => { setup.board = { ...START_BOARD }; renderSetupBoard(); };
+$('s-clear').onclick = () => { setup.board = {}; renderSetupBoard(); };
+$('s-flip').onclick = () => { setup.flipped = !setup.flipped; renderSetupBoard(); };
+$('s-go').onclick = () => {
+  const kings = Object.values(setup.board).filter(c => c === 'K').length, bkings = Object.values(setup.board).filter(c => c === 'k').length;
+  if (kings !== 1 || bkings !== 1) { toast('Set up exactly one king per side'); return; }
+  location.hash = '#/sandbox/' + encodeURIComponent(setupFen());
+};
+
 // ---------- review ----------
 async function loadGame(id) { return (await fetch(`${P()}/games/${id}.json`)).json(); }
 async function showGame(id) {
   let g; try { g = await loadGame(id); } catch (e) { location.hash = state.profile ? `#/p/${state.profile}` : '#/'; return; }
-  $('a-back').href = `#/p/${state.profile}`; $('a-insights2').href = `${P()}/insights.html`; setContext(true);
+  document.body.classList.remove('sandbox');
+  $('a-back').href = `#/p/${state.profile}`; $('a-insights2').href = `${P()}/insights.html`; $('ptitle-t').textContent = 'Game Review'; setContext(true);
   const same = state.game && state.game.id === id;
   state.game = g;
   if (!same) { stopPlay(); state.ply = 0; state.flipped = g.my_colour === 'black'; dropVariation(); state.sel = null; state.cycle = {}; $('pieces').innerHTML = ''; }
@@ -623,6 +778,7 @@ async function reloadGame() {
 
 function update(sound = true) {
   renderBoard(); renderPlayers(); renderEvalBar(); renderNow(); highlightCurrent(); renderNav();
+  if (state.game && state.game.sandbox && state.ply === line().length) ensureSandboxEval(currentFen());
   if (!sound) return;
   const ln = line();
   if (state.ply > 0) playMoveSound(ln[state.ply - 1], state.ply === ln.length);
@@ -1144,7 +1300,7 @@ function renderEvalBar() {
   $('boardbox').style.setProperty('--sq', ($('boardbox').clientWidth / 8) + 'px');
   bar.querySelector('.w').style.height = (wp ?? 50) + '%';
   const mv = currentMove();
-  const ev = state.ply === 0 ? (state.game.start_wp_white == null ? '' : '0.0') : (mv.eval ?? '');
+  const ev = state.ply === 0 ? (state.game.start_wp_white == null ? '' : fmtEvalBox(state.game.start_eval_text) || '0.0') : (mv.eval ?? '');
   const whiteAhead = (wp ?? 50) >= 50;
   bar.querySelector('.lbl.top').textContent = (state.flipped ? whiteAhead : !whiteAhead) ? ev.replace('-', '') : '';
   bar.querySelector('.lbl.bot').textContent = (state.flipped ? !whiteAhead : whiteAhead) ? ev.replace('-', '') : '';
@@ -1164,6 +1320,12 @@ function fmtEvalBox(ev) {
 function renderNow() {
   const g = state.game, el = $('now');
   el.classList.remove('loading');
+  if (state.ply === 0 && g.sandbox) {
+    const c = sandboxEval[currentFen()];
+    el.innerHTML = `<div class="top"><span class="verdict">Sandbox</span><span class="evbox">${c ? esc(fmtEvalBox(c.eval)) : ''}</span></div>` +
+      `<p>${c && c.best_san ? `Engine likes <b style="color:var(--text)">${esc(c.best_san)}</b> here. ` : (c ? '' : 'Evaluating… ')}Drag a piece to explore — nothing here is saved.</p>`;
+    return;
+  }
   if (state.ply === 0) {
     el.innerHTML = `<div class="top"><span class="verdict">${g.opening_name ? esc(g.opening_name) : 'Start of the game'}</span><span class="evbox">0.00</span></div>` +
       (g.analysed >= 0.999 ? `<p>${g.key_moments.length ? `${g.key_moments.length} key moment${g.key_moments.length > 1 ? 's' : ''} — press space to jump to the first.` : 'No decisive mistakes in this game.'}</p>` : `<p>Not analysed yet — press Analyse game.</p>`);
@@ -1186,13 +1348,28 @@ function renderNow() {
   if (m.spent != null && state.explain) html += `<p style="color:#777">Thought for ${m.spent}s.</p>`;
   el.innerHTML = html;
 }
+let sandboxEval = {};   // fen -> {eval, wp_white, best_uci, best_san}, for the sandbox's current (unplayed) position
 function bestMoveHere() {
   // the engine's move in the CURRENT position = best_uci of the next move on this line
   const ln = line();
-  return state.ply < ln.length ? ln[state.ply].best_uci : null;
+  if (state.ply < ln.length) return ln[state.ply].best_uci;
+  return state.game && state.game.sandbox ? (sandboxEval[currentFen()] || {}).best_uci || null : null;
+}
+async function ensureSandboxEval(fen) {
+  if (sandboxEval[fen]) return sandboxEval[fen];
+  let d;
+  try { d = await (await fetch(`api/eval?fen=${encodeURIComponent(fen)}`)).json(); } catch (e) { return null; }
+  if (!d || d.error) return null;
+  sandboxEval[fen] = d;
+  if (state.game && state.game.sandbox && currentFen() === fen && state.ply === line().length) {
+    if (state.ply === 0) { state.game.start_wp_white = d.wp_white; state.game.start_eval_text = d.eval; }
+    renderNow(); renderArrows(); renderEvalBar();
+  }
+  return d;
 }
 $('b-explain').onclick = () => { state.explain = !state.explain; $('b-explain').classList.toggle('active', state.explain); renderNow(); };
 $('b-best').onclick = async () => {
+  if (state.game && state.game.sandbox && !bestMoveHere()) await ensureSandboxEval(currentFen());
   const b = bestMoveHere();
   if (!b) { toast('No engine move for this position'); return; }
   if (state.showBest) { state.showBest = false; $('b-best').classList.remove('active'); await explore(currentFen(), b); return; }
@@ -1352,7 +1529,7 @@ document.addEventListener('keydown', e => {
   else if (e.key === 'f') $('b-flip').onclick();
   else if (e.key === 'p') togglePlay();
   else if (e.key === ' ') { nextKey(); e.preventDefault(); }
-  else if (e.key === 'Escape') { if (state.variation) { const p = Math.min(state.ply, state.variation.basePly); dropVariation(); renderMoveList(); go(p); update(false); } else location.hash = `#/p/${state.profile}`; }
+  else if (e.key === 'Escape') { if (state.variation) { const p = Math.min(state.ply, state.variation.basePly); dropVariation(); renderMoveList(); go(p); update(false); } else location.hash = state.profile ? `#/p/${state.profile}` : '#/'; }
 });
 window.addEventListener('resize', () => state.game && renderEvalBar());
 

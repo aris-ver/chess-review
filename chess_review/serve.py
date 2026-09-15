@@ -12,6 +12,7 @@
     POST /api/stop                      stop the running job
     GET  /api/legal?fen=                legal moves in a position (for the board UI)
     POST /api/explore                   {fen, uci, my_colour} -> the move evaluated and classified on the spot
+    GET  /api/eval?fen=                 the engine's eval and best move in a position, no move required (sandbox)
 
     /                                   the app (data/site)
     /p/<id>/...                         a profile's games.json, games/<slug>.json, insights.html
@@ -35,12 +36,16 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from typing import Optional
 from urllib.parse import parse_qs, unquote, urlparse
 
+import chess
+
 from . import aggregates, classify, ingest, normalise, profiles, site
 from .analyse import Analyser, export_parquet, open_db, pending_keys
 from .config import DEFAULT_NODES, ENGINE_IDLE_SECONDS, SITE_DIR
 from .db import base_views
 from .explore import Explorer
+from .pov import pov_win_pct
 from .profiles import Profile
+from .site import eval_text
 
 log = logging.getLogger("serve")
 _PROFILE_PATH = re.compile(r"^/p/([A-Za-z0-9_.-]+)/(.*)$")
@@ -265,6 +270,28 @@ class Handler(SimpleHTTPRequestHandler):
                 return self._json(self.runner.explorer.legal(fen))
             except ValueError as e:
                 return self._json({"error": str(e)}, 400)
+        if self.path.startswith("/api/eval"):
+            fen = parse_qs(urlparse(self.path).query).get("fen", [""])[0]
+            try:
+                board = chess.Board(fen)
+                main, _ = self.runner.explorer.evaluate(board)
+            except (ValueError, IndexError) as e:
+                return self._json({"error": str(e)}, 400)
+            except Exception as e:  # noqa: BLE001
+                log.error("eval failed: %s", traceback.format_exc())
+                return self._json({"error": str(e)}, 500)
+            best_uci, best_san = main.get("best_move"), None
+            if best_uci:
+                try:
+                    best_san = board.san(chess.Move.from_uci(best_uci))
+                except ValueError:
+                    best_san = None
+            side = "white" if board.turn else "black"
+            has_eval = main["eval_cp"] is not None or main["mate_in"] is not None
+            wp = pov_win_pct(main["eval_cp"], main["mate_in"], side, "white") if has_eval else None
+            return self._json({"eval": eval_text(main["eval_cp"], main["mate_in"], side),
+                               "wp_white": round(wp, 1) if wp is not None else None,
+                               "best_uci": best_uci, "best_san": best_san})
         return super().do_GET()
 
     def do_POST(self):
