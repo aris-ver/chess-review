@@ -37,7 +37,7 @@ header .right a { color: var(--muted); }
 .switch.on .lbl { color: var(--text); }
 main { padding: 16px 18px; max-width: 1800px; margin: 0 auto; }
 .hidden { display: none !important; }
-#toast { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); background: var(--panel2); border: 1px solid var(--line); padding: 8px 14px; border-radius: 8px; z-index: 10; }
+#toast { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); background: var(--panel2); border: 1px solid var(--line); padding: 8px 14px; border-radius: 8px; z-index: 10; cursor: default; }
 
 /* home: saved profiles + ad-hoc entries */
 .home { max-width: 900px; margin: 24px auto 0; }
@@ -554,7 +554,15 @@ $('b-sound2').textContent = $('b-sound').textContent; try { localStorage.setItem
 $('b-sound').textContent = state.sound ? '🔊' : '🔇';
 
 // ---------- routing ----------
-window.addEventListener('hashchange', () => assetsReady.then(route));
+window.addEventListener('hashchange', () => { assetsReady.then(route); checkStale(); });
+let pageStamp = null;
+async function checkStale() {
+  let lm; try { lm = (await fetch('index.html', { method: 'HEAD' })).headers.get('Last-Modified'); } catch (e) { return; }
+  if (!lm) return;
+  if (pageStamp === null) pageStamp = lm;
+  else if (lm !== pageStamp) { toast('The app was updated — click here to reload', 15000); $('toast').onclick = () => location.reload(); }
+}
+checkStale();
 async function route() {
   const h = location.hash || '#/';
   const sm = h.match(/^#\/sandbox\/(.+)$/);
@@ -986,7 +994,7 @@ async function pollStatus() {
 }
 function stopPolling() { if (state.poll) clearTimeout(state.poll); state.poll = null; }
 let toastT = null;
-function toast(msg) { $('toast').textContent = msg; $('toast').classList.remove('hidden'); clearTimeout(toastT); toastT = setTimeout(() => $('toast').classList.add('hidden'), 3500); }
+function toast(msg, ms = 3500) { $('toast').textContent = msg; $('toast').onclick = null; $('toast').classList.remove('hidden'); clearTimeout(toastT); toastT = setTimeout(() => $('toast').classList.add('hidden'), ms); }
 
 // ---------- board ----------
 function parseFen(fen) {
@@ -1137,7 +1145,7 @@ const ARROW_SW = 1.375, ARROW_HW = 3.25, ARROW_HL = 4.5, ARROW_GAP = 4.5;   // h
 // weight (0-1) scales an arrow's thickness and opacity -- used to rank a swarm of candidate moves by strength
 function arrowStyle(kind, weight) {
   const [r, g, b] = ARROW[kind];
-  return `fill:rgba(${r}, ${g}, ${b}, ${(0.85 * (0.4 + 0.6 * weight)).toFixed(2)})`;
+  return `fill:rgba(${r}, ${g}, ${b}, ${(0.25 + 0.7 * weight * weight).toFixed(2)})`;   // 1 -> .95, .68 -> .57, .45 -> .39
 }
 function arrow(uci, kind, weight = 1) {
   const [x1, y1] = sqXY(uci.slice(0, 2)).map(v => v + 6.25), [x2, y2] = sqXY(uci.slice(2, 4)).map(v => v + 6.25);
@@ -1175,7 +1183,7 @@ function renderArrows() {
   // fills in and re-settles live as streamSandboxEval() reads more of the search (see there)
   if (state.game && state.game.sandbox && !state.showBest) {
     const c = sandboxEval[fen];
-    (c && c.lines || []).forEach((l, i) => list.push([l.uci, 'best', Math.max(0.35, 1 - i * 0.38)]));
+    (c && c.lines || []).forEach((l, i) => list.push([l.uci, 'best', [1, 0.68, 0.45][i] || 0.4]));
   }
   list.sort((a, b) => a[2] - b[2]);   // thin/faint ones first, so the strongest arrow paints on top
   $('arrows').innerHTML = list.map(([u, k, w]) => arrow(u, k, w)).join('');
