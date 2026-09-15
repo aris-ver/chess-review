@@ -10,13 +10,13 @@ import logging
 import os
 import threading
 import time
-from typing import Optional
+from typing import Iterator, Optional
 
 import chess
 import chess.engine
 
 from . import explain
-from .analyse import robust_multipv
+from .analyse import _score, robust_multipv
 from .classify import classify_game
 from .config import DEFAULT_NODES, STOCKFISH
 from .db import connect
@@ -26,6 +26,24 @@ from .pov import pov_win_pct
 from .site import eval_text
 
 log = logging.getLogger("explore")
+
+
+def _lines_snapshot(board: chess.Board, lines: dict[int, dict], done: bool = False) -> dict:
+    """Format the current top lines of an in-progress or settled multipv search for the client."""
+    side = "white" if board.turn else "black"
+    out = []
+    for rank in sorted(lines):
+        info = lines[rank]
+        move = info["pv"][0]
+        cp, mate = _score(info)
+        try:
+            san = board.san(move)
+        except ValueError:
+            san = move.uci()
+        wp_white = pov_win_pct(cp, mate, side, "white") if (cp is not None or mate is not None) else None
+        out.append({"rank": rank, "uci": move.uci(), "san": san, "eval": eval_text(cp, mate, side),
+                    "wp_white": round(wp_white, 1) if wp_white is not None else None, "depth": info.get("depth")})
+    return {"lines": out, "done": done}
 
 
 class Explorer:
@@ -87,6 +105,33 @@ class Explorer:
     def _restart(self) -> None:
         self.close()
         self.engine()
+
+    def analyse_stream(self, board: chess.Board, multipv: int = 3) -> Iterator[dict]:
+        """Yield periodic snapshots of the top `multipv` lines while Stockfish iterates to the same node
+        budget as evaluate()/move() (~1s) -- the "engine is thinking" view for the sandbox. The last
+        snapshot (done=True) is the settled result. If the caller stops iterating early (a closed
+        connection closes this generator), the search is cancelled via analysis.stop() on the way out."""
+        with self._lock:
+            self.last_used = time.time()
+            limit = chess.engine.Limit(nodes=self.nodes)
+            lines: dict[int, dict] = {}
+            last_emit = 0.0
+            try:
+                with self.engine().analysis(board, limit, multipv=multipv, game=object()) as analysis:
+                    for info in analysis:
+                        if "pv" not in info or not info["pv"] or "multipv" not in info or "score" not in info:
+                            continue
+                        lines[info["multipv"]] = info
+                        now = time.time()
+                        if now - last_emit < 0.12:   # throttle: ~8 snapshots/s is plenty for a smooth-looking update
+                            continue
+                        last_emit = now
+                        yield _lines_snapshot(board, lines)
+            except chess.engine.EngineError:
+                self._restart()
+                return
+            if lines:
+                yield _lines_snapshot(board, lines, done=True)
 
     def move(self, fen: str, uci: str, my_colour: str, ply: int = 0) -> dict:
         board = chess.Board(fen)

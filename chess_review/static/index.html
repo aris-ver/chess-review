@@ -43,9 +43,10 @@ main { padding: 16px 18px; max-width: 1800px; margin: 0 auto; }
 .home { max-width: 900px; margin: 24px auto 0; }
 .home h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 26px 0 10px; }
 .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
-.card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; cursor: pointer; position: relative; min-height: 96px; display: flex; flex-direction: column; gap: 4px; }
-.card:hover { border-color: var(--accent); }
-.card.soon { cursor: default; opacity: .55; } .card.soon:hover { border-color: var(--line); }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; cursor: default; position: relative; min-height: 96px; display: flex; flex-direction: column; gap: 4px; }
+.card.prof, .card#card-setup { cursor: pointer; }
+.card.prof:hover, .card#card-setup:hover { border-color: var(--accent); }
+.card.soon { opacity: .55; }
 .card .src { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
 .card .who { font-size: 17px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-right: 22px; }
 .card .meta { color: var(--muted); font-size: 12px; margin-top: auto; }
@@ -75,6 +76,12 @@ main { padding: 16px 18px; max-width: 1800px; margin: 0 auto; }
 .setup-row label { color: var(--muted); font-size: 13px; }
 .setup-row select { font: inherit; color: var(--text); background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; }
 .setup-fen { font-family: ui-monospace, monospace; font-size: 12px; color: var(--muted); background: var(--panel); border-radius: 6px; padding: 8px 10px; word-break: break-all; }
+.setup-row button.icon { padding: 6px; }
+.setup-row button.icon svg { width: 18px; height: 18px; display: block; }
+.ghost-piece { position: fixed; left: 0; top: 0; width: 34px; height: 34px; pointer-events: none; transform: translate(-50%, -50%); z-index: 50; opacity: .85; filter: drop-shadow(0 2px 5px rgba(0,0,0,.5)); }
+.ghost-piece img, .ghost-piece svg { width: 100%; height: 100%; display: block; }
+.ghost-piece svg { color: var(--text); }
+.setup-board .sq { cursor: none; }
 
 /* sandbox review: hide the game-specific chrome that doesn't apply to a free position */
 body.sandbox .sections, body.sandbox svg.graph, body.sandbox .pfoot, body.sandbox #b-explain, body.sandbox #b-nextm, body.sandbox #b-key { display: none !important; }
@@ -323,7 +330,9 @@ svg.graph { width: 100%; height: 90px; display: block; cursor: pointer; backgrou
       <div class="setup-panel">
         <div class="palette" id="palette"></div>
         <div class="setup-row">
-          <label for="stm">Side to move</label>
+          <button id="s-undo" class="icon" title="Undo" disabled></button>
+          <button id="s-redo" class="icon" title="Redo" disabled></button>
+          <label for="stm" style="margin-left:auto">Side to move</label>
           <select id="stm"><option value="w">White</option><option value="b">Black</option></select>
         </div>
         <div class="setup-row">
@@ -336,6 +345,7 @@ svg.graph { width: 100%; height: 90px; display: block; cursor: pointer; backgrou
       </div>
     </div>
   </section>
+  <div class="ghost-piece hidden" id="ghostpiece"></div>
   <section id="list">
     <div class="filters">
       <button data-f="result" data-v="" class="active">All</button>
@@ -554,7 +564,7 @@ function setContext(on) {   // profile-scoped header controls only make sense in
 const SOURCE_NAME = { chesscom: 'chess.com', lichess: 'lichess', pgn: 'PGN' };
 async function showHome() {
   $('review').classList.add('hidden'); $('editor').classList.add('hidden'); $('list').classList.add('hidden'); $('home').classList.remove('hidden');
-  document.body.classList.remove('sandbox');
+  document.body.classList.remove('sandbox'); stopSandboxStream();
   state.game = null; state.profile = null; state.games = null; dropVariation(); stopPlay();
   setContext(false); $('crumb').textContent = '';
   await renderProfiles();
@@ -608,7 +618,7 @@ async function renderProfiles() {
 // ---------- list ----------
 async function showList() {
   $('review').classList.add('hidden'); $('home').classList.add('hidden'); $('editor').classList.add('hidden'); $('list').classList.remove('hidden');
-  document.body.classList.remove('sandbox');
+  document.body.classList.remove('sandbox'); stopSandboxStream();
   state.game = null; dropVariation(); stopPolling(); stopPlay();
   setContext(true);
   let games;
@@ -662,7 +672,7 @@ async function showSandbox(fen) {
   const moves = await fenLegalMoves(fen);
   if (!moves) { toast('Not a valid FEN'); location.hash = '#/'; return; }
   legalCache[fen] = moves;
-  sandboxEval = {};
+  sandboxEval = {}; stopSandboxStream();
   stopPolling(); stopPlay();
   state.profile = null; state.games = null; state.game = sandboxGame(fen);
   state.ply = 0; state.flipped = false; dropVariation(); state.sel = null; state.cycle = {}; $('pieces').innerHTML = '';
@@ -678,7 +688,11 @@ async function showSandbox(fen) {
 const START_BOARD = { a1:'R', b1:'N', c1:'B', d1:'Q', e1:'K', f1:'B', g1:'N', h1:'R',
                       a8:'r', b8:'n', c8:'b', d8:'q', e8:'k', f8:'b', g8:'n', h8:'r' };
 for (const f of 'abcdefgh') { START_BOARD[f + '2'] = 'P'; START_BOARD[f + '7'] = 'p'; }
-const setup = { board: {}, turn: 'w', flipped: false, tool: null };
+const ERASE_ICON = `<svg viewBox="0 0 24 24"><path d="M3 17l7-7 7 7-3 3H8l-5-3z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M10 10l7-7a2 2 0 0 1 3 0l1 1a2 2 0 0 1 0 3l-7 7" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M5 20h14" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>`;
+const UNDO_ICON = `<svg viewBox="0 0 24 24"><path d="M4 9a8 8 0 1 1 2 8.8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M4 4v5h5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+const REDO_ICON = `<svg viewBox="0 0 24 24"><path d="M20 9a8 8 0 1 0-2 8.8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M20 4v5h-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+$('s-undo').innerHTML = UNDO_ICON; $('s-redo').innerHTML = REDO_ICON;
+const setup = { board: {}, turn: 'w', flipped: false, tool: null, undo: [], redo: [] };
 function pieceHTML(ch) {
   const code = (ch === ch.toUpperCase() ? 'w' : 'b') + ch.toLowerCase();
   return ASSETS.hasPieces ? `<img src="${ASSETS.pieces}/${code}.png" alt="">` : `<svg viewBox="0 0 45 45"><use href="#${PIECE_ID[ch]}"/></svg>`;
@@ -687,7 +701,7 @@ function renderPalette() {
   const order = ['K', 'Q', 'R', 'B', 'N', 'P'];
   const row = colour => order.map(t => colour === 'w' ? t : t.toLowerCase())
     .map(ch => `<button data-ch="${ch}" title="${ch}">${pieceHTML(ch)}</button>`).join('');
-  $('palette').innerHTML = row('w') + row('b') + `<button class="erase" data-ch="">✕ Remove piece</button>`;
+  $('palette').innerHTML = row('w') + row('b') + `<button class="erase" data-ch="" title="Remove piece">${ERASE_ICON}</button>`;
   $('palette').querySelectorAll('button').forEach(b => b.onclick = () => {
     setup.tool = b.dataset.ch || null;
     $('palette').querySelectorAll('button').forEach(x => x.classList.toggle('active', x === b));
@@ -723,35 +737,69 @@ function renderSetupBoard() {
   $('setupboard').innerHTML = cells.join('');
   $('setupboard').querySelectorAll('.sq').forEach(el => el.onclick = () => {
     const sq = el.dataset.sq;
+    if (!setup.tool && !setup.board[sq]) return;   // erase tool on an empty square: nothing to undo
+    pushSetupHistory();
     if (setup.tool) setup.board[sq] = setup.tool; else delete setup.board[sq];
-    renderSetupBoard(); $('setupfen').textContent = setupFen();
+    renderSetupBoard();
   });
   $('setupfen').textContent = setupFen();
 }
+// ---- undo / redo: snapshot {board, turn} before every position-changing edit (flip is view-only, not tracked)
+function pushSetupHistory() {
+  setup.undo.push({ board: { ...setup.board }, turn: setup.turn });
+  if (setup.undo.length > 200) setup.undo.shift();
+  setup.redo = [];
+  renderUndoRedo();
+}
+function renderUndoRedo() { $('s-undo').disabled = !setup.undo.length; $('s-redo').disabled = !setup.redo.length; }
+function applySetupHistory(from, to) {
+  if (!from.length) return;
+  to.push({ board: { ...setup.board }, turn: setup.turn });
+  const snap = from.pop();
+  setup.board = snap.board; setup.turn = snap.turn;
+  $('stm').value = setup.turn;
+  renderSetupBoard(); renderUndoRedo();
+}
+$('s-undo').onclick = () => applySetupHistory(setup.undo, setup.redo);
+$('s-redo').onclick = () => applySetupHistory(setup.redo, setup.undo);
 function showEditor() {
   $('home').classList.add('hidden'); $('review').classList.add('hidden'); $('list').classList.add('hidden'); $('editor').classList.remove('hidden');
-  document.body.classList.remove('sandbox');
+  document.body.classList.remove('sandbox'); stopSandboxStream();
   setContext(false); $('crumb').textContent = 'Set up a board';
-  setup.board = { ...START_BOARD }; setup.turn = 'w'; setup.flipped = false; setup.tool = null;
+  setup.board = { ...START_BOARD }; setup.turn = 'w'; setup.flipped = false; setup.tool = null; setup.undo = []; setup.redo = [];
   $('stm').value = 'w';
   renderPalette();
   renderSetupBoard();
+  renderUndoRedo();
 }
-$('stm').onchange = () => { setup.turn = $('stm').value; $('setupfen').textContent = setupFen(); };
-$('s-start').onclick = () => { setup.board = { ...START_BOARD }; renderSetupBoard(); };
-$('s-clear').onclick = () => { setup.board = {}; renderSetupBoard(); };
+$('stm').onchange = () => { pushSetupHistory(); setup.turn = $('stm').value; $('setupfen').textContent = setupFen(); };
+$('s-start').onclick = () => { pushSetupHistory(); setup.board = { ...START_BOARD }; renderSetupBoard(); };
+$('s-clear').onclick = () => { pushSetupHistory(); setup.board = {}; renderSetupBoard(); };
 $('s-flip').onclick = () => { setup.flipped = !setup.flipped; renderSetupBoard(); };
 $('s-go').onclick = () => {
   const kings = Object.values(setup.board).filter(c => c === 'K').length, bkings = Object.values(setup.board).filter(c => c === 'k').length;
   if (kings !== 1 || bkings !== 1) { toast('Set up exactly one king per side'); return; }
   location.hash = '#/sandbox/' + encodeURIComponent(setupFen());
 };
+document.addEventListener('keydown', e => {
+  if ($('editor').classList.contains('hidden')) return;
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); (e.shiftKey ? $('s-redo') : $('s-undo')).onclick(); }
+  else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') { e.preventDefault(); $('s-redo').onclick(); }
+});
+// the selected piece (or eraser) follows the cursor over the board, so it's obvious what a click will place
+document.addEventListener('pointermove', e => {
+  const gp = $('ghostpiece');
+  if ($('editor').classList.contains('hidden') || !e.target.closest('#setupboard')) { gp.classList.add('hidden'); return; }
+  gp.classList.remove('hidden');
+  gp.style.left = e.clientX + 'px'; gp.style.top = e.clientY + 'px';
+  gp.innerHTML = setup.tool ? pieceHTML(setup.tool) : ERASE_ICON;
+});
 
 // ---------- review ----------
 async function loadGame(id) { return (await fetch(`${P()}/games/${id}.json`)).json(); }
 async function showGame(id) {
   let g; try { g = await loadGame(id); } catch (e) { location.hash = state.profile ? `#/p/${state.profile}` : '#/'; return; }
-  document.body.classList.remove('sandbox');
+  document.body.classList.remove('sandbox'); stopSandboxStream();
   $('a-back').href = `#/p/${state.profile}`; $('a-insights2').href = `${P()}/insights.html`; $('ptitle-t').textContent = 'Game Review'; setContext(true);
   const same = state.game && state.game.id === id;
   state.game = g;
@@ -778,7 +826,7 @@ async function reloadGame() {
 
 function update(sound = true) {
   renderBoard(); renderPlayers(); renderEvalBar(); renderNow(); highlightCurrent(); renderNav();
-  if (state.game && state.game.sandbox && state.ply === line().length) ensureSandboxEval(currentFen());
+  if (state.game && state.game.sandbox && state.ply === line().length) streamSandboxEval(currentFen());
   if (!sound) return;
   const ln = line();
   if (state.ply > 0) playMoveSound(ln[state.ply - 1], state.ply === ln.length);
@@ -1044,44 +1092,56 @@ function pieceTf(name) {
 
 // --- arrows: one 7-point polygon each, authored pointing down and rotated into place
 const ARROW = {
-  best:   'rgba(159, 207, 63, 0.8)',   // green  - engine's preferred move
-  threat: 'rgba(255, 170, 0, 0.8)',    // orange - attack/defence overlay
-  punish: 'rgba(248, 85, 63, 0.8)',    // red    - refutation of a blunder
+  best:   [159, 207, 63],   // green  - engine's preferred move
+  threat: [255, 170, 0],    // orange - attack/defence overlay
+  punish: [248, 85, 63],    // red    - refutation of a blunder
 };
-const ARROW_SW = 1.375, ARROW_HW = 3.25, ARROW_HL = 4.5, ARROW_GAP = 4.5;   // half shaft, half head, head length, gap at the tail
-function arrow(uci, kind) {
+const ARROW_SW = 1.375, ARROW_HW = 3.25, ARROW_HL = 4.5, ARROW_GAP = 4.5;   // half shaft, half head, head length, gap at the tail (weight 1)
+// weight (0-1) scales an arrow's thickness and opacity -- used to rank a swarm of candidate moves by strength
+function arrowStyle(kind, weight) {
+  const [r, g, b] = ARROW[kind];
+  return `fill:rgba(${r}, ${g}, ${b}, ${(0.85 * (0.4 + 0.6 * weight)).toFixed(2)})`;
+}
+function arrow(uci, kind, weight = 1) {
   const [x1, y1] = sqXY(uci.slice(0, 2)).map(v => v + 6.25), [x2, y2] = sqXY(uci.slice(2, 4)).map(v => v + 6.25);
   const len = Math.hypot(x2 - x1, y2 - y1);
   const dx = Math.round((x2 - x1) / 12.5), dy = Math.round((y2 - y1) / 12.5);
-  if (Math.abs(dx) + Math.abs(dy) === 3 && dx && dy) return knightArrow(x1, y1, dx, dy, kind);
+  if (Math.abs(dx) + Math.abs(dy) === 3 && dx && dy) return knightArrow(x1, y1, dx, dy, kind, weight);
   // rotation taking the down-pointing polygon onto (dx, dy) in y-down SVG coords (SVG rotate is clockwise)
   const deg = Math.atan2(-(x2 - x1), y2 - y1) * 180 / Math.PI;
-  const sw = ARROW_SW, hw = ARROW_HW, hl = ARROW_HL, gap = ARROW_GAP;
+  const sw = ARROW_SW * weight, hw = ARROW_HW * weight, hl = ARROW_HL, gap = ARROW_GAP;
   const end = y1 + len - hl;
   const pts = [[x1 - sw, y1 + gap], [x1 - sw, end], [x1 - hw, end], [x1, y1 + len], [x1 + hw, end], [x1 + sw, end], [x1 + sw, y1 + gap]]
     .map(p => p.join(',')).join(' ');
-  return `<polygon points="${pts}" transform="rotate(${deg} ${x1} ${y1})" style="fill:${ARROW[kind]}"/>`;
+  return `<polygon points="${pts}" transform="rotate(${deg} ${x1} ${y1})" style="${arrowStyle(kind, weight)}"/>`;
 }
 // Knight moves bend like on chess.com: two squares along the long axis, then one square sideways with the head.
 // Authored as "down 2, then right 1" and mapped onto the real axes with a matrix (mirroring falls out for free).
-function knightArrow(x1, y1, dx, dy, kind) {
-  const sw = ARROW_SW, hw = ARROW_HW, hl = ARROW_HL, L = 25, S = 12.5;
+function knightArrow(x1, y1, dx, dy, kind, weight = 1) {
+  const sw = ARROW_SW * weight, hw = ARROW_HW * weight, hl = ARROW_HL, L = 25, S = 12.5;
   const pts = [[-sw, ARROW_GAP], [-sw, L + sw], [S - hl, L + sw], [S - hl, L + hw], [S, L], [S - hl, L - hw], [S - hl, L - sw], [sw, L - sw], [sw, ARROW_GAP]]
     .map(p => p.join(',')).join(' ');
   // local x (sideways) -> short axis unit vector B, local y (forward) -> long axis unit vector A
   const vertical = Math.abs(dy) === 2;
   const A = vertical ? [0, Math.sign(dy)] : [Math.sign(dx), 0], B = vertical ? [Math.sign(dx), 0] : [0, Math.sign(dy)];
-  return `<polygon points="${pts}" transform="matrix(${B[0]} ${B[1]} ${A[0]} ${A[1]} ${x1} ${y1})" style="fill:${ARROW[kind]}"/>`;
+  return `<polygon points="${pts}" transform="matrix(${B[0]} ${B[1]} ${A[0]} ${A[1]} ${x1} ${y1})" style="${arrowStyle(kind, weight)}"/>`;
 }
 let arrowsFor = null;
 function renderArrows() {
   const mv = currentMove(), fen = currentFen();
   const list = [];
-  if (state.showBest && bestMoveHere()) list.push([bestMoveHere(), 'best']);
+  if (state.showBest && bestMoveHere()) list.push([bestMoveHere(), 'best', 1]);
   // the engine's preferred move whenever the played one wasn't it (same rule as the "X was better" text in the bubble)
-  if (mv && mv.best_uci && mv.best_uci !== mv.uci && mv.label && !['book', 'forced'].includes(mv.label)) list.push([mv.best_uci, 'best']);
-  if (mv && BAD.has(mv.label) && mv.reply_uci) list.push([mv.reply_uci, 'punish']);
-  $('arrows').innerHTML = list.map(([u, k]) => arrow(u, k)).join('');
+  if (mv && mv.best_uci && mv.best_uci !== mv.uci && mv.label && !['book', 'forced'].includes(mv.label)) list.push([mv.best_uci, 'best', 1]);
+  if (mv && BAD.has(mv.label) && mv.reply_uci) list.push([mv.reply_uci, 'punish', 1]);
+  // sandbox: a swarm of the engine's top candidates at the position about to be played, sized by rank --
+  // fills in and re-settles live as streamSandboxEval() reads more of the search (see there)
+  if (state.game && state.game.sandbox && !state.showBest && state.ply === line().length) {
+    const c = sandboxEval[fen];
+    (c && c.lines || []).forEach((l, i) => list.push([l.uci, 'best', Math.max(0.35, 1 - i * 0.38)]));
+  }
+  list.sort((a, b) => a[2] - b[2]);   // thin/faint ones first, so the strongest arrow paints on top
+  $('arrows').innerHTML = list.map(([u, k, w]) => arrow(u, k, w)).join('');
   // threats: legal captures onto pieces the move left hanging (computed from the legal-move set, not the PV)
   arrowsFor = fen;
   if (mv && BAD.has(mv.label) && mv.hung && mv.hung.length) {
@@ -1321,9 +1381,9 @@ function renderNow() {
   const g = state.game, el = $('now');
   el.classList.remove('loading');
   if (state.ply === 0 && g.sandbox) {
-    const c = sandboxEval[currentFen()];
-    el.innerHTML = `<div class="top"><span class="verdict">Sandbox</span><span class="evbox">${c ? esc(fmtEvalBox(c.eval)) : ''}</span></div>` +
-      `<p>${c && c.best_san ? `Engine likes <b style="color:var(--text)">${esc(c.best_san)}</b> here. ` : (c ? '' : 'Evaluating… ')}Drag a piece to explore — nothing here is saved.</p>`;
+    const top = sandboxTop(currentFen()), settled = sandboxEval[currentFen()] && sandboxEval[currentFen()].done;
+    el.innerHTML = `<div class="top"><span class="verdict">Sandbox</span><span class="evbox">${top ? esc(fmtEvalBox(top.eval)) : ''}</span></div>` +
+      `<p>${top ? `Engine likes <b style="color:var(--text)">${esc(top.san)}</b> here${settled ? '' : ', still thinking…'}. ` : 'Evaluating… '}Drag a piece to explore — nothing here is saved.</p>`;
     return;
   }
   if (state.ply === 0) {
@@ -1348,28 +1408,66 @@ function renderNow() {
   if (m.spent != null && state.explain) html += `<p style="color:#777">Thought for ${m.spent}s.</p>`;
   el.innerHTML = html;
 }
-let sandboxEval = {};   // fen -> {eval, wp_white, best_uci, best_san}, for the sandbox's current (unplayed) position
+// fen -> {lines: [{rank, uci, san, eval, depth}, ...], done}, the sandbox's current (unplayed) position,
+// filled in live as streamSandboxEval() reads the engine's search — see below.
+let sandboxEval = {};
+function sandboxTop(fen) { const c = sandboxEval[fen]; return c && c.lines && c.lines[0]; }
 function bestMoveHere() {
   // the engine's move in the CURRENT position = best_uci of the next move on this line
   const ln = line();
   if (state.ply < ln.length) return ln[state.ply].best_uci;
-  return state.game && state.game.sandbox ? (sandboxEval[currentFen()] || {}).best_uci || null : null;
+  if (!state.game || !state.game.sandbox) return null;
+  const top = sandboxTop(currentFen());
+  return top ? top.uci : null;
 }
-async function ensureSandboxEval(fen) {
-  if (sandboxEval[fen]) return sandboxEval[fen];
-  let d;
-  try { d = await (await fetch(`api/eval?fen=${encodeURIComponent(fen)}`)).json(); } catch (e) { return null; }
-  if (!d || d.error) return null;
-  sandboxEval[fen] = d;
-  if (state.game && state.game.sandbox && currentFen() === fen && state.ply === line().length) {
-    if (state.ply === 0) { state.game.start_wp_white = d.wp_white; state.game.start_eval_text = d.eval; }
-    renderNow(); renderArrows(); renderEvalBar();
-  }
-  return d;
+// Live multipv analysis for the sandbox's leaf position: reads the engine's search as it happens (NDJSON
+// over a chunked response) rather than waiting for one final answer, so the coach bubble and the best-move
+// arrows fill in and settle in front of the user instead of popping in. One stream per position: a second
+// call for the same fen joins the one already running; a call for a different fen cancels it (closing the
+// connection stops the search on the server too, so it doesn't keep burning CPU on a position you've left).
+let sandboxStreamAbort = null, sandboxStreamFen = null, sandboxStreamPromise = null;
+function stopSandboxStream() {
+  if (sandboxStreamAbort) sandboxStreamAbort.abort();
+  sandboxStreamAbort = null; sandboxStreamFen = null; sandboxStreamPromise = null;
+}
+function streamSandboxEval(fen) {
+  if (sandboxStreamFen === fen && sandboxStreamPromise) return sandboxStreamPromise;
+  if (sandboxStreamAbort) sandboxStreamAbort.abort();
+  const ac = new AbortController();
+  sandboxStreamAbort = ac; sandboxStreamFen = fen;
+  const run = (async () => {
+    let res;
+    try { res = await fetch(`api/eval_stream?fen=${encodeURIComponent(fen)}&multipv=3`, { signal: ac.signal }); } catch (e) { return; }
+    if (!res.ok || !res.body) return;
+    const reader = res.body.getReader(), decoder = new TextDecoder();
+    let buf = '';
+    try {
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        let nl;
+        while ((nl = buf.indexOf('\n')) >= 0) {
+          const raw = buf.slice(0, nl); buf = buf.slice(nl + 1);
+          if (!raw) continue;
+          let snap; try { snap = JSON.parse(raw); } catch (e) { continue; }
+          sandboxEval[fen] = snap;
+          if (state.game && state.game.sandbox && currentFen() === fen && state.ply === line().length) {
+            const top = snap.lines[0];
+            if (state.ply === 0 && top) { state.game.start_eval_text = top.eval; state.game.start_wp_white = top.wp_white; }
+            renderNow(); renderArrows(); renderEvalBar();
+          }
+        }
+      }
+    } catch (e) { /* aborted, or the connection dropped -- the position has moved on */ }
+  })();
+  sandboxStreamPromise = run;
+  run.finally(() => { if (sandboxStreamAbort === ac) { sandboxStreamAbort = null; sandboxStreamFen = null; sandboxStreamPromise = null; } });
+  return run;
 }
 $('b-explain').onclick = () => { state.explain = !state.explain; $('b-explain').classList.toggle('active', state.explain); renderNow(); };
 $('b-best').onclick = async () => {
-  if (state.game && state.game.sandbox && !bestMoveHere()) await ensureSandboxEval(currentFen());
+  if (state.game && state.game.sandbox && !bestMoveHere()) await streamSandboxEval(currentFen());
   const b = bestMoveHere();
   if (!b) { toast('No engine move for this position'); return; }
   if (state.showBest) { state.showBest = false; $('b-best').classList.remove('active'); await explore(currentFen(), b); return; }

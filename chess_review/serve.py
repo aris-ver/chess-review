@@ -260,18 +260,19 @@ class Handler(SimpleHTTPRequestHandler):
         return self._json({"job": job.to_dict()})
 
     def do_GET(self):
-        if self.path.startswith("/api/status"):
+        url = urlparse(self.path)
+        if url.path == "/api/status":
             return self._json({"job": self.runner.job.to_dict() if self.runner.job else None})
-        if self.path.startswith("/api/profiles"):
+        if url.path == "/api/profiles":
             return self._json({"profiles": [p.summary() for p in profiles.list_profiles()]})
-        if self.path.startswith("/api/legal"):
-            fen = parse_qs(urlparse(self.path).query).get("fen", [""])[0]
+        if url.path == "/api/legal":
+            fen = parse_qs(url.query).get("fen", [""])[0]
             try:
                 return self._json(self.runner.explorer.legal(fen))
             except ValueError as e:
                 return self._json({"error": str(e)}, 400)
-        if self.path.startswith("/api/eval"):
-            fen = parse_qs(urlparse(self.path).query).get("fen", [""])[0]
+        if url.path == "/api/eval":
+            fen = parse_qs(url.query).get("fen", [""])[0]
             try:
                 board = chess.Board(fen)
                 main, _ = self.runner.explorer.evaluate(board)
@@ -292,7 +293,40 @@ class Handler(SimpleHTTPRequestHandler):
             return self._json({"eval": eval_text(main["eval_cp"], main["mate_in"], side),
                                "wp_white": round(wp, 1) if wp is not None else None,
                                "best_uci": best_uci, "best_san": best_san})
+        if url.path == "/api/eval_stream":
+            q = parse_qs(url.query)
+            fen = q.get("fen", [""])[0]
+            try:
+                multipv = max(1, min(5, int(q.get("multipv", ["3"])[0])))
+            except ValueError:
+                multipv = 3
+            try:
+                board = chess.Board(fen)
+            except ValueError as e:
+                return self._json({"error": str(e)}, 400)
+            return self._stream_eval(board, multipv)
         return super().do_GET()
+
+    def _stream_eval(self, board: chess.Board, multipv: int) -> None:
+        """NDJSON over chunked transfer encoding: one line per snapshot as the engine iterates, so the
+        client can draw live-updating arrows instead of waiting for the final, settled result."""
+        self.send_response(200)
+        self.send_header("Content-Type", "application/x-ndjson")
+        self.send_header("Transfer-Encoding", "chunked")
+        self.end_headers()
+        gen = self.runner.explorer.analyse_stream(board, multipv)
+        try:
+            for snapshot in gen:
+                chunk = (json.dumps(snapshot) + "\n").encode()
+                self.wfile.write(f"{len(chunk):x}\r\n".encode() + chunk + b"\r\n")
+                self.wfile.flush()
+            self.wfile.write(b"0\r\n\r\n")
+        except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+            pass   # client moved on; closing the generator below stops the search rather than burning the node budget unwatched
+        except Exception:  # noqa: BLE001
+            log.error("eval_stream failed: %s", traceback.format_exc())
+        finally:
+            gen.close()
 
     def do_POST(self):
         r = self.runner
