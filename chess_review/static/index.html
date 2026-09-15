@@ -28,6 +28,13 @@ header h1 { font-size: 18px; margin: 0; }
 header .crumb { color: var(--muted); }
 header .right { margin-left: auto; display: flex; gap: 10px; align-items: center; }
 header .right a { color: var(--muted); }
+.switch { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; user-select: none; }
+.switch .lbl { font-size: 13px; color: var(--muted); }
+.switch .track { position: relative; width: 40px; height: 22px; border-radius: 11px; background: #55524c; transition: background .15s; flex-shrink: 0; }
+.switch .track::after { content: ""; position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.4); transition: transform .15s; }
+.switch.on .track { background: var(--accent); }
+.switch.on .track::after { transform: translateX(18px); }
+.switch.on .lbl { color: var(--text); }
 main { padding: 16px 18px; max-width: 1800px; margin: 0 auto; }
 .hidden { display: none !important; }
 #toast { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); background: var(--panel2); border: 1px solid var(--line); padding: 8px 14px; border-radius: 8px; z-index: 10; }
@@ -81,7 +88,7 @@ td.num { text-align: right; font-variant-numeric: tabular-nums; }
   header .crumb { display: none; }
   header .right { gap: 6px; }
   header .right button { padding: 5px 8px; font-size: 14px; }
-  header .t, header #jobstat { display: none; }
+  header .t, header #jobstat, header .switch .lbl { display: none; }
   header h1 { white-space: nowrap; }
   .evalbar .lbl { display: none; }
   main { padding: 8px 8px 84px; }
@@ -265,7 +272,7 @@ svg.graph { width: 100%; height: 90px; display: block; cursor: pointer; backgrou
   <div class="right">
     <button id="b-sound" title="Toggle sound">🔊</button>
     <button id="b-refresh" class="pctx" title="Fetch new games from chess.com"><span class="i">⟳</span><span class="t"> Refresh games</span></button>
-    <button id="b-auto" class="pctx" title="Analyse newly fetched games automatically after a refresh (off: analyse each game on demand)"><span class="i">⚙</span><span class="t"> Auto-analyse: off</span></button>
+    <span id="b-auto" class="switch pctx" title="Analyse newly fetched games automatically after a refresh (off: analyse each game on demand)"><span class="lbl">Auto-analyse</span><span class="track"></span></span>
     <span id="jobstat" style="color:var(--muted);font-size:12px"></span>
     <a id="a-insights" class="pctx" href="#" title="Insights"><span class="i">📊</span><span class="t"> Insights →</span></a>
   </div>
@@ -677,8 +684,7 @@ $('b-refresh').onclick = async () => {
   pollStatus();
 };
 function renderAuto() {
-  $('b-auto').classList.toggle('active', state.autoAnalyse);
-  $('b-auto').querySelector('.t').textContent = ` Auto-analyse: ${state.autoAnalyse ? 'on' : 'off'}`;
+  $('b-auto').classList.toggle('on', state.autoAnalyse);
 }
 $('b-auto').onclick = () => {
   state.autoAnalyse = !state.autoAnalyse;
