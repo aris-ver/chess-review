@@ -9,6 +9,7 @@ import argparse
 import hashlib
 import json
 import logging
+import re
 import sys
 import time
 from pathlib import Path
@@ -69,9 +70,14 @@ def fetch_archives(profile: Profile, force: bool = False, only: str | None = Non
     return stats
 
 
-def store_pgn(profile: Profile, text: str) -> str:
+def store_pgn(profile: Profile, text: str, review_as: str | None = None) -> str:
+    """Save a PGN under its content hash. `review_as` ("white"/"black") is written into every game's tag
+    section as [ReviewAs ...] so normalise knows which side is "me" without a username match."""
     profile.pgn_dir.mkdir(parents=True, exist_ok=True)
     normalised = text.replace("\r\n", "\n").strip() + "\n"
+    if review_as in ("white", "black"):
+        tag = f'[ReviewAs "{review_as}"]\n'
+        normalised = re.sub(r'(?m)^(?=\[Event )', tag, normalised) if re.search(r"(?m)^\[Event ", normalised) else tag + normalised
     digest = hashlib.sha256(normalised.encode("utf-8")).hexdigest()[:16]
     out = profile.pgn_dir / f"{digest}.pgn"
     if not out.exists():

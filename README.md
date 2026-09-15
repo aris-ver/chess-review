@@ -11,7 +11,8 @@ bash scripts/restart_server.sh          # http://127.0.0.1:8123/  (log: data/ser
 ```
 
 The home screen lists **profiles** (one per chess.com user; add any username, remove with ✕) plus
-a **sandbox** (paste a FEN, or set up a board by hand) and a PGN placeholder. Open a profile → its games; any game
+a **sandbox** (paste a FEN, or set up a board by hand; the engine's top 3 lines and best-move arrows update live
+as it searches) and **Paste a PGN** (pick the side you played; the game lands in a "Pasted games" profile and opens at once). Open a profile → its games; any game
 not fully analysed has an **Analyse** button right in the list; open a game → **Analyse game**
 (≈1-2 min for a rapid game: MultiPV=3, 1M nodes/position, 6 engines). The board, graph, move list and key
 moments fill in while it runs. **⟳ Refresh games** re-fetches the current month from chess.com; nothing is
@@ -61,7 +62,7 @@ Every stage takes `--profile <id>`; with exactly one profile it is the default. 
 Server API: `GET /api/profiles`, `POST /api/profiles`, `POST /api/profiles/<id>/delete`, `GET /api/status`,
 `POST /api/p/<id>/analyse/<game>`, `POST /api/p/<id>/refresh` (`{"analyse": true}` to analyse the new games),
 `POST /api/stop`; profile files are served under `/p/<id>/`. Position tools (no profile): `GET /api/legal?fen=`,
-`POST /api/explore`, `GET /api/eval?fen=`, and `GET /api/eval_stream?fen=&multipv=3` — NDJSON snapshots of the
+`POST /api/explore`, `GET /api/eval?fen=`, `GET /api/engine`, `POST /api/pgn`, and `GET /api/eval_stream?fen=&multipv=3` — NDJSON snapshots of the
 engine's top lines as it searches, which is what the sandbox draws its live arrows and lines from.
 
 A game can show as partly analysed without ever being asked for: the engine cache is shared by position, so an

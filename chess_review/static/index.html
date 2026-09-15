@@ -58,6 +58,11 @@ main { padding: 16px 18px; max-width: 1800px; margin: 0 auto; }
 .card.add select, .card.add input, .card.fen input { font: inherit; color: var(--text); background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; width: 100%; }
 .card.add input::placeholder, .card.fen input::placeholder { color: var(--muted); }
 .card.add button, .card.fen button { align-self: flex-start; }
+.card.pgn textarea { font: 12px/1.4 ui-monospace, monospace; color: var(--text); background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; width: 100%; resize: vertical; }
+.card.pgn .row { display: flex; gap: 8px; align-items: center; }
+.card.pgn .row label { color: var(--muted); font-size: 13px; }
+.card.pgn .row select { font: inherit; color: var(--text); background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px; }
+.card.pgn .row button { margin-left: auto; }
 .card .desc { color: var(--muted); font-size: 13px; }
 
 /* board setup editor */
@@ -93,6 +98,7 @@ main { padding: 16px 18px; max-width: 1800px; margin: 0 auto; }
 .lines .ln .pv b { color: var(--text); font-weight: 600; }
 .lines .ln.top .pv b { color: var(--accent); }
 .lines .hint { padding: 6px 10px; color: var(--muted); font-size: 12px; }
+.lines .hint.eng { border-bottom: 1px solid var(--line); padding-bottom: 5px; margin-bottom: 2px; } .lines .hint.eng b { color: var(--text); font-weight: 600; }
 .lines .depth { margin-left: auto; color: var(--muted); font-size: 11px; flex-shrink: 0; }
 body.sandbox .lines { display: block; }
 /* sandbox review: hide the game-specific chrome that doesn't apply to a free position */
@@ -325,7 +331,13 @@ svg.graph { width: 100%; height: 90px; display: block; cursor: pointer; backgrou
       <div class="cards" id="profiles"></div>
       <h2>Analyse something else</h2>
       <div class="cards">
-        <div class="card soon" title="Coming next"><span class="src">PGN</span><span class="who">Paste a PGN</span><span class="desc">Review any game from its PGN text.</span></div>
+        <div class="card fen pgn">
+          <span class="src">PGN</span><span class="who">Paste a PGN</span>
+          <form id="pgnform">
+            <textarea name="pgn" rows="4" placeholder="[Event &quot;…&quot;]&#10;1. e4 e5 2. Nf3 …" spellcheck="false" required></textarea>
+            <div class="row"><label>I played</label><select name="review_as"><option value="white">White</option><option value="black">Black</option></select><button class="primary" type="submit">Review</button></div>
+          </form>
+        </div>
         <div class="card fen">
           <span class="src">FEN</span><span class="who">From a position</span>
           <form id="fenform">
@@ -584,6 +596,11 @@ function setContext(on) {   // profile-scoped header controls only make sense in
 
 // ---------- home ----------
 const SOURCE_NAME = { chesscom: 'chess.com', lichess: 'lichess', pgn: 'PGN' };
+// which engine answers on-demand questions, and how deep: shown next to every result
+state.engine = null;
+(async () => { try { const d = await (await fetch('api/engine')).json(); if (!d.error) { state.engine = d; if (state.game) { renderAnalyseBox(); renderLines(); renderNow(); } } } catch (e) {} })();
+const fmtNodes = n => n >= 1e6 ? `${(n / 1e6).toFixed(n % 1e6 ? 1 : 0)}M nodes` : `${Math.round(n / 1e3)}k nodes`;
+const engineName = snap => (snap && snap.engine) || (state.engine && state.engine.name) || 'Engine';
 async function showHome() {
   $('review').classList.add('hidden'); $('editor').classList.add('hidden'); $('list').classList.add('hidden'); $('home').classList.remove('hidden');
   document.body.classList.remove('sandbox'); stopSandboxStream();
@@ -594,6 +611,20 @@ async function showHome() {
 }
 $('fenform').onsubmit = e => { e.preventDefault(); const fen = e.target.fen.value.trim(); if (fen) location.hash = '#/sandbox/' + encodeURIComponent(fen); };
 $('card-setup').onclick = () => location.hash = '#/setup';
+$('pgnform').onsubmit = async e => {
+  e.preventDefault();
+  const f = e.target, btn = f.querySelector('button');
+  btn.disabled = true; btn.textContent = 'Reading…';
+  let r, d;
+  try {
+    r = await fetch('api/pgn', { method: 'POST', body: JSON.stringify({ pgn: f.pgn.value, review_as: f.review_as.value }) });
+    d = await r.json();
+  } catch (err) { d = { error: String(err) }; r = { ok: false }; }
+  btn.disabled = false; btn.textContent = 'Review';
+  if (!r.ok) { toast(d.error === 'busy' ? `Busy: ${jobText(d.job)}` : d.error); return; }
+  f.pgn.value = '';
+  location.hash = d.games.length === 1 ? `#/p/${d.profile.id}/game/${d.games[0]}` : `#/p/${d.profile.id}`;
+};
 async function renderProfiles() {
   let d; try { d = await (await fetch('api/profiles')).json(); } catch (e) { d = { profiles: [] }; }
   const cards = d.profiles.map(p => `
@@ -905,7 +936,7 @@ function renderAnalyseBox(job) {
     return;
   }
   prog.classList.add('hidden');
-  if (g.analysed >= 0.999) { btn.textContent = 'Analysed ✓'; btn.disabled = true; btn.classList.remove('primary'); st.textContent = `${g.moves.length} moves · MultiPV 3`; }
+  if (g.analysed >= 0.999) { btn.textContent = 'Analysed ✓'; btn.disabled = true; btn.classList.remove('primary'); st.textContent = `${g.moves.length} moves · ${engineName()}${state.engine ? ` · ${fmtNodes(state.engine.nodes)}/position` : ''} · MultiPV ${state.engine ? state.engine.multipv : 3}`; }
   else { btn.textContent = g.analysed > 0 ? 'Continue analysis' : 'Analyse game'; btn.disabled = false; btn.classList.add('primary'); st.textContent = g.analysed > 0 ? `${Math.round(g.analysed * 100)}% analysed` : 'Not analysed yet'; }
 }
 $('b-analyse').onclick = async () => {
@@ -1430,7 +1461,7 @@ function renderNow() {
   if (state.ply === 0 && g.sandbox) {
     const top = sandboxTop(currentFen()), settled = sandboxEval[currentFen()] && sandboxEval[currentFen()].done;
     el.innerHTML = `<div class="top"><span class="verdict">Sandbox</span><span class="evbox">${top ? esc(fmtEvalBox(top.eval)) : ''}</span></div>` +
-      `<p>${top ? `Engine likes <b style="color:var(--text)">${esc(top.san)}</b> here${settled ? '. ' : ' (still thinking…). '}` : 'Evaluating… '}Drag a piece to explore — nothing here is saved.</p>`;
+      `<p>${top ? `${esc(engineName(sandboxEval[currentFen()]))} likes <b style="color:var(--text)">${esc(top.san)}</b> here (depth ${top.depth ?? '?'}${settled ? '' : ', still thinking…'}). ` : `${esc(engineName())} is evaluating… `}Drag a piece to explore — nothing here is saved.</p>`;
     return;
   }
   if (state.ply === 0) {
@@ -1521,7 +1552,8 @@ function renderLines() {
   if (!state.game || !state.game.sandbox) { el.classList.add('hidden'); return; }
   el.classList.remove('hidden');
   const fen = currentFen(), c = sandboxEval[fen];
-  if (!c || !c.lines.length) { el.innerHTML = `<div class="hint">Engine is thinking…</div>`; return; }
+  if (!c || !c.lines.length) { el.innerHTML = `<div class="hint">${engineName()} is thinking…</div>`; return; }
+  const depth = Math.max(...c.lines.map(l => l.depth || 0));
   const parts = fen.split(' '), blackToMove = parts[1] === 'b';
   let moveNo = +parts[5] || 1;
   const fmt = pv => pv.map((san, i) => {
@@ -1529,7 +1561,7 @@ function renderLines() {
     const no = black ? (i === 0 ? `${moveNo}… ` : '') : `${moveNo + Math.floor((i + (blackToMove ? 1 : 0)) / 2)}. `;
     return `${no}${i === 0 ? `<b>${esc(san)}</b>` : esc(san)}`;
   }).join(' ');
-  el.innerHTML = c.lines.map((l, i) => `
+  el.innerHTML = `<div class="hint eng"><b>${esc(engineName(c))}</b> · depth ${depth}${c.done ? '' : '…'} · ${fmtNodes(c.nodes || (state.engine && state.engine.nodes) || 0)}</div>` + c.lines.map((l, i) => `
     <div class="ln ${blackToMove ? 'black' : ''} ${i === 0 ? 'top' : ''}" data-uci="${l.uci}" title="Play ${esc(l.san)}">
       <span class="ev">${esc(fmtEvalBox(l.eval))}</span><span class="pv">${fmt(l.pv || [l.san])}</span>
       <span class="depth">${c.done ? '' : '…'}d${l.depth ?? ''}</span>

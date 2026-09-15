@@ -12,6 +12,8 @@
     POST /api/stop                      stop the running job
     GET  /api/legal?fen=                legal moves in a position (for the board UI)
     POST /api/explore                   {fen, uci, my_colour} -> the move evaluated and classified on the spot
+    POST /api/pgn                       {pgn, review_as} -> stored in the "Pasted games" profile and reviewable at once
+    GET  /api/engine                    {name, nodes, multipv} of the on-demand engine (shown next to results)
     GET  /api/eval?fen=                 the engine's eval and best move in a position, no move required (sandbox)
 
     /                                   the app (data/site)
@@ -40,7 +42,7 @@ import chess
 
 from . import aggregates, classify, ingest, normalise, profiles, site
 from .analyse import Analyser, export_parquet, open_db, pending_keys
-from .config import DEFAULT_NODES, ENGINE_IDLE_SECONDS, SITE_DIR
+from .config import DEFAULT_NODES, ENGINE_IDLE_SECONDS, MULTIPV_N, SITE_DIR
 from .db import base_views
 from .explore import Explorer
 from .pov import pov_win_pct
@@ -192,7 +194,7 @@ class Runner:
         job.done += 1
         classify.build(p)
         aggregates.build(p)
-        job.done += 1
+        job.done += 1   # (rebuild_profile() is the same sequence without the progress counter)
 
     def _ingest(self, job: Job) -> None:
         """New profile: fetch every archive, then build its site. done/total count months while fetching."""
@@ -293,6 +295,11 @@ class Handler(SimpleHTTPRequestHandler):
             return self._json({"eval": eval_text(main["eval_cp"], main["mate_in"], side),
                                "wp_white": round(wp, 1) if wp is not None else None,
                                "best_uci": best_uci, "best_san": best_san})
+        if url.path == "/api/engine":
+            try:
+                return self._json({"name": self.runner.explorer.name(), "nodes": self.runner.explorer.nodes, "multipv": MULTIPV_N})
+            except Exception as e:  # noqa: BLE001
+                return self._json({"error": str(e)}, 500)
         if url.path == "/api/eval_stream":
             q = parse_qs(url.query)
             fen = q.get("fen", [""])[0]
@@ -331,6 +338,25 @@ class Handler(SimpleHTTPRequestHandler):
     def do_POST(self):
         r = self.runner
         path = urlparse(self.path).path
+        if path == "/api/pgn":
+            b = self._body()
+            text, review_as = (b.get("pgn") or "").strip(), b.get("review_as", "white")
+            if not text:
+                return self._json({"error": "empty PGN"}, 400)
+            p = profiles.create("pgn", PGN_PROFILE_NAME)
+            if r.busy() and r.job.profile.id == p.id:
+                return self._json({"error": "busy", "job": r.job.to_dict()}, 409)
+            digest = ingest.store_pgn(p, text, review_as)
+            stored = (p.pgn_dir / f"{digest}.pgn").read_text(encoding="utf-8")
+            slugs = [site.slug(row["game_id"]) for row, _ in normalise.parse_pgn_text(stored, p.username, digest)]
+            if not slugs:
+                return self._json({"error": "no standard game found in that PGN"}, 400)
+            try:
+                rebuild_profile(p)
+            except Exception as e:  # noqa: BLE001
+                log.error("pgn rebuild failed: %s", traceback.format_exc())
+                return self._json({"error": str(e)}, 500)
+            return self._json({"profile": p.summary(), "games": slugs})
         if path == "/api/profiles":
             b = self._body()
             source, username = b.get("source", "chesscom"), (b.get("username") or "").strip()
@@ -377,6 +403,17 @@ class Handler(SimpleHTTPRequestHandler):
                 r.job.stop_requested = True
             return self._json({"ok": True})
         return self._json({"error": "not found"}, 404)
+
+
+PGN_PROFILE_NAME = "Pasted games"   # every pasted PGN lands in profile pgn-pasted-games
+
+
+def rebuild_profile(p: Profile) -> None:
+    """normalise -> site -> classify -> aggregates (no engine work); what a refresh does after fetching."""
+    normalise.build(p)
+    site.build(p)
+    classify.build(p)
+    aggregates.build(p)
 
 
 def _game_id_for(profile: Profile, slug: str) -> Optional[str]:
