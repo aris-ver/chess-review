@@ -41,7 +41,7 @@ def evals_views(con: duckdb.DuckDBPyConnection) -> None:
             con.execute(f"CREATE OR REPLACE VIEW evals AS SELECT * FROM read_parquet({sql_path(EVALS_PARQUET)})")
         else:   # nothing analysed yet (fresh install): every position simply has no eval
             con.execute("CREATE OR REPLACE VIEW evals AS SELECT NULL::TEXT fen_key, NULL::INT nodes, NULL::INT eval_cp, NULL::INT mate_in, NULL::TEXT best_move, NULL::TEXT[] pv WHERE false")
-        con.execute("CREATE OR REPLACE VIEW evals_multipv AS SELECT NULL::TEXT fen_key, NULL::INT rank, NULL::TEXT move, NULL::INT eval_cp, NULL::INT mate_in, NULL::TEXT[] pv WHERE false")
+        con.execute('CREATE OR REPLACE VIEW evals_multipv AS SELECT NULL::TEXT fen_key, NULL::INT rank, NULL::TEXT "move", NULL::INT eval_cp, NULL::INT mate_in, NULL::TEXT[] pv WHERE false')
 
 
 def connect(profile: Optional[Profile] = None) -> duckdb.DuckDBPyConnection:
