@@ -28,6 +28,8 @@ header h1 { font-size: 18px; margin: 0; }
 header .crumb { color: var(--muted); }
 header .right { margin-left: auto; display: flex; gap: 10px; align-items: center; }
 header .right a { color: var(--muted); }
+button.snd { color: var(--text); padding: 6px 8px; } button.snd svg { width: 18px; height: 18px; display: block; fill: currentColor; }
+button.snd.off { color: var(--muted); }
 .switch { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; user-select: none; }
 .switch .lbl { font-size: 13px; color: var(--muted); }
 .switch .track { position: relative; width: 40px; height: 22px; border-radius: 11px; background: #55524c; transition: background .15s; flex-shrink: 0; }
@@ -42,10 +44,10 @@ main { padding: 16px 18px; max-width: 1800px; margin: 0 auto; }
 /* home: saved profiles + ad-hoc entries */
 .home { max-width: 900px; margin: 24px auto 0; }
 .home h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 26px 0 10px; }
-.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; }
 .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; cursor: default; position: relative; min-height: 96px; display: flex; flex-direction: column; gap: 4px; }
-.card#card-setup { cursor: pointer; }
-.card#card-setup:hover { border-color: var(--accent); }
+.card#card-setup, .card#card-image { cursor: pointer; }
+.card#card-setup:hover, .card#card-image:hover { border-color: var(--accent); }
 .card.soon { opacity: .55; }
 .card .src { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
 .card .who { font-size: 17px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-right: 22px; }
@@ -58,31 +60,31 @@ main { padding: 16px 18px; max-width: 1800px; margin: 0 auto; }
 .card.add select, .card.add input, .card.fen input { font: inherit; color: var(--text); background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; width: 100%; }
 .card.add input::placeholder, .card.fen input::placeholder { color: var(--muted); }
 .card.add button, .card.fen button { align-self: flex-start; }
-.card.img form { flex-direction: row; } .card.img form button { align-self: auto; }
-.card.img .drop { border: 1px dashed var(--muted); border-radius: 6px; padding: 14px 10px; text-align: center; color: var(--muted); font-size: 13px; cursor: pointer; }
-.card.img .drop:hover, .card.img .drop.over, .card.img .drop:focus { border-color: var(--accent); color: var(--text); outline: none; }
-.card.img .row { display: flex; gap: 8px; align-items: center; } .card.img .row label { color: var(--muted); font-size: 13px; }
-.card.img .row select { font: inherit; color: var(--text); background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px; }
-.card.img .st { color: var(--muted); font-size: 12px; margin-left: auto; }
 .card.pgn textarea { font: 12px/1.4 ui-monospace, monospace; color: var(--text); background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; width: 100%; resize: vertical; }
-.card.pgn .row { display: flex; gap: 8px; align-items: center; }
-.card.pgn .row label { color: var(--muted); font-size: 13px; }
-.card.pgn .row select { font: inherit; color: var(--text); background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px; }
-.card.pgn .row button { margin-left: auto; }
+.card.pgn .row { display: flex; } .card.pgn .row button { margin-left: auto; }
+/* the screenshot reader gets its own page: a big drop zone, a URL box, side to move */
+.imgpage { max-width: 560px; display: flex; flex-direction: column; gap: 12px; }
+.imgpage h2 { margin-bottom: 0; }
+.imgpage .drop { border: 2px dashed var(--muted); border-radius: 10px; padding: 48px 20px; text-align: center; color: var(--muted); font-size: 14px; cursor: pointer; background: var(--panel); }
+.imgpage .drop:hover, .imgpage .drop.over, .imgpage .drop:focus { border-color: var(--accent); color: var(--text); outline: none; }
+.imgpage form { display: flex; gap: 8px; }
+.imgpage input { font: inherit; color: var(--text); background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; flex: 1; }
+.imgpage input::placeholder { color: var(--muted); }
+.imgpage .row { display: flex; gap: 8px; align-items: center; } .imgpage .row label { color: var(--muted); font-size: 13px; }
+.imgpage .row select { font: inherit; color: var(--text); background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px; }
+.imgpage .st { color: var(--muted); font-size: 12px; }
 .card .desc { color: var(--muted); font-size: 13px; }
 /* profile list: pinned ones first (in the order they were pinned), then the rest newest first */
-.plist { display: flex; flex-direction: column; gap: 4px; }
-.plist .prow { display: flex; align-items: center; gap: 10px; padding: 8px 12px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; cursor: pointer; }
-.plist .prow:hover { border-color: var(--accent); }
-.plist .pin { color: var(--muted); padding: 2px 6px; border-radius: 4px; font-size: 14px; line-height: 1; }
-.plist .pin:hover { background: var(--panel2); color: var(--text); } .plist .prow.pinned .pin { color: var(--accent); }
-.plist .src { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); min-width: 64px; }
-.plist .who { font-weight: 700; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.plist .meta { color: var(--muted); font-size: 12px; white-space: nowrap; }
-.plist .progress { width: 120px; }
-.plist .x { color: var(--muted); padding: 2px 6px; border-radius: 4px; font-size: 14px; }
-.plist .x:hover { background: var(--panel2); color: var(--c-blunder); }
-.plist .empty { padding: 10px 12px; color: var(--muted); font-size: 13px; }
+.card.profile { cursor: pointer; }
+.card.profile:hover { border-color: var(--accent); }
+.card.profile .who { padding-right: 52px; display: flex; align-items: baseline; gap: 8px; }
+.card.profile .who .name { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.card.profile .elo { font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; flex-shrink: 0; }
+.card.profile .elo .delta { font-size: 12px; margin-left: 4px; }
+.card.profile .elo .delta.up { color: var(--accent); } .card.profile .elo .delta.down { color: var(--c-blunder); } .card.profile .elo .delta.flat { color: var(--muted); }
+.card.profile .pin { position: absolute; top: 8px; right: 30px; color: var(--muted); padding: 2px 6px; border-radius: 4px; font-size: 14px; line-height: 1.4; }
+.card.profile .pin:hover { background: var(--panel2); color: var(--text); } .card.profile.pinned .pin { color: var(--accent); }
+.cards .empty { padding: 10px 12px; color: var(--muted); font-size: 13px; grid-column: 1 / -1; text-align: left; }
 
 /* board setup editor */
 .setup { display: grid; grid-template-columns: minmax(280px, 560px) 300px; gap: 20px; justify-content: center; max-width: 920px; margin: 24px auto 0; align-items: start; }
@@ -97,7 +99,7 @@ main { padding: 16px 18px; max-width: 1800px; margin: 0 auto; }
 .palette button:hover { background: var(--panel2); }
 .palette button img, .palette button svg { width: 34px; height: 34px; }
 .palette button.active { background: var(--accent); border-color: var(--accent); }
-.palette button.erase { grid-row: span 2; align-self: stretch; height: auto; color: var(--muted); }
+.palette button.erase { grid-row: span 2; align-self: stretch; height: auto; color: var(--muted); margin-left: 6px; }
 .palette button.erase svg { width: 24px; height: 24px; } .palette button.erase.active { color: #1b1b1b; }
 .setup-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .setup-row select { font: inherit; color: var(--text); background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; }
@@ -134,9 +136,11 @@ body.sandbox .sections, body.sandbox svg.graph, body.sandbox .pfoot, body.sandbo
 body.sandbox .actions { padding-bottom: 10px; }
 
 /* game list */
-.filters { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; align-items: center; }
-.filters .sep { width: 1px; height: 22px; background: var(--line); margin: 0 4px; }
-.filters .stat { color: var(--muted); margin-left: auto; }
+.filters { display: flex; gap: 8px; margin-bottom: 12px; align-items: center; }
+.filters .fbar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; min-width: 0; }
+.filters .sep { width: 1px; height: 22px; background: var(--line); margin: 0 4px; flex-shrink: 0; }
+.filters .stat { color: var(--muted); margin-left: auto; white-space: nowrap; }
+.filters .fbtn { display: none; padding: 5px 8px; } .filters .fbtn svg { width: 20px; height: 20px; display: block; }
 table.games { width: 100%; border-collapse: collapse; background: var(--panel); border-radius: 8px; overflow: hidden; }
 table.games th, table.games td { padding: 9px 12px; text-align: left; border-bottom: 1px solid var(--line); white-space: nowrap; }
 table.games th { color: var(--muted); font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
@@ -183,14 +187,40 @@ table.games button.an { padding: 3px 9px; font-size: 12px; font-weight: 600; whi
   .actions { padding: 4px 8px 8px; }
   .actions button { padding: 8px 4px; }
   .pfoot { flex-wrap: wrap; }
-  .filters { gap: 6px; }
-  .filters button { padding: 5px 8px; font-size: 13px; }
-  .filters .stat { width: 100%; margin: 0; font-size: 12px; }
-  table.games th, table.games td { padding: 7px 6px; font-size: 13px; }
-  table.games th:nth-child(5), table.games td:nth-child(5),
-  table.games th:nth-child(8), table.games td:nth-child(8),
-  table.games th:nth-child(9), table.games td:nth-child(9),
-  table.games th:nth-child(10), table.games td:nth-child(10) { display: none; }
+  /* home: one column, full-width form controls, 16px fields so iOS doesn't zoom in on focus */
+  .home { margin-top: 6px; }
+  .home h2 { margin: 18px 0 8px; }
+  .cards { grid-template-columns: 1fr; gap: 10px; }
+  .card { padding: 12px 14px; min-height: 0; }
+  .card.add select, .card.add input, .card.fen input, .card.fen textarea, .imgpage input, .imgpage select, .fenbox { font-size: 16px; }
+  .card.add button, .card.fen button { align-self: stretch; padding: 10px; }
+  .card .x, .card.profile .pin { font-size: 18px; padding: 6px 10px; top: 2px; }
+  .card .x { right: 2px; } .card.profile .pin { right: 38px; }
+  .card.profile .who { padding-right: 84px; }
+  /* profile: filters live behind a hamburger; open = one group per line */
+  .filters { flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
+  .filters .fbtn { display: inline-flex; }
+  .filters .fbar { display: none; width: 100%; gap: 6px; padding: 4px 0 2px; }
+  .filters.open .fbar { display: flex; }
+  .filters .sep { flex-basis: 100%; height: 0; margin: 0; }
+  .filters .fbar button { padding: 6px 10px; font-size: 13px; }
+  .filters .stat { font-size: 12px; }
+  /* games: each row becomes two lines - "result · opponent · analysis" over "date · time control · my rating · accuracy" */
+  table.games, table.games tbody { display: block; }
+  table.games thead { display: none; }
+  table.games tr.row { display: flex; flex-wrap: wrap; align-items: center; gap: 3px 8px; padding: 9px 10px; border-bottom: 1px solid var(--line); }
+  table.games tr.row:last-child { border-bottom: 0; }
+  table.games td { display: block; padding: 0; border: 0; font-size: 13px; white-space: nowrap; }
+  table.games td:nth-child(4) { order: 1; }
+  table.games td:nth-child(3) { order: 2; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; font-weight: 600; }
+  table.games td:nth-child(7) { order: 3; }
+  table.games tr.row::after { content: ""; order: 4; flex-basis: 100%; height: 0; }
+  table.games td:nth-child(1) { order: 5; } table.games td:nth-child(2) { order: 6; } table.games td:nth-child(6) { order: 7; }
+  table.games td:nth-child(1), table.games td:nth-child(2), table.games td:nth-child(6) { color: var(--muted); font-size: 12px; }
+  table.games td:nth-child(1) div { display: inline; font-size: inherit !important; } table.games td:nth-child(1) div::before { content: "· "; }
+  table.games td:nth-child(2)::before, table.games td:nth-child(6)::before { content: "·"; margin-right: 8px; }
+  table.games td:nth-child(2) { color: var(--text); }
+  table.games td:nth-child(5), table.games td:nth-child(8), table.games td:nth-child(9), table.games td:nth-child(10) { display: none; }
   .opening { max-width: none; }
 }
 .evalbar { position: relative; height: 640px; background: #403d39; border-radius: 4px; overflow: hidden; align-self: start; margin-top: 46px; }
@@ -345,7 +375,7 @@ svg.graph { width: 100%; height: 90px; display: block; cursor: pointer; backgrou
   <h1><a href="#/">♞ Chess Review</a></h1>
   <span class="crumb" id="crumb"></span>
   <div class="right">
-    <button id="b-sound" title="Toggle sound">🔊</button>
+    <button id="b-sound" class="snd" title="Toggle sound"></button>
     <button id="b-refresh" class="pctx" title="Fetch new games from chess.com"><span class="i">⟳</span><span class="t"> Refresh games</span></button>
     <span id="b-auto" class="switch pctx" title="Analyse newly fetched games automatically after a refresh (off: analyse each game on demand)"><span class="lbl">Auto-analyse</span><span class="track"></span></span>
     <span id="jobstat" style="color:var(--muted);font-size:12px"></span>
@@ -358,31 +388,25 @@ svg.graph { width: 100%; height: 90px; display: block; cursor: pointer; backgrou
       <h2>Analyse</h2>
       <div class="cards">
         <div class="card add">
-          <span class="src">chess.com</span><span class="who">Add a profile</span>
+          <span class="src">Profile</span><span class="who">Add a profile</span>
           <form id="addform">
             <select name="source"><option value="chesscom">chess.com</option><option value="lichess" disabled>lichess (soon)</option></select>
             <input name="username" placeholder="username" autocomplete="off" spellcheck="false" required>
             <button class="primary" type="submit">Add profile</button>
           </form>
         </div>
+        <div class="card" id="card-setup"><span class="src">Board</span><span class="who">Set up a position</span><span class="desc">Place the pieces, or paste a FEN, then analyse.</span></div>
         <div class="card fen pgn">
           <span class="src">PGN</span><span class="who">Paste a PGN</span>
           <form id="pgnform">
             <textarea name="pgn" rows="4" placeholder="[Event &quot;…&quot;]&#10;1. e4 e5 2. Nf3 …" spellcheck="false" required></textarea>
-            <div class="row"><label>I played</label><select name="review_as"><option value="white">White</option><option value="black">Black</option></select><button class="primary" type="submit">Review</button></div>
+            <div class="row"><button class="primary" type="submit">Review</button></div>
           </form>
         </div>
-        <div class="card" id="card-setup"><span class="src">Board</span><span class="who">Set up a position</span><span class="desc">Place the pieces, or paste a FEN, then analyse.</span></div>
-        <div class="card fen img" id="card-image">
-          <span class="src">Image</span><span class="who">From a screenshot</span>
-          <div class="drop" id="imgdrop" tabindex="0">Drop or paste (Ctrl+V) a picture of a board here, or click to pick a file</div>
-          <input type="file" id="imgfile" accept="image/*" class="hidden">
-          <form id="imgurl"><input name="url" placeholder="…or an image URL" autocomplete="off" spellcheck="false"><button type="submit">Read</button></form>
-          <div class="row"><label>Side to move</label><select id="imgstm"><option value="w">White</option><option value="b">Black</option></select><span class="st" id="imgstatus"></span></div>
-        </div>
+        <div class="card" id="card-image"><span class="src">Image</span><span class="who">From a screenshot</span><span class="desc">Read the pieces off a picture of a board, then analyse.</span></div>
       </div>
       <h2>Profiles</h2>
-      <div class="plist" id="profiles"></div>
+      <div class="cards" id="profiles"></div>
     </div>
   </section>
   <section id="editor" class="hidden">
@@ -410,9 +434,20 @@ svg.graph { width: 100%; height: 90px; display: block; cursor: pointer; backgrou
       </div>
     </div>
   </section>
+  <section id="imgpage" class="hidden">
+    <div class="home imgpage">
+      <h2>From a screenshot</h2>
+      <div class="drop" id="imgdrop" tabindex="0">Drop or paste (Ctrl+V) a picture of a board here, or click to pick a file</div>
+      <input type="file" id="imgfile" accept="image/*" class="hidden">
+      <form id="imgurl"><input name="url" placeholder="…or an image URL" autocomplete="off" spellcheck="false"><button type="submit">Read</button></form>
+      <div class="row"><label>Side to move</label><select id="imgstm"><option value="w">White</option><option value="b">Black</option></select><span class="st" id="imgstatus"></span><span style="margin-left:auto"></span><a href="#/" class="pbtn">← Cancel</a></div>
+    </div>
+  </section>
   <div class="ghost-piece hidden" id="ghostpiece"></div>
   <section id="list">
     <div class="filters">
+      <button class="fbtn" id="fbtn" title="Filters"><svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg></button>
+      <div class="fbar">
       <button data-f="result" data-v="" class="active">All</button>
       <button data-f="result" data-v="win">Wins</button>
       <button data-f="result" data-v="loss">Losses</button>
@@ -429,6 +464,7 @@ svg.graph { width: 100%; height: 90px; display: block; cursor: pointer; backgrou
       <button data-f="brilliant" data-v="" class="active">All moves</button>
       <button data-f="brilliant" data-v="mine">My brilliants</button>
       <button data-f="brilliant" data-v="any">Any brilliant</button>
+      </div>
       <span class="stat" id="liststat"></span>
     </div>
     <table class="games">
@@ -455,7 +491,7 @@ svg.graph { width: 100%; height: 90px; display: block; cursor: pointer; backgrou
         <div class="phead">
           <a href="#/" class="pbtn" id="a-back" title="Back to games (Esc)">←</a>
           <span class="ptitle"><svg class="ico"><use href="#ic-best"/></svg> <span id="ptitle-t">Game Review</span></span>
-          <span class="pright"><button class="pbtn" id="b-sound2" title="Sound">🔊</button><button class="pbtn" id="b-flip" title="Flip (f)">⇅</button></span>
+          <span class="pright"><button class="pbtn snd" id="b-sound2" title="Sound"></button><button class="pbtn" id="b-flip" title="Flip (f)">⇅</button></span>
         </div>
         <div class="ginfo" id="ginfo"></div>
         <div class="coach"><div class="avatar">♞</div><div class="bubble" id="now"></div></div>
@@ -600,10 +636,15 @@ function playMoveSound(m, isLast) {
   if (m.label === 'brilliant') play('brilliant', 180);
   if (m.clock != null && m.clock < 10 && m.is_mine && tenSecondsPlayedFor !== state.game.id) { tenSecondsPlayedFor = state.game.id; play('tenseconds', 120); }
 }
-$('b-sound').onclick = () => { state.sound = !state.sound; $('b-sound').textContent = state.sound ? '🔊' : '🔇';
-$('b-sound2').onclick = () => { $('b-sound').onclick(); $('b-sound2').textContent = $('b-sound').textContent; };
-$('b-sound2').textContent = $('b-sound').textContent; try { localStorage.setItem('sound', state.sound ? 'on' : 'off'); } catch (e) {} };
-$('b-sound').textContent = state.sound ? '🔊' : '🔇';
+// plain speaker in the text colour; muted state swaps the waves for a cross and dims
+const SOUND_ON_ICON = `<svg viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>`;
+const SOUND_OFF_ICON = `<svg viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9z"/><path d="M16 9l5 6M21 9l-5 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>`;
+function paintSound() {
+  for (const id of ['b-sound', 'b-sound2']) { $(id).innerHTML = state.sound ? SOUND_ON_ICON : SOUND_OFF_ICON; $(id).classList.toggle('off', !state.sound); }
+}
+$('b-sound').onclick = () => { state.sound = !state.sound; paintSound(); try { localStorage.setItem('sound', state.sound ? 'on' : 'off'); } catch (e) {} };
+$('b-sound2').onclick = $('b-sound').onclick;
+paintSound();
 
 // ---------- routing ----------
 window.addEventListener('hashchange', () => { assetsReady.then(route); checkStale(); });
@@ -621,6 +662,7 @@ async function route() {
   if (sm) return showSandbox(decodeURIComponent(sm[1]));
   const em = h.match(/^#\/setup(?:\?fen=(.+))?$/);
   if (em) { if (em[1] && loadFen(decodeURIComponent(em[1]))) pendingSetup = setupSnapshot(); return showEditor(); }
+  if (h === '#/image') return showImagePage();
   const m = h.match(/^#\/p\/([A-Za-z0-9_.-]+)(?:\/game\/([^/?]+))?/);
   if (!m) return showHome();
   if (state.profile !== m[1]) { state.profile = m[1]; state.games = null; state.game = null; }
@@ -637,13 +679,20 @@ function setContext(on) {   // profile-scoped header controls only make sense in
 
 // ---------- home ----------
 const SOURCE_NAME = { chesscom: 'chess.com', lichess: 'lichess', pgn: 'PGN' };
+function eloHTML(rating, delta) {   // "579 ▼49": the rating and how it moved over the last 7 days
+  if (rating == null) return '';
+  const d = delta == null ? '' : delta > 0 ? `<span class="delta up">▲${delta}</span>` : delta < 0 ? `<span class="delta down">▼${-delta}</span>` : `<span class="delta flat">—</span>`;
+  return `<span class="elo" title="Rating, and its change over the last 7 days">${rating}${d}</span>`;
+}
 // which engine answers on-demand questions, and how deep: shown next to every result
 state.engine = null;
 (async () => { try { const d = await (await fetch('api/engine')).json(); if (!d.error) { state.engine = d; if (state.game) { renderAnalyseBox(); renderLines(); renderNow(); } } } catch (e) {} })();
 const fmtNodes = n => n >= 1e6 ? `${(n / 1e6).toFixed(n % 1e6 ? 1 : 0)}M nodes` : `${Math.round(n / 1e3)}k nodes`;
 const engineName = snap => (snap && snap.engine) || (state.engine && state.engine.name) || 'Engine';
+const SECTIONS = ['home', 'list', 'review', 'editor', 'imgpage'];
+function showSection(id) { SECTIONS.forEach(s => $(s).classList.toggle('hidden', s !== id)); }
 async function showHome() {
-  $('review').classList.add('hidden'); $('editor').classList.add('hidden'); $('list').classList.add('hidden'); $('home').classList.remove('hidden');
+  showSection('home');
   document.body.classList.remove('sandbox'); stopSandboxStream();
   state.game = null; state.profile = null; state.games = null; dropVariation(); stopPlay();
   setContext(false); $('crumb').textContent = '';
@@ -651,13 +700,22 @@ async function showHome() {
   pollStatus();
 }
 $('card-setup').onclick = () => location.hash = '#/setup';
+$('card-image').onclick = () => location.hash = '#/image';
+function showImagePage() {
+  showSection('imgpage');
+  document.body.classList.remove('sandbox'); stopSandboxStream();
+  state.game = null; state.profile = null; state.games = null; dropVariation(); stopPolling(); stopPlay();
+  setContext(false); $('crumb').textContent = 'From a screenshot';
+  $('imgstatus').textContent = '';
+  $('imgdrop').focus();
+}
 $('pgnform').onsubmit = async e => {
   e.preventDefault();
   const f = e.target, btn = f.querySelector('button');
   btn.disabled = true; btn.textContent = 'Reading…';
   let r, d;
   try {
-    r = await fetch('api/pgn', { method: 'POST', body: JSON.stringify({ pgn: f.pgn.value, review_as: f.review_as.value }) });
+    r = await fetch('api/pgn', { method: 'POST', body: JSON.stringify({ pgn: f.pgn.value }) });
     d = await r.json();
   } catch (err) { d = { error: String(err) }; r = { ok: false }; }
   btn.disabled = false; btn.textContent = 'Review';
@@ -673,15 +731,15 @@ async function renderProfiles() {
     return (b.created || '') < (a.created || '') ? -1 : 1;          // the rest: newest first
   });
   $('profiles').innerHTML = ps.map(p => `
-    <div class="prow ${p.pinned ? 'pinned' : ''}" data-id="${p.id}">
-      <span class="pin" title="${p.pinned ? 'Unpin' : 'Pin to the top'}">${p.pinned ? '★' : '☆'}</span>
+    <div class="card profile ${p.pinned ? 'pinned' : ''}" data-id="${p.id}" data-name="${esc(p.username)}">
       <span class="src">${SOURCE_NAME[p.source] || p.source}</span>
-      <span class="who" title="${esc(p.username)}">${esc(p.username)}</span>
+      <span class="who" title="${esc(p.username)}"><span class="name">${esc(p.username)}</span>${eloHTML(p.rating, p.rating_delta_7d)}</span>
       <div class="progress hidden"><div></div></div>
       <span class="meta">${p.games} games · ${p.analysed} analysed</span>
+      <span class="pin" title="${p.pinned ? 'Unpin' : 'Pin to the top'}">${p.pinned ? '★' : '☆'}</span>
       <span class="x" title="Remove this profile (the engine cache is kept)">✕</span>
     </div>`).join('') || `<div class="empty">No profiles yet — add a chess.com username above.</div>`;
-  $('profiles').querySelectorAll('.prow').forEach(c => {
+  $('profiles').querySelectorAll('.card.profile').forEach(c => {
     c.onclick = () => location.hash = '#/p/' + c.dataset.id;
     c.querySelector('.pin').onclick = async e => {
       e.stopPropagation();
@@ -690,7 +748,7 @@ async function renderProfiles() {
     };
     c.querySelector('.x').onclick = async e => {
       e.stopPropagation();
-      if (!confirm(`Remove ${c.querySelector('.who').textContent} and its games? Engine evaluations are shared and stay cached.`)) return;
+      if (!confirm(`Remove ${c.dataset.name} and its games? Engine evaluations are shared and stay cached.`)) return;
       const r = await fetch(`api/profiles/${c.dataset.id}/delete`, { method: 'POST' });
       const d = await r.json();
       if (!r.ok) { toast(d.error === 'busy' ? `Busy: ${jobText(d.job)}` : d.error); return; }
@@ -713,7 +771,7 @@ async function renderProfiles() {
 
 // ---------- list ----------
 async function showList() {
-  $('review').classList.add('hidden'); $('home').classList.add('hidden'); $('editor').classList.add('hidden'); $('list').classList.remove('hidden');
+  showSection('list');
   document.body.classList.remove('sandbox'); stopSandboxStream();
   state.game = null; dropVariation(); stopPolling(); stopPlay();
   setContext(true);
@@ -725,14 +783,19 @@ async function showList() {
     (f.analysed === '' || (f.analysed === '1' ? g.analysed >= 0.999 : g.analysed < 0.999)) &&
     (f.brilliant === '' || (f.brilliant === 'mine' ? g.brilliants > 0 : g.brilliants_any > 0)));
   $('liststat').textContent = `${rows.length} of ${games.length} games`;
+  const eloDelta = {};   // games[] is newest-first, so the previous chronological game sits right after
+  games.forEach((g, i) => {
+    const prev = games[i + 1];
+    if (g.my_rating != null && prev && prev.my_rating != null) eloDelta[g.id] = g.my_rating - prev.my_rating;
+  });
   $('rows').innerHTML = rows.map(g => `
     <tr class="row" data-id="${g.id}">
       <td>${fmtDate(g.played_at)}<div style="color:var(--muted);font-size:12px">${g.time_class} ${g.time_control || ''}</div></td>
-      <td><span class="dot ${g.my_colour}"></span>${g.my_rating ?? ''}</td>
+      <td><span class="dot ${g.my_colour}"></span>${g.my_rating ?? ''}${eloDelta[g.id] != null ? `<span style="font-size:11px;margin-left:4px;color:${eloDelta[g.id] > 0 ? 'var(--accent)' : eloDelta[g.id] < 0 ? 'var(--c-blunder)' : 'var(--muted)'}">${eloDelta[g.id] > 0 ? '+' : ''}${eloDelta[g.id]}</span>` : ''}</td>
       <td>${esc(g.opponent || '?')} <span style="color:var(--muted)">(${g.opponent_rating ?? '?'})</span></td>
       <td><span class="res ${g.result}">${g.result === 'win' ? 'W' : g.result === 'loss' ? 'L' : '½'}</span></td>
       <td class="opening" title="${esc(g.opening_name || '')}">${g.eco || ''} ${esc(g.opening_name || '')}</td>
-      <td class="acc">${g.analysed >= 0.999 ? `${fmtAcc(g.my_accuracy)} <span style="color:var(--muted)">vs ${fmtAcc(g.opp_accuracy)}</span>` : '<span style="color:var(--muted)">–</span>'}</td>
+      <td class="acc">${g.analysed >= 0.999 ? `${fmtAcc(g.my_accuracy)} <span class="vs" style="color:var(--muted)">vs ${fmtAcc(g.opp_accuracy)}</span>` : '<span style="color:var(--muted)">–</span>'}</td>
       <td>${analysedPill(g.analysed, g.id, listJob)}</td>
       <td class="num">${g.analysed >= 0.999 ? (g.n_key || '0') : ''}</td>
       <td class="num ${g.blunders ? 'blunders' : ''}">${g.analysed >= 0.999 ? (g.blunders || '0') : ''}</td>
@@ -760,11 +823,13 @@ function analysedPill(a, id, job) {
   const cached = a > 0 ? ` title="${Math.round(a * 100)}% of the positions are already in the engine cache (from other games)"` : '';
   return `<button class="an primary" data-id="${id}"${cached}>Analyse</button>`;
 }
-document.querySelectorAll('.filters button').forEach(b => b.onclick = () => {
+document.querySelectorAll('.fbar button').forEach(b => b.onclick = () => {
   state.filters[b.dataset.f] = b.dataset.v;
-  document.querySelectorAll(`.filters button[data-f="${b.dataset.f}"]`).forEach(x => x.classList.toggle('active', x === b));
+  document.querySelectorAll(`.fbar button[data-f="${b.dataset.f}"]`).forEach(x => x.classList.toggle('active', x === b));
+  $('fbtn').classList.toggle('active', Object.values(state.filters).some(v => v));   // phones: hamburger lights up while a filter is on
   showList();
 });
+$('fbtn').onclick = () => $('fbtn').parentElement.classList.toggle('open');
 
 // ---------- sandbox: any FEN, played free-form through the same explore() the review board already uses ----------
 function sandboxGame(fen) {
@@ -786,7 +851,7 @@ async function showSandbox(fen) {
   stopPolling(); stopPlay();
   state.profile = null; state.games = null; state.game = sandboxGame(fen);
   state.ply = 0; state.flipped = false; dropVariation(); state.sel = null; state.cycle = {}; $('pieces').innerHTML = '';
-  $('home').classList.add('hidden'); $('editor').classList.add('hidden'); $('list').classList.add('hidden'); $('review').classList.remove('hidden');
+  showSection('review');
   document.body.classList.add('sandbox');
   setContext(false); $('crumb').textContent = 'Sandbox';
   $('a-back').href = '#/'; $('ginfo').textContent = ''; $('ptitle-t').textContent = 'Sandbox';
@@ -899,7 +964,7 @@ function applySetupHistory(from, to) {
 $('s-undo').onclick = () => applySetupHistory(setup.undo, setup.redo);
 $('s-redo').onclick = () => applySetupHistory(setup.redo, setup.undo);
 function showEditor() {
-  $('home').classList.add('hidden'); $('review').classList.add('hidden'); $('list').classList.add('hidden'); $('editor').classList.remove('hidden');
+  showSection('editor');
   document.body.classList.remove('sandbox'); stopSandboxStream();
   setContext(false); $('crumb').textContent = 'Set up a position';
   setup.flipped = false; setup.tool = null; setup.undo = []; setup.redo = [];
@@ -1141,7 +1206,7 @@ $('imgdrop').ondrop = e => {
   else { const u = e.dataTransfer.getData('text/uri-list') || e.dataTransfer.getData('text/plain'); if (/^https?:\/\//.test(u)) importBoardUrl(u); }
 };
 document.addEventListener('paste', e => {
-  if ($('home').classList.contains('hidden')) return;
+  if ($('imgpage').classList.contains('hidden')) return;
   const it = [...(e.clipboardData?.items || [])].find(x => x.type.startsWith('image/'));
   if (it) { e.preventDefault(); importBoardImage(it.getAsFile()); }
 });
@@ -1277,7 +1342,7 @@ async function pollStatus() {
     $('jobstat').textContent = active ? jobText(j) : '';
     const mine = j && j.profile === state.profile;   // jobs belong to a profile; only react to the one being viewed
     if (j && j.kind === 'ingest') {
-      const card = $('profiles') && $('profiles').querySelector(`.prow[data-id="${j.profile}"]`);
+      const card = $('profiles') && $('profiles').querySelector(`.card[data-id="${j.profile}"]`);
       if (card) {
         const prog = card.querySelector('.progress');
         prog.classList.toggle('hidden', !active);

@@ -18,7 +18,7 @@ import logging
 import re
 import shutil
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -28,6 +28,16 @@ log = logging.getLogger("profiles")
 PROFILES_DIR = DATA / "profiles"
 SOURCES = ("chesscom", "lichess", "pgn")
 _ID_RE = re.compile(r"^[a-z0-9][a-z0-9_.-]{0,80}$")
+
+
+def _parse_ts(played_at: Optional[str]) -> Optional[datetime]:
+    if not played_at:
+        return None
+    try:
+        dt = datetime.fromisoformat(played_at.replace("Z", "+00:00"))
+        return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+    except ValueError:
+        return None
 
 
 @dataclass(frozen=True)
@@ -73,19 +83,34 @@ class Profile:
         return self.dir / "export"
 
     def summary(self) -> dict:
-        """What the home screen shows: id, source, username, game counts."""
+        """What the home screen shows: id, source, username, game counts, and the current rating with its
+        net change over the last 7 days — ratings across time classes are mixed, same as the game list."""
         games, analysed = 0, 0
+        rating, rating_delta_7d = None, None
         idx = self.site_dir / "games.json"
         if idx.exists():
             try:
-                for g in json.loads(idx.read_text(encoding="utf-8"))["games"]:
+                entries = json.loads(idx.read_text(encoding="utf-8"))["games"]
+                rated = []
+                for g in entries:
                     games += 1
                     analysed += g.get("analysed", 0) >= 0.999
+                    ts = _parse_ts(g.get("played_at"))
+                    if ts is not None and g.get("my_rating") is not None:
+                        rated.append((ts, g["my_rating"]))
+                rated.sort(key=lambda x: x[0])
+                if rated:
+                    rating = rated[-1][1]
+                    cutoff = datetime.now(timezone.utc) - timedelta(days=7)
+                    before = [r for t, r in rated if t < cutoff]
+                    baseline = before[-1] if before else rated[0][1]
+                    rating_delta_7d = rating - baseline
             except (ValueError, KeyError):
                 pass
         meta = json.loads(self.meta_json.read_text(encoding="utf-8")) if self.meta_json.exists() else {}
         return {"id": self.id, "source": self.source, "username": self.username, "games": games,
-                "analysed": analysed, "created": meta.get("created"), "pinned": meta.get("pinned")}
+                "analysed": analysed, "created": meta.get("created"), "pinned": meta.get("pinned"),
+                "rating": rating, "rating_delta_7d": rating_delta_7d}
 
 
 def profile_id(source: str, username: str) -> str:
