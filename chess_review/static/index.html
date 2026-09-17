@@ -1583,13 +1583,13 @@ const ARROW_SW = 1.375, ARROW_HW = 3.25, ARROW_HL = 4.5, ARROW_GAP = 4.5;   // h
 // weight (0-1) scales an arrow's thickness and opacity -- used to rank a swarm of candidate moves by strength
 function arrowStyle(kind, weight) {
   const [r, g, b] = ARROW[kind];
-  return `fill:rgba(${r}, ${g}, ${b}, ${(0.25 + 0.7 * weight * weight).toFixed(2)})`;   // 1 -> .95, .68 -> .57, .45 -> .39
+  return `fill:rgba(${r}, ${g}, ${b}, ${(0.25 + 0.5 * weight * weight).toFixed(2)})`;   // 1 -> .75, .68 -> .48, .45 -> .35 -- translucent, so the pieces under an arrow stay readable
 }
-function arrow(uci, kind, weight = 1) {
+function arrow(uci, kind, weight = 1, bend = 'long') {
   const [x1, y1] = sqXY(uci.slice(0, 2)).map(v => v + 6.25), [x2, y2] = sqXY(uci.slice(2, 4)).map(v => v + 6.25);
   const len = Math.hypot(x2 - x1, y2 - y1);
   const dx = Math.round((x2 - x1) / 12.5), dy = Math.round((y2 - y1) / 12.5);
-  if (Math.abs(dx) + Math.abs(dy) === 3 && dx && dy) return knightArrow(x1, y1, dx, dy, kind, weight);
+  if (Math.abs(dx) + Math.abs(dy) === 3 && dx && dy) return knightArrow(x1, y1, dx, dy, kind, weight, bend);
   // rotation taking the down-pointing polygon onto (dx, dy) in y-down SVG coords (SVG rotate is clockwise)
   const deg = Math.atan2(-(x2 - x1), y2 - y1) * 180 / Math.PI;
   const sw = ARROW_SW * weight, hw = ARROW_HW * weight, hl = ARROW_HL, gap = ARROW_GAP;
@@ -1598,18 +1598,59 @@ function arrow(uci, kind, weight = 1) {
     .map(p => p.join(',')).join(' ');
   return `<polygon points="${pts}" transform="rotate(${deg} ${x1} ${y1})" style="${arrowStyle(kind, weight)}"/>`;
 }
-// Knight moves bend like on chess.com: two squares along the long axis, then one square sideways with the head.
-// Authored as "down 2, then right 1" and mapped onto the real axes with a matrix (mirroring falls out for free).
-function knightArrow(x1, y1, dx, dy, kind, weight = 1) {
-  const sw = ARROW_SW * weight, hw = ARROW_HW * weight, hl = ARROW_HL, L = 25, S = 12.5;
-  const pts = [[-sw, ARROW_GAP], [-sw, L + sw], [S - hl, L + sw], [S - hl, L + hw], [S, L], [S - hl, L - hw], [S - hl, L - sw], [sw, L - sw], [sw, ARROW_GAP]]
-    .map(p => p.join(',')).join(' ');
-  // local x (sideways) -> short axis unit vector B, local y (forward) -> long axis unit vector A
+// Knight moves bend like on chess.com: two squares along the long axis, then one sideways with the head
+// (bend 'long'), or the other way round (bend 'short') when that keeps the elbow off squares other arrows use.
+// Authored as "down FIRST, then right SECOND" and mapped onto the real axes with a matrix (mirroring falls out for free).
+function knightArrow(x1, y1, dx, dy, kind, weight = 1, bend = 'long') {
+  const sw = ARROW_SW * weight, hw = ARROW_HW * weight, hl = ARROW_HL;
   const vertical = Math.abs(dy) === 2;
-  const A = vertical ? [0, Math.sign(dy)] : [Math.sign(dx), 0], B = vertical ? [Math.sign(dx), 0] : [0, Math.sign(dy)];
+  const longV = vertical ? [0, Math.sign(dy)] : [Math.sign(dx), 0], shortV = vertical ? [Math.sign(dx), 0] : [0, Math.sign(dy)];
+  const [first, second, A, B] = bend === 'short' ? [12.5, 25, shortV, longV] : [25, 12.5, longV, shortV];
+  const pts = [[-sw, ARROW_GAP], [-sw, first + sw], [second - hl, first + sw], [second - hl, first + hw], [second, first], [second - hl, first - hw], [second - hl, first - sw], [sw, first - sw], [sw, ARROW_GAP]]
+    .map(p => p.join(',')).join(' ');
+  // local y (forward) -> first leg's unit vector A, local x (sideways) -> second leg's unit vector B
   return `<polygon points="${pts}" transform="matrix(${B[0]} ${B[1]} ${A[0]} ${A[1]} ${x1} ${y1})" style="${arrowStyle(kind, weight)}"/>`;
 }
+// The squares an arrow's shaft crosses (endpoints included) -- what the knight bend choice tries to avoid.
+// For a knight, bend 'long' passes the two squares along the long axis, 'short' the sideways one then one along.
+function arrowSquares(uci, bend = 'long') {
+  const f1 = 'abcdefgh'.indexOf(uci[0]), r1 = +uci[1] - 1, f2 = 'abcdefgh'.indexOf(uci[2]), r2 = +uci[3] - 1;
+  const df = f2 - f1, dr = r2 - r1, out = [sqName(f1, r1)];
+  if (Math.abs(df) + Math.abs(dr) === 3 && df && dr) {
+    const longF = Math.abs(df) === 2, sf = Math.sign(df), sr = Math.sign(dr);
+    let f = f1, r = r1;
+    const steps = longF ? (bend === 'short' ? [[0, sr], [sf, 0], [sf, 0]] : [[sf, 0], [sf, 0], [0, sr]])
+                        : (bend === 'short' ? [[sf, 0], [0, sr], [0, sr]] : [[0, sr], [0, sr], [sf, 0]]);
+    for (const [a, b] of steps) { f += a; r += b; out.push(sqName(f, r)); }
+    return out;
+  }
+  if (df && dr && Math.abs(df) !== Math.abs(dr)) return [out[0], sqName(f2, r2)];
+  const n = Math.max(Math.abs(df), Math.abs(dr)), sf = Math.sign(df), sr = Math.sign(dr);
+  for (let i = 1; i <= n; i++) out.push(sqName(f1 + sf * i, r1 + sr * i));
+  return out;
+}
+const isKnightMove = u => { const df = Math.abs(u.charCodeAt(2) - u.charCodeAt(0)), dr = Math.abs(u[3] - u[1]); return df + dr === 3 && df > 0 && dr > 0; };
+// Draws [uci, kind, weight] arrows; thin/faint ones first so the strongest paints on top. Each knight arrow takes
+// the bend whose middle squares collide least with everything else on the board.
+function drawArrows(list) {
+  list.sort((a, b) => a[2] - b[2]);
+  const others = u => list.filter(x => x[0] !== u).flatMap(x => arrowSquares(x[0]));
+  $('arrows').innerHTML = list.map(([u, k, w]) => {
+    let bend = 'long';
+    if (isKnightMove(u)) {
+      const taken = new Set(others(u));
+      const hits = b => arrowSquares(u, b).slice(1, 3).filter(sq => taken.has(sq)).length;
+      if (hits('short') < hits('long')) bend = 'short';
+    }
+    return arrow(u, k, w, bend);
+  }).join('');
+}
 let arrowsFor = null;
+// What the board says about the current move, in priority order -- every arrow has to earn its place:
+//   1. green  the engine's move, whenever the played one wasn't it (what to play instead)
+//   2. red    the refutation of a bad move (why it was bad)
+//   3. orange one capture per piece the move left hanging that the red arrow doesn't already point at, at most
+//             two -- a fork shows both prongs, but not every way to take the same piece
 function renderArrows() {
   const mv = currentMove(), fen = currentFen();
   const list = [];
@@ -1625,15 +1666,18 @@ function renderArrows() {
     const c = sandboxEval[fen];
     (c && c.lines || []).forEach((l, i) => list.push([l.uci, 'best', [1, 0.68, 0.45][i] || 0.4]));
   }
-  list.sort((a, b) => a[2] - b[2]);   // thin/faint ones first, so the strongest arrow paints on top
-  $('arrows').innerHTML = list.map(([u, k, w]) => arrow(u, k, w)).join('');
-  // threats: legal captures onto pieces the move left hanging (computed from the legal-move set, not the PV)
+  drawArrows(list);
+  // threats: captures onto pieces the move left hanging (from the legal-move set, not the PV), redrawn with the rest
   arrowsFor = fen;
-  if (mv && BAD.has(mv.label) && mv.hung && mv.hung.length) {
+  const covered = new Set(list.filter(a => a[1] === 'punish').map(a => a[0].slice(2, 4)));
+  const hung = mv && BAD.has(mv.label) ? (mv.hung || []).filter(sq => !covered.has(sq)) : [];
+  if (hung.length) {
     legalFor(fen).then(legal => {
       if (arrowsFor !== fen) return;
-      const extra = legal.filter(u => mv.hung.includes(u.slice(2, 4)) && u !== mv.reply_uci && !(mv.reply_uci && u.slice(0, 4) === mv.reply_uci.slice(0, 4)));
-      $('arrows').innerHTML += [...new Set(extra.map(u => u.slice(0, 4)))].map(u => arrow(u, 'threat')).join('');
+      const board = parseFen(fen), value = ch => ({ p: 1, n: 3, b: 3, r: 5, q: 9, k: 10 })[ch.toLowerCase()] || 0;
+      const cheapest = {};   // per hung square, the capture by the least valuable piece
+      legal.forEach(u => { const to = u.slice(2, 4); if (hung.includes(to) && (!cheapest[to] || value(board[u.slice(0, 2)]) < value(board[cheapest[to].slice(0, 2)]))) cheapest[to] = u.slice(0, 4); });
+      drawArrows(list.concat(hung.map(sq => cheapest[sq]).filter(Boolean).slice(0, 2).map(u => [u, 'threat', 1])));
     });
   }
 }
