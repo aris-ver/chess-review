@@ -4,13 +4,15 @@
 # Logs: journalctl -u chess-review -f
 [Unit]
 Description=chess-review server (static site + on-demand Stockfish analysis)
-After=network-online.target
+# Pull tailscaled in so the tailnet is up whenever the review server is (its serve config persists in tailscaled state).
+Wants=network-online.target tailscaled.service
+After=network-online.target tailscaled.service
 
 [Service]
 User=aris
 WorkingDirectory=/home/aris/projects/chess-review
 ExecStart=/home/aris/projects/chess-review/.venv/bin/python -m chess_review serve --host 0.0.0.0 --port 8123
-Restart=on-failure
+Restart=always
 RestartSec=3
 Nice=5
 
