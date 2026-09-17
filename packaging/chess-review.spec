@@ -43,6 +43,7 @@ exe = EXE(
     strip=False,
     upx=False,
     console=False,   # native window only; logs go to %LOCALAPPDATA%\chess-review\app.log
+    icon=str(ROOT / "packaging" / "chess-review.ico"),
 )
 
 coll = COLLECT(
