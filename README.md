@@ -49,6 +49,19 @@ DevTools (Network → Media, while a review plays one) as `data/site/sounds/bril
 
 Docker / VM: see `deploy/DOCKER.md` (`docker compose up -d`, state in `./data`, expose via Tailscale).
 
+## Windows app
+
+**Download:** [latest release](https://github.com/aris-ver/chess-review/releases/latest) → `chess-review-windows.zip`.
+Unzip anywhere, run `chess-review.exe`. No Python, no install: it is the server plus a native window (pywebview over
+WebView2) and a bundled Stockfish. The first launch shows a SmartScreen prompt — *More info → Run anyway*; a PC with
+Smart App Control **on** refuses unsigned apps outright (the exe is not code-signed). Data goes to
+`%LOCALAPPDATA%\chess-review`; `app.log` there is where errors land, the window has no console.
+
+Building it: `powershell -ExecutionPolicy Bypass -File packaging\build_windows.ps1` from a Windows terminal
+(`launcher.py` is the entry point, `packaging/chess-review.spec` the PyInstaller recipe; the script fetches Stockfish
+and the opening book itself). `.github/workflows/windows-release.yml` does the same on a clean runner: push a tag
+(`git tag v0.1.0 && git push origin v0.1.0`) and the zip lands on that tag's GitHub Release.
+
 ## Pipeline (CLI)
 
 ```

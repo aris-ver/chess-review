@@ -18,7 +18,7 @@ import chess.engine
 from . import explain
 from .analyse import _score, robust_multipv
 from .classify import classify_game
-from .config import DEFAULT_NODES, STOCKFISH
+from .config import DEFAULT_NODES, ENGINE_POPEN, STOCKFISH
 from .db import connect
 from .facts import extract
 from .fen import fen_key
@@ -63,7 +63,7 @@ class Explorer:
 
     def engine(self) -> chess.engine.SimpleEngine:
         if self._engine is None:
-            self._engine = chess.engine.SimpleEngine.popen_uci(str(STOCKFISH))
+            self._engine = chess.engine.SimpleEngine.popen_uci(str(STOCKFISH), **ENGINE_POPEN)
             self._engine.configure({"Threads": self.threads, "Hash": 256})
         return self._engine
 

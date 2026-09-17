@@ -13,7 +13,8 @@
     POST /api/stop                      stop the running job
     GET  /api/legal?fen=                legal moves in a position (for the board UI)
     POST /api/explore                   {fen, uci, my_colour} -> the move evaluated and classified on the spot
-    POST /api/pgn                       {pgn, review_as} -> stored in the "Pasted games" profile and reviewable at once
+    POST /api/pgn                       {pgn, review_as?} -> stored in the "Pasted games" profile and reviewable at once
+                                        (review_as defaults to the side a saved profile played, else white)
     GET  /api/engine                    {name, nodes, multipv} of the on-demand engine (shown next to results)
     GET  /api/fetch_image?url=          proxy an image so the board reader can inspect it on a canvas
     GET  /api/eval?fen=                 the engine's eval and best move in a position, no move required (sandbox)
@@ -365,9 +366,10 @@ class Handler(SimpleHTTPRequestHandler):
         path = urlparse(self.path).path
         if path == "/api/pgn":
             b = self._body()
-            text, review_as = (b.get("pgn") or "").strip(), b.get("review_as", "white")
+            text = (b.get("pgn") or "").strip()
             if not text:
                 return self._json({"error": "empty PGN"}, 400)
+            review_as = b.get("review_as") or _side_of_saved_player(text)
             p = profiles.create("pgn", PGN_PROFILE_NAME)
             if r.busy() and r.job.profile.id == p.id:
                 return self._json({"error": "busy", "job": r.job.to_dict()}, 409)
@@ -438,6 +440,16 @@ MAX_IMAGE_BYTES = 10 * 1024 * 1024
 PGN_PROFILE_NAME = "Pasted games"   # every pasted PGN lands in profile pgn-pasted-games
 
 
+def _side_of_saved_player(pgn: str) -> str:
+    """Which side to review a pasted PGN from: the one played by a saved profile's username, else White."""
+    mine = {p.username.lower() for p in profiles.list_profiles() if p.source != "pgn"}
+    for side in ("White", "Black"):
+        m = re.search(rf'(?m)^\[{side} "([^"]*)"\]', pgn)
+        if m and m.group(1).strip().lower() in mine:
+            return side.lower()
+    return "white"
+
+
 def rebuild_profile(p: Profile) -> None:
     """normalise -> site -> classify -> aggregates (no engine work); what a refresh does after fetching."""
     normalise.build(p)
@@ -482,7 +494,8 @@ def main(argv=None) -> None:
         Handler.runner.explorer.close()
         sys.exit(0)
 
-    signal.signal(signal.SIGTERM, shutdown)
+    if threading.current_thread() is threading.main_thread():   # the desktop launcher runs us off the main thread
+        signal.signal(signal.SIGTERM, shutdown)
     try:
         srv.serve_forever()
     except KeyboardInterrupt:

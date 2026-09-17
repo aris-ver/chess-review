@@ -28,6 +28,7 @@ import duckdb
 from .config import (
     DEFAULT_HASH_MB,
     DEFAULT_NODES,
+    ENGINE_POPEN,
     EVALS_DB,
     EVALS_PARQUET,
     MULTIPV_N,
@@ -71,7 +72,7 @@ CRASH_RETRY_NODES = (100_000, 20_000)   # Stockfish 18 segfaults on a few rare p
 def _start_engine() -> None:
     global _engine
     stockfish, hash_mb = _cfg
-    _engine = chess.engine.SimpleEngine.popen_uci(stockfish)
+    _engine = chess.engine.SimpleEngine.popen_uci(stockfish, **ENGINE_POPEN)
     _engine.configure({"Threads": 1, "Hash": hash_mb})
 
 
