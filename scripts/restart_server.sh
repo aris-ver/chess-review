@@ -20,7 +20,7 @@ pkill -x stockfish 2>/dev/null || true
 sleep 1
 
 # setsid forks when the caller leads a process group, so record the pid from inside the new session.
-setsid nohup bash -c 'echo $$ > data/serve.pid; exec .venv/bin/python -m chess_review serve --host 0.0.0.0 "$@"' _ "$@" \
+setsid nohup bash -c 'echo $$ > data/serve.pid; exec .venv/bin/python -m chess_review serve "$@"' _ "$@" \
   > data/serve.log 2>&1 < /dev/null &
 sleep 2
 tail -1 data/serve.log

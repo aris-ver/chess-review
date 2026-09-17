@@ -4,7 +4,10 @@ Local, offline chess.com game review: Stockfish evals cached per position in Duc
 deterministic plain-English explanations, a static chess.com-style review UI. No LLM anywhere.
 Design: `chess-review-spec.md`.
 
-## Daily use
+## Using it
+
+**Windows app:** [latest release](https://github.com/aris-ver/chess-review/releases/latest) → `chess-review-windows.zip`,
+unzip anywhere, run `chess-review.exe` (details under *Windows app* below). From a checkout, the same server runs as
 
 ```
 bash scripts/restart_server.sh          # http://127.0.0.1:8123/  (log: data/serve.log)
@@ -47,15 +50,12 @@ Sounds: `bash scripts/fetch_sounds.sh` pulls chess.com's default sound set into 
 gitignored). The brilliant-move stinger is not served publicly by chess.com: save it from your browser's
 DevTools (Network → Media, while a review plays one) as `data/site/sounds/brilliant.mp3` or `.webm` and it is picked up automatically.
 
-Docker / VM: see `deploy/DOCKER.md` (`docker compose up -d`, state in `./data`, expose via Tailscale).
-
 ## Windows app
 
-**Download:** [latest release](https://github.com/aris-ver/chess-review/releases/latest) → `chess-review-windows.zip`.
-Unzip anywhere, run `chess-review.exe`. No Python, no install: it is the server plus a native window (pywebview over
-WebView2) and a bundled Stockfish. The first launch shows a SmartScreen prompt — *More info → Run anyway*; a PC with
-Smart App Control **on** refuses unsigned apps outright (the exe is not code-signed). Data goes to
-`%LOCALAPPDATA%\chess-review`; `app.log` there is where errors land, the window has no console.
+No Python, no install: the server plus a native window (pywebview over WebView2) and a bundled Stockfish. The first
+launch shows a SmartScreen prompt — *More info → Run anyway*; a PC with Smart App Control **on** refuses unsigned apps
+outright (the exe is not code-signed). Data goes to `%LOCALAPPDATA%\chess-review`; `app.log` there is where errors
+land, the window has no console.
 
 Building it: `powershell -ExecutionPolicy Bypass -File packaging\build_windows.ps1` from a Windows terminal
 (`launcher.py` is the entry point, `packaging/chess-review.spec` the PyInstaller recipe; the script fetches Stockfish
