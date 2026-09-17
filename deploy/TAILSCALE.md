@@ -21,6 +21,11 @@ sudo tailscale serve --bg 8123
 # -> https://aris.<tailnet>.ts.net/
 ```
 
+The first time, this prints a `https://login.tailscale.com/f/serve?...` link and waits: Serve has
+to be enabled once per tailnet in the admin console. Open the link, approve, and the command
+finishes. `--bg` persists the mapping in tailscaled's state, so it survives reboots; without `--bg`
+it is cleared as soon as the terminal closes.
+
 ## Make the server survive reboots
 
 ```bash
@@ -33,13 +38,22 @@ systemctl status chess-review        # should say active (running)
 From then on `bash scripts/restart_server.sh` is no longer needed; use
 `sudo systemctl restart chess-review` after code changes.
 
-WSL itself has to be running for any of this to be reachable. It stays up while the
-service runs, but does not start by itself after a Windows reboot. To fix that, create a
-Windows Task Scheduler task "At log on" running:
+The unit `Wants=`/`After=` `tailscaled.service`, so starting chess-review also brings the
+tailnet up; `Restart=always` brings the server back after any exit.
 
-    wsl.exe -d Ubuntu -- true
+WSL itself has to be running for any of this to be reachable, and it does not start by
+itself after a Windows reboot. Create a Windows Task Scheduler task "At log on" (hidden,
+no time limit) running:
 
-(that boots the distro, systemd starts tailscaled + chess-review, and the VM stays up).
+    wsl.exe -d Ubuntu --exec /bin/sleep infinity
+
+That boots the distro (systemd starts tailscaled + chess-review) and the attached `sleep`
+stops WSL from idle-shutting the VM. From PowerShell:
+
+    $a = New-ScheduledTaskAction -Execute wsl.exe -Argument '-d Ubuntu --exec /bin/sleep infinity'
+    $t = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
+    $s = New-ScheduledTaskSettingsSet -Hidden -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit 0
+    Register-ScheduledTask 'WSL chess-review keepalive' -Action $a -Trigger $t -Settings $s
 
 ## Notes
 
