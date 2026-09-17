@@ -25,7 +25,9 @@ not fully analysed has an **Analyse** button right in the list; open a game → 
 (≈1-2 min for a rapid game: MultiPV=3, 1M nodes/position, 6 engines). The board, graph, move list and key
 moments fill in while it runs. **⟳ Refresh games** re-fetches the current month from chess.com; nothing is
 analysed unless you ask — the **Auto-analyse** switch in the header makes a refresh analyse the new games
-too (off by default, remembered in the browser). `scripts/restart_server.sh --nodes 500000` halves analysis time.
+too (off by default, remembered in the browser). On launch the server also asks chess.com, in the background,
+whether each saved profile has games newer than what's on disk; the home screen's profile card shows *N new
+games* until you open it or refresh. `scripts/restart_server.sh --nodes 500000` halves analysis time.
 
 Data layout: everything belonging to one player is in `data/profiles/<source>-<username>/` (raw archives,
 parquet tables, review JSON, insights); the Stockfish cache `data/evals.duckdb` is shared across profiles

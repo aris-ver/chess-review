@@ -70,6 +70,31 @@ def fetch_archives(profile: Profile, force: bool = False, only: str | None = Non
     return stats
 
 
+def count_new_games(profile: Profile, delay: float = 1.0, max_months: int = 3) -> int:
+    """How many games chess.com has for this profile that aren't in its raw archives yet: the latest month's
+    games minus those already in the same month's file on disk, plus whole months newer than anything on disk.
+    Read-only: nothing is written, a refresh does that. Looks at most max_months back."""
+    session = requests.Session()
+    session.headers["User-Agent"] = USER_AGENT
+    archive_urls = _get(session, API.format(username=profile.username)).json()["archives"]
+    new = 0
+    for i, url in enumerate(reversed(archive_urls[-max_months:])):
+        year, month = url.rstrip("/").split("/")[-2:]
+        local = profile.raw_dir / f"{year}-{month}.json"
+        if local.exists() and i > 0:
+            break               # everything older than the latest month is fetched once and never changes
+        time.sleep(delay)
+        remote = _get(session, url).json().get("games", [])
+        have = set()
+        if local.exists():
+            try:
+                have = {g.get("url") for g in json.loads(local.read_text(encoding="utf-8")).get("games", [])}
+            except ValueError:
+                pass
+        new += sum(1 for g in remote if g.get("url") not in have)
+    return new
+
+
 def store_pgn(profile: Profile, text: str, review_as: str | None = None) -> str:
     """Save a PGN under its content hash. `review_as` ("white"/"black") is written into every game's tag
     section as [ReviewAs ...] so normalise knows which side is "me" without a username match."""

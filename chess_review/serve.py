@@ -1,7 +1,9 @@
 """Local server: static site + a tiny JSON API for on-demand work. Stdlib only.
 
     GET  /api/status                    current job (or null)
-    GET  /api/profiles                  saved profiles with game counts
+    GET  /api/profiles                  saved profiles with game counts; new_games per profile is what chess.com has
+                                        that a refresh would fetch (scanned once per launch, in the background)
+    POST /api/profiles/<id>/seen        the user has seen the new-games badge: drop it until the next scan
     POST /api/profiles                  {source, username} -> create the profile and fetch its games (job "ingest")
     POST /api/profiles/<id>/delete      remove a profile and everything under it (the engine cache is shared and stays)
     POST /api/profiles/<id>/pin         {pinned: bool} keep it at the top of the home screen
@@ -215,6 +217,7 @@ class Runner:
 
         stats = ingest.fetch_archives(p, on_progress=progress)
         log.info("ingest %s: %s", p.id, stats)
+        Handler.new_games.clear(p.id)
         job.total = max(job.total, 3)
         job.done = job.total - 3
         self._rebuild(job)
@@ -224,6 +227,7 @@ class Runner:
         job.total = 4
         stats = ingest.fetch_archives(p, refresh_latest=True)
         log.info("refresh %s: %s", p.id, stats)
+        Handler.new_games.clear(p.id)
         job.done = 1
         self._rebuild(job)
         if job.analyse:
@@ -231,9 +235,41 @@ class Runner:
             self._analyse_all(job)
 
 
+class NewGames:
+    """Once per launch, in the background: for each chess.com profile, how many games the site has that aren't
+    on disk yet -- the "3 new games" badge on the home screen's profile cards. Counts drop when the user opens
+    the card (seen) or a fetch brings the games in."""
+
+    def __init__(self):
+        self.counts: dict[str, int] = {}
+        self.state = "idle"             # idle | running | done
+
+    def start(self) -> None:
+        self.state = "running"
+        threading.Thread(target=self._run, daemon=True, name="new-games").start()
+
+    def _run(self) -> None:
+        for p in profiles.list_profiles():
+            if p.source != "chesscom" or not p.raw_dir.exists():
+                continue
+            try:
+                n = ingest.count_new_games(p)
+            except Exception as e:  # noqa: BLE001 - offline, rate-limited, renamed account: no badge, nothing else
+                log.info("new-games scan for %s failed: %s", p.id, e)
+                continue
+            if n:
+                self.counts[p.id] = n
+            log.info("new-games scan %s: %d", p.id, n)
+        self.state = "done"
+
+    def clear(self, pid: str) -> None:
+        self.counts.pop(pid, None)
+
+
 class Handler(SimpleHTTPRequestHandler):
     runner: Runner = None  # set in main
     updates: updater.Updater = None
+    new_games: NewGames = None
 
     def end_headers(self):
         self.send_header("Cache-Control", "no-store")
@@ -275,7 +311,10 @@ class Handler(SimpleHTTPRequestHandler):
         if url.path == "/api/status":
             return self._json({"job": self.runner.job.to_dict() if self.runner.job else None})
         if url.path == "/api/profiles":
-            return self._json({"profiles": [p.summary() for p in profiles.list_profiles()]})
+            out = []
+            for p in profiles.list_profiles():
+                out.append({**p.summary(), "new_games": self.new_games.counts.get(p.id, 0)})
+            return self._json({"profiles": out, "scan": self.new_games.state})
         if url.path == "/api/legal":
             fen = parse_qs(url.query).get("fen", [""])[0]
             try:
@@ -404,6 +443,10 @@ class Handler(SimpleHTTPRequestHandler):
             if (p.site_dir / "games.json").exists():
                 return self._json({"profile": p.summary(), "job": None})   # already set up: just open it
             return self._start(Job("ingest", p))
+        m = re.match(r"^/api/profiles/([A-Za-z0-9_.-]+)/seen$", path)
+        if m:
+            self.new_games.clear(m.group(1))
+            return self._json({"ok": True})
         m = re.match(r"^/api/profiles/([A-Za-z0-9_.-]+)/pin$", path)
         if m:
             out = profiles.set_pinned(m.group(1), bool(self._body().get("pinned", True)))
@@ -495,6 +538,8 @@ def main(argv=None) -> None:
     site.write_static()     # index.html is a pure copy of static/, so it is always current after a restart
     Handler.runner = Runner(args.nodes, args.workers)
     Handler.updates = updater.Updater()
+    Handler.new_games = NewGames()
+    Handler.new_games.start()
 
     def reaper():
         while True:
