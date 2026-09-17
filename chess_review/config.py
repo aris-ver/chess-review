@@ -48,6 +48,7 @@ CRITICAL_MAX = 5
 DEFAULT_HASH_MB = 64            # per worker; cleared before every 1M-node search, so bigger buys nothing
 ENGINE_IDLE_SECONDS = 600       # server shuts engines down after this long without work (they restart in ~1 s)
 USER_AGENT = "chess-review/0.1 (personal offline game analysis tool)"  # cloudflare 403s anything mentioning python-requests
+GITHUB_REPO = "aris-ver/chess-review"   # where the Windows build looks for new releases (updater.py)
 
 
 def sql_path(p) -> str:

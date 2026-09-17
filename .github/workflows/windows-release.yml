@@ -1,7 +1,8 @@
-# Builds the Windows desktop zip on a clean Windows runner. On a version tag (v0.1.0, ...) it is
-# attached to that tag's GitHub Release; the README's download link points at the latest release.
-# Run manually (Actions -> Windows release -> Run workflow) to get the zip as a workflow artifact
-# without publishing a release.
+# Builds the Windows desktop zips on a clean Windows runner. On a version tag (v0.1.0, ...) they are attached
+# to that tag's GitHub Release: chess-review-windows.zip (the whole app; the README's download link points at
+# the latest release) and chess-review-update-<runtime>.zip (what installed copies fetch through the in-app
+# updater, see chess_review/updater.py). Run manually (Actions -> Windows release -> Run workflow) to get the
+# zips as a workflow artifact without publishing a release.
 name: Windows release
 
 on:
@@ -17,17 +18,21 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0    # so a manual run can name its build after the nearest tag (git describe)
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
       - name: Build the app
         env:
           GH_TOKEN: ${{ github.token }}
-        run: powershell -ExecutionPolicy Bypass -File packaging\build_windows.ps1
+          # on a tag push the version is the tag; a manual run gets git describe's v0.1.4-3-gabc123
+          VERSION: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || '' }}
+        run: powershell -ExecutionPolicy Bypass -File packaging\build_windows.ps1 -Version "$env:VERSION"
       - uses: actions/upload-artifact@v4
         with:
           name: chess-review-windows
-          path: packaging/dist/chess-review-windows.zip
+          path: packaging/dist/chess-review-*.zip
       - name: Attach to the release
         if: startsWith(github.ref, 'refs/tags/')
         env:
@@ -36,4 +41,4 @@ jobs:
         run: |
           gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 \
             || gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --generate-notes
-          gh release upload "$GITHUB_REF_NAME" packaging/dist/chess-review-windows.zip --clobber
+          gh release upload "$GITHUB_REF_NAME" packaging/dist/chess-review-*.zip --clobber

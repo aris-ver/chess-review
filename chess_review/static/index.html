@@ -85,6 +85,13 @@ main { padding: 16px 18px; max-width: 1800px; margin: 0 auto; }
 .card.profile .pin { position: absolute; top: 8px; right: 30px; color: var(--muted); padding: 2px 6px; border-radius: 4px; font-size: 14px; line-height: 1.4; }
 .card.profile .pin:hover { background: var(--panel2); color: var(--text); } .card.profile.pinned .pin { color: var(--accent); }
 .cards .empty { padding: 10px 12px; color: var(--muted); font-size: 13px; grid-column: 1 / -1; text-align: left; }
+.update { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; background: var(--panel); border: 1px solid var(--accent); border-radius: 10px; padding: 12px 16px; margin-top: 4px; }
+.update .msg { flex: 1; min-width: 200px; }
+.update .msg small { color: var(--muted); display: block; margin-top: 2px; }
+.update .progress { flex: 1 1 100%; }
+.update .err { color: #e07a5f; flex: 1 1 100%; font-size: 13px; }
+.ver { margin: 36px 0 12px; text-align: center; color: var(--muted); font-size: 12px; }
+.ver a { color: var(--muted); cursor: pointer; text-decoration: underline; }
 
 /* board setup editor */
 .setup { display: grid; grid-template-columns: minmax(280px, 560px) 300px; gap: 20px; justify-content: center; max-width: 920px; margin: 24px auto 0; align-items: start; }
@@ -385,6 +392,7 @@ svg.graph { width: 100%; height: 90px; display: block; cursor: pointer; backgrou
 <main>
   <section id="home" class="hidden">
     <div class="home">
+      <div id="update" class="update hidden"></div>
       <h2>Analyse</h2>
       <div class="cards">
         <div class="card add">
@@ -407,6 +415,7 @@ svg.graph { width: 100%; height: 90px; display: block; cursor: pointer; backgrou
       </div>
       <h2>Profiles</h2>
       <div class="cards" id="profiles"></div>
+      <div class="ver hidden" id="ver"></div>
     </div>
   </section>
   <section id="editor" class="hidden">
@@ -686,6 +695,43 @@ function eloHTML(rating, delta) {   // "579 ▼49": the rating and how it moved 
 // which engine answers on-demand questions, and how deep: shown next to every result
 state.engine = null;
 (async () => { try { const d = await (await fetch('api/engine')).json(); if (!d.error) { state.engine = d; if (state.game) { renderAnalyseBox(); renderLines(); renderNow(); } } } catch (e) {} })();
+// updates (desktop build only): one check per launch, the banner on the home screen does the rest
+state.update = null;
+const fmtMB = b => b ? `${(b / 1048576).toFixed(b < 10485760 ? 1 : 0)} MB` : '';
+async function checkUpdate(force = false) {
+  let d; try { d = await (await fetch('api/update' + (force ? '?check=1' : ''))).json(); } catch (e) { return; }
+  state.update = d; renderUpdate();
+  if (force) toast(d.check_error ? 'Could not check: ' + d.check_error : d.newer ? `${d.latest} is available` : `${d.installed} is the latest version`);
+  if (d.state === 'downloading') setTimeout(checkUpdate, 500);
+}
+function renderUpdate() {
+  const u = state.update, box = $('update'), ver = $('ver');
+  if (!u || !u.enabled) { box.classList.add('hidden'); ver.classList.add('hidden'); return; }
+  ver.classList.remove('hidden');
+  ver.innerHTML = `Chess Review ${u.installed} · <a id="ver-check">Check for updates</a>`;
+  $('ver-check').onclick = () => checkUpdate(true);
+  box.classList.toggle('hidden', !u.newer);
+  if (!u.newer) return;
+  const what = u.kind === 'full' ? `full download, ${fmtMB(u.size)}` : `${fmtMB(u.size)}`;
+  let html = `<div class="msg"><b>${u.latest}</b> is available (you have ${u.installed}).<small>${
+    u.state === 'ready' ? 'Downloaded. The app restarts to finish installing it.' :
+    u.state === 'downloading' ? `Downloading… ${fmtMB(u.done)} of ${fmtMB(u.total)}` :
+    `${what} · <a href="${u.url}" target="_blank">release notes</a>`}</small></div>`;
+  if (u.state === 'ready') html += `<button class="primary" id="upd-apply">Restart to update</button>`;
+  else if (u.state === 'downloading') html += `<div class="progress"><div style="width:${u.total ? 100 * u.done / u.total : 0}%"></div></div>`;
+  else html += `<button class="primary" id="upd-get">Download update</button>`;
+  if (u.state === 'error') html += `<div class="err">Download failed: ${u.error}</div>`;
+  box.innerHTML = html;
+  const get = $('upd-get'), apply = $('upd-apply');
+  if (get) get.onclick = async () => { get.disabled = true; try { state.update = await (await fetch('api/update/download', { method: 'POST' })).json(); } catch (e) { get.disabled = false; return; } renderUpdate(); setTimeout(checkUpdate, 500); };
+  if (apply) apply.onclick = async () => {
+    apply.disabled = true;
+    let r, d; try { r = await fetch('api/update/apply', { method: 'POST' }); d = await r.json(); } catch (e) { d = { error: String(e) }; r = { ok: false }; }
+    if (!r.ok) { apply.disabled = false; toast(d.error === 'busy' ? `Busy: ${jobText(d.job)} — update when it's done` : 'Update failed: ' + d.error); return; }
+    box.innerHTML = '<div class="msg">Restarting…</div>';
+  };
+}
+checkUpdate();
 const fmtNodes = n => n >= 1e6 ? `${(n / 1e6).toFixed(n % 1e6 ? 1 : 0)}M nodes` : `${Math.round(n / 1e3)}k nodes`;
 const engineName = snap => (snap && snap.engine) || (state.engine && state.engine.name) || 'Engine';
 const SECTIONS = ['home', 'list', 'review', 'editor', 'imgpage'];

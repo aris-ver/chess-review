@@ -59,7 +59,17 @@ land, the window has no console.
 Building it: `powershell -ExecutionPolicy Bypass -File packaging\build_windows.ps1` from a Windows terminal
 (`launcher.py` is the entry point, `packaging/chess-review.spec` the PyInstaller recipe; the script fetches Stockfish
 and the opening book itself). `.github/workflows/windows-release.yml` does the same on a clean runner: push a tag
-(`git tag v0.1.0 && git push origin v0.1.0`) and the zip lands on that tag's GitHub Release.
+(`git tag v0.1.0 && git push origin v0.1.0`) and the zips land on that tag's GitHub Release.
+
+**Updates** happen inside the app: the home screen checks the latest release once per launch (and on *Check for
+updates* at the bottom) and offers a *Download update* → *Restart to update* banner. A release carries two zips:
+`chess-review-windows.zip` (everything) and `chess-review-update-<runtime>.zip` (the exe and the web UI, ~6 MB),
+where `<runtime>` fingerprints the bundled Python/DLL layer (`packaging/pack.py`). An install whose fingerprint matches
+takes the small zip; otherwise it downloads the full one and swaps its whole `_internal` folder. Either way a small
+PowerShell script (`chess_review/updater.py`) waits for the app to exit, copies the files in and relaunches it;
+what it did is in `%LOCALAPPDATA%\chess-review\update.log`. The fingerprint moves whenever the bundled runtime
+changes, so build deps are pinned in `packaging/requirements-build.txt` — bump them deliberately, and expect the
+release after a bump (or after CI's Python patch version moves) to be a full download.
 
 ## Pipeline (CLI)
 
