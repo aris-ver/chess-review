@@ -36,8 +36,11 @@ def evals_views(con: duckdb.DuckDBPyConnection) -> None:
             attached = True
         except duckdb.Error as e:
             log.warning("evals.duckdb locked (%s), using evals.parquet snapshot", str(e).splitlines()[0])
-    if not attached and EVALS_PARQUET.exists():
-        con.execute(f"CREATE OR REPLACE VIEW evals AS SELECT * FROM read_parquet({sql_path(EVALS_PARQUET)})")
+    if not attached:
+        if EVALS_PARQUET.exists():
+            con.execute(f"CREATE OR REPLACE VIEW evals AS SELECT * FROM read_parquet({sql_path(EVALS_PARQUET)})")
+        else:   # nothing analysed yet (fresh install): every position simply has no eval
+            con.execute("CREATE OR REPLACE VIEW evals AS SELECT NULL::TEXT fen_key, NULL::INT nodes, NULL::INT eval_cp, NULL::INT mate_in, NULL::TEXT best_move, NULL::TEXT[] pv WHERE false")
         con.execute("CREATE OR REPLACE VIEW evals_multipv AS SELECT NULL::TEXT fen_key, NULL::INT rank, NULL::TEXT move, NULL::INT eval_cp, NULL::INT mate_in, NULL::TEXT[] pv WHERE false")
 
 

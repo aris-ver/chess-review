@@ -4,3 +4,7 @@ bin/
 __pycache__/
 .pytest_cache/
 *.csv
+packaging/bin/
+packaging/assets/
+packaging/dist/
+packaging/build/
