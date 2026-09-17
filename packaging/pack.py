@@ -5,13 +5,16 @@
 Writes <app>/_internal/build.json = {version, runtime} and two zips, both wrapping a chess-review/ folder:
 
     chess-review-windows.zip            everything
-    chess-review-update-<runtime>.zip   chess-review.exe, _internal/build.json, _internal/chess_review/**,
-                                        _internal/assets/**  -  the parts that change between most releases
+    chess-review-update-<runtime>.zip   chess-review.exe, _internal/base_library.zip, _internal/build.json,
+                                        _internal/chess_review/**, _internal/assets/**  -  the parts that
+                                        change between most releases
 
 <runtime> is a hash of every other file under _internal (the Python DLLs, the packages' .pyd/.dll files and
-their data, base_library.zip) except bin/ (Stockfish, which nothing in the exe is tied to). The exe's embedded
-.pyc code is compiled against exactly those files, so a new exe can run on an existing install's _internal
-iff the hashes agree - which is what chess_review/updater.py checks before taking the small zip.
+their data) except bin/ (Stockfish, which nothing in the exe is tied to). The exe's embedded .pyc code is
+compiled against exactly those files, so a new exe can run on an existing install's _internal iff the hashes
+agree - which is what chess_review/updater.py checks before taking the small zip. base_library.zip (the core
+stdlib, compiled at build time) is PyInstaller output like the exe: its bytes differ from build to build
+(.pyc headers carry source mtimes), so it travels with the exe instead of being fingerprinted.
 """
 
 import argparse
@@ -22,6 +25,7 @@ from pathlib import Path
 
 ZIP_ROOT = "chess-review"
 APP_DIRS = ("chess_review", "assets")     # app-owned data under _internal: in the update zip, not the fingerprint
+GENERATED = ("base_library.zip",)         # PyInstaller output under _internal: same treatment
 EXCLUDED = ("bin",)                       # in neither
 STAMP = "build.json"
 
@@ -30,7 +34,7 @@ def runtime_fingerprint(internal: Path) -> str:
     h = hashlib.sha256()
     for f in sorted(p for p in internal.rglob("*") if p.is_file()):
         rel = f.relative_to(internal).as_posix()
-        if rel == STAMP or rel.split("/")[0] in APP_DIRS + EXCLUDED:
+        if rel == STAMP or rel in GENERATED or rel.split("/")[0] in APP_DIRS + EXCLUDED:
             continue
         h.update(rel.encode())
         h.update(hashlib.sha256(f.read_bytes()).digest())
@@ -40,6 +44,7 @@ def runtime_fingerprint(internal: Path) -> str:
 def update_files(app: Path):
     yield app / "chess-review.exe"
     yield app / "_internal" / STAMP
+    yield from (app / "_internal" / g for g in GENERATED if (app / "_internal" / g).is_file())
     for d in APP_DIRS:
         yield from (p for p in (app / "_internal" / d).rglob("*") if p.is_file())
 
