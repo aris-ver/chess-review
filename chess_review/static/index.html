@@ -268,8 +268,8 @@ svg.arrows { position: absolute; inset: 0; width: 100%; height: 100%; pointer-ev
 .ov.on { display: block; }
 .highlight { background: rgb(255, 255, 51); opacity: 0.5; }
 /* INTENTIONAL: opacity, not a pre-blended rgba, so the highlight reads darker on dark squares (chess.com behaviour) */
-.hint { position: absolute; }
-.hint::after { content: ""; position: absolute; inset: 33.33%; border-radius: 50%; background: rgba(0, 0, 0, 0.14); }   /* disc = 1/3 of the square, centred */
+.overlays .hint { position: absolute; }
+.overlays .hint::after { content: ""; position: absolute; inset: 33.33%; border-radius: 50%; background: rgba(0, 0, 0, 0.14); }   /* disc = 1/3 of the square, centred */
 .capture-hint { box-shadow: inset 0 0 0 calc(var(--sq) * 0.0836) rgba(0, 0, 0, 0.14); border-radius: 50%; background: transparent; }
 .hover-rect { fill: none; stroke: rgba(255, 255, 255, 0.55); stroke-width: 0.5; pointer-events: none; }   /* drawn in the squares SVG so it aligns exactly */
 svg.board.playable use.piece.own { cursor: grab; }
@@ -1295,7 +1295,11 @@ function renderAnalyseBox(job) {
   }
   prog.classList.add('hidden');
   if (g.analysed >= 0.999) { btn.textContent = 'Analysed ✓'; btn.disabled = true; btn.classList.remove('primary'); st.textContent = `${g.moves.length} moves · ${engineName()}${state.engine ? ` · ${fmtNodes(state.engine.nodes)}/position` : ''} · MultiPV ${state.engine ? state.engine.multipv : 3}`; }
-  else { btn.textContent = g.analysed > 0 ? 'Continue analysis' : 'Analyse game'; btn.disabled = false; btn.classList.add('primary'); st.textContent = g.analysed > 0 ? `${Math.round(g.analysed * 100)}% analysed` : 'Not analysed yet'; }
+  else {
+    // a partial figure here is the shared engine cache (openings seen in other games), not a run that stopped
+    btn.textContent = 'Analyse game'; btn.disabled = false; btn.classList.add('primary');
+    st.textContent = g.analysed > 0 ? `Not analysed yet · ${Math.round(g.analysed * 100)}% of positions already in the engine cache` : 'Not analysed yet';
+  }
 }
 $('b-analyse').onclick = async () => {
   const r = await fetch(`api/${P()}/analyse/${state.game.id}`, { method: 'POST' });
@@ -1565,12 +1569,14 @@ function renderArrows() {
   const mv = currentMove(), fen = currentFen();
   const list = [];
   if (state.showBest && bestMoveHere()) list.push([bestMoveHere(), 'best', 1]);
-  // the engine's preferred move whenever the played one wasn't it (same rule as the "X was better" text in the bubble)
-  if (mv && mv.best_uci && mv.best_uci !== mv.uci && mv.label && !['book', 'forced'].includes(mv.label)) list.push([mv.best_uci, 'best', 1]);
+  const live = state.game && state.game.sandbox && !state.showBest;
+  // the engine's preferred move whenever the played one wasn't it (same rule as the "X was better" text in the
+  // bubble). Not in the sandbox: there every arrow is for the side to move, and the bubble already says it.
+  if (!live && mv && mv.best_uci && mv.best_uci !== mv.uci && mv.label && !['book', 'forced'].includes(mv.label)) list.push([mv.best_uci, 'best', 1]);
   if (mv && BAD.has(mv.label) && mv.reply_uci) list.push([mv.reply_uci, 'punish', 1]);
   // sandbox: a swarm of the engine's top candidates at the position about to be played, sized by rank --
   // fills in and re-settles live as streamSandboxEval() reads more of the search (see there)
-  if (state.game && state.game.sandbox && !state.showBest) {
+  if (live) {
     const c = sandboxEval[fen];
     (c && c.lines || []).forEach((l, i) => list.push([l.uci, 'best', [1, 0.68, 0.45][i] || 0.4]));
   }
@@ -1639,7 +1645,31 @@ function applyMove(fen, uci) {
   if (isKing && Math.abs(from.charCodeAt(0) - to.charCodeAt(0)) === 2) san = to[0] === 'c' ? 'O-O-O' : 'O-O';
   else if (isPawn) san = (capture ? from[0] + 'x' : '') + to + (promo ? '=' + promo.toUpperCase() : '');
   else san = pc.toUpperCase() + (capture ? 'x' : '') + to;
+  if (givesCheck(pieces, white)) san += '+';   // the check sound plays on this provisional SAN, before the server answers
   return { fen: newFen, san, capture };
+}
+// Is the side that just moved (white?) attacking the other king? Enough for the sound; mate is left to the server.
+function givesCheck(pieces, white) {
+  const king = white ? 'k' : 'K';
+  const ksq = Object.keys(pieces).find(s => pieces[s] === king);
+  if (!ksq) return false;
+  const kf = ksq.charCodeAt(0) - 97, kr = +ksq[1] - 1;
+  const at = (f, r) => (f < 0 || f > 7 || r < 0 || r > 7) ? undefined : pieces[String.fromCharCode(97 + f) + (r + 1)];
+  const own = p => p && (p === p.toUpperCase()) === white;
+  const is = (p, ...kinds) => own(p) && kinds.includes(p.toLowerCase());
+  const pr = white ? -1 : 1;                                       // white pawns attack "up", i.e. from the rank below
+  if (is(at(kf - 1, kr + pr), 'p') || is(at(kf + 1, kr + pr), 'p')) return true;
+  for (const [df, dr] of [[1, 2], [2, 1], [2, -1], [1, -2], [-1, -2], [-2, -1], [-2, 1], [-1, 2]]) if (is(at(kf + df, kr + dr), 'n')) return true;
+  for (const [df, dr] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]]) {
+    const slider = df && dr ? 'b' : 'r';
+    for (let f = kf + df, r = kr + dr, first = true; f >= 0 && f < 8 && r >= 0 && r < 8; f += df, r += dr, first = false) {
+      const p = at(f, r);
+      if (!p) continue;
+      if (is(p, slider, 'q') || (first && is(p, 'k'))) return true;
+      break;
+    }
+  }
+  return false;
 }
 async function commitMove(uci, instant) {
   state.sel = null; state.legal = null;
@@ -1724,6 +1754,7 @@ async function explore(fen, uci) {
   state.exploring = true;
   renderMoveList();
   go(state.ply + 1);                       // the move is made right away, with its sound; the bubble shows the skeleton
+  stopSandboxStream();                     // the infinite search holds the engine; explore() needs it now
   let d = null, ok = false;
   try {
     const r = await fetch('api/explore', { method: 'POST', body: JSON.stringify({ fen, uci, my_colour: state.game.my_colour, ply: move.ply }) });
@@ -1738,6 +1769,7 @@ async function explore(fen, uci) {
     return;
   }
   Object.assign(move, d, { ply: move.ply, pending: false });
+  if (d.san && d.san.includes('#')) play('end');   // the provisional SAN can't tell mate from check; the check sound already played
   renderMoveList();
   if (currentMove() === move) {
     renderBoard(); renderPlayers(); renderEvalBar(); renderNow(); highlightCurrent(); renderNav();
@@ -1817,9 +1849,9 @@ function renderNow() {
   const g = state.game, el = $('now');
   el.classList.remove('loading');
   if (state.ply === 0 && g.sandbox) {
-    const top = sandboxTop(currentFen()), settled = sandboxEval[currentFen()] && sandboxEval[currentFen()].done;
+    const top = sandboxTop(currentFen());
     el.innerHTML = `<div class="top"><span class="verdict">Sandbox</span><span class="evbox">${top ? esc(fmtEvalBox(top.eval)) : ''}</span></div>` +
-      `<p>${top ? `${esc(engineName(sandboxEval[currentFen()]))} likes <b style="color:var(--text)">${esc(top.san)}</b> here (depth ${top.depth ?? '?'}${settled ? '' : ', still thinking…'}). ` : `${esc(engineName())} is evaluating… `}Drag a piece to explore — nothing here is saved.</p>`;
+      `<p>${top ? `${esc(engineName(sandboxEval[currentFen()]))} likes <b style="color:var(--text)">${esc(top.san)}</b> here (depth ${top.depth ?? '?'}, still searching). ` : `${esc(engineName())} is evaluating… `}Drag a piece to explore — nothing here is saved.</p>`;
     return;
   }
   if (state.ply === 0) {
@@ -1844,9 +1876,10 @@ function renderNow() {
   if (m.spent != null && state.explain) html += `<p style="color:#777">Thought for ${m.spent}s.</p>`;
   el.innerHTML = html;
 }
-// fen -> {lines: [{rank, uci, san, eval, depth}, ...], done}, the sandbox's current (unplayed) position,
+// fen -> {engine, nodes, lines: [{rank, uci, san, eval, depth}, ...]}, the sandbox's current (unplayed) position,
 // filled in live as streamSandboxEval() reads the engine's search — see below.
 let sandboxEval = {};
+const evalDepth = c => c && c.lines && c.lines.length ? Math.max(...c.lines.map(l => l.depth || 0)) : 0;
 function sandboxTop(fen) { const c = sandboxEval[fen]; return c && c.lines && c.lines[0]; }
 function bestMoveHere() {
   // the engine's move in the CURRENT position = best_uci of the next move on this line
@@ -1856,23 +1889,24 @@ function bestMoveHere() {
   const top = sandboxTop(currentFen());
   return top ? top.uci : null;
 }
-// Live multipv analysis for the sandbox's leaf position: reads the engine's search as it happens (NDJSON
-// over a chunked response) rather than waiting for one final answer, so the coach bubble and the best-move
-// arrows fill in and settle in front of the user instead of popping in. One stream per position: a second
-// call for the same fen joins the one already running; a call for a different fen cancels it (closing the
-// connection stops the search on the server too, so it doesn't keep burning CPU on a position you've left).
+// Live multipv analysis for the sandbox's leaf position: the engine searches it indefinitely, like an analysis
+// board, and the coach bubble, arrows, eval bar and lines panel follow the search as it deepens (NDJSON over a
+// chunked response). One stream per position: a second call for the same fen joins the one already running; a
+// call for a different fen cancels it, and so does stopSandboxStream() (closing the connection stops the search
+// on the server too, which is also what frees the engine for explore()). Returns a promise for the first lines.
 let sandboxStreamAbort = null, sandboxStreamFen = null, sandboxStreamPromise = null;
 function stopSandboxStream() {
   if (sandboxStreamAbort) sandboxStreamAbort.abort();
   sandboxStreamAbort = null; sandboxStreamFen = null; sandboxStreamPromise = null;
 }
 function streamSandboxEval(fen) {
-  if (sandboxEval[fen] && sandboxEval[fen].done) return Promise.resolve();      // already settled: nothing to re-run
   if (sandboxStreamFen === fen && sandboxStreamPromise) return sandboxStreamPromise;
   if (sandboxStreamAbort) sandboxStreamAbort.abort();
   const ac = new AbortController();
   sandboxStreamAbort = ac; sandboxStreamFen = fen;
-  const run = (async () => {
+  let gotLines;
+  const first = new Promise(r => { gotLines = r; });
+  (async () => {
     let res;
     try { res = await fetch(`api/eval_stream?fen=${encodeURIComponent(fen)}&multipv=3`, { signal: ac.signal }); } catch (e) { return; }
     if (!res.ok || !res.body) return;
@@ -1888,8 +1922,11 @@ function streamSandboxEval(fen) {
           const raw = buf.slice(0, nl); buf = buf.slice(nl + 1);
           if (!raw) continue;
           let snap; try { snap = JSON.parse(raw); } catch (e) { continue; }
-          if (!snap || typeof snap !== 'object' || !Array.isArray(snap.lines)) continue;
+          if (!snap || typeof snap !== 'object' || !Array.isArray(snap.lines) || !snap.lines.length) continue;
+          // back on a position seen earlier: keep its deeper result until the new search catches up
+          if (evalDepth(snap) < evalDepth(sandboxEval[fen])) continue;
           sandboxEval[fen] = snap;
+          gotLines();
           if (state.game && state.game.sandbox && currentFen() === fen) {
             const top = snap.lines[0];
             if (state.ply === 0 && top) { state.game.start_eval_text = top.eval; state.game.start_wp_white = top.wp_white; }
@@ -1898,10 +1935,9 @@ function streamSandboxEval(fen) {
         }
       }
     } catch (e) { /* aborted, or the connection dropped -- the position has moved on */ }
-  })();
-  sandboxStreamPromise = run;
-  run.finally(() => { if (sandboxStreamAbort === ac) { sandboxStreamAbort = null; sandboxStreamFen = null; sandboxStreamPromise = null; } });
-  return run;
+  })().finally(() => { gotLines(); if (sandboxStreamAbort === ac) { sandboxStreamAbort = null; sandboxStreamFen = null; sandboxStreamPromise = null; } });
+  sandboxStreamPromise = first;
+  return first;
 }
 // The engine's top lines for the position on the board: "1. e4 e5 2. Nf3 ..." per rank, best first.
 // Clicking a line plays its first move (through explore(), like dragging the piece would).
@@ -1911,7 +1947,7 @@ function renderLines() {
   el.classList.remove('hidden');
   const fen = currentFen(), c = sandboxEval[fen];
   if (!c || !c.lines.length) { el.innerHTML = `<div class="hint">${engineName()} is thinking…</div>`; return; }
-  const depth = Math.max(...c.lines.map(l => l.depth || 0));
+  const depth = evalDepth(c);
   const parts = fen.split(' '), blackToMove = parts[1] === 'b';
   let moveNo = +parts[5] || 1;
   const fmt = pv => pv.map((san, i) => {
@@ -1919,10 +1955,11 @@ function renderLines() {
     const no = black ? (i === 0 ? `${moveNo}… ` : '') : `${moveNo + Math.floor((i + (blackToMove ? 1 : 0)) / 2)}. `;
     return `${no}${i === 0 ? `<b>${esc(san)}</b>` : esc(san)}`;
   }).join(' ');
-  el.innerHTML = `<div class="hint eng"><b>${esc(engineName(c))}</b> · depth ${depth}${c.done ? '' : '…'} · ${fmtNodes(c.nodes || (state.engine && state.engine.nodes) || 0)}</div>` + c.lines.map((l, i) => `
+  const live = sandboxStreamFen === fen;
+  el.innerHTML = `<div class="hint eng"><b>${esc(engineName(c))}</b> · depth ${depth}${live ? '…' : ''} · ${fmtNodes(c.nodes || 0)}</div>` + c.lines.map((l, i) => `
     <div class="ln ${blackToMove ? 'black' : ''} ${i === 0 ? 'top' : ''}" data-uci="${l.uci}" title="Play ${esc(l.san)}">
       <span class="ev">${esc(fmtEvalBox(l.eval))}</span><span class="pv">${fmt(l.pv || [l.san])}</span>
-      <span class="depth">${c.done ? '' : '…'}d${l.depth ?? ''}</span>
+      <span class="depth">d${l.depth ?? ''}</span>
     </div>`).join('');
   el.querySelectorAll('.ln').forEach(row => row.onclick = () => { if (!state.exploring) explore(currentFen(), row.dataset.uci); });
 }
