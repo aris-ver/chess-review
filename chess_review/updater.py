@@ -127,11 +127,10 @@ class Updater:
             if not self.newer or self.state in ("downloading", "ready"):
                 return False
             self.state, self.done, self.total, self.error = "downloading", 0, self.latest["asset"]["size"] or 0, None
-        threading.Thread(target=self._download, args=(self.latest["asset"], self.installed["runtime"]),
-                         daemon=True, name="update").start()
+        threading.Thread(target=self._download, args=(self.latest["asset"],), daemon=True, name="update").start()
         return True
 
-    def _download(self, asset: dict, runtime: Optional[str]) -> None:
+    def _download(self, asset: dict) -> None:
         try:
             shutil.rmtree(UPDATE_DIR, ignore_errors=True)
             UPDATE_DIR.mkdir(parents=True, exist_ok=True)
@@ -143,7 +142,7 @@ class Updater:
                     for chunk in r.iter_content(1 << 16):
                         f.write(chunk)
                         self.done += len(chunk)
-            self.stage = unpack(zip_path, UPDATE_DIR / "stage", asset["kind"], runtime)
+            self.stage = unpack(zip_path, UPDATE_DIR / "stage", asset["kind"])
             zip_path.unlink()
             self.state = "ready"
         except Exception as e:  # noqa: BLE001 - whatever went wrong, the UI shows it and the install is untouched
@@ -166,8 +165,10 @@ class Updater:
             threading.Timer(0.5, exit_app).start()     # let the HTTP response go out first
 
 
-def unpack(zip_path: Path, dest: Path, kind: str, runtime: Optional[str]) -> Path:
-    """Extract the zip's chess-review/ folder into dest and sanity-check it. Returns that folder."""
+def unpack(zip_path: Path, dest: Path, kind: str) -> Path:
+    """Extract the zip's chess-review/ folder into dest and sanity-check it. Returns that folder.
+    Which runtime an update zip fits is said by its name (pick_asset matched it), not re-checked here: a
+    release may publish one zip under several fingerprints when those runtimes are byte-identical."""
     shutil.rmtree(dest, ignore_errors=True)
     dest.mkdir(parents=True)
     with zipfile.ZipFile(zip_path) as z:
@@ -187,9 +188,8 @@ def unpack(zip_path: Path, dest: Path, kind: str, runtime: Optional[str]) -> Pat
     if not (app / "chess-review.exe").is_file() or not (app / "_internal" / "chess_review").is_dir():
         raise ValueError("the downloaded zip does not look like a chess-review build")
     if kind == "update":
-        new = json.loads((app / "_internal" / "build.json").read_text(encoding="utf-8"))
-        if new.get("runtime") != runtime:
-            raise ValueError(f"update built for runtime {new.get('runtime')}, this install is {runtime}")
+        if not (app / "_internal" / "build.json").is_file():
+            raise ValueError("update zip has no build.json")
     elif not list((app / "_internal").glob("python3*.dll")):
         raise ValueError("full zip is missing the Python runtime")
     return app

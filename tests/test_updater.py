@@ -90,15 +90,16 @@ def _fake_app(root: Path, version="v0.2.0", runtime_bytes=b"python-dll-v1") -> P
     (app / "_internal" / "bin").mkdir()
     (app / "chess-review.exe").write_bytes(b"exe " + version.encode())
     (app / "_internal" / "python312.dll").write_bytes(runtime_bytes)
+    (app / "_internal" / "base_library.zip").write_bytes(b"stdlib pycs compiled at " + version.encode())
     (app / "_internal" / "chess_review" / "static" / "index.html").write_text(f"<html>{version}</html>")
     (app / "_internal" / "assets" / "book" / "a.tsv").write_text("eco\tname\n")
     (app / "_internal" / "bin" / "stockfish.exe").write_bytes(b"engine")
     return app
 
 
-def test_fingerprint_ignores_app_files_and_stockfish(tmp_path):
+def test_fingerprint_ignores_app_files_build_output_and_stockfish(tmp_path):
     a = _fake_app(tmp_path / "a")
-    b = _fake_app(tmp_path / "b", version="v9.9.9")
+    b = _fake_app(tmp_path / "b", version="v9.9.9")     # different exe, static files and base_library.zip
     (b / "_internal" / "bin" / "stockfish.exe").write_bytes(b"newer engine")
     assert pack.runtime_fingerprint(a / "_internal") == pack.runtime_fingerprint(b / "_internal")
     c = _fake_app(tmp_path / "c", runtime_bytes=b"python-dll-v2")
@@ -120,29 +121,27 @@ def test_update_zip_holds_only_the_app_layer(tmp_path):
     app = _fake_app(tmp_path / "build")
     full, small, runtime = _pack(app, tmp_path / "out", "v0.2.0")
     names = set(zipfile.ZipFile(small).namelist())
-    assert names == {"chess-review/chess-review.exe", "chess-review/_internal/build.json",
+    assert names == {"chess-review/chess-review.exe", "chess-review/_internal/build.json", "chess-review/_internal/base_library.zip",
                      "chess-review/_internal/chess_review/static/index.html", "chess-review/_internal/assets/book/a.tsv"}
     assert "chess-review/_internal/python312.dll" in zipfile.ZipFile(full).namelist()
     assert "chess-review/_internal/bin/stockfish.exe" in zipfile.ZipFile(full).namelist()
 
 
-def test_unpack_update_checks_the_runtime(tmp_path):
+def test_unpack_update(tmp_path):
     app = _fake_app(tmp_path / "build")
     _, small, runtime = _pack(app, tmp_path / "out", "v0.2.0")
-    staged = updater.unpack(small, tmp_path / "stage", "update", runtime)
+    staged = updater.unpack(small, tmp_path / "stage", "update")
     assert staged == tmp_path / "stage" / "chess-review"
     assert (staged / "chess-review.exe").read_bytes() == b"exe v0.2.0"
     assert json.loads((staged / "_internal" / "build.json").read_text())["version"] == "v0.2.0"
-    with pytest.raises(ValueError, match="runtime"):
-        updater.unpack(small, tmp_path / "stage2", "update", "somethingelse")
 
 
 def test_unpack_full_wants_a_python_runtime(tmp_path):
     app = _fake_app(tmp_path / "build")
     full, small, runtime = _pack(app, tmp_path / "out", "v0.2.0")
-    assert (updater.unpack(full, tmp_path / "stage", "full", None) / "_internal" / "python312.dll").is_file()
+    assert (updater.unpack(full, tmp_path / "stage", "full") / "_internal" / "python312.dll").is_file()
     with pytest.raises(ValueError, match="Python runtime"):
-        updater.unpack(small, tmp_path / "stage2", "full", None)
+        updater.unpack(small, tmp_path / "stage2", "full")
 
 
 def test_unpack_rejects_entries_outside_the_app_folder(tmp_path):
@@ -151,7 +150,7 @@ def test_unpack_rejects_entries_outside_the_app_folder(tmp_path):
         with zipfile.ZipFile(z, "w") as zf:
             zf.writestr(bad, "x")
         with pytest.raises(ValueError, match="unexpected entry"):
-            updater.unpack(z, tmp_path / "stage", "update", None)
+            updater.unpack(z, tmp_path / "stage", "update")
 
 
 def test_unpack_accepts_backslash_entry_names(tmp_path):
@@ -161,7 +160,7 @@ def test_unpack_accepts_backslash_entry_names(tmp_path):
         zf.writestr("chess-review\\chess-review.exe", "exe")
         zf.writestr("chess-review\\_internal\\build.json", json.dumps({"version": "v1", "runtime": "rt"}))
         zf.writestr("chess-review\\_internal\\chess_review\\static\\index.html", "<html>")
-    staged = updater.unpack(z, tmp_path / "stage", "update", "rt")
+    staged = updater.unpack(z, tmp_path / "stage", "update")
     assert (staged / "_internal" / "chess_review" / "static" / "index.html").read_text() == "<html>"
 
 
@@ -191,7 +190,7 @@ def test_apply_script_swaps_the_install(tmp_path, kind):
     _, small, runtime = _pack(new, tmp_path / "out", "v0.2.0")
     (new / "_internal" / "leftover.pyd").unlink(missing_ok=True)
     full = tmp_path / "out" / "chess-review-windows.zip"
-    stage = updater.unpack(small if kind == "update" else full, tmp_path / "stage", kind, runtime)
+    stage = updater.unpack(small if kind == "update" else full, tmp_path / "stage", kind)
 
     gone = subprocess.Popen(["cmd", "/c", "exit"])   # a pid that has already exited: nothing to wait for
     gone.wait()
