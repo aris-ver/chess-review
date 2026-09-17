@@ -29,8 +29,8 @@ log = logging.getLogger("explore")
 PV_PLIES = 16   # how much of each engine line the sandbox shows
 
 
-def _lines_snapshot(board: chess.Board, lines: dict[int, dict], done: bool = False) -> dict:
-    """Format the current top lines of an in-progress or settled multipv search for the client."""
+def _lines_snapshot(board: chess.Board, lines: dict[int, dict]) -> dict:
+    """Format the current top lines of an in-progress multipv search for the client."""
     side = "white" if board.turn else "black"
     out = []
     for rank in sorted(lines):
@@ -49,7 +49,7 @@ def _lines_snapshot(board: chess.Board, lines: dict[int, dict], done: bool = Fal
         out.append({"rank": rank, "uci": move.uci(), "san": pv[0] if pv else move.uci(), "pv": pv,
                     "eval": eval_text(cp, mate, side),
                     "wp_white": round(wp_white, 1) if wp_white is not None else None, "depth": info.get("depth")})
-    return {"lines": out, "done": done}
+    return {"lines": out}
 
 
 class Explorer:
@@ -58,6 +58,7 @@ class Explorer:
         self.threads = threads or max(1, (os.cpu_count() or 2) // 2)
         self._engine: Optional[chess.engine.SimpleEngine] = None
         self._lock = threading.Lock()
+        self._stream: Optional[chess.engine.SimpleAnalysisResult] = None   # the infinite search, while one runs
         self._cache: dict[str, tuple[dict, list[dict]]] = {}     # fen_key -> (evals row, multipv rows)
         self.last_used = 0.0
 
@@ -98,11 +99,20 @@ class Explorer:
             log.debug("cache lookup failed for %s: %s", key, e)
             return None
 
+    def interrupt(self) -> None:
+        """Stop the infinite search if one is running, so the engine lock frees up now rather than when the
+        stream next notices its client has gone (up to a second later). Safe from any thread."""
+        stream = self._stream
+        if stream is not None:
+            with contextlib.suppress(Exception):
+                stream.stop()
+
     def evaluate(self, board: chess.Board) -> tuple[dict, list[dict]]:
         key = fen_key(board.fen())
         hit = self._lookup(key)
         if hit is not None:
             return hit
+        self.interrupt()
         with self._lock:
             self.last_used = time.time()
             limit = chess.engine.Limit(nodes=self.nodes)
@@ -117,32 +127,45 @@ class Explorer:
         self.engine()
 
     def analyse_stream(self, board: chess.Board, multipv: int = 3) -> Iterator[dict]:
-        """Yield periodic snapshots of the top `multipv` lines while Stockfish iterates to the same node
-        budget as evaluate()/move() (~1s) -- the "engine is thinking" view for the sandbox. The last
-        snapshot (done=True) is the settled result. If the caller stops iterating early (a closed
-        connection closes this generator), the search is cancelled via analysis.stop() on the way out."""
+        """Yield snapshots of the top `multipv` lines while Stockfish searches the position indefinitely
+        (`go infinite`, like an analysis board): it keeps deepening for as long as the caller keeps
+        reading. The caller stopping (a closed connection closes this generator) cancels the search via
+        analysis.stop() on the way out, which also releases the engine for evaluate()/move().
+
+        Between depth iterations the engine can be quiet for seconds (only `currmove` infos, no pv), so
+        the last snapshot is re-sent about once a second as a heartbeat: the write is what detects a
+        client that has gone away, and without it a deep search would hold the engine lock unwatched.
+
+        The fixed-budget eval of the position is computed first (cached, ~0.5 s): move() will need it
+        as the "before" side of the next move the user makes, and doing it now, while they are looking
+        at the position anyway, is what makes that move come back fast."""
+        try:
+            self.evaluate(board)
+        except RuntimeError:
+            return   # the engine crashes on this position; nothing to stream either
+        self.interrupt()   # there is one sandbox: a new stream always supersedes the previous position's
         with self._lock:
             self.last_used = time.time()
-            limit = chess.engine.Limit(nodes=self.nodes)
             lines: dict[int, dict] = {}
-            last_emit = 0.0
+            last_emit, nodes = 0.0, 0
             name = self.name()
             try:
-                with self.engine().analysis(board, limit, multipv=multipv, game=object()) as analysis:
+                with self.engine().analysis(board, multipv=multipv, game=object()) as analysis:
+                    self._stream = analysis
                     for info in analysis:
-                        if "pv" not in info or not info["pv"] or "multipv" not in info or "score" not in info:
-                            continue
-                        lines[info["multipv"]] = info
+                        nodes = max(nodes, info.get("nodes", 0))
                         now = time.time()
-                        if now - last_emit < 0.12:   # throttle: ~8 snapshots/s is plenty for a smooth-looking update
-                            continue
+                        fresh = "pv" in info and info["pv"] and "multipv" in info and "score" in info
+                        if fresh:
+                            lines[info["multipv"]] = info
+                        if not lines or now - last_emit < (0.12 if fresh else 1.0):
+                            continue   # throttle: ~8 snapshots/s while lines change, 1/s heartbeat otherwise
                         last_emit = now
-                        yield {"engine": name, "nodes": self.nodes, **_lines_snapshot(board, lines)}
+                        yield {"engine": name, "nodes": nodes, **_lines_snapshot(board, lines)}
             except chess.engine.EngineError:
                 self._restart()
-                return
-            if lines:
-                yield {"engine": name, "nodes": self.nodes, **_lines_snapshot(board, lines, done=True)}
+            finally:
+                self._stream = None
 
     def move(self, fen: str, uci: str, my_colour: str, ply: int = 0) -> dict:
         board = chess.Board(fen)
