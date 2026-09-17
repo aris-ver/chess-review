@@ -28,6 +28,11 @@ APP_DIRS = ("chess_review", "assets")     # app-owned data under _internal: in t
 GENERATED = ("base_library.zip",)         # PyInstaller output under _internal: same treatment
 EXCLUDED = ("bin",)                       # in neither
 STAMP = "build.json"
+# Installs stamped with these fingerprints have the same runtime layer as the key: an earlier formula counted
+# base_library.zip (v0.1.5 = a12c..., v0.1.6 = 9718...). While the current build fingerprints to the key, the
+# update zip is also published under each of them, stamped with that name, since those installs' updater
+# checks the stamp against its own. Once the runtime really changes they fall off and get a full download.
+LEGACY = {"f3200f6c3b7a": ["a12c2bc291d5", "9718dcee7f79"]}
 
 
 def runtime_fingerprint(internal: Path) -> str:
@@ -49,10 +54,15 @@ def update_files(app: Path):
         yield from (p for p in (app / "_internal" / d).rglob("*") if p.is_file())
 
 
-def write_zip(path: Path, app: Path, files) -> None:
+def write_zip(path: Path, app: Path, files, stamp: dict | None = None) -> None:
+    """stamp replaces build.json's content in the zip (the alias zips; the file on disk keeps the real one)."""
     with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as z:
         for f in files:
-            z.write(f, f"{ZIP_ROOT}/{f.relative_to(app).as_posix()}")
+            name = f"{ZIP_ROOT}/{f.relative_to(app).as_posix()}"
+            if stamp is not None and f.name == STAMP:
+                z.writestr(name, json.dumps(stamp))
+            else:
+                z.write(f, name)
 
 
 def main() -> None:
@@ -78,6 +88,10 @@ def main() -> None:
     print(f"version {args.version}, runtime {runtime}")
     print(f"full:   {full} ({full.stat().st_size >> 20} MB)")
     print(f"update: {update} ({update.stat().st_size >> 20} MB)")
+    for alias in LEGACY.get(runtime, []):
+        path = args.out / f"chess-review-update-{alias}.zip"
+        write_zip(path, app, update_files(app), stamp={"version": args.version, "runtime": alias})
+        print(f"        {path} (same runtime, for installs stamped {alias})")
 
 
 if __name__ == "__main__":
