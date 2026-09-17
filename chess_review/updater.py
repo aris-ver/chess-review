@@ -82,7 +82,7 @@ class Updater:
     def __init__(self):
         self.lock = threading.Lock()
         self.installed = installed()
-        self.latest: Optional[dict] = None      # {version, url, asset} once checked
+        self.latest: Optional[dict] = None      # {version, url, notes, asset} once checked
         self.checked_at = 0.0
         self.check_error: Optional[str] = None
         self.state = "idle"                     # idle | downloading | ready | error
@@ -99,7 +99,7 @@ class Updater:
             return
         try:
             rel = _fetch_latest()
-            self.latest = {"version": rel.get("tag_name"), "url": rel.get("html_url"),
+            self.latest = {"version": rel.get("tag_name"), "url": rel.get("html_url"), "notes": rel.get("body") or "",
                            "asset": pick_asset(rel, self.installed["runtime"])}
             self.check_error = None
         except (requests.RequestException, ValueError) as e:
@@ -116,7 +116,7 @@ class Updater:
         out = {"enabled": self.enabled, "installed": self.installed["version"], "state": self.state,
                "done": self.done, "total": self.total, "error": self.error, "check_error": self.check_error}
         if self.latest:
-            out.update(latest=self.latest["version"], url=self.latest["url"], newer=self.newer,
+            out.update(latest=self.latest["version"], url=self.latest["url"], notes=self.latest["notes"], newer=self.newer,
                        kind=self.latest["asset"]["kind"] if self.latest["asset"] else None,
                        size=self.latest["asset"]["size"] if self.latest["asset"] else None)
         return out

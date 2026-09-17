@@ -38,7 +38,16 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
+        # The notes are the commit subjects since the previous tag: the app shows them under "What's new"
+        # when it offers the update, so keep commit subjects readable to a user.
         run: |
-          gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 \
-            || gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --generate-notes
+          if ! gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            prev=$(git describe --tags --abbrev=0 "$GITHUB_REF_NAME^" 2>/dev/null || true)
+            {
+              printf "## What's new\n\n"
+              git log --no-merges --pretty='* %s' ${prev:+$prev..}"$GITHUB_REF_NAME"
+              if [ -n "$prev" ]; then printf '\n**Full changelog**: https://github.com/%s/compare/%s...%s\n' "$GITHUB_REPOSITORY" "$prev" "$GITHUB_REF_NAME"; fi
+            } > notes.md
+            gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --notes-file notes.md
+          fi
           gh release upload "$GITHUB_REF_NAME" packaging/dist/chess-review-*.zip --clobber
