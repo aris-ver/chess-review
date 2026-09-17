@@ -594,8 +594,7 @@ function line() {
 const inVariation = () => !!state.variation && state.ply > state.variation.basePly;
 function dropVariation() { state.variation = null; }
 
-// ---------- sounds (chess.com default set in sounds/, fetched by scripts/fetch_sounds.sh) ----------
-// chess.com's review stingers aren't publicly served: brilliant plays only if brilliant.mp3/.webm exists.
+// ---------- sounds (shipped in chess_review/static/sounds/, synced to sounds/ by site.write_static) ----------
 const SOUND_FILES = {
   start: ['game-start'], end: ['game-end'], capture: ['capture'], castle: ['castle'], self: ['move-self'],
   opp: ['move-opponent'], check: ['move-check'], promote: ['promote'], tenseconds: ['tenseconds'], notify: ['notify'],

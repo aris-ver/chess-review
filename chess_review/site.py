@@ -172,6 +172,9 @@ def write_static() -> None:
     html = (STATIC / "index.html").read_text(encoding="utf-8")
     html = html.replace("/*__PIECES__*/", json.dumps(chess.svg.PIECES))
     (SITE_DIR / "index.html").write_text(html, encoding="utf-8")
+    (SITE_DIR / "sounds").mkdir(exist_ok=True)
+    for f in (STATIC / "sounds").glob("*.mp3"):
+        shutil.copy2(f, SITE_DIR / "sounds" / f.name)
 
 
 def build(profile: Profile) -> dict:
