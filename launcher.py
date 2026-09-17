@@ -71,14 +71,15 @@ def main() -> None:
         log.error("Stockfish not found at %s - analysis will fail", STOCKFISH)
     _seed_book(BUNDLE_ROOT, DATA)
 
-    from chess_review import serve
+    from chess_review import serve, updater
     import webview
 
     port = _free_port(HOST, PREFERRED_PORT)
     threading.Thread(target=serve.main, args=([f"--host={HOST}", f"--port={port}"],), daemon=True, name="server").start()
 
     if _wait_for_port(HOST, port):
-        webview.create_window("Chess Review", f"http://{HOST}:{port}/", width=1400, height=900, min_size=(900, 600))
+        window = webview.create_window("Chess Review", f"http://{HOST}:{port}/", width=1400, height=900, min_size=(900, 600))
+        updater.exit_app = window.destroy   # "Restart to update": the apply script waits for this process to exit
     else:
         log.error("server did not come up on %s:%d", HOST, port)
         webview.create_window("Chess Review", html=f"<h2>The app failed to start.</h2><p>See <code>{DATA / 'app.log'}</code>.</p>")

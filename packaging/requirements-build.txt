@@ -1,0 +1,31 @@
+# Exact versions for the Windows build venv (build_windows.ps1): requirements.txt + pywebview + pyinstaller,
+# frozen. Pinned so the release's runtime fingerprint (pack.py) stays put between releases and the in-app
+# updater can ship the small zip; bump deliberately (see build_windows.ps1), and expect the release after a
+# bump to be a full download for existing installs.
+altgraph==0.17.5
+bottle==0.13.4
+certifi==2026.7.22
+cffi==2.1.1
+charset-normalizer==3.5.1
+chess==1.11.2
+clr_loader==0.3.1
+colorama==0.4.6
+duckdb==1.5.5
+idna==3.19
+iniconfig==2.3.0
+packaging==26.3
+pefile==2024.8.26
+pluggy==1.6.0
+proxy_tools==0.1.0
+pyarrow==25.0.1
+pycparser==3.0
+Pygments==2.21.0
+pyinstaller==6.22.3
+pyinstaller-hooks-contrib==2026.7
+pytest==9.1.1
+pythonnet==3.1.0
+pywebview==6.2.1
+pywin32-ctypes==0.2.3
+requests==2.34.2
+typing_extensions==4.16.0
+urllib3==2.8.0

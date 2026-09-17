@@ -18,6 +18,10 @@
     GET  /api/engine                    {name, nodes, multipv} of the on-demand engine (shown next to results)
     GET  /api/fetch_image?url=          proxy an image so the board reader can inspect it on a canvas
     GET  /api/eval?fen=                 the engine's eval and best move in a position, no move required (sandbox)
+    GET  /api/update[?check=1]          installed version, the latest release if newer, download progress (desktop
+                                        build only; check=1 asks GitHub again instead of using the hourly cache)
+    POST /api/update/download           fetch the latest release into DATA/update (the small zip when it fits)
+    POST /api/update/apply              swap the downloaded update in and restart the app (refused while a job runs)
 
     /                                   the app (data/site)
     /p/<id>/...                         a profile's games.json, games/<slug>.json, insights.html
@@ -44,7 +48,7 @@ from urllib.parse import parse_qs, unquote, urlparse
 import chess
 import requests
 
-from . import aggregates, classify, ingest, normalise, profiles, site
+from . import aggregates, classify, ingest, normalise, profiles, site, updater
 from .analyse import Analyser, export_parquet, open_db, pending_keys
 from .config import DEFAULT_NODES, ENGINE_IDLE_SECONDS, MULTIPV_N, SITE_DIR, USER_AGENT
 from .db import base_views
@@ -229,6 +233,7 @@ class Runner:
 
 class Handler(SimpleHTTPRequestHandler):
     runner: Runner = None  # set in main
+    updates: updater.Updater = None
 
     def end_headers(self):
         self.send_header("Cache-Control", "no-store")
@@ -326,6 +331,9 @@ class Handler(SimpleHTTPRequestHandler):
                 return self._json({"name": self.runner.explorer.name(), "nodes": self.runner.explorer.nodes, "multipv": MULTIPV_N})
             except Exception as e:  # noqa: BLE001
                 return self._json({"error": str(e)}, 500)
+        if url.path == "/api/update":
+            self.updates.check(force=parse_qs(url.query).get("check", ["0"])[0] == "1")
+            return self._json(self.updates.status())
         if url.path == "/api/eval_stream":
             q = parse_qs(url.query)
             fen = q.get("fen", [""])[0]
@@ -433,6 +441,17 @@ class Handler(SimpleHTTPRequestHandler):
             if r.job:
                 r.job.stop_requested = True
             return self._json({"ok": True})
+        if path == "/api/update/download":
+            self.updates.check()
+            return self._json({"ok": self.updates.download(), **self.updates.status()})
+        if path == "/api/update/apply":
+            if r.busy():
+                return self._json({"error": "busy", "job": r.job.to_dict()}, 409)
+            try:
+                self.updates.apply()
+            except (RuntimeError, OSError) as e:
+                return self._json({"error": str(e)}, 400)
+            return self._json({"ok": True})
         return self._json({"error": "not found"}, 404)
 
 
@@ -475,6 +494,7 @@ def main(argv=None) -> None:
     profiles.migrate_legacy()
     site.write_static()     # index.html is a pure copy of static/, so it is always current after a restart
     Handler.runner = Runner(args.nodes, args.workers)
+    Handler.updates = updater.Updater()
 
     def reaper():
         while True:
