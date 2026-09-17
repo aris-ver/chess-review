@@ -46,9 +46,8 @@ exposing the page beyond localhost swap in Lichess pieces (github.com/lichess-or
 your own icons. `data/` is gitignored, so they never enter the repo. The arrow geometry is an independent
 reimplementation.
 
-Sounds: `bash scripts/fetch_sounds.sh` pulls chess.com's default sound set into `data/site/sounds/` (personal use,
-gitignored). The brilliant-move stinger is not served publicly by chess.com: save it from your browser's
-DevTools (Network → Media, while a review plays one) as `data/site/sounds/brilliant.mp3` or `.webm` and it is picked up automatically.
+Sounds ship with the app: `chess_review/static/sounds/*.mp3`, synced into the served site dir by
+`site.write_static()` on every start.
 
 ## Windows app
 
