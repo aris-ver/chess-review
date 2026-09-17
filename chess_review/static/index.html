@@ -78,6 +78,8 @@ main { padding: 16px 18px; max-width: 1800px; margin: 0 auto; }
 .card.profile { cursor: pointer; }
 .card.profile:hover { border-color: var(--accent); }
 .card.profile .who { padding-right: 52px; display: flex; align-items: baseline; gap: 8px; }
+.card .new { margin-top: auto; align-self: flex-start; background: var(--accent); color: #1b1b1b; font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 10px; }
+.card .new + .meta { margin-top: 0; }
 .card.profile .who .name { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .card.profile .elo { font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; flex-shrink: 0; }
 .card.profile .elo .delta { font-size: 12px; margin-left: 4px; }
@@ -768,8 +770,12 @@ $('pgnform').onsubmit = async e => {
   f.pgn.value = '';
   location.hash = d.games.length === 1 ? `#/p/${d.profile.id}/game/${d.games[0]}` : `#/p/${d.profile.id}`;
 };
+let profilesScanT = null;
 async function renderProfiles() {
   let d; try { d = await (await fetch('api/profiles')).json(); } catch (e) { d = { profiles: [] }; }
+  // the launch-time scan for new games on chess.com may still be running: look again in a moment
+  clearTimeout(profilesScanT);
+  if (d.scan === 'running') profilesScanT = setTimeout(() => { if (!$('home').classList.contains('hidden')) renderProfiles(); }, 2000);
   const ps = d.profiles.slice().sort((a, b) => {
     if (!!a.pinned !== !!b.pinned) return a.pinned ? -1 : 1;
     if (a.pinned) return a.pinned < b.pinned ? -1 : 1;             // pins keep the order they were made in
@@ -780,12 +786,16 @@ async function renderProfiles() {
       <span class="src">${SOURCE_NAME[p.source] || p.source}</span>
       <span class="who" title="${esc(p.username)}"><span class="name">${esc(p.username)}</span>${eloHTML(p.rating, p.rating_delta_7d)}</span>
       <div class="progress hidden"><div></div></div>
+      ${p.new_games ? `<span class="new" title="Played since the last refresh; open the profile and press Refresh games">${p.new_games} new game${p.new_games === 1 ? '' : 's'} on chess.com</span>` : ''}
       <span class="meta">${p.games} games · ${p.analysed} analysed</span>
       <span class="pin" title="${p.pinned ? 'Unpin' : 'Pin to the top'}">${p.pinned ? '★' : '☆'}</span>
       <span class="x" title="Remove this profile (the engine cache is kept)">✕</span>
     </div>`).join('') || `<div class="empty">No profiles yet — add a chess.com username above.</div>`;
   $('profiles').querySelectorAll('.card.profile').forEach(c => {
-    c.onclick = () => location.hash = '#/p/' + c.dataset.id;
+    c.onclick = () => {
+      if (c.querySelector('.new')) fetch(`api/profiles/${c.dataset.id}/seen`, { method: 'POST' });   // badge shown, job done
+      location.hash = '#/p/' + c.dataset.id;
+    };
     c.querySelector('.pin').onclick = async e => {
       e.stopPropagation();
       await fetch(`api/profiles/${c.dataset.id}/pin`, { method: 'POST', body: JSON.stringify({ pinned: !c.classList.contains('pinned') }) });
