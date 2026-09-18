@@ -52,6 +52,36 @@ def _lines_snapshot(board: chess.Board, lines: dict[int, dict]) -> dict:
     return {"lines": out}
 
 
+def _lines_rows(lines: dict[int, dict], nodes: int) -> tuple[dict, list[dict]]:
+    """(evals row, evals_multipv rows) from the current lines of a running search: the shape evaluate() returns,
+    so a deep snapshot can stand in for the fixed-budget eval of the same position."""
+    ranks = []
+    for rank in sorted(lines):
+        info = lines[rank]
+        cp, mate = _score(info)
+        pv = [m.uci() for m in info["pv"]]
+        ranks.append({"rank": rank, "move": pv[0], "eval_cp": cp, "mate_in": mate, "pv": pv})
+    top = ranks[0]
+    main = {"nodes": nodes, "eval_cp": top["eval_cp"], "mate_in": top["mate_in"], "best_move": top["pv"][0], "pv": top["pv"]}
+    return main, ranks
+
+
+def _after_from_line(ranks: list[dict], uci: str, nodes: int) -> Optional[dict]:
+    """The eval of the position after `uci`, read off the search that listed it as a candidate: the line's own
+    score seen from the other side, and the rest of its pv. None when the move wasn't among the lines."""
+    for r in ranks:
+        if r["move"] != uci or (r["eval_cp"] is None and r["mate_in"] is None):
+            continue
+        m = r["mate_in"]
+        # "mate in m" for the mover is, once the first move is on the board, "mated in m-1" for the opponent
+        # (0 = checkmated, as evaluate() reports it); "mated in |m|" becomes the opponent's "mate in |m|"
+        mate = None if m is None else (-(m - 1) if m > 0 else -m)
+        cp = None if r["eval_cp"] is None else -r["eval_cp"]
+        pv = r["pv"][1:]
+        return {"nodes": nodes, "eval_cp": cp, "mate_in": mate, "best_move": pv[0] if pv else None, "pv": pv}
+    return None
+
+
 class Explorer:
     def __init__(self, nodes: int = DEFAULT_NODES, threads: Optional[int] = None):
         self.nodes = nodes
@@ -138,11 +168,16 @@ class Explorer:
 
         The fixed-budget eval of the position is computed first (cached, ~0.5 s): move() will need it
         as the "before" side of the next move the user makes, and doing it now, while they are looking
-        at the position anyway, is what makes that move come back fast."""
+        at the position anyway, is what makes that move come back fast.
+
+        As the search deepens, its snapshots replace that eval in the cache (whenever they have seen more
+        nodes), so the move the user then plays is graded by the same search that drew the arrows: the
+        engine's move as shown on the board can't come back as a "miss" against a shallower opinion."""
         try:
-            self.evaluate(board)
+            best_nodes = self.evaluate(board)[0]["nodes"]
         except RuntimeError:
             return   # the engine crashes on this position; nothing to stream either
+        key = fen_key(board.fen())
         self.interrupt()   # there is one sandbox: a new stream always supersedes the previous position's
         with self._lock:
             self.last_used = time.time()
@@ -158,6 +193,9 @@ class Explorer:
                         fresh = "pv" in info and info["pv"] and "multipv" in info and "score" in info
                         if fresh:
                             lines[info["multipv"]] = info
+                            if 1 in lines and nodes > best_nodes:
+                                self._cache[key] = _lines_rows(lines, nodes)
+                                best_nodes = nodes
                         if not lines or now - last_emit < (0.12 if fresh else 1.0):
                             continue   # throttle: ~8 snapshots/s while lines change, 1/s heartbeat otherwise
                         last_emit = now
@@ -175,7 +213,9 @@ class Explorer:
         before_main, before_ranks = self.evaluate(board)
         after = board.copy(stack=False)
         after.push(move)
-        after_main, _ = self.evaluate(after)
+        # a move the search already had a line for is graded by that line (the numbers the user was looking at);
+        # anything else gets its own fixed-budget search
+        after_main = _after_from_line(before_ranks, uci, before_main["nodes"]) or self.evaluate(after)[0]
 
         # Two-row "game" through the normal classifier so labels/comments match the main line exactly.
         rows = [
