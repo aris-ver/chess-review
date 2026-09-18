@@ -1712,8 +1712,9 @@ function hungSquares(mv) { return mv && isMine(mv) && BAD.has(mv.label) ? (mv.hu
 //   my bad move        green  the move to play instead        red   the opponent's refutation (why it was bad)
 //                      red squares on the pieces it left hanging, an x on the one the refutation takes
 //   their bad move     blue   my reply that punishes it -- and nothing else (what they should have played is their lesson)
-//   my good move       green  the engine's move when it wasn't mine (same rule as the "X was better" text in the bubble)
-//   their good move    nothing
+//   a good move        orange what the move does -- the trade it starts, what it attacks, the castling or pawn push
+//                      it prepares (facts.idea_arrows); for mine, also green for the engine's move when it wasn't
+//                      the one played (same rule as the "X was better" text in the bubble)
 function renderArrows() {
   const mv = currentMove(), fen = currentFen();
   const list = [];
@@ -1722,6 +1723,7 @@ function renderArrows() {
   // Not in the sandbox: there every arrow is for the side to move, and the bubble already says it.
   if (!live && mv && isMine(mv) && mv.best_uci && mv.best_uci !== mv.uci && mv.label && !['book', 'forced'].includes(mv.label)) list.push([mv.best_uci, 'best', 1]);
   if (mv && BAD.has(mv.label) && mv.reply_uci) list.push([mv.reply_uci, isMine(mv) ? 'punish' : 'blue', 1]);
+  if (mv && !live) (mv.idea || []).forEach(u => list.push([u, 'threat', 1]));
   // sandbox: a swarm of the engine's top candidates at the position about to be played, sized by rank --
   // fills in and re-settles live as streamSandboxEval() reads more of the search (see there)
   if (live) {
@@ -1945,7 +1947,7 @@ async function explore(fen, uci) {
   const keep = state.variation ? state.variation.moves.slice(0, state.ply - basePly) : [];
   const move = { ply: basePly + keep.length, san: prov.san, uci, fen: prov.fen, label: null, pending: true,
                  is_mine: mover === state.game.my_colour, wp_white: null, eval: null, wp_loss: null,
-                 best_san: null, best_uci: null, clock: null, spent: null, comment: [], hung: [], reply_uci: null };
+                 best_san: null, best_uci: null, clock: null, spent: null, comment: [], hung: [], reply_uci: null, idea: [] };
   state.variation = { basePly, moves: keep.concat([move]) };
   state.exploring = true;
   renderMoveList();

@@ -1,6 +1,6 @@
 import chess
 
-from chess_review.facts import extract, hung_pieces, material_swing, motif, see
+from chess_review.facts import extract, hung_pieces, idea_arrows, material_swing, motif, see
 
 
 def test_see_simple_exchanges():
@@ -121,3 +121,60 @@ def test_extract_only_move_from_multipv():
     assert f.was_only_move is False       # played the only move
     f = extract(_move(b, "d2d4"), b, before, after, multipv=None)
     assert f.was_only_move is None
+
+
+# --- idea arrows: what a good move does ---------------------------------------
+
+def _idea(fen, uci, pv=()):
+    return idea_arrows(chess.Board(fen), chess.Move.from_uci(uci), list(pv))
+
+
+def test_idea_fork_shows_both_prongs():
+    # screenshot: ...Na6+ forks the king on c5 and the rook on b8
+    b = chess.Board("1R4nk/2n3p1/7p/P1K1P2p/5B2/6P1/2P4P/8 b - - 0 1")
+    assert sorted(_idea(b.fen(), "c7a6", ["c5d5"])) == ["a6b8", "a6c5"]
+
+
+def test_idea_trade_shows_capture_and_recapture():
+    # screenshot: Rd8+ Rxd8 Rxd8 -- the trade the check forces, not the check itself
+    fen = "r6k/6p1/p2R1n1p/1p3B2/1n6/4P3/1PP3PP/1K1R4 w - - 0 1"
+    assert _idea(fen, "d6d8", ["a8d8", "d1d8"]) == ["a8d8", "d1d8"]
+    assert _idea(fen, "d6d8", ["a8d8", "h8h7"]) == ["a8d8"]      # the line takes but never takes back
+
+
+def test_idea_attack_only_what_is_worth_taking():
+    # Nc3 hits d5, a pawn defended by e6: nothing to draw. Bb5+ hits the king: an arrow.
+    assert _idea("rnbqkbnr/ppp2ppp/4p3/3p4/3P4/4P3/PPP2PPP/RNBQKBNR w KQkq - 0 3", "b1c3", ["g8f6"]) == []
+    assert _idea("rnbqkbnr/ppp2ppp/4pn2/3p4/3P4/2N1P3/PPP2PPP/R1BQKBNR w KQkq - 0 4", "f1b5", ["c7c6"]) == ["b5e8"]
+
+
+def test_idea_castling_when_the_move_clears_the_way():
+    fen = "rnbqk2r/pppp1ppp/5n2/2b1p3/4P3/5N2/PPPPBPPP/RNBQK2R w KQkq - 0 4"
+    assert _idea(fen, "e1g1", ["d7d6"]) == []                    # castling itself: nothing to prepare
+    fen = "rnbqk2r/pppp1ppp/5n2/2b1p3/4P3/5N2/PPPP1PPP/RNBQKB1R w KQkq - 0 4"
+    assert _idea(fen, "f1e2", ["d7d6", "e1g1"]) == ["e1g1"]      # Be2 clears f1: castling now possible
+
+
+def test_idea_prepares_the_pawn_push_the_line_continues_with():
+    # screenshot: 1.e3 e6 -- the engine's line goes 2.d4 d5, and e6 supports d5
+    fen = "rnbqkbnr/pppppppp/8/8/8/4P3/PPPP1PPP/RNBQKBNR b KQkq - 0 1"
+    assert _idea(fen, "e7e6", ["d2d4", "d7d5"]) == ["d7d5"]
+    assert _idea(fen, "e7e6", ["d2d4", "g8f6"]) == []            # the line goes elsewhere: nothing drawn
+    assert _idea(fen, "e7e6", ["d2d4", "a7a6"]) == []            # a push the move has nothing to do with
+    # a capture the REPLY made possible is not something our move prepared: Qxf3 e6 dxe6 draws nothing
+    fen = "r2qkb1r/ppp1pppp/2n5/3P4/2p1P3/2N2b2/PP3PPP/R1BQK2R w KQkq - 0 9"
+    assert _idea(fen, "d1f3", ["e7e6", "d5e6"]) == []
+    # a rook move that unblocks its pawn, and the line pushes it: drawn
+    assert _idea("4k3/8/8/8/8/8/4P3/4KR2 w - - 0 1", "f1f4", ["e8d8", "e2e3"]) == []          # e3 was already possible
+    assert _idea("4k3/8/8/8/8/4R3/4P3/4K3 w - - 0 1", "e3a3", ["e8d8", "e2e3"]) == ["e2e3"]   # the rook was in the way
+
+
+def test_idea_only_for_good_labels():
+    b = chess.Board("rnbqkbnr/pppppppp/8/8/8/4P3/PPPP1PPP/RNBQKBNR b KQkq - 0 1")
+    before = {"eval_cp": 0, "mate_in": None, "pv": ["e7e6"], "best_move": "e7e6"}
+    after = {"eval_cp": 0, "mate_in": None, "pv": ["d2d4", "d7d5"]}
+    row = {"game_id": "g", "ply": 1, "side_to_move": "black", "is_mine": True, "san": "e6", "best_san": "e6",
+           "wp_before": 50.0, "wp_after": 50.0, "wp_loss": 0.0, "clock_remaining": None, "time_spent": None,
+           "move_played": "e7e6", "label": "good"}
+    assert extract(row, b, before, after).idea == ["d7d5"]
+    assert extract({**row, "label": "inaccuracy"}, b, before, after).idea == []
