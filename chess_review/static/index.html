@@ -258,8 +258,9 @@ table.games button.an { padding: 3px 9px; font-size: 12px; font-weight: 600; whi
 .boardbox { position: relative; width: 100%; aspect-ratio: 1; user-select: none; touch-action: none; }
 svg.board { position: absolute; inset: 0; width: 100%; height: 100%; display: block; border-radius: 4px; }
 .pieces, .badges { position: absolute; inset: 0; pointer-events: none; }
-/* stacking: squares < overlays < pieces (moved piece 1) < arrows 3 < badges 4 < dragged piece 5 */
+/* stacking: squares < overlays < marks < pieces (moved piece 1) < arrows 3 (engine, then the user's) < badges 4 < dragged piece 5 */
 svg.arrows { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; z-index: 3; }
+svg.arrows.marks { z-index: auto; }
 .badges { z-index: 4; }
 .pc { position: absolute; left: 0; top: 0; width: 12.5%; height: 12.5%; background-size: contain; background-repeat: no-repeat; background-position: center; transition: transform .18s ease-out; will-change: transform; filter: saturate(1.2) contrast(1.06); }   /* the piece PNGs read a little washed out on the dark page */
 .pc svg { width: 100%; height: 100%; display: block; }
@@ -506,8 +507,10 @@ svg.graph { width: 100%; height: 90px; display: block; cursor: pointer; backgrou
         <div class="boardbox" id="boardbox">
           <svg class="board" id="board" viewBox="0 0 100 100"></svg>
           <div class="overlays" id="overlays"></div>
+          <svg class="arrows marks" id="marks" viewBox="0 0 100 100"></svg>
           <div class="pieces" id="pieces"></div>
           <svg class="arrows" id="arrows" viewBox="0 0 100 100"></svg>
+          <svg class="arrows" id="userarrows" viewBox="0 0 100 100"></svg>
           <div class="badges" id="badges"></div>
         </div>
         <div class="player" id="pbot"></div>
@@ -1627,7 +1630,13 @@ const ARROW = {
   best:   [159, 207, 63],   // green  - engine's preferred move
   threat: [255, 170, 0],    // orange - attack/defence overlay
   punish: [248, 85, 63],    // red    - refutation of a blunder
+  blue:   [72, 193, 249],   // blue   - the user's own punishing reply to the opponent's mistake
 };
+// a filled square: a piece under attack / the square a move controls (chess.com's red square)
+function squareMark(sq, kind = 'punish') {
+  const [x, y] = sqXY(sq), [r, g, b] = ARROW[kind];
+  return `<rect x="${x}" y="${y}" width="12.5" height="12.5" style="fill:rgba(${r}, ${g}, ${b}, 0.8)"/>`;
+}
 const ARROW_SW = 1.375, ARROW_HW = 3.25, ARROW_HL = 4.5, ARROW_GAP = 4.5;   // half shaft, half head, head length, gap at the tail (weight 1)
 // weight (0-1) scales an arrow's thickness and opacity -- used to rank a swarm of candidate moves by strength
 function arrowStyle(kind, weight) {
@@ -1681,10 +1690,10 @@ function arrowSquares(uci, bend = 'long') {
 const isKnightMove = u => { const df = Math.abs(u.charCodeAt(2) - u.charCodeAt(0)), dr = Math.abs(u[3] - u[1]); return df + dr === 3 && df > 0 && dr > 0; };
 // Draws [uci, kind, weight] arrows; thin/faint ones first so the strongest paints on top. Each knight arrow takes
 // the bend whose middle squares collide least with everything else on the board.
-function drawArrows(list) {
+function drawArrows(list, el = $('arrows')) {
   list.sort((a, b) => a[2] - b[2]);
   const others = u => list.filter(x => x[0] !== u).flatMap(x => arrowSquares(x[0]));
-  $('arrows').innerHTML = list.map(([u, k, w]) => {
+  el.innerHTML = list.map(([u, k, w]) => {
     let bend = 'long';
     if (isKnightMove(u)) {
       const taken = new Set(others(u));
@@ -1730,6 +1739,37 @@ function renderArrows() {
     });
   }
 }
+
+// --- the user's own marks, drawn with the right mouse button (like chess.com): a click fills the square red, a drag
+// draws an arrow -- orange, or green / blue / red with shift / alt / ctrl. Drawing the same thing again removes it;
+// any left click on the board, or moving to another position, wipes them all.
+const marks = { squares: [], arrows: [], preview: null };   // squares: names; arrows: [uci, kind]
+const MARK_KIND = e => e.shiftKey ? 'best' : e.altKey ? 'blue' : e.ctrlKey ? 'punish' : 'threat';
+function renderMarks() {
+  $('marks').innerHTML = marks.squares.map(sq => squareMark(sq)).join('');
+  const list = marks.arrows.map(([u, k]) => [u, k, 1]);
+  if (marks.preview) list.push([marks.preview[0], marks.preview[1], 1]);
+  drawArrows(list, $('userarrows'));
+}
+function clearMarks() {
+  if (!marks.squares.length && !marks.arrows.length && !marks.preview) return;
+  marks.squares = []; marks.arrows = []; marks.preview = null;
+  renderMarks();
+}
+function toggleMark(from, to, kind) {
+  if (from === to) {
+    const i = marks.squares.indexOf(from);
+    if (i >= 0) marks.squares.splice(i, 1); else marks.squares.push(from);
+  } else {
+    const uci = from + to, i = marks.arrows.findIndex(a => a[0] === uci);
+    const same = i >= 0 && marks.arrows[i][1] === kind;
+    if (i >= 0) marks.arrows.splice(i, 1);
+    if (!same) marks.arrows.push([uci, kind]);   // a different colour on the same squares replaces, not stacks
+  }
+  renderMarks();
+}
+let rdraw = null;   // a right-button drag in progress: { from, id }
+$('boardbox').addEventListener('contextmenu', e => e.preventDefault());
 
 // --- badges: on the destination square of the played move; winner/equal on the kings at the end
 function badgeAt(name, lb, dx = 11.3, dy = 1.2) {
@@ -1818,7 +1858,16 @@ function deselect() { state.sel = null; state.legal = null; renderOverlays(parse
 
 $('boardbox').addEventListener('dragstart', e => e.preventDefault());
 $('boardbox').addEventListener('pointerdown', async e => {
-  if (!state.game || state.exploring || e.button) return;
+  if (!state.game) return;
+  if (e.button === 2) {
+    const sq = squareAt(e); if (!sq) return;
+    e.preventDefault();
+    rdraw = { from: sq, id: e.pointerId };
+    $('boardbox').setPointerCapture(e.pointerId);
+    return;
+  }
+  if (e.button === 0) clearMarks();
+  if (state.exploring || e.button) return;
   const sq = squareAt(e); if (!sq) return;
   e.preventDefault();
   const fen = currentFen(), pieces = parseFen(fen), turn = fen.split(' ')[1] === 'w';
@@ -1845,6 +1894,11 @@ $('boardbox').addEventListener('pointerdown', async e => {
   if (drag && drag.sq === sq) renderOverlays(pieces, currentMove());
 });
 $('boardbox').addEventListener('pointermove', e => {
+  if (rdraw) {
+    const sq = squareAt(e), next = sq && sq !== rdraw.from ? [rdraw.from + sq, MARK_KIND(e)] : null;
+    if ((next && next.join()) !== (marks.preview && marks.preview.join())) { marks.preview = next; renderMarks(); }
+    return;
+  }
   if (!drag || drag.swipe) return;
   if (Math.hypot(e.clientX - drag.x0, e.clientY - drag.y0) > 4) drag.moved = true;
   drag.piece.style.transform = `translate(${e.clientX - drag.rect.left - drag.size / 2}px, ${e.clientY - drag.rect.top - drag.size / 2}px)`;
@@ -1852,6 +1906,13 @@ $('boardbox').addEventListener('pointermove', e => {
   if (sq !== drag.hoverSq) { drag.hoverSq = sq; setHover(drag.moved ? sq : null); }
 });
 async function pointerEnd(e, cancelled) {
+  if (rdraw && e.pointerId === rdraw.id) {
+    const d = rdraw; rdraw = null; marks.preview = null;
+    try { $('boardbox').releasePointerCapture(d.id); } catch (err) {}
+    const to = cancelled ? null : squareAt(e);
+    if (to) toggleMark(d.from, to, MARK_KIND(e)); else renderMarks();
+    return;
+  }
   if (!drag) return;
   const d = drag; drag = null;
   if (d.swipe) {
@@ -2236,7 +2297,7 @@ function go(ply) {
   const target = Math.max(0, Math.min(line().length, ply));
   if (target === state.ply) { renderNav(); return; }        // nothing to do: no re-render, no sound
   state.ply = target;
-  state.sel = null; state.legal = null; state.showBest = false; $('b-best').classList.remove('active'); drag = null;
+  state.sel = null; state.legal = null; state.showBest = false; $('b-best').classList.remove('active'); drag = null; clearMarks();
   if (state.variation && state.ply < state.variation.basePly) { dropVariation(); renderMoveList(); }
   update();
 }
@@ -2251,7 +2312,7 @@ $('b-first').onclick = () => go(0);
 $('b-prev').onclick = () => go(state.ply - 1);
 $('b-next').onclick = () => go(state.ply + 1);
 $('b-last').onclick = () => go(line().length);
-$('b-flip').onclick = () => { state.flipped = !state.flipped; $('pieces').innerHTML = ''; update(false); };
+$('b-flip').onclick = () => { state.flipped = !state.flipped; $('pieces').innerHTML = ''; update(false); renderMarks(); };
 $('b-play').onclick = togglePlay;
 $('b-key').onclick = nextKey;
 document.addEventListener('keydown', e => {
