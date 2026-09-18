@@ -271,6 +271,7 @@ svg.arrows.marks { z-index: auto; }
 .boardbox.dragging { cursor: grabbing; }
 .badge { position: absolute; width: 5.75%; height: 5.75%; transform: translate(-50%, -50%); filter: drop-shadow(0 .5px 1px rgba(0,0,0,.35)); }
 .badge img, .badge svg { width: 100%; height: 100%; display: block; }
+.badge.lost circle { fill: #f8553f; } .badge.lost path { stroke: #fff; stroke-width: 2.6; stroke-linecap: round; }
 .ico img { width: 100%; height: 100%; display: block; }
 .sq.light { fill: var(--light); } .sq.dark { fill: var(--dark); }
 .coord { font-size: 2.6px; font-weight: 700; pointer-events: none; }
@@ -1535,8 +1536,7 @@ function renderBoard() {
     const name = sqName(f, r), [x, y] = sqXY(name);
     const light = (f + r) % 2 === 1;
     out += `<rect class="sq ${light ? 'light' : 'dark'}" x="${x}" y="${y}" width="12.5" height="12.5"/>`;
-    if (mv && BAD.has(mv.label) && mv.hung && mv.hung.includes(name))
-      out += `<rect x="${x}" y="${y}" width="12.5" height="12.5" fill="rgba(250,65,45,.4)"/>`;
+    if (hungSquares(mv).includes(name)) out += squareMark(name);
   }
   for (let i = 0; i < 8; i++) {
     const file = state.flipped ? 7 - i : i, rank = state.flipped ? i : 7 - i;
@@ -1703,21 +1703,25 @@ function drawArrows(list, el = $('arrows')) {
     return arrow(u, k, w, bend);
   }).join('');
 }
-let arrowsFor = null;
-// What the board says about the current move, in priority order -- every arrow has to earn its place:
-//   1. green  the engine's move, whenever the played one wasn't it (what to play instead)
-//   2. red    the refutation of a bad move (why it was bad)
-//   3. orange one capture per piece the move left hanging that the red arrow doesn't already point at, at most
-//             two -- a fork shows both prongs, but not every way to take the same piece
+// The pieces a bad move of mine left hanging: red squares on the board, and the one the refutation takes gets an x.
+// The opponent's errors don't get them -- the review is for me, and there the board says only how to punish.
+// In the sandbox both sides are "me": you are studying whoever moved.
+function isMine(mv) { return mv.is_mine || !!(state.game && state.game.sandbox); }
+function hungSquares(mv) { return mv && isMine(mv) && BAD.has(mv.label) ? (mv.hung || []) : []; }
+// What the board says about the current move, like chess.com's review -- at most three things, all about one story:
+//   my bad move        green  the move to play instead        red   the opponent's refutation (why it was bad)
+//                      red squares on the pieces it left hanging, an x on the one the refutation takes
+//   their bad move     blue   my reply that punishes it -- and nothing else (what they should have played is their lesson)
+//   my good move       green  the engine's move when it wasn't mine (same rule as the "X was better" text in the bubble)
+//   their good move    nothing
 function renderArrows() {
   const mv = currentMove(), fen = currentFen();
   const list = [];
   if (state.showBest && bestMoveHere()) list.push([bestMoveHere(), 'best', 1]);
   const live = state.game && state.game.sandbox && !state.showBest;
-  // the engine's preferred move whenever the played one wasn't it (same rule as the "X was better" text in the
-  // bubble). Not in the sandbox: there every arrow is for the side to move, and the bubble already says it.
-  if (!live && mv && mv.best_uci && mv.best_uci !== mv.uci && mv.label && !['book', 'forced'].includes(mv.label)) list.push([mv.best_uci, 'best', 1]);
-  if (mv && BAD.has(mv.label) && mv.reply_uci) list.push([mv.reply_uci, 'punish', 1]);
+  // Not in the sandbox: there every arrow is for the side to move, and the bubble already says it.
+  if (!live && mv && isMine(mv) && mv.best_uci && mv.best_uci !== mv.uci && mv.label && !['book', 'forced'].includes(mv.label)) list.push([mv.best_uci, 'best', 1]);
+  if (mv && BAD.has(mv.label) && mv.reply_uci) list.push([mv.reply_uci, isMine(mv) ? 'punish' : 'blue', 1]);
   // sandbox: a swarm of the engine's top candidates at the position about to be played, sized by rank --
   // fills in and re-settles live as streamSandboxEval() reads more of the search (see there)
   if (live) {
@@ -1725,19 +1729,6 @@ function renderArrows() {
     (c && c.lines || []).forEach((l, i) => list.push([l.uci, 'best', [1, 0.68, 0.45][i] || 0.4]));
   }
   drawArrows(list);
-  // threats: captures onto pieces the move left hanging (from the legal-move set, not the PV), redrawn with the rest
-  arrowsFor = fen;
-  const covered = new Set(list.filter(a => a[1] === 'punish').map(a => a[0].slice(2, 4)));
-  const hung = mv && BAD.has(mv.label) ? (mv.hung || []).filter(sq => !covered.has(sq)) : [];
-  if (hung.length) {
-    legalFor(fen).then(legal => {
-      if (arrowsFor !== fen) return;
-      const board = parseFen(fen), value = ch => ({ p: 1, n: 3, b: 3, r: 5, q: 9, k: 10 })[ch.toLowerCase()] || 0;
-      const cheapest = {};   // per hung square, the capture by the least valuable piece
-      legal.forEach(u => { const to = u.slice(2, 4); if (hung.includes(to) && (!cheapest[to] || value(board[u.slice(0, 2)]) < value(board[cheapest[to].slice(0, 2)]))) cheapest[to] = u.slice(0, 4); });
-      drawArrows(list.concat(hung.map(sq => cheapest[sq]).filter(Boolean).slice(0, 2).map(u => [u, 'threat', 1])));
-    });
-  }
 }
 
 // --- the user's own marks, drawn with the right mouse button (like chess.com): a click fills the square red, a drag
@@ -1777,10 +1768,16 @@ function badgeAt(name, lb, dx = 11.3, dy = 1.2) {
   const img = ASSETS.hasIcons ? `<img src="${iconSrc(lb)}" alt="${lb}">` : `<svg><use href="#ic-${lb}"/></svg>`;
   return `<div class="badge" style="left:${x + dx}%;top:${y + dy}%">${img}</div>`;
 }
+function lostBadge(name) {
+  const [x, y] = sqXY(name);
+  return `<div class="badge lost" style="left:${x + 11.3}%;top:${y + 1.2}%"><svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="10"/><path d="M6 6l8 8M14 6l-8 8"/></svg></div>`;
+}
 function renderBadges() {
   const g = state.game, mv = currentMove();
   let out = '';
   if (mv && mv.label && LABEL_NAME[mv.label]) out += badgeAt(mv.uci.slice(2, 4), mv.label);
+  const lost = mv && mv.reply_uci && hungSquares(mv).includes(mv.reply_uci.slice(2, 4)) ? mv.reply_uci.slice(2, 4) : null;
+  if (lost) out += lostBadge(lost);
   if (ASSETS.hasIcons && !inVariation() && state.ply === g.moves.length && g.moves.length && g.result) {
     const pieces = parseFen(currentFen());
     const kings = Object.entries(pieces).filter(([, ch]) => ch.toLowerCase() === 'k');
