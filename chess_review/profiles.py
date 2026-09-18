@@ -82,35 +82,49 @@ class Profile:
     def export_dir(self) -> Path:
         return self.dir / "export"
 
+    def game_ids(self) -> set[str]:
+        idx = self.site_dir / "games.json"
+        try:
+            return {g["id"] for g in json.loads(idx.read_text(encoding="utf-8"))["games"]}
+        except (OSError, ValueError, KeyError):
+            return set()
+
     def summary(self) -> dict:
-        """What the home screen shows: id, source, username, game counts, and the current rating with its
-        net change over the last 7 days — ratings across time classes are mixed, same as the game list."""
+        """What the home screen shows: id, source, username, game counts, and per time class (bullet, blitz,
+        rapid, daily) the current rating with its net change over the last 7 days. `rating`/`rating_delta_7d`
+        are the most recently played class's."""
         games, analysed = 0, 0
         rating, rating_delta_7d = None, None
+        ratings: dict[str, dict] = {}
         idx = self.site_dir / "games.json"
         if idx.exists():
             try:
                 entries = json.loads(idx.read_text(encoding="utf-8"))["games"]
-                rated = []
+                rated: dict[str, list] = {}
                 for g in entries:
                     games += 1
                     analysed += g.get("analysed", 0) >= 0.999
                     ts = _parse_ts(g.get("played_at"))
                     if ts is not None and g.get("my_rating") is not None:
-                        rated.append((ts, g["my_rating"]))
-                rated.sort(key=lambda x: x[0])
-                if rated:
-                    rating = rated[-1][1]
-                    cutoff = datetime.now(timezone.utc) - timedelta(days=7)
-                    before = [r for t, r in rated if t < cutoff]
-                    baseline = before[-1] if before else rated[0][1]
-                    rating_delta_7d = rating - baseline
+                        rated.setdefault(g.get("time_class") or "other", []).append((ts, g["my_rating"]))
+                cutoff = datetime.now(timezone.utc) - timedelta(days=7)
+                latest = None
+                for cls, series in rated.items():
+                    series.sort(key=lambda x: x[0])
+                    before = [r for t, r in series if t < cutoff]
+                    baseline = before[-1] if before else series[0][1]
+                    ratings[cls] = {"rating": series[-1][1], "delta_7d": series[-1][1] - baseline, "games": len(series)}
+                    if latest is None or series[-1][0] > latest[0]:
+                        latest = (series[-1][0], cls)
+                if latest:
+                    rating, rating_delta_7d = ratings[latest[1]]["rating"], ratings[latest[1]]["delta_7d"]
             except (ValueError, KeyError):
                 pass
         meta = json.loads(self.meta_json.read_text(encoding="utf-8")) if self.meta_json.exists() else {}
         return {"id": self.id, "source": self.source, "username": self.username, "games": games,
                 "analysed": analysed, "created": meta.get("created"), "pinned": meta.get("pinned"),
-                "rating": rating, "rating_delta_7d": rating_delta_7d}
+                "rating": rating, "rating_delta_7d": rating_delta_7d, "ratings": ratings,
+                "unseen": meta.get("unseen", [])}
 
 
 def profile_id(source: str, username: str) -> str:
@@ -143,6 +157,30 @@ def create(source: str, username: str) -> Profile:
                                            "created": datetime.now(timezone.utc).isoformat(timespec="seconds")}),
                                encoding="utf-8")
     return p
+
+
+def _update_meta(pid: str, fn) -> Optional[Profile]:
+    p = load(pid)
+    if p is None:
+        return None
+    meta = json.loads(p.meta_json.read_text(encoding="utf-8")) if p.meta_json.exists() else {}
+    fn(meta)
+    p.meta_json.write_text(json.dumps(meta), encoding="utf-8")
+    return p
+
+
+def add_unseen(pid: str, ids) -> None:
+    """Games a refresh just brought in: flagged "new" in the list until each is opened."""
+    ids = [i for i in ids]
+    if ids:
+        _update_meta(pid, lambda meta: meta.__setitem__("unseen", sorted(set(meta.get("unseen", [])) | set(ids))))
+
+
+def mark_seen(pid: str, game_id: str) -> None:
+    def drop(meta):
+        if game_id in meta.get("unseen", []):
+            meta["unseen"] = [i for i in meta["unseen"] if i != game_id]
+    _update_meta(pid, drop)
 
 
 def set_pinned(pid: str, on: bool) -> Optional[dict]:

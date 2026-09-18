@@ -113,9 +113,24 @@ def test_brilliant_is_a_sound_sacrifice(monkeypatch):
     assert b.is_legal(chess.Move.from_uci("d3h7"))
     rows = [_pos(0, b, "d3h7", cp=80, best="d3h7"), None]
     b2 = b.copy(); b2.push_uci("d3h7")
-    rows[1] = _pos(1, b2, None, cp=-90)
+    rows[1] = {**_pos(1, b2, None, cp=-90), "pv": ["g8h7", "d1h5", "h7g8", "g1f3", "f7f5", "f3g5"]}   # the bishop stays given
     out = classify_game({"game_id": "g", "my_colour": "white", "time_control": None}, rows)
     assert out[0]["label"] == "brilliant"
+
+
+def test_not_brilliant_when_the_line_wins_the_piece_back(monkeypatch):
+    """...Bd4 offers the bishop to the c3 pawn, but cxd4 Nxd4 forks queen and bishop: a tactic that gets the
+    material back, not a sacrifice."""
+    monkeypatch.setattr(book, "is_book", lambda key: False)
+    b = chess.Board("r1bq1rk1/ppp2ppp/1bn5/P2np3/1P6/2PP1Q2/4B1PP/RNK4R b - - 0 12")
+    assert b.is_legal(chess.Move.from_uci("b6d4"))
+    rows = [_pos(0, b, "b6d4", cp=80, best="b6d4"), None]
+    b2 = b.copy(); b2.push_uci("b6d4")
+    rows[1] = {**_pos(1, b2, None, cp=-90), "pv": ["c3d4", "c6d4", "f3g3", "d4e2", "c1b1"]}   # cxd4 Nxd4 Qg3 Nxe2: a pawn up
+    out = classify_game({"game_id": "g", "my_colour": "black", "time_control": None}, rows)
+    assert out[0]["label"] == "best"
+    rows[1]["pv"] = ["c3d4", "e5e4", "d3e4", "d5f4"]                                          # the bishop stays given: brilliant
+    assert classify_game({"game_id": "g", "my_colour": "black", "time_control": None}, rows)[0]["label"] == "brilliant"
 
 
 def test_material_floor_in_won_position(monkeypatch):

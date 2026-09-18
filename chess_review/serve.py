@@ -4,6 +4,8 @@
     GET  /api/profiles                  saved profiles with game counts; new_games per profile is what chess.com has
                                         that a refresh would fetch (scanned once per launch, in the background)
     POST /api/profiles/<id>/seen        the user has seen the new-games badge: drop it until the next scan
+    GET  /api/profiles/<id>/unseen      games a refresh brought in that haven't been opened yet
+    POST /api/profiles/<id>/games/<game>/seen   the game was opened: drop its "new" flag in the list
     POST /api/profiles                  {source, username} -> create the profile and fetch its games (job "ingest")
     POST /api/profiles/<id>/delete      remove a profile and everything under it (the engine cache is shared and stays)
     POST /api/profiles/<id>/pin         {pinned: bool} keep it at the top of the home screen
@@ -225,11 +227,13 @@ class Runner:
     def _refresh(self, job: Job) -> None:
         p = job.profile
         job.total = 4
+        had = p.game_ids()
         stats = ingest.fetch_archives(p, refresh_latest=True)
         log.info("refresh %s: %s", p.id, stats)
         Handler.new_games.clear(p.id)
         job.done = 1
         self._rebuild(job)
+        profiles.add_unseen(p.id, p.game_ids() - had)     # what the refresh brought in: flagged in the list until opened
         if job.analyse:
             # the UI switches to the batch progress display for the rest of the job
             self._analyse_all(job)
@@ -315,6 +319,10 @@ class Handler(SimpleHTTPRequestHandler):
             for p in profiles.list_profiles():
                 out.append({**p.summary(), "new_games": self.new_games.counts.get(p.id, 0)})
             return self._json({"profiles": out, "scan": self.new_games.state})
+        m = re.match(r"^/api/profiles/([A-Za-z0-9_.-]+)/unseen$", url.path)
+        if m:
+            p = profiles.load(m.group(1))
+            return self._json({"unseen": p.summary()["unseen"] if p else []})
         if url.path == "/api/legal":
             fen = parse_qs(url.query).get("fen", [""])[0]
             try:
@@ -446,6 +454,10 @@ class Handler(SimpleHTTPRequestHandler):
         m = re.match(r"^/api/profiles/([A-Za-z0-9_.-]+)/seen$", path)
         if m:
             self.new_games.clear(m.group(1))
+            return self._json({"ok": True})
+        m = re.match(r"^/api/profiles/([A-Za-z0-9_.-]+)/games/([^/]+)/seen$", path)
+        if m:
+            profiles.mark_seen(m.group(1), m.group(2))
             return self._json({"ok": True})
         m = re.match(r"^/api/profiles/([A-Za-z0-9_.-]+)/pin$", path)
         if m:
