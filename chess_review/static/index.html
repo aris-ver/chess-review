@@ -78,12 +78,22 @@ main { padding: 16px 18px; max-width: 1800px; margin: 0 auto; }
 .card.profile { cursor: pointer; }
 .card.profile:hover { border-color: var(--accent); }
 .card.profile .who { padding-right: 52px; display: flex; align-items: baseline; gap: 8px; }
-.card .new { margin-top: auto; align-self: flex-start; background: var(--accent); color: #1b1b1b; font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 10px; }
-.card .new + .meta { margin-top: 0; }
+table.games tr.unseen td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
+.newtag { display: inline-block; margin-left: 6px; background: var(--accent); color: #1b1b1b; font-size: 10px; font-weight: 700; padding: 1px 5px; border-radius: 8px; vertical-align: 1px; }
+/* the new-games banner: a strip across the card with the count, a Fetch button and a dismiss x */
+.card .banner { margin-top: 6px; display: flex; align-items: center; gap: 8px; background: rgba(129, 182, 76, .14); border: 1px solid var(--accent); border-radius: 6px; padding: 5px 6px 5px 10px; font-size: 12px; }
+.card .banner .txt { flex: 1; min-width: 0; }
+.card .banner button { padding: 2px 10px; font-size: 12px; background: var(--accent); color: #1b1b1b; border-color: var(--accent); font-weight: 600; }
+.card .banner .dismiss { color: var(--muted); padding: 2px 6px; border-radius: 4px; font-size: 13px; line-height: 1; }
+.card .banner .dismiss:hover { background: var(--panel2); color: var(--text); }
+.card .banner + .meta { margin-top: 6px; }
+/* ratings per time class: icon + number (+ 7-day change) */
+.card .ratings { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 2px; }
+.card .rc { display: inline-flex; align-items: center; gap: 5px; font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.card .rc svg { width: 14px; height: 14px; fill: var(--muted); }
+.card .rc .delta { font-size: 11px; font-weight: 600; }
+.card .rc .delta.up { color: var(--accent); } .card .rc .delta.down { color: var(--c-blunder); } .card .rc .delta.flat { color: var(--muted); }
 .card.profile .who .name { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
-.card.profile .elo { font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; flex-shrink: 0; }
-.card.profile .elo .delta { font-size: 12px; margin-left: 4px; }
-.card.profile .elo .delta.up { color: var(--accent); } .card.profile .elo .delta.down { color: var(--c-blunder); } .card.profile .elo .delta.flat { color: var(--muted); }
 .card.profile .pin { position: absolute; top: 8px; right: 30px; color: var(--muted); padding: 2px 6px; border-radius: 4px; font-size: 14px; line-height: 1.4; }
 .card.profile .pin:hover { background: var(--panel2); color: var(--text); } .card.profile.pinned .pin { color: var(--accent); }
 .cards .empty { padding: 10px 12px; color: var(--muted); font-size: 13px; grid-column: 1 / -1; text-align: left; }
@@ -94,6 +104,11 @@ main { padding: 16px 18px; max-width: 1800px; margin: 0 auto; }
 .update .err { color: #e07a5f; flex: 1 1 100%; font-size: 13px; }
 .update .msg a { color: var(--accent); cursor: pointer; }
 .ver { margin: 36px 0 12px; text-align: center; color: var(--muted); font-size: 12px; }
+dialog#confirm { background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 10px; padding: 18px 20px; width: min(420px, calc(100vw - 32px)); }
+dialog#confirm::backdrop { background: rgba(0, 0, 0, .55); }
+dialog#confirm p { margin: 0 0 16px; font-size: 14px; line-height: 1.45; }
+dialog#confirm .btns { display: flex; justify-content: flex-end; gap: 8px; }
+dialog#confirm .danger { background: var(--c-blunder); border-color: var(--c-blunder); color: #fff; font-weight: 600; }
 dialog#whatsnew { background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 10px; padding: 0; width: min(520px, calc(100vw - 32px)); max-height: 80vh; }
 dialog#whatsnew::backdrop { background: rgba(0, 0, 0, .55); }
 dialog#whatsnew .head { display: flex; align-items: center; padding: 12px 16px; border-bottom: 1px solid var(--line); }
@@ -435,6 +450,7 @@ svg.graph { width: 100%; height: 90px; display: block; cursor: pointer; backgrou
       <div class="ver hidden" id="ver"></div>
     </div>
   </section>
+  <dialog id="confirm"><p id="cf-text"></p><div class="btns"><button id="cf-no">Cancel</button><button id="cf-yes" class="danger">Remove</button></div></dialog>
   <dialog id="whatsnew"><div class="head"><b id="wn-title"></b><button id="wn-close" title="Close">✕</button></div><div class="md" id="wn-body"></div></dialog>
   <section id="editor" class="hidden">
     <div class="setup">
@@ -707,10 +723,21 @@ function setContext(on) {   // profile-scoped header controls only make sense in
 
 // ---------- home ----------
 const SOURCE_NAME = { chesscom: 'chess.com', lichess: 'lichess', pgn: 'PGN' };
-function eloHTML(rating, delta) {   // "579 ▼49": the rating and how it moved over the last 7 days
-  if (rating == null) return '';
-  const d = delta == null ? '' : delta > 0 ? `<span class="delta up">▲${delta}</span>` : delta < 0 ? `<span class="delta down">▼${-delta}</span>` : `<span class="delta flat">—</span>`;
-  return `<span class="elo" title="Rating, and its change over the last 7 days">${rating}${d}</span>`;
+// one rating per time class -- bullet, lightning, stopwatch, calendar -- with its 7-day change
+const CLASS_ICON = {
+  bullet: '<svg viewBox="0 0 20 20"><path d="M3 7h8.5a3 3 0 0 1 0 6H3z"/><path d="M13.5 7.5a2.5 2.5 0 0 1 0 5z" opacity=".5"/></svg>',
+  blitz:  '<svg viewBox="0 0 20 20"><path d="M11.5 1 4 11.5h5l-1.5 7.5L15 8.5h-5z"/></svg>',
+  rapid:  '<svg viewBox="0 0 20 20"><path d="M8 1h4v2H8z"/><path d="M10 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zm0 2a5 5 0 1 1 0 10 5 5 0 0 1 0-10zm-.8 1.5h1.6V11l2.4 1.6-.8 1.3L9.2 12z"/></svg>',
+  daily:  '<svg viewBox="0 0 20 20"><path d="M3 4h14v13H3zm2 4v7h10V8zM5 2h2v3H5zm8 0h2v3h-2z"/></svg>',
+};
+const CLASS_NAME = { bullet: 'Bullet', blitz: 'Blitz', rapid: 'Rapid', daily: 'Daily' };
+function ratingsHTML(ratings) {
+  const out = Object.keys(CLASS_ICON).filter(c => ratings && ratings[c]).map(c => {
+    const { rating, delta_7d: d } = ratings[c];
+    const delta = d == null ? '' : d > 0 ? `<span class="delta up">▲${d}</span>` : d < 0 ? `<span class="delta down">▼${-d}</span>` : `<span class="delta flat">—</span>`;
+    return `<span class="rc" title="${CLASS_NAME[c]}: ${rating}, and its change over the last 7 days">${CLASS_ICON[c]}${rating}${delta}</span>`;
+  });
+  return out.length ? `<div class="ratings">${out.join('')}</div>` : '';
 }
 // which engine answers on-demand questions, and how deep: shown next to every result
 state.engine = null;
@@ -747,6 +774,17 @@ function showNotes() {
   $('whatsnew').showModal();
 }
 $('wn-close').onclick = () => $('whatsnew').close();
+// in-app confirmation (window.confirm is unreliable inside the desktop app's webview): resolves true on the red button
+function confirmBox(text, okLabel = 'Remove') {
+  return new Promise(resolve => {
+    const d = $('confirm');
+    $('cf-text').textContent = text; $('cf-yes').textContent = okLabel;
+    const done = v => { d.close(); resolve(v); };
+    $('cf-yes').onclick = () => done(true); $('cf-no').onclick = () => done(false);
+    d.oncancel = e => { e.preventDefault(); done(false); };
+    d.showModal();
+  });
+}
 $('whatsnew').onclick = e => { if (e.target === e.currentTarget) e.currentTarget.close(); };   // click the backdrop to close
 function renderUpdate() {
   const u = state.update, box = $('update'), ver = $('ver');
@@ -827,18 +865,22 @@ async function renderProfiles() {
   $('profiles').innerHTML = ps.map(p => `
     <div class="card profile ${p.pinned ? 'pinned' : ''}" data-id="${p.id}" data-name="${esc(p.username)}">
       <span class="src">${SOURCE_NAME[p.source] || p.source}</span>
-      <span class="who" title="${esc(p.username)}"><span class="name">${esc(p.username)}</span>${eloHTML(p.rating, p.rating_delta_7d)}</span>
+      <span class="who" title="${esc(p.username)}"><span class="name">${esc(p.username)}</span></span>
+      ${ratingsHTML(p.ratings)}
       <div class="progress hidden"><div></div></div>
-      ${p.new_games ? `<span class="new" title="Played since the last refresh; open the profile and press Refresh games">${p.new_games} new game${p.new_games === 1 ? '' : 's'} on chess.com</span>` : ''}
-      <span class="meta">${p.games} games · ${p.analysed} analysed</span>
+      ${p.new_games ? `<div class="banner"><span class="txt">${p.new_games} new game${p.new_games === 1 ? '' : 's'} on chess.com</span><button class="fetch" title="Open the profile and fetch them">Fetch</button><span class="dismiss" title="Dismiss">✕</span></div>` : ''}
+      <span class="meta">${p.games} games · ${p.analysed} analysed${p.unseen && p.unseen.length ? ` · <b style="color:var(--accent)">${p.unseen.length} not opened yet</b>` : ''}</span>
       <span class="pin" title="${p.pinned ? 'Unpin' : 'Pin to the top'}">${p.pinned ? '★' : '☆'}</span>
       <span class="x" title="Remove this profile (the engine cache is kept)">✕</span>
     </div>`).join('') || `<div class="empty">No profiles yet — add a chess.com username above.</div>`;
   $('profiles').querySelectorAll('.card.profile').forEach(c => {
-    c.onclick = () => {
-      if (c.querySelector('.new')) fetch(`api/profiles/${c.dataset.id}/seen`, { method: 'POST' });   // badge shown, job done
-      location.hash = '#/p/' + c.dataset.id;
-    };
+    const seen = () => fetch(`api/profiles/${c.dataset.id}/seen`, { method: 'POST' });   // banner shown, job done
+    c.onclick = () => { if (c.querySelector('.banner')) seen(); location.hash = '#/p/' + c.dataset.id; };
+    const banner = c.querySelector('.banner');
+    if (banner) {
+      banner.querySelector('.dismiss').onclick = async e => { e.stopPropagation(); await seen(); banner.remove(); };
+      banner.querySelector('.fetch').onclick = e => { e.stopPropagation(); seen(); state.pendingRefresh = c.dataset.id; location.hash = '#/p/' + c.dataset.id; };
+    }
     c.querySelector('.pin').onclick = async e => {
       e.stopPropagation();
       await fetch(`api/profiles/${c.dataset.id}/pin`, { method: 'POST', body: JSON.stringify({ pinned: !c.classList.contains('pinned') }) });
@@ -846,7 +888,7 @@ async function renderProfiles() {
     };
     c.querySelector('.x').onclick = async e => {
       e.stopPropagation();
-      if (!confirm(`Remove ${c.dataset.name} and its games? Engine evaluations are shared and stay cached.`)) return;
+      if (!await confirmBox(`Remove ${c.dataset.name} and its games from this app? Engine evaluations are shared and stay cached; the games can be fetched again.`)) return;
       const r = await fetch(`api/profiles/${c.dataset.id}/delete`, { method: 'POST' });
       const d = await r.json();
       if (!r.ok) { toast(d.error === 'busy' ? `Busy: ${jobText(d.job)}` : d.error); return; }
@@ -874,8 +916,13 @@ async function showList() {
   state.game = null; dropVariation(); stopPolling(); stopPlay();
   setContext(true);
   let games;
-  try { games = await loadGames(true); } catch (e) { location.hash = '#/'; return; }
+  try {
+    const unseen = fetch(`api/profiles/${state.profile}/unseen`).then(r => r.json()).then(d => new Set(d.unseen || [])).catch(() => new Set());
+    games = await loadGames(true);
+    state.unseen = await unseen;
+  } catch (e) { location.hash = '#/'; return; }
   $('crumb').textContent = state.username || '';
+  if (state.pendingRefresh === state.profile) { state.pendingRefresh = null; $('b-refresh').onclick(); }   // "Fetch" on the home card
   const f = state.filters;
   const rows = games.filter(g => (!f.result || g.result === f.result) && (!f.colour || g.my_colour === f.colour) &&
     (f.analysed === '' || (f.analysed === '1' ? g.analysed >= 0.999 : g.analysed < 0.999)) &&
@@ -887,8 +934,8 @@ async function showList() {
     if (g.my_rating != null && prev && prev.my_rating != null) eloDelta[g.id] = g.my_rating - prev.my_rating;
   });
   $('rows').innerHTML = rows.map(g => `
-    <tr class="row" data-id="${g.id}">
-      <td>${fmtDate(g.played_at)}<div style="color:var(--muted);font-size:12px">${g.time_class} ${g.time_control || ''}</div></td>
+    <tr class="row ${state.unseen && state.unseen.has(g.id) ? 'unseen' : ''}" data-id="${g.id}">
+      <td>${fmtDate(g.played_at)}${state.unseen && state.unseen.has(g.id) ? '<span class="newtag" title="Fetched since you last looked">NEW</span>' : ''}<div style="color:var(--muted);font-size:12px">${g.time_class} ${g.time_control || ''}</div></td>
       <td><span class="dot ${g.my_colour}"></span>${g.my_rating ?? ''}${eloDelta[g.id] != null ? `<span style="font-size:11px;margin-left:4px;color:${eloDelta[g.id] > 0 ? 'var(--accent)' : eloDelta[g.id] < 0 ? 'var(--c-blunder)' : 'var(--muted)'}">${eloDelta[g.id] > 0 ? '+' : ''}${eloDelta[g.id]}</span>` : ''}</td>
       <td>${esc(g.opponent || '?')} <span style="color:var(--muted)">(${g.opponent_rating ?? '?'})</span></td>
       <td><span class="res ${g.result}">${g.result === 'win' ? 'W' : g.result === 'loss' ? 'L' : '½'}</span></td>
@@ -1322,6 +1369,7 @@ $('imgurl').onsubmit = e => { e.preventDefault(); const u = e.target.url.value.t
 async function loadGame(id) { return (await fetch(`${P()}/games/${id}.json`)).json(); }
 async function showGame(id) {
   let g; try { g = await loadGame(id); } catch (e) { location.hash = state.profile ? `#/p/${state.profile}` : '#/'; return; }
+  if (state.unseen && state.unseen.has(id)) { state.unseen.delete(id); fetch(`api/profiles/${state.profile}/games/${id}/seen`, { method: 'POST' }); }   // opened: no longer new
   document.body.classList.remove('sandbox'); stopSandboxStream();
   $('a-back').href = `#/p/${state.profile}`; $('a-back').textContent = '← Games'; $('a-insights2').href = `${P()}/insights.html`; $('ptitle-t').textContent = 'Game Review'; setContext(true);
   const same = state.game && state.game.id === id;
@@ -1712,6 +1760,8 @@ function hungSquares(mv) { return mv && isMine(mv) && BAD.has(mv.label) ? (mv.hu
 //   my bad move        green  the move to play instead        red   the opponent's refutation (why it was bad)
 //                      red squares on the pieces it left hanging, an x on the one the refutation takes
 //   their bad move     blue   my reply that punishes it -- and nothing else (what they should have played is their lesson)
+//   The red/blue reply is drawn only when it is concrete: it takes something, or the move left something to take.
+//   A positional error gets the green arrow alone, as on chess.com.
 //   a good move        orange what the move does -- the trade it starts, what it attacks, the castling or pawn push
 //                      it prepares (facts.idea_arrows); for mine, also green for the engine's move when it wasn't
 //                      the one played (same rule as the "X was better" text in the bubble)
@@ -1722,8 +1772,10 @@ function renderArrows() {
   const live = state.game && state.game.sandbox && !state.showBest;
   // Not in the sandbox: there every arrow is for the side to move, and the bubble already says it.
   if (!live && mv && isMine(mv) && mv.best_uci && mv.best_uci !== mv.uci && mv.label && !['book', 'forced'].includes(mv.label)) list.push([mv.best_uci, 'best', 1]);
-  if (mv && BAD.has(mv.label) && mv.reply_uci) list.push([mv.reply_uci, isMine(mv) ? 'punish' : 'blue', 1]);
+  if (mv && BAD.has(mv.label) && mv.reply_uci && (parseFen(fen)[mv.reply_uci.slice(2, 4)] || (mv.hung || []).length)) list.push([mv.reply_uci, isMine(mv) ? 'punish' : 'blue', 1]);
   if (mv && !live) (mv.idea || []).forEach(u => list.push([u, 'threat', 1]));
+  // end of a variation: the engine's move from here, thinner -- it is the next move, not a verdict on this one
+  if (mv && !live && inVariation() && state.ply === line().length && mv.next_best_uci && !state.showBest) list.push([mv.next_best_uci, 'best', 0.68]);
   // sandbox: a swarm of the engine's top candidates at the position about to be played, sized by rank --
   // fills in and re-settles live as streamSandboxEval() reads more of the search (see there)
   if (live) {
@@ -1947,7 +1999,7 @@ async function explore(fen, uci) {
   const keep = state.variation ? state.variation.moves.slice(0, state.ply - basePly) : [];
   const move = { ply: basePly + keep.length, san: prov.san, uci, fen: prov.fen, label: null, pending: true,
                  is_mine: mover === state.game.my_colour, wp_white: null, eval: null, wp_loss: null,
-                 best_san: null, best_uci: null, clock: null, spent: null, comment: [], hung: [], reply_uci: null, idea: [] };
+                 best_san: null, best_uci: null, clock: null, spent: null, comment: [], hung: [], reply_uci: null, idea: [], next_best_uci: null, next_best_san: null };
   state.variation = { basePly, moves: keep.concat([move]) };
   state.exploring = true;
   renderMoveList();
@@ -2072,6 +2124,7 @@ function renderNow() {
   if (state.explain || BAD.has(m.label)) html += detail.map(t => `<p>${esc(t)}</p>`).join('');
   else if (m.best_san && m.best_uci !== m.uci && !['book', 'forced'].includes(m.label)) html += `<p>${esc(m.best_san)} was the engine's choice.</p>`;
   if (m.spent != null && state.explain) html += `<p style="color:#777">Thought for ${m.spent}s.</p>`;
+  if (inVariation() && state.ply === line().length && m.next_best_san) html += `<p>Engine's move now: <b>${esc(m.next_best_san)}</b> — press Best to play it, or try your own.</p>`;
   el.innerHTML = html;
 }
 // fen -> {engine, nodes, lines: [{rank, uci, san, eval, depth}, ...]}, the sandbox's current (unplayed) position,
@@ -2083,6 +2136,7 @@ function bestMoveHere() {
   // the engine's move in the CURRENT position = best_uci of the next move on this line
   const ln = line();
   if (state.ply < ln.length) return ln[state.ply].best_uci;
+  if (state.ply && inVariation() && ln[state.ply - 1].next_best_uci) return ln[state.ply - 1].next_best_uci;   // end of a variation: explore() said
   if (!state.game || !state.game.sandbox) return null;
   const top = sandboxTop(currentFen());
   return top ? top.uci : null;

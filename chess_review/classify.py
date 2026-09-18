@@ -7,7 +7,8 @@ eval of the position they left the opponent, re-signed to the mover.
 Labels (chess.com vocabulary, deterministic definitions):
   book        resulting position is in the opening book
   forced      only legal move
-  brilliant   engine-approved sacrifice (SEE says the piece can be won) that isn't already a crush
+  brilliant   engine-approved sacrifice (SEE says the piece can be won) that the engine's line doesn't
+              win straight back, and that isn't already a crush
   great       the engine's move and the only good one (MultiPV #1 - #2 > ONLY_MOVE_GAP)
   best        the engine's move
   excellent   loss <= EXCELLENT
@@ -46,11 +47,12 @@ from .config import (
 from . import profiles
 from .db import connect
 from .profiles import Profile
-from .facts import see
+from .facts import material_swing, see
 from .fen import fen_key
 from .pov import pov_win_pct
 
 log = logging.getLogger("classify")
+SACRIFICE_PLIES = 8     # how far along the engine's line a sacrifice has to stay a sacrifice to be brilliant
 
 SCHEMA = pa.schema([
     ("game_id", pa.string()),
@@ -106,6 +108,15 @@ def is_sacrifice(board: chess.Board, move: chess.Move) -> bool:
         if cap.to_square == move.to_square and after.is_capture(cap):
             best = max(best, see(after, cap))
     return best >= 100
+
+
+def sacrifice_holds(board_after: chess.Board, reply_pv: list[str], mover: chess.Color, reply_mate: Optional[int]) -> bool:
+    """A sacrifice is only one if the material stays given: over the engine's line after the move the mover is
+    still down at least a pawn, or the line ends in mate. A piece offered to a pawn and won back two moves later
+    by a fork is a tactic, not a sacrifice."""
+    if reply_mate is not None and reply_mate < 0:      # the opponent (to move) gets mated: the material is beside the point
+        return True
+    return material_swing(board_after, reply_pv[:SACRIFICE_PLIES], mover) <= -100
 
 
 def only_move(multipv: Optional[list[dict]], side: str) -> Optional[bool]:
@@ -182,7 +193,7 @@ def classify_game(game: dict, rows: list[dict], multipv: Optional[dict[str, list
         elif wp_loss is None:
             label = None
         elif is_best or wp_loss <= EXCELLENT:
-            if 10 < wp_before < 90 and wp_after >= 35 and is_sacrifice(board_before, move):
+            if 10 < wp_before < 90 and wp_after >= 35 and is_sacrifice(board_before, move)                     and sacrifice_holds(board, nxt.get("pv") or [], board_before.turn, nxt["mate_in"]):
                 label = "brilliant"
             elif is_best and only and 10 < wp_before < 95:
                 label = "great"
@@ -234,7 +245,7 @@ def classify_all(con) -> list[dict]:
     games = {g["game_id"]: g for g in con.execute("SELECT * FROM games").fetch_arrow_table().to_pylist()}
     rows = con.execute("""
         SELECT p.game_id, p.ply, p.fen, p.fen_key, p.side_to_move, p.move_played, p.clock_remaining,
-               e.eval_cp, e.mate_in, e.best_move
+               e.eval_cp, e.mate_in, e.best_move, e.pv
         FROM positions p LEFT JOIN evals e USING (fen_key)
         ORDER BY p.game_id, p.ply
     """).fetch_arrow_table().to_pylist()
