@@ -246,7 +246,9 @@ table.games button.an { padding: 3px 9px; font-size: 12px; font-weight: 600; whi
 .evalbar .w { position: absolute; left: 0; right: 0; bottom: 0; background: #f0f0f0; transition: height .25s; }
 .evalbar.flipped .w { bottom: auto; top: 0; }
 .evalbar .lbl { position: absolute; left: 0; right: 0; text-align: center; font-size: 10px; font-weight: 700; }
-.evalbar .lbl.top { top: 4px; color: #ddd; } .evalbar .lbl.bot { bottom: 4px; color: #1b1b1b; }
+.evalbar .lbl.top { top: 4px; } .evalbar .lbl.bot { bottom: 4px; }
+/* the number sits on whichever half is ahead: dark text on the white half, light on the black one -- which half is where depends on the flip */
+.evalbar .lbl.top, .evalbar.flipped .lbl.bot { color: #ddd; } .evalbar .lbl.bot, .evalbar.flipped .lbl.top { color: #1b1b1b; }
 .boardwrap { display: flex; flex-direction: column; gap: 8px; }
 .player { display: flex; align-items: center; gap: 10px; padding: 4px 2px; height: 38px; }
 .player .name { font-weight: 600; } .player .rating { color: var(--muted); }
@@ -308,6 +310,7 @@ svg.board.playable use.piece.own { cursor: grab; }
 .ginfo { text-align: center; color: var(--muted); font-size: 12px; padding: 4px 10px 0; }
 .pbtn { background: transparent; border: 0; color: var(--muted); font-size: 18px; padding: 4px 8px; border-radius: 6px; cursor: pointer; }
 .pbtn:hover { background: var(--panel2); color: var(--text); }
+.pbtn.back { font-size: 13px; font-weight: 600; color: var(--text); border: 1px solid var(--line); padding: 4px 10px 4px 8px; white-space: nowrap; text-decoration: none; }
 .coach { display: flex; gap: 10px; padding: 12px 12px 6px; align-items: flex-start; }
 .coach .avatar { width: 44px; height: 44px; border-radius: 8px; background: var(--panel2); display: flex; align-items: center; justify-content: center; font-size: 28px; flex-shrink: 0; }
 .bubble { flex: 1; background: #fff; color: #1b1b1b; border-radius: 10px; padding: 10px 12px; position: relative; min-height: 44px; }
@@ -511,7 +514,7 @@ svg.graph { width: 100%; height: 90px; display: block; cursor: pointer; backgrou
       </div>
       <div class="panel">
         <div class="phead">
-          <a href="#/" class="pbtn" id="a-back" title="Back to games (Esc)">←</a>
+          <a href="#/" class="pbtn back" id="a-back" title="Back (Esc)">← Games</a>
           <span class="ptitle"><svg class="ico"><use href="#ic-best"/></svg> <span id="ptitle-t">Game Review</span></span>
           <span class="pright"><button class="pbtn snd" id="b-sound2" title="Sound"></button><button class="pbtn" id="b-flip" title="Flip (f)">⇅</button></span>
         </div>
@@ -945,7 +948,7 @@ async function showSandbox(fen) {
   showSection('review');
   document.body.classList.add('sandbox');
   setContext(false); $('crumb').textContent = 'Sandbox';
-  $('a-back').href = '#/'; $('ginfo').textContent = ''; $('ptitle-t').textContent = 'Sandbox';
+  $('a-back').href = '#/'; $('a-back').textContent = '← Home'; $('ginfo').textContent = ''; $('ptitle-t').textContent = 'Sandbox';
   renderMoveList();
   update(false);
 }
@@ -1316,7 +1319,7 @@ async function loadGame(id) { return (await fetch(`${P()}/games/${id}.json`)).js
 async function showGame(id) {
   let g; try { g = await loadGame(id); } catch (e) { location.hash = state.profile ? `#/p/${state.profile}` : '#/'; return; }
   document.body.classList.remove('sandbox'); stopSandboxStream();
-  $('a-back').href = `#/p/${state.profile}`; $('a-insights2').href = `${P()}/insights.html`; $('ptitle-t').textContent = 'Game Review'; setContext(true);
+  $('a-back').href = `#/p/${state.profile}`; $('a-back').textContent = '← Games'; $('a-insights2').href = `${P()}/insights.html`; $('ptitle-t').textContent = 'Game Review'; setContext(true);
   const same = state.game && state.game.id === id;
   state.game = g;
   if (!same) { stopPlay(); state.ply = 0; state.flipped = g.my_colour === 'black'; dropVariation(); state.sel = null; state.cycle = {}; $('pieces').innerHTML = ''; }
