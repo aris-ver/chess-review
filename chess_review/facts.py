@@ -15,6 +15,7 @@ from .pov import pov_win_pct
 VALUE = {chess.PAWN: 100, chess.KNIGHT: 300, chess.BISHOP: 300, chess.ROOK: 500, chess.QUEEN: 900, chess.KING: 10_000}
 NAMES = {chess.PAWN: "pawn", chess.KNIGHT: "knight", chess.BISHOP: "bishop", chess.ROOK: "rook", chess.QUEEN: "queen", chess.KING: "king"}
 REFUTATION_PLIES = 5
+GOOD = {"best", "excellent", "good", "great", "brilliant"}   # labels whose move gets its idea drawn (see idea_arrows)
 
 
 @dataclass
@@ -39,6 +40,7 @@ class MoveFacts:
     was_only_move: Optional[bool] = None                      # best was the only move (MultiPV gap) and was missed
     motif: Optional[str] = None                               # fork | pin | discovered | skewer, on the reply
     motif_detail: Optional[str] = None
+    idea: list[str] = field(default_factory=list)             # UCI arrows illustrating what a good move does
     clock_remaining: Optional[int] = None
     time_spent: Optional[int] = None
 
@@ -192,6 +194,81 @@ def motif(board_after: chess.Board, reply: chess.Move) -> tuple[Optional[str], O
     return None, None
 
 
+def attack_targets(board: chess.Board, sq: chess.Square) -> list[chess.Square]:
+    """Enemy pieces the piece on `sq` attacks and could profitably take: worth more than it, undefended, or the
+    king. Most valuable first."""
+    piece = board.piece_at(sq)
+    if piece is None:
+        return []
+    enemy = not piece.color
+    out = []
+    for t in board.attacks(sq) & board.occupied_co[enemy]:
+        pt = board.piece_type_at(t)
+        if pt == chess.KING or VALUE[pt] > VALUE[piece.piece_type] or not board.is_attacked_by(enemy, t):
+            out.append(t)
+    out.sort(key=lambda t: -VALUE[board.piece_type_at(t)])
+    return out
+
+
+def idea_arrows(board: chess.Board, played: chess.Move, reply_pv: list[str]) -> list[str]:
+    """What a good move does, as up to two arrows (UCI) -- chess.com's orange illustrations. The first that
+    applies: the trade it starts, the pieces it attacks, the castling it makes possible, the pawn push the
+    engine's line follows up with (only when the line really continues that way, and the move supports it).
+
+    board: the position before the move; reply_pv: the engine's line from the position after it."""
+    mover = board.turn
+    b = board.copy(stack=False)
+    b.push(played)
+    to = played.to_square
+    pv: list[chess.Move] = []
+    walk = b.copy(stack=False)
+    for u in reply_pv[:2]:      # the reply and our move after it, validated as we go
+        try:
+            m = chess.Move.from_uci(u)
+        except ValueError:
+            break
+        if m not in walk.legal_moves:
+            break
+        pv.append(m)
+        walk.push(m)
+
+    # trade: the reply takes the moved piece, and we take back -- "Rd8+ Rxd8 Rxd8"
+    if pv and pv[0].to_square == to and b.is_capture(pv[0]):
+        out = [pv[0].uci()]
+        if len(pv) > 1 and pv[1].to_square == to:
+            out.append(pv[1].uci())
+        return out
+
+    # attacks: the moved piece hits something worth taking -- one arrow per target, a fork shows both prongs
+    targets = attack_targets(b, to)
+    if targets:
+        return [chess.Move(to, t).uci() for t in targets[:2]]
+
+    # castling: the move cleared the way (or the king is now allowed) on a side it couldn't castle before
+    if b.has_castling_rights(mover):
+        mine = b.copy(stack=False)
+        mine.turn = mover
+        before = set(board.generate_castling_moves())
+        new = [m for m in mine.generate_castling_moves() if m not in before and mine.is_legal(m)]
+        if new:
+            return [new[0].uci()]
+
+    # prepares: our next move in the line is a pawn push the moved piece supports, or that our move (not the
+    # reply) made possible -- e.g. e6 and then ...d5, or a rook move that unblocks a pawn
+    if len(pv) > 1:
+        nxt = pv[1]
+        after_reply = b.copy(stack=False)
+        after_reply.push(pv[0])
+        if nxt.from_square != to and after_reply.piece_type_at(nxt.from_square) == chess.PAWN and after_reply.color_at(nxt.from_square) == mover:
+            supported = nxt.to_square in b.attacks(to)
+            mine = b.copy(stack=False)
+            mine.turn = mover
+            new_option = nxt not in board.legal_moves and nxt in mine.legal_moves
+            if supported or new_option:
+                return [nxt.uci()]
+    return []
+
+
 # --- assembly -----------------------------------------------------------------
 
 def _sans(board: chess.Board, pv_uci: list[str], limit: int) -> list[str]:
@@ -237,6 +314,8 @@ def extract(move: dict, board: chess.Board, eval_before: dict, eval_after: Optio
             f.hung_pieces = hung_pieces(board_after, mover)
         if pv:
             f.motif, f.motif_detail = motif(board_after, chess.Move.from_uci(pv[0]))
+        if f.label in GOOD:
+            f.idea = idea_arrows(board, played, pv)
 
         m0, m1 = eval_before.get("mate_in"), eval_after.get("mate_in")
         if m0 is not None and m0 > 0 and not (m1 is not None and m1 < 0):
