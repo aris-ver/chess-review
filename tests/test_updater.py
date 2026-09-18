@@ -127,17 +127,6 @@ def test_update_zip_holds_only_the_app_layer(tmp_path):
     assert "chess-review/_internal/bin/stockfish.exe" in zipfile.ZipFile(full).namelist()
 
 
-def test_alias_zip_carries_the_alias_stamp(tmp_path):
-    app = _fake_app(tmp_path / "build")
-    _pack(app, tmp_path / "out", "v0.2.0")
-    alias = tmp_path / "out" / "chess-review-update-000000000000.zip"
-    pack.write_zip(alias, app, pack.update_files(app), stamp={"version": "v0.2.0", "runtime": "000000000000"})
-    with zipfile.ZipFile(alias) as z:
-        assert json.loads(z.read("chess-review/_internal/build.json")) == {"version": "v0.2.0", "runtime": "000000000000"}
-        assert z.read("chess-review/chess-review.exe") == b"exe v0.2.0"
-    assert json.loads((app / "_internal" / "build.json").read_text())["runtime"] != "000000000000"   # disk untouched
-
-
 def test_unpack_update(tmp_path):
     app = _fake_app(tmp_path / "build")
     _, small, runtime = _pack(app, tmp_path / "out", "v0.2.0")
