@@ -1765,17 +1765,19 @@ function hungSquares(mv) { return mv && isMine(mv) && BAD.has(mv.label) ? (mv.hu
 //   a good move        orange what the move does -- the trade it starts, what it attacks, the castling or pawn push
 //                      it prepares (facts.idea_arrows); for mine, also green for the engine's move when it wasn't
 //                      the one played (same rule as the "X was better" text in the bubble)
+// Two places where the arrows belong to the SIDE TO MOVE instead, because the question there is "what now?":
+// the sandbox (the live swarm) and the end of a variation (the engine's move from here, green, or the red/blue
+// reply when the last move was bad -- same move, drawn once). The last move keeps its badge and its bubble text.
 function renderArrows() {
   const mv = currentMove(), fen = currentFen();
   const list = [];
   if (state.showBest && bestMoveHere()) list.push([bestMoveHere(), 'best', 1]);
   const live = state.game && state.game.sandbox && !state.showBest;
-  // Not in the sandbox: there every arrow is for the side to move, and the bubble already says it.
-  if (!live && mv && isMine(mv) && mv.best_uci && mv.best_uci !== mv.uci && mv.label && !['book', 'forced'].includes(mv.label)) list.push([mv.best_uci, 'best', 1]);
+  const leaf = !!mv && !live && inVariation() && state.ply === line().length;
+  if (!live && !leaf && mv && isMine(mv) && mv.best_uci && mv.best_uci !== mv.uci && mv.label && !['book', 'forced'].includes(mv.label)) list.push([mv.best_uci, 'best', 1]);
   if (mv && BAD.has(mv.label) && mv.reply_uci && (parseFen(fen)[mv.reply_uci.slice(2, 4)] || (mv.hung || []).length)) list.push([mv.reply_uci, isMine(mv) ? 'punish' : 'blue', 1]);
-  if (mv && !live) (mv.idea || []).forEach(u => list.push([u, 'threat', 1]));
-  // end of a variation: the engine's move from here, thinner -- it is the next move, not a verdict on this one
-  if (mv && !live && inVariation() && state.ply === line().length && mv.next_best_uci && !state.showBest) list.push([mv.next_best_uci, 'best', 0.68]);
+  if (mv && !live && !leaf) (mv.idea || []).forEach(u => list.push([u, 'threat', 1]));
+  if (leaf && mv.next_best_uci && !state.showBest && !list.some(a => a[0] === mv.next_best_uci)) list.push([mv.next_best_uci, 'best', 1]);
   // sandbox: a swarm of the engine's top candidates at the position about to be played, sized by rank --
   // fills in and re-settles live as streamSandboxEval() reads more of the search (see there)
   if (live) {
@@ -2124,7 +2126,7 @@ function renderNow() {
   if (state.explain || BAD.has(m.label)) html += detail.map(t => `<p>${esc(t)}</p>`).join('');
   else if (m.best_san && m.best_uci !== m.uci && !['book', 'forced'].includes(m.label)) html += `<p>${esc(m.best_san)} was the engine's choice.</p>`;
   if (m.spent != null && state.explain) html += `<p style="color:#777">Thought for ${m.spent}s.</p>`;
-  if (inVariation() && state.ply === line().length && m.next_best_san) html += `<p>Engine's move now: <b>${esc(m.next_best_san)}</b> — press Best to play it, or try your own.</p>`;
+  if (inVariation() && state.ply === line().length && m.next_best_san) html += `<p>${currentFen().split(' ')[1] === 'w' ? 'White' : 'Black'} to move — the engine plays <b>${esc(m.next_best_san)}</b> here. Press Best to play it, or try your own.</p>`;
   el.innerHTML = html;
 }
 // fen -> {engine, nodes, lines: [{rank, uci, san, eval, depth}, ...]}, the sandbox's current (unplayed) position,
