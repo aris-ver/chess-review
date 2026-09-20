@@ -172,7 +172,11 @@ def write_static() -> None:
     SITE_DIR.mkdir(parents=True, exist_ok=True)
     html = (STATIC / "index.html").read_text(encoding="utf-8")
     html = html.replace("/*__PIECES__*/", json.dumps(chess.svg.PIECES))
-    (SITE_DIR / "index.html").write_text(html, encoding="utf-8")
+    # Written only when it differs: the page watches this file's Last-Modified to offer a reload after an
+    # update, and build() runs after every job -- a rewrite of the same bytes would cry "updated" for nothing.
+    out = SITE_DIR / "index.html"
+    if not out.exists() or out.read_text(encoding="utf-8") != html:
+        out.write_text(html, encoding="utf-8")
     (SITE_DIR / "sounds").mkdir(exist_ok=True)
     for f in (STATIC / "sounds").glob("*.mp3"):
         shutil.copy2(f, SITE_DIR / "sounds" / f.name)
