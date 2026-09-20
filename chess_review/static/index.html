@@ -1756,9 +1756,16 @@ function drawArrows(list, el = $('arrows')) {
 // In the sandbox both sides are "me": you are studying whoever moved.
 function isMine(mv) { return mv.is_mine || !!(state.game && state.game.sandbox); }
 function hungSquares(mv) { return mv && isMine(mv) && BAD.has(mv.label) ? (mv.hung || []) : []; }
+// The piece the refutation takes, when my bad move left it hanging (the x badge goes on it).
+function takenSquare(mv) { const to = mv && mv.reply_uci ? mv.reply_uci.slice(2, 4) : null; return to && hungSquares(mv).includes(to) ? to : null; }
+// My bad move hung a piece and the fix is to move that very piece (3.Nc3?! when c4 needed cxd5; d6?? when the
+// bishop needed Be2): the green arrow would leave the square the red one lands on, two arrows fighting over one
+// piece. The red arrow alone tells it -- what I'm losing -- so the green arrow and the x stay off the board.
+function rescueMove(mv) { return !!(mv && mv.best_uci && takenSquare(mv) === mv.best_uci.slice(0, 2)); }
 // What the board says about the current move, like chess.com's review -- at most three things, all about one story:
 //   my bad move        green  the move to play instead        red   the opponent's refutation (why it was bad)
-//                      red squares on the pieces it left hanging, an x on the one the refutation takes
+//                      red squares on the pieces it left hanging, an x on the one the refutation takes --
+//                      unless the better move was to move that piece: then the red arrow alone (rescueMove)
 //   their bad move     blue   my reply that punishes it -- and nothing else (what they should have played is their lesson)
 //   The red/blue reply is drawn only when it is concrete: it takes something, or the move left something to take.
 //   A positional error gets the green arrow alone, as on chess.com.
@@ -1774,7 +1781,7 @@ function renderArrows() {
   if (state.showBest && bestMoveHere()) list.push([bestMoveHere(), 'best', 1]);
   const live = state.game && state.game.sandbox && !state.showBest;
   const leaf = !!mv && !live && inVariation() && state.ply === line().length;
-  if (!live && !leaf && mv && isMine(mv) && mv.best_uci && mv.best_uci !== mv.uci && mv.label && !['book', 'forced'].includes(mv.label)) list.push([mv.best_uci, 'best', 1]);
+  if (!live && !leaf && mv && isMine(mv) && mv.best_uci && mv.best_uci !== mv.uci && mv.label && !['book', 'forced'].includes(mv.label) && !rescueMove(mv)) list.push([mv.best_uci, 'best', 1]);
   if (mv && BAD.has(mv.label) && mv.reply_uci && (parseFen(fen)[mv.reply_uci.slice(2, 4)] || (mv.hung || []).length)) list.push([mv.reply_uci, isMine(mv) ? 'punish' : 'blue', 1]);
   if (mv && !live && !leaf) (mv.idea || []).forEach(u => list.push([u, 'threat', 1]));
   if (leaf && mv.next_best_uci && !state.showBest && !list.some(a => a[0] === mv.next_best_uci)) list.push([mv.next_best_uci, 'best', 1]);
@@ -1832,8 +1839,8 @@ function renderBadges() {
   const g = state.game, mv = currentMove();
   let out = '';
   if (mv && mv.label && LABEL_NAME[mv.label]) out += badgeAt(mv.uci.slice(2, 4), mv.label);
-  const lost = mv && mv.reply_uci && hungSquares(mv).includes(mv.reply_uci.slice(2, 4)) ? mv.reply_uci.slice(2, 4) : null;
-  if (lost) out += lostBadge(lost);
+  const lost = takenSquare(mv);
+  if (lost && !rescueMove(mv)) out += lostBadge(lost);
   if (ASSETS.hasIcons && !inVariation() && state.ply === g.moves.length && g.moves.length && g.result) {
     const pieces = parseFen(currentFen());
     const kings = Object.entries(pieces).filter(([, ch]) => ch.toLowerCase() === 'k');
