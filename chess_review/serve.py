@@ -4,7 +4,8 @@
     GET  /api/profiles                  saved profiles with game counts; new_games per profile is what chess.com has
                                         that a refresh would fetch (scanned once per launch, in the background)
     POST /api/profiles/<id>/seen        the user has seen the new-games badge: drop it until the next scan
-    GET  /api/profiles/<id>/unseen      games a refresh brought in that haven't been opened yet
+    GET  /api/profiles/<id>/unseen      games a refresh brought in that haven't been opened yet (flagged NEW in the list
+                                        until opened, or until the launch after the list has shown them)
     POST /api/profiles/<id>/games/<game>/seen   the game was opened: drop its "new" flag in the list
     POST /api/profiles                  {source, username} -> create the profile and fetch its games (job "ingest")
     POST /api/profiles/<id>/delete      remove a profile and everything under it (the engine cache is shared and stays)
@@ -322,7 +323,9 @@ class Handler(SimpleHTTPRequestHandler):
         m = re.match(r"^/api/profiles/([A-Za-z0-9_.-]+)/unseen$", url.path)
         if m:
             p = profiles.load(m.group(1))
-            return self._json({"unseen": p.summary()["unseen"] if p else []})
+            unseen = p.summary()["unseen"] if p else []
+            profiles.mark_shown(m.group(1), unseen)     # the list is about to show them: flags come off at the next launch
+            return self._json({"unseen": unseen})
         if url.path == "/api/legal":
             fen = parse_qs(url.query).get("fen", [""])[0]
             try:
@@ -547,6 +550,7 @@ def main(argv=None) -> None:
     p.add_argument("--workers", type=int, default=None, help="engine processes for game analysis (default: physical cores)")
     args = p.parse_args(argv)
     profiles.migrate_legacy()
+    profiles.expire_shown()  # "new" flags the list displayed in an earlier run: seen
     site.write_static()     # index.html is a pure copy of static/, so it is always current after a restart
     Handler.runner = Runner(args.nodes, args.workers)
     Handler.updates = updater.Updater()

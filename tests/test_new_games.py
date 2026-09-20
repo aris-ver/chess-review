@@ -54,3 +54,19 @@ def test_nothing_new(profile, monkeypatch):
     assert ingest.count_new_games(profile) == 0
     _api(monkeypatch, {})
     assert ingest.count_new_games(profile) == 0
+
+
+def test_new_flags_shown_in_the_list_expire_at_the_next_launch(profile):
+    p = profiles.create(profile.source, profile.username)      # meta.json, where the flags live
+    unseen = lambda: p.summary()["unseen"]
+    profiles.add_unseen(p.id, ["g1", "g2", "g3"])
+    profiles.mark_shown(p.id, ["g1", "g2"])                    # the list displayed two of them
+    profiles.mark_seen(p.id, "g2")                             # ... and one was opened
+    assert unseen() == ["g1", "g3"]                            # still this run: g1 keeps its flag
+    profiles.expire_shown()                                    # next launch
+    assert unseen() == ["g3"]                                  # g1 was seen in the list; g3 never displayed
+    profiles.expire_shown()                                    # a launch with nothing shown changes nothing
+    assert unseen() == ["g3"]
+    profiles.mark_shown(p.id, ["g3"])
+    profiles.expire_shown()
+    assert unseen() == []

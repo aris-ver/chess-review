@@ -183,6 +183,24 @@ def mark_seen(pid: str, game_id: str) -> None:
     _update_meta(pid, drop)
 
 
+def mark_shown(pid: str, ids) -> None:
+    """The list has displayed these "new" flags. They stay for the rest of this run (leaving the list and
+    coming back keeps them) but not into the next: expire_shown() drops them at launch, since seen is seen."""
+    ids = set(ids)
+    if ids:
+        _update_meta(pid, lambda meta: meta.__setitem__("shown", sorted(set(meta.get("shown", [])) | ids)))
+
+
+def expire_shown() -> None:
+    """At launch: every "new" flag an earlier run already displayed comes off."""
+    def drop(meta):
+        shown = set(meta.pop("shown", []))
+        meta["unseen"] = [i for i in meta.get("unseen", []) if i not in shown]
+    for p in list_profiles():
+        if "shown" in json.loads(p.meta_json.read_text(encoding="utf-8")):
+            _update_meta(p.id, drop)
+
+
 def set_pinned(pid: str, on: bool) -> Optional[dict]:
     """Pin (stamp the time, so pins keep the order they were made in) or unpin a profile on the home screen."""
     p = load(pid)
