@@ -1,0 +1,11 @@
+# Line endings are stored and checked out exactly as committed; git never converts them.
+#
+# The tree is deliberately mixed -- chess_review/*.py, static/index.html and README.md are CRLF,
+# packaging/, scripts/, launcher.py, updater.py and most of tests/ are LF -- and a git with
+# core.autocrlf=true (the Windows default) would otherwise rewrite files on checkout or stage
+# and show every line as changed. `-text` switches that off for everyone, whatever their config.
+* -text
+
+# Binary assets: no diffs, no conversion.
+*.mp3 binary
+*.ico binary
