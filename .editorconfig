@@ -1,0 +1,26 @@
+# Line endings per file, matching what is committed -- see .gitattributes, which stops git from
+# converting them. This stops editors from doing it. The tree is deliberately mixed; the sections
+# below spell out the CRLF files, everything else is LF. Last matching section wins.
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+
+[README.md]
+end_of_line = crlf
+
+[chess_review/*.py]
+end_of_line = crlf
+
+[chess_review/{__init__,accuracy,fen,pov,updater}.py]
+end_of_line = lf
+
+[chess_review/static/index.html]
+end_of_line = crlf
+
+[scripts/compare_game.py]
+end_of_line = crlf
+
+[tests/{test_classify,test_facts}.py]
+end_of_line = crlf
