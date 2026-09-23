@@ -6,6 +6,7 @@ analyse.py spawns a worker Pool (spawn context) that re-execs this same exe."""
 
 import logging
 import multiprocessing
+import os
 import shutil
 import socket
 import sys
@@ -27,6 +28,40 @@ def _seed_book(bundle_root, data_dir) -> None:
         dst.mkdir(parents=True, exist_ok=True)
         for tsv in src.glob("*.tsv"):
             shutil.copy2(tsv, dst / tsv.name)
+
+
+def _unblock_bundle(bundle_root, frozen: bool) -> None:
+    """Windows marks a downloaded zip with a Zone.Identifier stream, and Explorer's extractor - current
+    WinRAR too - copies it onto every file it writes. .NET then refuses to load pywebview's assemblies
+    from the Internet zone and webview.start() dies resolving Python.Runtime.Loader.Initialize. Strip the
+    stream from our own binaries first: by the time .NET complains there is no window to say it in, and
+    which extractor the user reached for is not ours to control. Same trust check as the network-path one
+    in packaging/chess-review.spec."""
+    if not frozen or sys.platform != "win32":
+        return
+    dropped = 0
+    for path in bundle_root.rglob("*"):
+        if path.suffix.lower() not in (".dll", ".exe", ".pyd"):
+            continue
+        try:
+            os.remove(f"{path}:Zone.Identifier")   # no stream -> FileNotFoundError, the normal case
+            dropped += 1
+        except OSError:
+            pass
+    if dropped:
+        log.info("cleared the downloaded-file mark from %d bundled binaries", dropped)
+
+
+def _message_box(title: str, text: str) -> None:
+    """A plain Win32 dialog for a failure that leaves us no app window: a console-less exe would otherwise
+    just vanish, and the user never finds app.log on their own."""
+    if sys.platform != "win32":
+        return
+    try:
+        import ctypes
+        ctypes.windll.user32.MessageBoxW(None, text, title, 0x10)   # MB_ICONERROR
+    except Exception:
+        log.exception("could not show the error dialog")
 
 
 def _free_port(host: str, preferred: int) -> int:
@@ -63,12 +98,13 @@ def _setup_logging(data_dir) -> None:
 
 
 def main() -> None:
-    from chess_review.config import BUNDLE_ROOT, DATA, STOCKFISH
+    from chess_review.config import BUNDLE_ROOT, DATA, FROZEN, STOCKFISH
 
     _setup_logging(DATA)
     log.info("starting; data in %s", DATA)
     if not STOCKFISH.exists():
         log.error("Stockfish not found at %s - analysis will fail", STOCKFISH)
+    _unblock_bundle(BUNDLE_ROOT, FROZEN)   # before anything can try to load a .NET assembly
     _seed_book(BUNDLE_ROOT, DATA)
 
     from chess_review import serve, updater
@@ -83,13 +119,23 @@ def main() -> None:
     else:
         log.error("server did not come up on %s:%d", HOST, port)
         webview.create_window("Chess Review", html=f"<h2>The app failed to start.</h2><p>See <code>{DATA / 'app.log'}</code>.</p>")
-    # private_mode=False keeps localStorage (pinned profiles, the auto-analyse switch) between runs
-    webview.start(private_mode=False, storage_path=str(DATA / "webview"))
-
-    log.info("window closed: shutting down")
-    if serve.Handler.runner is not None:
-        serve.Handler.runner.analyser.close()
-        serve.Handler.runner.explorer.close()
+    try:
+        # private_mode=False keeps localStorage (pinned profiles, the auto-analyse switch) between runs
+        webview.start(private_mode=False, storage_path=str(DATA / "webview"))
+        log.info("window closed: shutting down")
+    except Exception:
+        # start() is where pywebview picks its backend and loads .NET, so this is where a blocked or
+        # broken install shows up - with no window of our own to report it in.
+        log.exception("the app window failed to open")
+        _message_box("Chess Review",
+                     "Chess Review could not open its window.\n\n"
+                     "The usual cause is Windows blocking the files it downloaded. Unblock the zip "
+                     "(right-click it, Properties, tick Unblock) and extract it again.\n\n"
+                     f"Details are in {DATA / 'app.log'}.")
+    finally:
+        if serve.Handler.runner is not None:
+            serve.Handler.runner.analyser.close()
+            serve.Handler.runner.explorer.close()
 
 
 if __name__ == "__main__":
