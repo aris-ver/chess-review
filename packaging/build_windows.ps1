@@ -96,5 +96,5 @@ if (-not $Version) {
 $Zip = Join-Path $Packaging "dist\chess-review-windows.zip"
 
 Write-Host ""
-Write-Host "App folder: $App\chess-review.exe"
+Write-Host "App folder: $App\Chess Review.exe"
 Write-Host "Share this: $Zip (new users); the chess-review-update-*.zip next to it is what the in-app updater takes"

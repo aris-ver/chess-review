@@ -1,5 +1,6 @@
 import json
 import os
+import shutil
 import sys
 import zipfile
 from pathlib import Path
@@ -88,7 +89,7 @@ def _fake_app(root: Path, version="v0.2.0", runtime_bytes=b"python-dll-v1") -> P
     (app / "_internal" / "chess_review" / "static").mkdir(parents=True)
     (app / "_internal" / "assets" / "book").mkdir(parents=True)
     (app / "_internal" / "bin").mkdir()
-    (app / "chess-review.exe").write_bytes(b"exe " + version.encode())
+    (app / pack.EXE).write_bytes(b"exe " + version.encode())
     (app / "_internal" / "python312.dll").write_bytes(runtime_bytes)
     (app / "_internal" / "base_library.zip").write_bytes(b"stdlib pycs compiled at " + version.encode())
     (app / "_internal" / "chess_review" / "static" / "index.html").write_text(f"<html>{version}</html>")
@@ -110,6 +111,7 @@ def _pack(app: Path, out: Path, version: str) -> tuple[Path, Path, str]:
     """pack.main() equivalent without argparse."""
     runtime = pack.runtime_fingerprint(app / "_internal")
     (app / "_internal" / pack.STAMP).write_text(json.dumps({"version": version, "runtime": runtime}))
+    shutil.copy2(app / pack.EXE, app / pack.LEGACY_EXE)     # what pack.main() does: the transitional copy
     out.mkdir()
     full, small = out / "chess-review-windows.zip", out / f"chess-review-update-{runtime}.zip"
     pack.write_zip(full, app, (f for f in app.rglob("*") if f.is_file()))
@@ -121,7 +123,8 @@ def test_update_zip_holds_only_the_app_layer(tmp_path):
     app = _fake_app(tmp_path / "build")
     full, small, runtime = _pack(app, tmp_path / "out", "v0.2.0")
     names = set(zipfile.ZipFile(small).namelist())
-    assert names == {"chess-review/chess-review.exe", "chess-review/_internal/build.json", "chess-review/_internal/base_library.zip",
+    assert names == {"chess-review/Chess Review.exe", "chess-review/chess-review.exe",
+                     "chess-review/_internal/build.json", "chess-review/_internal/base_library.zip",
                      "chess-review/_internal/chess_review/static/index.html", "chess-review/_internal/assets/book/a.tsv"}
     assert "chess-review/_internal/python312.dll" in zipfile.ZipFile(full).namelist()
     assert "chess-review/_internal/bin/stockfish.exe" in zipfile.ZipFile(full).namelist()
@@ -132,8 +135,20 @@ def test_unpack_update(tmp_path):
     _, small, runtime = _pack(app, tmp_path / "out", "v0.2.0")
     staged = updater.unpack(small, tmp_path / "stage", "update")
     assert staged == tmp_path / "stage" / "chess-review"
-    assert (staged / "chess-review.exe").read_bytes() == b"exe v0.2.0"
+    assert (staged / "Chess Review.exe").read_bytes() == b"exe v0.2.0"
     assert json.loads((staged / "_internal" / "build.json").read_text())["version"] == "v0.2.0"
+
+
+def test_both_exe_names_ship_so_an_older_updater_still_takes_the_zip(tmp_path):
+    """Up to v0.1.11 the exe was chess-review.exe, and that install's updater -- the one that reads the
+    zip -- rejects a build without it. Both names ship until those installs are gone."""
+    app = _fake_app(tmp_path / "build")
+    full, small, _ = _pack(app, tmp_path / "out", "v0.2.0")
+    for z in (full, small):
+        names = set(zipfile.ZipFile(z).namelist())
+        assert {"chess-review/Chess Review.exe", "chess-review/chess-review.exe"} <= names
+    staged = updater.unpack(small, tmp_path / "stage", "update")
+    assert (staged / "chess-review.exe").read_bytes() == (staged / "Chess Review.exe").read_bytes()
 
 
 def test_unpack_full_wants_a_python_runtime(tmp_path):

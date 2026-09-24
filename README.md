@@ -7,7 +7,7 @@ Design: `chess-review-spec.md`.
 ## Using it
 
 **Windows app:** [latest release](https://github.com/aris-ver/chess-review/releases/latest) → `chess-review-windows.zip`,
-unzip anywhere, run `chess-review.exe` (details under *Windows app* below). From a checkout, the same server runs as
+unzip anywhere, run `Chess Review.exe` (details under *Windows app* below). From a checkout, the same server runs as
 
 ```
 bash scripts/restart_server.sh          # http://127.0.0.1:8123/  (log: data/serve.log)

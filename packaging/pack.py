@@ -5,7 +5,7 @@
 Writes <app>/_internal/build.json = {version, runtime} and two zips, both wrapping a chess-review/ folder:
 
     chess-review-windows.zip            everything
-    chess-review-update-<runtime>.zip   chess-review.exe, _internal/base_library.zip, _internal/build.json,
+    chess-review-update-<runtime>.zip   the exe, _internal/base_library.zip, _internal/build.json,
                                         _internal/chess_review/**, _internal/assets/**  -  the parts that
                                         change between most releases
 
@@ -20,10 +20,15 @@ stdlib, compiled at build time) is PyInstaller output like the exe: its bytes di
 import argparse
 import hashlib
 import json
+import shutil
 import zipfile
 from pathlib import Path
 
 ZIP_ROOT = "chess-review"
+EXE = "Chess Review.exe"
+LEGACY_EXE = "chess-review.exe"          # what the exe was called up to v0.1.11; an updater from such an
+                                         # install looks for that name and refuses a zip without it, so the
+                                         # builds ship a byte-identical copy under both until those are gone
 APP_DIRS = ("chess_review", "assets")     # app-owned data under _internal: in the update zip, not the fingerprint
 GENERATED = ("base_library.zip",)         # PyInstaller output under _internal: same treatment
 EXCLUDED = ("bin",)                       # in neither
@@ -42,7 +47,9 @@ def runtime_fingerprint(internal: Path) -> str:
 
 
 def update_files(app: Path):
-    yield app / "chess-review.exe"
+    yield app / EXE
+    if (app / LEGACY_EXE).is_file():
+        yield app / LEGACY_EXE
     yield app / "_internal" / STAMP
     yield from (app / "_internal" / g for g in GENERATED if (app / "_internal" / g).is_file())
     for d in APP_DIRS:
@@ -57,13 +64,14 @@ def write_zip(path: Path, app: Path, files) -> None:
 
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("app", type=Path, help="the PyInstaller output folder (contains chess-review.exe and _internal/)")
+    p.add_argument("app", type=Path, help="the PyInstaller output folder (contains the exe and _internal/)")
     p.add_argument("--version", required=True)
     p.add_argument("--out", type=Path, required=True, help="where the zips go")
     args = p.parse_args()
     app, internal = args.app, args.app / "_internal"
-    if not (app / "chess-review.exe").is_file() or not internal.is_dir():
+    if not (app / EXE).is_file() or not internal.is_dir():
         raise SystemExit(f"{app} is not a chess-review build")
+    shutil.copy2(app / EXE, app / LEGACY_EXE)   # the transitional duplicate; not part of the fingerprint
 
     runtime = runtime_fingerprint(internal)
     (internal / STAMP).write_text(json.dumps({"version": args.version, "runtime": runtime}), encoding="ascii")

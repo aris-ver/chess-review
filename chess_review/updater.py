@@ -33,6 +33,8 @@ from .config import BUNDLE_ROOT, DATA, GITHUB_REPO, USER_AGENT
 
 log = logging.getLogger("updater")
 
+EXE_NAME = "Chess Review.exe"
+LEGACY_EXE_NAME = "chess-review.exe"    # up to v0.1.11; builds still ship both, so either may be the one here
 FULL_ASSET = "chess-review-windows.zip"
 UPDATE_ASSET = "chess-review-update-{runtime}.zip"
 ZIP_ROOT = "chess-review"       # both zips wrap the app folder
@@ -185,7 +187,7 @@ def unpack(zip_path: Path, dest: Path, kind: str) -> Path:
             with z.open(info) as src, open(target, "wb") as dst:
                 shutil.copyfileobj(src, dst)
     app = dest / ZIP_ROOT
-    if not (app / "chess-review.exe").is_file() or not (app / "_internal" / "chess_review").is_dir():
+    if not any((app / n).is_file() for n in (EXE_NAME, LEGACY_EXE_NAME)) or not (app / "_internal" / "chess_review").is_dir():
         raise ValueError("the downloaded zip does not look like a chess-review build")
     if kind == "update":
         if not (app / "_internal" / "build.json").is_file():
@@ -199,7 +201,7 @@ def write_apply_script(path: Path, pid: int, stage: Path, install: Path, kind: s
     """The PowerShell that finishes the update after this process exits.
 
     'update': copy the staged files over the install, file by file (each through a .new rename, so a file is
-    either old or new, never truncated). 'full': rename _internal aside, move the new one in, replace the exe,
+    either old or new, never truncated). 'full': rename _internal aside, move the new one in, replace the exes,
     delete the old runtime; if moving the new _internal fails the old one is put back. Either way the app is
     started again at the end, and whatever happened is in DATA/update.log."""
     q = lambda p: "'" + str(p).replace("'", "''") + "'"  # noqa: E731
@@ -208,7 +210,8 @@ def write_apply_script(path: Path, pid: int, stage: Path, install: Path, kind: s
         f"$log = {q(logfile)}",
         f"$stage = {q(stage)}",
         f"$install = {q(install)}",
-        f"$exe = Join-Path $install 'chess-review.exe'",
+        f"$exeNames = @({q(EXE_NAME)}, {q(LEGACY_EXE_NAME)})",
+        "function Find-Exe { foreach ($n in $exeNames) { $p = Join-Path $install $n; if (Test-Path -LiteralPath $p) { return $p } }; return (Join-Path $install $exeNames[0]) }",
         "function Log($m) { Add-Content -Path $log -Value ((Get-Date -Format s) + ' ' + $m) }",
         f"Log 'waiting for pid {pid}'",
         f"try {{ Wait-Process -Id {pid} -Timeout 120 -ErrorAction Stop }} catch {{ }}",
@@ -248,7 +251,7 @@ def write_apply_script(path: Path, pid: int, stage: Path, install: Path, kind: s
             "    Move-Item -LiteralPath $old -Destination (Join-Path $install '_internal') -Force",
             "    throw",
             "  }",
-            "  Retry 'replace exe' { Replace-File (Join-Path $stage 'chess-review.exe') $exe }",
+            "  Retry 'replace exe' { Get-ChildItem -LiteralPath $stage -Filter *.exe -File | ForEach-Object { Replace-File $_.FullName (Join-Path $install $_.Name) } }",
             "  Remove-Item -LiteralPath $old -Recurse -Force -ErrorAction SilentlyContinue",
         ]
     lines += [
@@ -257,6 +260,7 @@ def write_apply_script(path: Path, pid: int, stage: Path, install: Path, kind: s
         "} catch {",
         "  Log ('FAILED: ' + $_)",
         "}",
+        "$exe = Find-Exe",
         "Start-Process -FilePath $exe -WorkingDirectory $install",
         "",
     ]
