@@ -2360,7 +2360,9 @@ function go(ply) {
   if (target === state.ply) { renderNav(); return; }        // nothing to do: no re-render, no sound
   state.ply = target;
   state.sel = null; state.legal = null; state.showBest = false; $('b-best').classList.remove('active'); drag = null; clearMarks();
-  if (state.variation && state.ply < state.variation.basePly) { dropVariation(); renderMoveList(); }
+  // <= not <: landing back on the move it branched from ends the variation. A variation off the very first
+  // move has no ply behind it to step back to, so < would leave no way out of it at all.
+  if (state.variation && state.ply <= state.variation.basePly) { dropVariation(); renderMoveList(); }
   update();
 }
 function nextKey() {
@@ -2421,8 +2423,11 @@ if (location.search.includes('selftest')) (async () => {
     const legal2 = await legalFor(currentFen()); await explore(currentFen(), legal2[0]);
     say(`second explore: variation moves ${state.variation.moves.length}, ply ${state.ply}`);
     go(state.ply - 1); say(`back one: ply ${state.ply}, inVariation=${inVariation()}, moves kept ${state.variation.moves.length}`);
-    go(9); say(`back before branch: variation=${state.variation}, ply ${state.ply}, varrow=${!!document.querySelector('.varrow')}`);
+    go(state.variation.basePly); say(`back onto the branch point: variation=${state.variation} (expect null), ply ${state.ply}, varrow=${!!document.querySelector('.varrow')}`);
     go(10); go(11); say(`forward again on main line: ply ${state.ply}, san=${currentMove().san} (main line: ${state.game.moves[10].san})`);
+    go(0); const first = await legalFor(currentFen()); await explore(currentFen(), first[0]);
+    say(`variation off move one: base ${state.variation.basePly}, ply ${state.ply}, inVariation=${inVariation()}`);
+    go(0); say(`back to the start: variation=${state.variation} (expect null), ply ${state.ply} -- there is no ply behind 0 to escape through`);
     cycleLabel('white', 'best'); const a = state.ply; cycleLabel('white', 'best'); say(`cycle best white: ${a} -> ${state.ply}`);
     say('DONE');
   } catch (e) { say('ERROR ' + e.stack); }
