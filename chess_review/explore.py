@@ -213,9 +213,18 @@ class Explorer:
         before_main, before_ranks = self.evaluate(board)
         after = board.copy(stack=False)
         after.push(move)
-        # a move the search already had a line for is graded by that line (the numbers the user was looking at);
-        # anything else gets its own fixed-budget search
+        # A move the search already had a line for is graded by that line (the numbers the user was looking
+        # at); anything else gets its own fixed-budget search.
         after_main = _after_from_line(before_ranks, uci, before_main["nodes"]) or self.evaluate(after)[0]
+        # The grade comes from that line, but the continuation must not: below rank 1, and wherever the pv
+        # was cut short, its tail is a weaker opinion than a search of the new position - and sometimes no
+        # move at all. That tail is exactly what draws the arrow at the end of a variation and names the
+        # move the coach says to play, so the new position is searched for it. evaluate() caches, so the
+        # move that was not in a line has already paid for this, and following a line costs one search a move.
+        if not after.is_game_over():
+            with contextlib.suppress(RuntimeError):     # the engine crashes on some positions; keep the tail
+                own = self.evaluate(after)[0]
+                after_main = {**after_main, "best_move": own["best_move"], "pv": own["pv"]}
 
         # Two-row "game" through the normal classifier so labels/comments match the main line exactly.
         rows = [
