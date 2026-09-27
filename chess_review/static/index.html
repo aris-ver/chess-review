@@ -1580,11 +1580,12 @@ function renderBoard() {
 
   // --- squares, highlights, coordinates, legal-move markers
   let out = '';
+  const overlays = squareOverlays(mv);
   for (let r = 0; r < 8; r++) for (let f = 0; f < 8; f++) {
     const name = sqName(f, r), [x, y] = sqXY(name);
     const light = (f + r) % 2 === 1;
     out += `<rect class="sq ${light ? 'light' : 'dark'}" x="${x}" y="${y}" width="12.5" height="12.5"/>`;
-    if (hungSquares(mv).includes(name)) out += squareMark(name);
+    if (overlays[name]) out += squareMark(name, overlays[name]);
   }
   for (let i = 0; i < 8; i++) {
     const file = state.flipped ? 7 - i : i, rank = state.flipped ? i : 7 - i;
@@ -1689,7 +1690,9 @@ const ARROW_SW = 1.375, ARROW_HW = 3.25, ARROW_HL = 4.5, ARROW_GAP = 4.5;   // h
 // weight (0-1) scales an arrow's thickness and opacity -- used to rank a swarm of candidate moves by strength
 function arrowStyle(kind, weight) {
   const [r, g, b] = ARROW[kind];
-  return `fill:rgba(${r}, ${g}, ${b}, ${(0.25 + 0.5 * weight * weight).toFixed(2)})`;   // 1 -> .75, .68 -> .48, .45 -> .35 -- translucent, so the pieces under an arrow stay readable
+  // 1 -> .64 (chess.com's 0.8 fill x 0.8 element opacity, spec R14), .68 -> .41, .45 -> .30 -- translucent,
+  // so the pieces under an arrow stay readable
+  return `fill:rgba(${r}, ${g}, ${b}, ${(0.64 * (0.33 + 0.67 * weight * weight)).toFixed(2)})`;
 }
 function arrow(uci, kind, weight = 1, bend = 'long') {
   const [x1, y1] = sqXY(uci.slice(0, 2)).map(v => v + 6.25), [x2, y2] = sqXY(uci.slice(2, 4)).map(v => v + 6.25);
@@ -1762,16 +1765,41 @@ function takenSquare(mv) { const to = mv && mv.reply_uci ? mv.reply_uci.slice(2,
 // bishop needed Be2): the green arrow would leave the square the red one lands on, two arrows fighting over one
 // piece. The red arrow alone tells it -- what I'm losing -- so the green arrow and the x stay off the board.
 function rescueMove(mv) { return !!(mv && mv.best_uci && takenSquare(mv) === mv.best_uci.slice(0, 2)); }
+// The reply to a bad move is drawn only when it is concrete: it takes something, or the move left something to take.
+function replyShown(mv) { return !!(mv && BAD.has(mv.label) && mv.reply_uci && (parseFen(currentFen())[mv.reply_uci.slice(2, 4)] || (mv.hung || []).length)); }
+// Neither in the sandbox's live swarm nor at the end of a variation: there the arrows belong to the side to move.
+function sideToMoveArrows(mv) {
+  const live = !!(state.game && state.game.sandbox && !state.showBest);
+  return live || (!!mv && inVariation() && state.ply === line().length);
+}
+// Where a red arrow lands gets chess.com's orange square: my bad move's refutation (spec R8), or the threat a
+// good move makes (R7).
+function orangeSquare(mv) {
+  if (!mv) return null;
+  if (isMine(mv) && replyShown(mv)) return mv.reply_uci.slice(2, 4);
+  if (mv.threat && !sideToMoveArrows(mv)) return mv.threat.slice(2, 4);
+  return null;
+}
+// The 0.8 squares under the pieces: red on what my bad move left hanging, orange where the red arrow lands.
+function squareOverlays(mv) {
+  const out = {};
+  hungSquares(mv).forEach(sq => { out[sq] = 'punish'; });
+  const o = orangeSquare(mv);
+  if (o) out[o] = 'threat';
+  return out;
+}
 // What the board says about the current move, like chess.com's review -- at most three things, all about one story:
 //   my bad move        green  the move to play instead        red   the opponent's refutation (why it was bad)
 //                      red squares on the pieces it left hanging, an x on the one the refutation takes --
 //                      unless the better move was to move that piece: then the red arrow alone (rescueMove)
 //   their bad move     blue   my reply that punishes it -- and nothing else (what they should have played is their lesson)
-//   The red/blue reply is drawn only when it is concrete: it takes something, or the move left something to take.
+//   The red/blue reply is drawn only when it is concrete (replyShown); red gets an orange square on its target.
 //   A positional error gets the green arrow alone, as on chess.com.
-//   a good move        orange what the move does -- the trade it starts, what it attacks, the castling or pawn push
-//                      it prepares (facts.idea_arrows); for mine, also green for the engine's move when it wasn't
-//                      the one played (same rule as the "X was better" text in the bubble)
+//   a good move        red    the threat it makes (facts.threat_move), orange square on its target -- or else
+//                      orange what the move does -- the trade it starts, what it attacks, the castling or pawn push
+//                      it prepares (facts.idea_arrows). Never green: chess.com keeps the engine's move for its
+//                      Best mode (spec R6), here the Best button.
+//   a forced move, the move that ends the game: nothing (spec R13)
 // Two places where the arrows belong to the SIDE TO MOVE instead, because the question there is "what now?":
 // the sandbox (the live swarm) and the end of a variation (the engine's move from here, green, or the red/blue
 // reply when the last move was bad -- same move, drawn once). The last move keeps its badge and its bubble text.
@@ -1781,8 +1809,9 @@ function renderArrows() {
   if (state.showBest && bestMoveHere()) list.push([bestMoveHere(), 'best', 1]);
   const live = state.game && state.game.sandbox && !state.showBest;
   const leaf = !!mv && !live && inVariation() && state.ply === line().length;
-  if (!live && !leaf && mv && isMine(mv) && mv.best_uci && mv.best_uci !== mv.uci && mv.label && !['book', 'forced'].includes(mv.label) && !rescueMove(mv)) list.push([mv.best_uci, 'best', 1]);
-  if (mv && BAD.has(mv.label) && mv.reply_uci && (parseFen(fen)[mv.reply_uci.slice(2, 4)] || (mv.hung || []).length)) list.push([mv.reply_uci, isMine(mv) ? 'punish' : 'blue', 1]);
+  if (!live && !leaf && mv && isMine(mv) && BAD.has(mv.label) && mv.best_uci && mv.best_uci !== mv.uci && !rescueMove(mv)) list.push([mv.best_uci, 'best', 1]);
+  if (replyShown(mv)) list.push([mv.reply_uci, isMine(mv) ? 'punish' : 'blue', 1]);
+  if (mv && !live && !leaf && mv.threat) list.push([mv.threat, 'punish', 1]);
   if (mv && !live && !leaf) (mv.idea || []).forEach(u => list.push([u, 'threat', 1]));
   if (leaf && mv.next_best_uci && !state.showBest && !list.some(a => a[0] === mv.next_best_uci)) list.push([mv.next_best_uci, 'best', 1]);
   // sandbox: a swarm of the engine's top candidates at the position about to be played, sized by rank --

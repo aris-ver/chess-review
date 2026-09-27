@@ -16,6 +16,7 @@ VALUE = {chess.PAWN: 100, chess.KNIGHT: 300, chess.BISHOP: 300, chess.ROOK: 500,
 NAMES = {chess.PAWN: "pawn", chess.KNIGHT: "knight", chess.BISHOP: "bishop", chess.ROOK: "rook", chess.QUEEN: "queen", chess.KING: "king"}
 REFUTATION_PLIES = 5
 GOOD = {"best", "excellent", "good", "great", "brilliant"}   # labels whose move gets its idea drawn (see idea_arrows)
+THREAT_GAIN = 200                                              # least SEE a threatened capture must win (threat_move)
 
 
 @dataclass
@@ -41,6 +42,7 @@ class MoveFacts:
     motif: Optional[str] = None                               # fork | pin | discovered | skewer, on the reply
     motif_detail: Optional[str] = None
     idea: list[str] = field(default_factory=list)             # UCI arrows illustrating what a good move does
+    threat: Optional[str] = None                              # UCI, what a good move threatens next (threat_move)
     clock_remaining: Optional[int] = None
     time_spent: Optional[int] = None
 
@@ -269,6 +271,46 @@ def idea_arrows(board: chess.Board, played: chess.Move, reply_pv: list[str]) -> 
     return []
 
 
+def threat_move(board: chess.Board, played: chess.Move, reply_pv: list[str]) -> Optional[str]:
+    """What a good move threatens (UCI): the move the mover would play next if the opponent passed -- mate in
+    one, or else the best capture winning at least THREAT_GAIN that the move itself created. chess.com draws it
+    red with an orange square on its target (docs/chesscom-review/spec.md, R7). None after a check (passing
+    isn't legal) or when the reply takes the moved piece (a trade in progress, not a threat).
+
+    board: the position before the move; reply_pv: the engine's line from the position after it."""
+    b = board.copy(stack=False)
+    b.push(played)
+    if b.is_check() or b.is_game_over():
+        return None
+    if reply_pv:
+        try:
+            r = chess.Move.from_uci(reply_pv[0])
+        except ValueError:
+            r = None
+        if r and r.to_square == played.to_square and b.is_capture(r):
+            return None
+    b.push(chess.Move.null())
+    for m in b.legal_moves:
+        if b.gives_check(m):
+            b.push(m)
+            mate = b.is_checkmate()
+            b.pop()
+            if mate:
+                return m.uci()
+    already: dict[chess.Square, int] = {}      # what the mover could already win before the move, per target
+    for m in board.legal_moves:
+        if board.is_capture(m) and not board.is_en_passant(m):
+            already[m.to_square] = max(already.get(m.to_square, 0), see(board, m))
+    best, best_gain = None, THREAT_GAIN - 1
+    for m in b.legal_moves:
+        if not b.is_capture(m) or b.is_en_passant(m) or b.piece_type_at(m.to_square) == chess.KING:
+            continue
+        s = see(b, m)
+        if s > best_gain and s > already.get(m.to_square, 0):
+            best, best_gain = m, s
+    return best.uci() if best else None
+
+
 # --- assembly -----------------------------------------------------------------
 
 def _sans(board: chess.Board, pv_uci: list[str], limit: int) -> list[str]:
@@ -314,8 +356,11 @@ def extract(move: dict, board: chess.Board, eval_before: dict, eval_after: Optio
             f.hung_pieces = hung_pieces(board_after, mover)
         if pv:
             f.motif, f.motif_detail = motif(board_after, chess.Move.from_uci(pv[0]))
-        if f.label in GOOD:
-            f.idea = idea_arrows(board, played, pv)
+        # a good move's arrows tell one story: its threat if it makes one, else its idea -- and nothing on the
+        # move that ends the game (spec R13)
+        if f.label in GOOD and not board_after.is_game_over():
+            f.threat = threat_move(board, played, pv)
+            f.idea = [] if f.threat else idea_arrows(board, played, pv)
 
         m0, m1 = eval_before.get("mate_in"), eval_after.get("mate_in")
         if m0 is not None and m0 > 0 and not (m1 is not None and m1 < 0):

@@ -246,6 +246,7 @@ class Explorer:
             "clock": None, "spent": None,
             "comment": explain.comment(facts), "hung": [h["square"] for h in facts.hung_pieces],
             "reply_uci": facts.refutation_uci[0] if facts.refutation_uci else None, "idea": facts.idea,
+            "threat": facts.threat,
             # the engine's move in the new position, so a variation can be followed move by move
             "next_best_uci": after_main["best_move"], "next_best_san": facts.refutation[0] if facts.refutation else None,
             "game_over": after.is_game_over(),

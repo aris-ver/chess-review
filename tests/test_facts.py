@@ -1,6 +1,6 @@
 import chess
 
-from chess_review.facts import extract, hung_pieces, idea_arrows, material_swing, motif, see
+from chess_review.facts import extract, hung_pieces, idea_arrows, material_swing, motif, see, threat_move
 
 
 def test_see_simple_exchanges():
@@ -178,3 +178,44 @@ def test_idea_only_for_good_labels():
            "move_played": "e7e6", "label": "good"}
     assert extract(row, b, before, after).idea == ["d7d5"]
     assert extract({**row, "label": "inaccuracy"}, b, before, after).idea == []
+
+
+# --- threat: what a good move threatens next (chess.com's red arrow on a good move) ------
+
+def _threat(fen, uci, pv=()):
+    return threat_move(chess.Board(fen), chess.Move.from_uci(uci), list(pv))
+
+
+def test_threat_mate_in_one():
+    # 3.Qh5 threatens Qxf7#
+    assert _threat("r1bqkbnr/pppp1ppp/2n5/4p3/2B1P3/8/PPPP1PPP/RNBQK1NR w KQkq - 2 3", "d1h5", ["g7g6"]) == "h5f7"
+
+
+def test_threat_winning_capture_the_move_created():
+    # Nf3 attacks the loose rook on g5
+    assert _threat("7k/8/8/6r1/8/8/8/4K1N1 w - - 0 1", "g1f3", ["h8g8"]) == "f3g5"
+    # the rook was already en prise to the bishop before the move: nothing new
+    assert _threat("7k/8/8/6r1/8/4B3/8/4K1N1 w - - 0 1", "g1f3", ["h8g8"]) is None
+    # a pawn isn't worth an arrow
+    assert _threat("7k/8/8/6p1/8/8/8/4K1N1 w - - 0 1", "g1f3", ["h8g8"]) is None
+
+
+def test_no_threat_mid_trade_or_after_check():
+    # the bishop on h5 takes the knight back: a trade in progress, not a threat
+    assert _threat("7k/8/8/6rb/8/8/8/4K1N1 w - - 0 1", "g1f3", ["h5f3"]) is None
+    # Nf7+ is check: passing isn't legal, the idea arrows tell that story
+    assert _threat("r6k/8/8/6N1/8/8/8/4K3 w - - 0 1", "g5f7", ["h8g8"]) is None
+
+
+def test_threat_replaces_the_idea_and_nothing_on_mate():
+    b = chess.Board("r1bqkbnr/pppp1ppp/2n5/4p3/2B1P3/8/PPPP1PPP/RNBQK1NR w KQkq - 2 3")
+    before = {"eval_cp": 50, "mate_in": None, "pv": ["d1h5"], "best_move": "d1h5"}
+    after = {"eval_cp": -50, "mate_in": None, "pv": ["g7g6", "h5f3"]}
+    f = extract(_move(b, "d1h5", best_san="Qh5", label="best"), b, before, after)
+    assert f.threat == "h5f7" and f.idea == []
+    # Qxf7# itself: the game is over, no arrows
+    b = chess.Board("r1bqkb1r/pppp1ppp/2n2n2/4p2Q/2B1P3/8/PPPP1PPP/RNB1K1NR w KQkq - 4 4")
+    before = {"eval_cp": None, "mate_in": 1, "pv": ["h5f7"], "best_move": "h5f7"}
+    after = {"eval_cp": None, "mate_in": 0, "pv": []}
+    f = extract(_move(b, "h5f7", best_san="Qxf7#", label="best"), b, before, after)
+    assert f.threat is None and f.idea == []

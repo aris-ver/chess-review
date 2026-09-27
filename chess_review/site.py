@@ -99,6 +99,7 @@ def build_game(game: dict, positions: list[dict], moves: list[dict], critical: l
             "hung": [h["square"] for h in facts.hung_pieces] if facts else [],
             "reply_uci": facts.refutation_uci[0] if facts and facts.refutation_uci else None,
             "idea": facts.idea if facts else [],
+            "threat": facts.threat if facts else None,
         })
         c = crit_by_ply.get(m["ply"])
         if c and facts:
