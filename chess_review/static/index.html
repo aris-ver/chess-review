@@ -895,13 +895,21 @@ async function renderProfiles() {
       renderProfiles();
     };
   });
+  // Enter in the username box adds the profile. Browsers submit a form on Enter by themselves, but not every
+  // webview does, so it's handled here (preventDefault keeps it from submitting twice where they do).
+  $('addform').username.onkeydown = e => {
+    if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); $('addform').requestSubmit(); }
+  };
   $('addform').onsubmit = async e => {
     e.preventDefault();
     const f = e.target, body = { source: f.source.value, username: f.username.value.trim() };
-    if (!body.username) return;
-    const r = await fetch('api/profiles', { method: 'POST', body: JSON.stringify(body) });
-    const d = await r.json();
+    if (!body.username || f.dataset.busy) return;
+    f.dataset.busy = '1';
+    let r, d;
+    try { r = await fetch('api/profiles', { method: 'POST', body: JSON.stringify(body) }); d = await r.json(); }
+    finally { delete f.dataset.busy; }
     if (!r.ok) { toast(d.error === 'busy' ? `Busy: ${jobText(d.job)}` : d.error); return; }
+    f.username.value = '';
     if (!d.job) { location.hash = '#/p/' + d.profile.id; return; }
     toast(`Fetching ${body.username}'s games from chess.com…`);
     await renderProfiles();
