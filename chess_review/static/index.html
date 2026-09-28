@@ -123,9 +123,12 @@ dialog#whatsnew .md p { margin: 8px 0; } dialog#whatsnew .md a { color: var(--ac
 /* board setup editor */
 .setup { display: grid; grid-template-columns: minmax(280px, 560px) 300px; gap: 20px; justify-content: center; max-width: 920px; margin: 24px auto 0; align-items: start; }
 .setup-board { display: grid; grid-template-columns: repeat(8, 1fr); aspect-ratio: 1; border-radius: 4px; overflow: hidden; }
-.setup-board .sq { position: relative; aspect-ratio: 1; }
+.setup-board .sq { position: relative; aspect-ratio: 1; container-type: inline-size; }
 .setup-board.tooling .sq { cursor: none; }
 .setup-board .sq.light { background: var(--light); } .setup-board .sq.dark { background: var(--dark); }
+.setup-board .coord { position: absolute; font-size: 21cqw; font-weight: 700; line-height: 1; pointer-events: none; user-select: none; }
+.setup-board .coord.rank { top: 6%; left: 5%; } .setup-board .coord.file { right: 5%; bottom: 3%; }
+.setup-board .coord.onlight { color: var(--dark); } .setup-board .coord.ondark { color: var(--light); }
 .setup-board .sq img, .setup-board .sq svg { position: absolute; inset: 6%; width: 88%; height: 88%; pointer-events: none; }
 .setup-panel { display: flex; flex-direction: column; gap: 12px; }
 .palette { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; background: var(--panel); border-radius: 8px; padding: 8px; }
@@ -1080,7 +1083,12 @@ function renderSetupBoard() {
     let ff = f, rr = r;
     if (setup.flipped) { ff = 7 - f; rr = 7 - r; }
     const sq = sqName(ff, rr), ch = setup.board[sq];
-    cells.push(`<div class="sq ${(ff + rr) % 2 ? 'dark' : 'light'}" data-sq="${sq}">${ch ? pieceHTML(ch) : ''}</div>`);
+    // light on (file + rank) odd, so a1 is dark - the same way round as the review board draws it
+    const light = (ff + rr) % 2 === 1, on = light ? 'onlight' : 'ondark';
+    // the rank down the left edge and the file along the bottom one, whichever way the board is turned
+    const co = (f === 0 ? `<span class="coord rank ${on}">${rr + 1}</span>` : '')
+             + (r === 0 ? `<span class="coord file ${on}">${'abcdefgh'[ff]}</span>` : '');
+    cells.push(`<div class="sq ${light ? 'light' : 'dark'}" data-sq="${sq}">${co}${ch ? pieceHTML(ch) : ''}</div>`);
   }
   $('setupboard').innerHTML = cells.join('');
   $('setupboard').querySelectorAll('.sq').forEach(el => el.onclick = () => {
