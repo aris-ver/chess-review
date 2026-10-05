@@ -92,6 +92,58 @@ def test_miss_after_opponent_error(monkeypatch):
     assert out[2]["label"] == "miss"
 
 
+def _after_black_error(white_before: int, white_after: int) -> list[dict]:
+    """1. e4 f6?? (black's error), 2. a3: white's eval before 2. a3 and after it, white POV."""
+    b = chess.Board()
+    rows = []
+    rows.append(_pos(0, b, "e2e4", cp=30, best="e2e4")); b.push_uci("e2e4")
+    rows.append(_pos(1, b, "f7f6", cp=-30, best="e7e5")); b.push_uci("f7f6")
+    rows.append(_pos(2, b, "a2a3", cp=white_before, best="d2d4")); b.push_uci("a2a3")
+    rows.append(_pos(3, b, None, cp=-white_after))
+    return rows
+
+
+@pytest.mark.parametrize("before, after, label", [
+    (400, -60, "miss"),         # 81% -> 44%: the whole gift handed back and a bit more -- still a miss, as on chess.com
+    (400, -900, "blunder"),     # 81% -> 3%: the move throws the game away, that is a blunder whatever came before
+])
+def test_miss_is_a_chance_not_punished(monkeypatch, before, after, label):
+    monkeypatch.setattr(book, "is_book", lambda key: False)
+    out = classify_game({"game_id": "g", "my_colour": "white", "time_control": None}, _after_black_error(before, after))
+    assert out[2]["label"] == label
+
+
+def test_no_miss_without_a_chance(monkeypatch):
+    """Black's error only took white from lost to bad (-800 -> -300, 25%): white had no win to miss."""
+    monkeypatch.setattr(book, "is_book", lambda key: False)
+    b = chess.Board()
+    rows = []
+    rows.append(_pos(0, b, "e2e4", cp=-800, best="e2e4")); b.push_uci("e2e4")
+    rows.append(_pos(1, b, "f7f6", cp=800, best="e7e5")); b.push_uci("f7f6")      # black: 95% -> 75%
+    rows.append(_pos(2, b, "a2a3", cp=-300, best="d2d4")); b.push_uci("a2a3")
+    rows.append(_pos(3, b, None, cp=500))                                        # white: 25% -> 14%
+    out = classify_game({"game_id": "g", "my_colour": "white", "time_control": None}, rows)
+    assert out[1]["wp_loss"] > 10
+    assert out[2]["label"] == "mistake"
+
+
+def test_recapture_is_not_great(monkeypatch):
+    """1. e4 d5 2. exd5 Qxd5: the only good move, but taking back is no find -> best."""
+    monkeypatch.setattr(book, "is_book", lambda key: False)
+    b = chess.Board()
+    rows = []
+    for ply, uci, cp in ((0, "e2e4", 30), (1, "d7d5", -30), (2, "e4d5", 30), (3, "d8d5", -30)):
+        rows.append(_pos(ply, b, uci, cp=cp, best=uci))
+        if ply == 3:
+            mpv = {fen_key(b.fen()): [{"rank": 1, "move": "d8d5", "eval_cp": -30, "mate_in": None},
+                                      {"rank": 2, "move": "g8f6", "eval_cp": -400, "mate_in": None}]}
+        b.push_uci(uci)
+    rows.append(_pos(4, b, None, cp=30))
+    out = classify_game({"game_id": "g", "my_colour": "white", "time_control": None}, rows, mpv)
+    assert out[3]["only_move"] is True
+    assert out[3]["label"] == "best"
+
+
 def test_great_needs_multipv(monkeypatch):
     monkeypatch.setattr(book, "is_book", lambda key: False)
     b = chess.Board()
