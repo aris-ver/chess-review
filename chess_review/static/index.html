@@ -289,7 +289,6 @@ svg.arrows.marks { z-index: auto; }
 .boardbox.dragging { cursor: grabbing; }
 .badge { position: absolute; width: 5.75%; height: 5.75%; transform: translate(-50%, -50%); filter: drop-shadow(0 .5px 1px rgba(0,0,0,.35)); }
 .badge img, .badge svg { width: 100%; height: 100%; display: block; }
-.badge.lost circle { fill: #f8553f; } .badge.lost path { stroke: #fff; stroke-width: 2.6; stroke-linecap: round; }
 .ico img { width: 100%; height: 100%; display: block; }
 .sq.light { fill: var(--light); } .sq.dark { fill: var(--dark); }
 .coord { font-size: 2.6px; font-weight: 700; pointer-events: none; }
@@ -1770,16 +1769,17 @@ function drawArrows(list, el = $('arrows')) {
     return arrow(u, k, w, bend);
   }).join('');
 }
-// The pieces a bad move of mine left hanging: red squares on the board, and the one the refutation takes gets an x.
+// The pieces a bad move of mine left hanging: red squares on the board (the one the refutation takes is orange).
 // The opponent's errors don't get them -- the review is for me, and there the board says only how to punish.
 // In the sandbox both sides are "me": you are studying whoever moved.
 function isMine(mv) { return mv.is_mine || !!(state.game && state.game.sandbox); }
 function hungSquares(mv) { return mv && isMine(mv) && BAD.has(mv.label) ? (mv.hung || []) : []; }
-// The piece the refutation takes, when my bad move left it hanging (the x badge goes on it).
+// The piece the refutation takes, when my bad move left it hanging. No badge on it: a red x is chess.com's Miss
+// icon, and on the board it read as "this was a miss".
 function takenSquare(mv) { const to = mv && mv.reply_uci ? mv.reply_uci.slice(2, 4) : null; return to && hungSquares(mv).includes(to) ? to : null; }
 // My bad move hung a piece and the fix is to move that very piece (3.Nc3?! when c4 needed cxd5; d6?? when the
 // bishop needed Be2): the green arrow would leave the square the red one lands on, two arrows fighting over one
-// piece. The red arrow alone tells it -- what I'm losing -- so the green arrow and the x stay off the board.
+// piece. The red arrow alone tells it -- what I'm losing -- so the green arrow stays off the board.
 function rescueMove(mv) { return !!(mv && mv.best_uci && takenSquare(mv) === mv.best_uci.slice(0, 2)); }
 // The reply to a bad move is drawn only when it is concrete: it takes something, or the move left something to take.
 function replyShown(mv) { return !!(mv && BAD.has(mv.label) && mv.reply_uci && (parseFen(currentFen())[mv.reply_uci.slice(2, 4)] || (mv.hung || []).length)); }
@@ -1806,7 +1806,7 @@ function squareOverlays(mv) {
 }
 // What the board says about the current move, like chess.com's review -- at most three things, all about one story:
 //   my bad move        green  the move to play instead        red   the opponent's refutation (why it was bad)
-//                      red squares on the pieces it left hanging, an x on the one the refutation takes --
+//                      red squares on the pieces it left hanging, orange on the one the refutation takes --
 //                      unless the better move was to move that piece: then the red arrow alone (rescueMove)
 //   their bad move     blue   my reply that punishes it -- and nothing else (what they should have played is their lesson)
 //   The red/blue reply is drawn only when it is concrete (replyShown); red gets an orange square on its target.
@@ -1876,16 +1876,10 @@ function badgeAt(name, lb, dx = 11.3, dy = 1.2) {
   const img = ASSETS.hasIcons ? `<img src="${iconSrc(lb)}" alt="${lb}">` : `<svg><use href="#ic-${lb}"/></svg>`;
   return `<div class="badge" style="left:${x + dx}%;top:${y + dy}%">${img}</div>`;
 }
-function lostBadge(name) {
-  const [x, y] = sqXY(name);
-  return `<div class="badge lost" style="left:${x + 11.3}%;top:${y + 1.2}%"><svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="10"/><path d="M6 6l8 8M14 6l-8 8"/></svg></div>`;
-}
 function renderBadges() {
   const g = state.game, mv = currentMove();
   let out = '';
   if (mv && mv.label && LABEL_NAME[mv.label]) out += badgeAt(mv.uci.slice(2, 4), mv.label);
-  const lost = takenSquare(mv);
-  if (lost && !rescueMove(mv)) out += lostBadge(lost);
   if (ASSETS.hasIcons && !inVariation() && state.ply === g.moves.length && g.moves.length && g.result) {
     const pieces = parseFen(currentFen());
     const kings = Object.entries(pieces).filter(([, ch]) => ch.toLowerCase() === 'k');
