@@ -9,14 +9,17 @@ Labels (chess.com vocabulary, deterministic definitions):
   forced      only legal move
   brilliant   engine-approved sacrifice (SEE says the piece can be won) that the engine's line doesn't
               win straight back, and that isn't already a crush
-  great       the engine's move and the only good one (MultiPV #1 - #2 > ONLY_MOVE_GAP)
+  great       the engine's move and the only good one (MultiPV #1 - #2 > ONLY_MOVE_GAP), unless it is a
+              recapture: taking back on the square the opponent just took on is the only move but no find
   best        the engine's move
   excellent   loss <= EXCELLENT
   good        loss <= GOOD
   inaccuracy  loss <= MISTAKE
   mistake     loss <= BLUNDER
-  miss        a missed win: the opponent just erred or a forced mate was on, the move gave part of it
-              back but the mover is still ahead (any size of loss - chess.com's "Miss")
+  miss        a missed chance: the opponent just erred (or a forced mate was on) and the move, a mistake
+              or worse, didn't punish it. The mover wasn't losing before it (>= MISS_BEFORE_MIN) and isn't
+              lost after it (>= MISS_AFTER_MIN): a move that throws the game away stays a blunder.
+              Fitted to chess.com's own labels on docs/chesscom-review (48 misses in 616 plies).
   blunder     loss > BLUNDER
 
 Material floor: win% barely moves in a decided position, so a move that hangs
@@ -41,6 +44,8 @@ from .config import (
     CP_MISTAKE,
     EXCELLENT,
     INACCURACY,
+    MISS_AFTER_MIN,
+    MISS_BEFORE_MIN,
     MISTAKE,
     ONLY_MOVE_GAP,
 )
@@ -157,6 +162,7 @@ def classify_game(game: dict, rows: list[dict], multipv: Optional[dict[str, list
     last_clock = {"white": base, "black": base}
     my_colour = game["my_colour"]
     prev_loss: Optional[float] = None
+    last_capture: Optional[int] = None      # the square the previous move captured on
     multipv = multipv or {}
 
     for i, r in enumerate(rows[:-1]):
@@ -183,6 +189,8 @@ def classify_game(game: dict, rows: list[dict], multipv: Optional[dict[str, list
         missed_mate = (r["mate_in"] or 0) > 0 and not ((nxt["mate_in"] or 0) < 0)
 
         board_before = board.copy(stack=False)
+        is_capture = board.is_capture(move)
+        recapture = is_capture and move.to_square == last_capture
         board.push(move)
         in_book = book.is_book(fen_key(board.fen()))
 
@@ -195,7 +203,7 @@ def classify_game(game: dict, rows: list[dict], multipv: Optional[dict[str, list
         elif is_best or wp_loss <= EXCELLENT:
             if 10 < wp_before < 90 and wp_after >= 35 and is_sacrifice(board_before, move)                     and sacrifice_holds(board, nxt.get("pv") or [], board_before.turn, nxt["mate_in"]):
                 label = "brilliant"
-            elif is_best and only and 10 < wp_before < 95:
+            elif is_best and only and not recapture and 10 < wp_before < 95:
                 label = "great"
             elif is_best:
                 label = "best"
@@ -204,7 +212,8 @@ def classify_game(game: dict, rows: list[dict], multipv: Optional[dict[str, list
         else:
             label = label_for(wp_loss)
             opportunity = (prev_loss is not None and prev_loss > MISTAKE) or missed_mate
-            if opportunity and wp_after >= 50 and (label in ("mistake", "blunder") or (missed_mate and label in ("good", "inaccuracy"))):
+            if opportunity and wp_before >= MISS_BEFORE_MIN and wp_after >= MISS_AFTER_MIN \
+                    and (label in ("mistake", "blunder") or (missed_mate and label in ("good", "inaccuracy"))):
                 label = "miss"
 
         if label in ("best", "excellent", "good", "inaccuracy", "great") and not is_best                 and r["eval_cp"] is not None and nxt["eval_cp"] is not None:
@@ -228,6 +237,7 @@ def classify_game(game: dict, rows: list[dict], multipv: Optional[dict[str, list
             "label": label, "only_move": only, "clock_remaining": clk, "time_spent": spent,
         })
         prev_loss = wp_loss
+        last_capture = move.to_square if is_capture else None
     return out
 
 

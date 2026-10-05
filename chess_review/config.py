@@ -42,6 +42,8 @@ EXCELLENT = 2.0          # <= this: "excellent"
 CP_MISTAKE = 300         # material floor: a move that hangs material AND drops the eval this much is at least a mistake
 CP_BLUNDER = 800         # ... and this much is a blunder, however won the position already was
 ONLY_MOVE_GAP = 15.0     # win% gap between MultiPV #1 and #2 -> "great" / "only move"
+MISS_BEFORE_MIN = 40.0   # "miss" needs a chance to miss: the mover had at least this win% before the move ...
+MISS_AFTER_MIN = 10.0    # ... and didn't throw the game away with it (below this it is a blunder)
 MULTIPV_N = 3
 OPENING_SKIP_PLIES = 8   # ignore early moves unless already a blunder
 CRITICAL_MAX = 5
