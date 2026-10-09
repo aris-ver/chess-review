@@ -2,7 +2,8 @@ import chess
 import pytest
 
 from chess_review import book
-from chess_review.classify import classify_game, label_for, move_accuracy
+from chess_review.classify import classify_game, grade_k, label_for, move_accuracy
+from chess_review.config import GRADE_DEFAULT_RATING, GRADE_K_HIGH, GRADE_K_LOW, GRADE_RATING_HIGH, GRADE_RATING_LOW
 from chess_review.fen import fen_key
 
 pytestmark = pytest.mark.skipif(not book.BOOK_DIR.exists(), reason="opening book not fetched")
@@ -52,13 +53,13 @@ def test_classify_game_synthetic(monkeypatch):
     rows.append(_pos(6, b, "h5f7", mate=1, best="h5f7", clk=570)); b.push_uci("h5f7")     # white mates in 1
     rows.append(_pos(7, b, None, mate=0))                                                 # black checkmated
 
-    game = {"game_id": "g", "my_colour": "white", "time_control": "600+0"}
+    game = {"game_id": "g", "my_colour": "white", "time_control": "600+0", "my_rating": 800, "opponent_rating": 800}
     out = classify_game(game, rows)
     assert [m["san"] for m in out] == ["e4", "e5", "Bc4", "Nc6", "Qh5", "Nf6", "Qxf7#"]
     assert out[0]["label"] == "best" and out[1]["label"] == "best"
-    assert out[2]["label"] == "excellent"            # +30 -> +30, not the engine move
-    assert out[4]["label"] == "inaccuracy"           # +30 -> -60 for white: 52.8% -> 44.5%
-    assert out[4]["wp_loss"] == pytest.approx(8.3, abs=0.1)
+    assert out[2]["label"] == "best"                 # +30 -> +30: not the engine move, but it loses nothing
+    assert out[4]["label"] == "good"                 # +30 -> -60 for white: 51.5% -> 47.0% on the grading curve
+    assert out[4]["wp_loss"] == pytest.approx(8.3, abs=0.1)     # wp_* stay on the Lichess curve: 52.8% -> 44.5%
     assert out[5]["label"] == "blunder"              # +60 for black -> mated: 55.5% -> 0%
     assert out[5]["wp_after"] == 0.0
     assert out[6]["label"] == "best" and out[6]["wp_before"] == 100.0 and out[6]["wp_after"] == 100.0
@@ -84,9 +85,9 @@ def test_miss_after_opponent_error(monkeypatch):
     b = chess.Board()
     rows = []
     rows.append(_pos(0, b, "e2e4", cp=30, best="e2e4")); b.push_uci("e2e4")
-    rows.append(_pos(1, b, "f7f6", cp=-30, best="e7e5")); b.push_uci("f7f6")      # black blunders: -30 -> -400
-    rows.append(_pos(2, b, "a2a3", cp=400, best="d2d4")); b.push_uci("a2a3")      # white gives most of it back
-    rows.append(_pos(3, b, None, cp=-150))                                       # +400 -> +150: 81% -> 63%
+    rows.append(_pos(1, b, "f7f6", cp=-30, best="e7e5")); b.push_uci("f7f6")      # black blunders: -30 -> -600
+    rows.append(_pos(2, b, "a2a3", cp=600, best="d2d4")); b.push_uci("a2a3")      # white gives most of it back
+    rows.append(_pos(3, b, None, cp=-150))                                       # +600 -> +150: 77% -> 57% graded
     out = classify_game({"game_id": "g", "my_colour": "white", "time_control": None}, rows)
     assert out[1]["label"] == "blunder"
     assert out[2]["label"] == "miss"
@@ -192,10 +193,81 @@ def test_material_floor_in_won_position(monkeypatch):
     rows = [_pos(0, b, "d2e2", cp=2000, best="d2d5"), None]                  # +20 -> Qe2?? walks into Rxe2
     b2 = b.copy(); b2.push_uci("d2e2")
     rows[1] = _pos(1, b2, None, cp=-900)                                      # still +9 for white: win% 99.9 -> 96.6
-    out = classify_game({"game_id": "g", "my_colour": "white", "time_control": None}, rows)
+    out = classify_game({"game_id": "g", "my_colour": "white", "time_control": None, "my_rating": 800}, rows)
     assert out[0]["wp_loss"] < 5 and out[0]["label"] == "blunder"
-    # same tiny win% loss but nothing hangs -> the win%-only label stands
+    # same eval drop but nothing hangs -> the win%-only label stands (+20 -> +9 is 98% -> 86% on the grading curve)
     rows[0]["move_played"] = "d2d3"
     b2 = b.copy(); b2.push_uci("d2d3"); rows[1] = _pos(1, b2, None, cp=-900)
-    out = classify_game({"game_id": "g", "my_colour": "white", "time_control": None}, rows)
-    assert out[0]["label"] in ("excellent", "good")
+    out = classify_game({"game_id": "g", "my_colour": "white", "time_control": None, "my_rating": 800}, rows)
+    assert out[0]["label"] == "mistake"
+
+
+def test_giving_a_piece_away_when_already_lost(monkeypatch):
+    """18...Rc4?? at -8 (arisgmn1 v maxamed-ibra): Stockfish's eval only goes -8.2 -> -9.5, under 2% of win chance,
+    but the rook is simply taken and never won back -- a mistake, not "excellent"."""
+    monkeypatch.setattr(book, "is_book", lambda key: False)
+    b = chess.Board("2r3k1/1p4pp/p3pb2/5p2/N7/4PN2/PP3PPP/1K3B1R b - - 2 18")
+    best = ["c8c6", "f3d4", "c6d6", "f1e2", "f6d4", "e3d4", "d6d4", "a4c3"]   # Rc6 Nd4 Rd6 Be2 Bxd4 exd4 Rxd4 Nc3
+    rows = [{**_pos(0, b, "c8c4", cp=-823, best="c8c6"), "pv": best}, None]
+    b2 = b.copy(); b2.push_uci("c8c4")
+    rows[1] = {**_pos(1, b2, None, cp=953), "pv": ["f1c4", "g8f7", "h1d1", "b7b5", "c4e6", "f7e6", "a4b6", "e6f7"]}
+    out = classify_game({"game_id": "g", "my_colour": "white", "time_control": None, "opponent_rating": 583}, rows)
+    assert out[0]["wp_loss"] < 2 and out[0]["label"] == "mistake"
+    # the same move when the engine's reply doesn't take the rook: the win%-only label stands (16% -> 13% graded)
+    rows[1]["pv"] = ["g2g3", "c4c8"]
+    out = classify_game({"game_id": "g", "my_colour": "white", "time_control": None, "opponent_rating": 583}, rows)
+    assert out[0]["label"] == "good"
+
+
+def test_grade_k_follows_rating():
+    assert grade_k(500) == grade_k(GRADE_RATING_LOW) == pytest.approx(GRADE_K_LOW)
+    assert grade_k(3400) == grade_k(GRADE_RATING_HIGH) == pytest.approx(GRADE_K_HIGH)
+    mid = (GRADE_RATING_LOW + GRADE_RATING_HIGH) // 2
+    assert grade_k(mid) == pytest.approx((GRADE_K_LOW * GRADE_K_HIGH) ** 0.5)       # log-linear between
+    assert grade_k(None) == grade_k(GRADE_DEFAULT_RATING)
+
+
+@pytest.mark.parametrize("rating, label", [(600, "good"), (3000, "inaccuracy")])
+def test_same_slip_graded_by_rating(monkeypatch, rating, label):
+    """+0.20 -> -0.20 at equality: nothing much at 600, an inaccuracy at 3000 (chess.com grades by the mover's rating)."""
+    monkeypatch.setattr(book, "is_book", lambda key: False)
+    b = chess.Board()
+    rows = [_pos(0, b, "a2a3", cp=20, best="e2e4"), None]
+    b2 = b.copy(); b2.push_uci("a2a3"); rows[1] = _pos(1, b2, None, cp=20)
+    game = {"game_id": "g", "my_colour": "black", "time_control": None, "my_rating": 1500, "opponent_rating": rating}
+    assert classify_game(game, rows)[0]["label"] == label                    # white is the opponent here
+
+
+def test_not_playing_mate_in_one_is_a_miss(monkeypatch):
+    monkeypatch.setattr(book, "is_book", lambda key: False)
+    b = chess.Board("6k1/5ppp/8/8/8/8/5PPP/R5K1 w - - 0 1")                  # Ra8# is on
+    rows = [_pos(0, b, "a1a2", mate=1, best="a1a8"), None]
+    b2 = b.copy(); b2.push_uci("a1a2"); rows[1] = _pos(1, b2, None, mate=-2)    # still mates, a move later
+    assert classify_game({"game_id": "g", "my_colour": "white", "time_control": None}, rows)[0]["label"] == "miss"
+
+
+@pytest.mark.parametrize("before, mate_after, label", [
+    ({"cp": -700}, 2, "mistake"),           # lost already, a short mate allowed
+    ({"cp": -700}, 5, "inaccuracy"),        # ... a long one
+    ({"mate": -5}, 1, "inaccuracy"),        # being mated in 5, walks into mate in 1
+    ({"mate": -5}, 4, "excellent"),         # ... the mate just ticking down is no error
+])
+def test_mate_when_already_lost(monkeypatch, before, mate_after, label):
+    monkeypatch.setattr(book, "is_book", lambda key: False)
+    b = chess.Board()
+    rows = [_pos(0, b, "a2a3", best="e2e4", **before), None]
+    b2 = b.copy(); b2.push_uci("a2a3"); rows[1] = _pos(1, b2, None, mate=mate_after)
+    assert classify_game({"game_id": "g", "my_colour": "white", "time_control": None}, rows)[0]["label"] == label
+
+
+@pytest.mark.parametrize("cp_before, label", [(-500, "mistake"), (500, "excellent")])
+def test_losing_side_giving_material(monkeypatch, cp_before, label):
+    """Black's king steps aside and the knight on d5 goes; the eval barely moves. Losing already, that is a mistake
+    (chess.com); winning, it is giving material back to simplify, which chess.com lets be."""
+    monkeypatch.setattr(book, "is_book", lambda key: False)
+    b = chess.Board("4k3/8/8/3n4/8/8/8/3RK3 b - - 0 1")
+    rows = [{**_pos(0, b, "e8e7", cp=cp_before, best="d5f6"), "pv": ["d5f6", "e1e2", "e8e7", "d1d2"]}, None]
+    b2 = b.copy(); b2.push_uci("e8e7")
+    rows[1] = {**_pos(1, b2, None, cp=-cp_before + 30), "pv": ["d1d5", "e7e6", "d5d4", "e6e5"]}
+    game = {"game_id": "g", "my_colour": "black", "time_control": None, "my_rating": 800, "opponent_rating": 800}
+    assert classify_game(game, rows)[0]["label"] == label

@@ -4,6 +4,12 @@ Classification is on WIN% loss from the mover's point of view, never on
 centipawns. win% before = eval of the position the mover faced; win% after =
 eval of the position they left the opponent, re-signed to the mover.
 
+The labels grade that loss on a curve that depends on the mover's rating (grade_k): at club level a +5 position
+is not yet won, so chess.com still calls a move there that throws 2-3 pawns away a mistake, while at 2800+ a
+0.3-pawn slip at equality is already an inaccuracy. The curve and the thresholds were fitted together on
+docs/chesscom-review. wp_before/wp_after/wp_loss, and so the graph, accuracy and key moments, stay on the Lichess
+curve.
+
 Labels (chess.com vocabulary, deterministic definitions):
   book        resulting position is in the opening book
   forced      only legal move
@@ -11,7 +17,7 @@ Labels (chess.com vocabulary, deterministic definitions):
               win straight back, and that isn't already a crush
   great       the engine's move and the only good one (MultiPV #1 - #2 > ONLY_MOVE_GAP), unless it is a
               recapture: taking back on the square the opponent just took on is the only move but no find
-  best        the engine's move
+  best        the engine's move, or one its eval says loses nothing (the engine merely ranked another first)
   excellent   loss <= EXCELLENT
   good        loss <= GOOD
   inaccuracy  loss <= MISTAKE
@@ -19,17 +25,25 @@ Labels (chess.com vocabulary, deterministic definitions):
   miss        a missed chance: the opponent just erred (or a forced mate was on) and the move, a mistake
               or worse, didn't punish it. The mover wasn't losing before it (>= MISS_BEFORE_MIN) and isn't
               lost after it (>= MISS_AFTER_MIN): a move that throws the game away stays a blunder.
-              Fitted to chess.com's own labels on docs/chesscom-review (48 misses in 616 plies).
+              Fitted to chess.com's own labels on docs/chesscom-review (48 misses in 616 plies). Not playing
+              a mate in 1 is always a miss.
   blunder     loss > BLUNDER
 
 Material floor: win% barely moves in a decided position, so a move that hangs
 material (per SEE) and drops the eval by CP_MISTAKE / CP_BLUNDER centipawns is
 at least a mistake / blunder even at +10. Engine-approved sacrifices don't drop
-the eval, so they are unaffected.
+the eval, so they are unaffected. A side already losing (LOSING_MATERIAL_CP) that
+gives away a piece's worth more is a mistake too; a winning side handing material
+back is simplifying, and chess.com lets that be.
+
+Mate: a mate against is no worse than "lost" when the mover was lost already, so allowing one from there is an
+inaccuracy (mate in 4 or more) or a mistake (mate in 1-3) rather than a blunder, and walking into a faster mate
+than the one already coming is an inaccuracy (as chess.com grades them).
 """
 
 import argparse
 import logging
+import math
 from typing import Optional
 
 import chess
@@ -43,7 +57,15 @@ from .config import (
     CP_BLUNDER,
     CP_MISTAKE,
     EXCELLENT,
+    GRADE_DEFAULT_RATING,
+    GRADE_K_HIGH,
+    GRADE_K_LOW,
+    GRADE_RATING_HIGH,
+    GRADE_RATING_LOW,
     INACCURACY,
+    LOSING_MATERIAL_CP,
+    MATE_FROM_LOST_CP,
+    MATERIAL_MISTAKE,
     MISS_AFTER_MIN,
     MISS_BEFORE_MIN,
     MISTAKE,
@@ -124,6 +146,45 @@ def sacrifice_holds(board_after: chess.Board, reply_pv: list[str], mover: chess.
     return material_swing(board_after, reply_pv[:SACRIFICE_PLIES], mover) <= -100
 
 
+def gives_away(board: chess.Board, move: chess.Move, best_pv: list[str], reply_pv: list[str]) -> bool:
+    """The move leaves its piece to be taken (per SEE), the engine's reply takes it, and along the engine's line the
+    mover stays at least MATERIAL_MISTAKE down on where the best move's line leaves them. Stockfish's eval flattens out
+    in a decided position, so a rook dropped at -8 can cost barely a pawn of eval; the material count doesn't."""
+    if not reply_pv or not is_sacrifice(board, move):
+        return False
+    after = board.copy(stack=False)
+    after.push(move)
+    reply = chess.Move.from_uci(reply_pv[0])
+    if reply.to_square != move.to_square or not after.is_capture(reply):
+        return False
+    line = [move.uci()] + reply_pv
+    n = min(len(line), SACRIFICE_PLIES)
+    mover = board.turn
+    return material_swing(board, best_pv[:n], mover) - material_swing(board, line[:n], mover) >= MATERIAL_MISTAKE
+
+
+def material_lost(board: chess.Board, move: chess.Move, best_pv: list[str], reply_pv: list[str], plies: int = 4) -> int:
+    """Centipawns of material the move loses against the best move, comparing the engine's two lines over the same
+    few plies (any piece, not only the moved one), mover POV."""
+    line = [move.uci()] + reply_pv
+    n = min(plies, len(line), len(best_pv))
+    if n < 2:
+        return 0
+    return material_swing(board, best_pv[:n], board.turn) - material_swing(board, line[:n], board.turn)
+
+
+def grade_k(rating: Optional[int]) -> float:
+    """Steepness of the grading curve for a player of `rating`: GRADE_K_LOW up to GRADE_RATING_LOW, GRADE_K_HIGH
+    from GRADE_RATING_HIGH, log-linear between."""
+    r = GRADE_DEFAULT_RATING if rating is None else rating
+    t = min(1.0, max(0.0, (r - GRADE_RATING_LOW) / (GRADE_RATING_HIGH - GRADE_RATING_LOW)))
+    return math.exp(math.log(GRADE_K_LOW) + t * (math.log(GRADE_K_HIGH) - math.log(GRADE_K_LOW)))
+
+
+def mover_rating(game: dict, mover: str) -> Optional[int]:
+    return game.get("my_rating") if mover == game.get("my_colour") else game.get("opponent_rating")
+
+
 def only_move(multipv: Optional[list[dict]], side: str) -> Optional[bool]:
     if not multipv:
         return None
@@ -183,6 +244,13 @@ def classify_game(game: dict, rows: list[dict], multipv: Optional[dict[str, list
         wp_before = pov_win_pct(r["eval_cp"], r["mate_in"], mover, mover) if has_evals else None
         wp_after = pov_win_pct(nxt["eval_cp"], nxt["mate_in"], nxt["side_to_move"], mover) if nxt_has else None
         wp_loss = max(0.0, wp_before - wp_after) if (wp_before is not None and wp_after is not None) else None
+        k = grade_k(mover_rating(game, mover))
+        loss = None if wp_loss is None else max(0.0, pov_win_pct(r["eval_cp"], r["mate_in"], mover, mover, k)
+                                                - pov_win_pct(nxt["eval_cp"], nxt["mate_in"], nxt["side_to_move"], mover, k))
+        # mover POV: eval before, and the mate the opponent has after (None if none)
+        cp_before = r["eval_cp"]
+        cp_after = None if nxt["eval_cp"] is None else -nxt["eval_cp"]
+        mated_in_after = nxt["mate_in"] if (nxt["mate_in"] or 0) > 0 else None
         is_best = bool(r["best_move"]) and r["best_move"] == r["move_played"]
         only = only_move(multipv.get(r.get("fen_key") or fen_key(r["fen"])), mover) if has_evals else None
         # mate was available and the played move no longer forces one
@@ -198,28 +266,48 @@ def classify_game(game: dict, rows: list[dict], multipv: Optional[dict[str, list
             label = "book"
         elif n_legal == 1:
             label = "forced"
-        elif wp_loss is None:
+        elif loss is None:
             label = None
-        elif is_best or wp_loss <= EXCELLENT:
+        elif is_best or loss <= EXCELLENT:
             if 10 < wp_before < 90 and wp_after >= 35 and is_sacrifice(board_before, move)                     and sacrifice_holds(board, nxt.get("pv") or [], board_before.turn, nxt["mate_in"]):
                 label = "brilliant"
             elif is_best and only and not recapture and 10 < wp_before < 95:
                 label = "great"
-            elif is_best:
+            elif is_best or (cp_before is not None and cp_after is not None and cp_after >= cp_before):
                 label = "best"
             else:
                 label = "excellent"
         else:
-            label = label_for(wp_loss)
+            label = label_for(loss)
             opportunity = (prev_loss is not None and prev_loss > MISTAKE) or missed_mate
             if opportunity and wp_before >= MISS_BEFORE_MIN and wp_after >= MISS_AFTER_MIN \
                     and (label in ("mistake", "blunder") or (missed_mate and label in ("good", "inaccuracy"))):
                 label = "miss"
 
-        if label in ("best", "excellent", "good", "inaccuracy", "great") and not is_best                 and r["eval_cp"] is not None and nxt["eval_cp"] is not None:
+        if label in ("best", "excellent", "good", "inaccuracy", "great", "mistake") and not is_best \
+                and r["eval_cp"] is not None and nxt["eval_cp"] is not None:
             cp_drop = r["eval_cp"] - (-nxt["eval_cp"])          # both mover POV
             if cp_drop >= CP_MISTAKE and is_sacrifice(board_before, move):
                 label = "blunder" if cp_drop >= CP_BLUNDER else "mistake"
+        if label in ("best", "excellent", "good", "inaccuracy", "great") and not is_best \
+                and r["mate_in"] is None and nxt["mate_in"] is None \
+                and gives_away(board_before, move, r.get("pv") or [], nxt.get("pv") or []):
+            label = "mistake"
+
+        if r["mate_in"] == 1 and not board.is_checkmate() and label in ("best", "excellent", "good", "inaccuracy"):
+            label = "miss"
+        if r["mate_in"] is not None and r["mate_in"] < 0 and mated_in_after is not None \
+                and mated_in_after < -r["mate_in"] - 1 and label in ("best", "excellent", "good"):
+            label = "inaccuracy"                                # walked into a faster mate than the one coming
+        if cp_before is not None and mated_in_after is not None:
+            if cp_before <= MATE_FROM_LOST_CP and label in ("best", "excellent", "good", "inaccuracy", "great", "mistake", "blunder"):
+                label = "mistake" if mated_in_after <= 3 else "inaccuracy"      # lost already, now mated
+            elif cp_before <= LOSING_MATERIAL_CP and label == "blunder":
+                label = "mistake"
+        if label in ("best", "excellent", "good", "inaccuracy", "great") and not is_best \
+                and cp_before is not None and cp_before <= LOSING_MATERIAL_CP \
+                and material_lost(board_before, move, r.get("pv") or [], nxt.get("pv") or []) >= MATERIAL_MISTAKE:
+            label = "mistake"                                   # the losing side gives more away
 
         clk = r["clock_remaining"]
         spent = None
@@ -236,7 +324,7 @@ def classify_game(game: dict, rows: list[dict], multipv: Optional[dict[str, list
             "accuracy": move_accuracy(wp_loss) if wp_loss is not None else None,
             "label": label, "only_move": only, "clock_remaining": clk, "time_spent": spent,
         })
-        prev_loss = wp_loss
+        prev_loss = loss
         last_capture = move.to_square if is_capture else None
     return out
 

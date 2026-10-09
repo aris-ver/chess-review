@@ -489,7 +489,8 @@ class Handler(SimpleHTTPRequestHandler):
         if path.startswith("/api/explore"):
             b = self._body()
             try:
-                return self._json(r.explorer.move(b["fen"], b["uci"], b.get("my_colour", "white"), int(b.get("ply", 0))))
+                return self._json(r.explorer.move(b["fen"], b["uci"], b.get("my_colour", "white"), int(b.get("ply", 0)),
+                                                  b.get("ratings") or {}))
             except (ValueError, KeyError) as e:
                 return self._json({"error": str(e)}, 400)
             except Exception as e:  # noqa: BLE001
