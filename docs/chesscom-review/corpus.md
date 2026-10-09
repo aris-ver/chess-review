@@ -4,8 +4,8 @@ Account used: **Aris_Ver** (Diamond, unlimited reviews). UI language Greek; coac
 Review settings during every walk: engine *Torch Human*, strength *Fast (~1 s, Elo 3270)*, show-arrows mode *Coach Arrows* (the default; see `x08.*` for the other modes).
 Every game was walked ply by ply in the **visible** tab, with synthetic `ArrowRight` key presses from an in-page script. After each step the script waited until the board and coach text had been still for 0.9 s, then captured arrows, highlights, badges, coach headline, eval and buttons. Records are in `observations.jsonl` with ids `gNN.pMMM` (1-based ply).
 
-**Totals: 15 games, 926 plies.**
-- Reviewed from White: 9 games (g01, g03–g08, g12, g13).
+**Totals: 16 games, 1040 plies.**
+- Reviewed from White: 10 games (g01, g03–g08, g12, g13, g16).
 - Reviewed from Black, with the board flipped: 6 games (g02, g09, g10, g11, g14, g15).
 
 | # | Game / source | Result | Reviewed as | Why picked | Coverage hits |
@@ -25,6 +25,7 @@ Every game was walked ply by ply in the **visible** tab, with synthetic `ArrowRi
 | g13 | [5920318933](https://www.chess.com/analysis/game/live/5920318933/review) kostasstax–archiefrench, rapid (archive scan) | 0-1, 49…Qa1# | White | 98 plies, promotion, mate | promotion g1=Q with threat idiom (g13.p090); ladder mate (g13.p098); missed forced mate (g13.p062); great discovered check (g13.p019); "loses a queen/knight" → red (g13.p027, p083); pawn chain overlays (g13.p070) |
 | g14 | [6008425446](https://www.chess.com/analysis/game/live/6008425446/review) Bradthecat–kostasstax, rapid (Stockfish scan) | 1-0, Black resigned after 12…Qc4 | **Black** | missed mate-in-1 | missed mate-in-1 Qd6# (g14.p019); allows mate (g14.p018); "unsafe square" → green (g14.p012) |
 | g15 | [5918744487](https://www.chess.com/analysis/game/live/5918744487/review) sanjarsherqulov–kostasstax, rapid (Stockfish scan) | 0-1, White abandoned after 41…a2 | **Black** | missed mates | **brilliant** (g15.p032); missed mate-in-1 ×2 (g15.p022, p041); great ×3; "a recapture was available" → red arrow = the mover's own missed recapture (g15.p037, **new idiom**); `abandon` icon |
+| g16 | [184469387614](https://www.chess.com/analysis/game/live/184469387614/review) arisgmn1 (554)–Lakshya4599 (576), rapid 10 min | 0-1, White resigned | White | rating calibration below 800: 114 plies, 9 lead changes, both players ~560 | **different recording:** account arisgmn1 (basic membership, one review a day, default review engine, not Torch Human); only the coach headline label and the eval were captured, no arrows, highlights or coach text; 2026-10-09 |
 
 Games opened but **not** logged:
 - 49989027721 was two plies long (1.e4 e5, then White won).

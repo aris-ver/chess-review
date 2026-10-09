@@ -2055,7 +2055,8 @@ async function explore(fen, uci) {
   stopSandboxStream();                     // the infinite search holds the engine; explore() needs it now
   let d = null, ok = false;
   try {
-    const r = await fetch('api/explore', { method: 'POST', body: JSON.stringify({ fen, uci, my_colour: state.game.my_colour, ply: move.ply }) });
+    const r = await fetch('api/explore', { method: 'POST', body: JSON.stringify({ fen, uci, my_colour: state.game.my_colour, ply: move.ply,
+      ratings: { white: state.game.white?.rating ?? null, black: state.game.black?.rating ?? null } }) });
     d = await r.json(); ok = r.ok;
   } catch (e) { d = { error: String(e) }; }
   state.exploring = false;

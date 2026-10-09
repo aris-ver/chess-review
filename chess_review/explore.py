@@ -205,7 +205,9 @@ class Explorer:
             finally:
                 self._stream = None
 
-    def move(self, fen: str, uci: str, my_colour: str, ply: int = 0) -> dict:
+    def move(self, fen: str, uci: str, my_colour: str, ply: int = 0, ratings: Optional[dict] = None) -> dict:
+        """ratings: {"white": int|None, "black": int|None} of the game the move is tried in, so it is graded on the
+        same rating-dependent curve as the game's own moves."""
         board = chess.Board(fen)
         move = chess.Move.from_uci(uci)
         if move not in board.legal_moves:
@@ -234,7 +236,11 @@ class Explorer:
              "side_to_move": "white" if after.turn else "black", "move_played": None, "clock_remaining": None, **after_main},
         ]
         multipv = {rows[0]["fen_key"]: [{"fen_key": rows[0]["fen_key"], **r} for r in before_ranks]}
-        m = classify_game({"game_id": "explore", "my_colour": my_colour, "time_control": None}, rows, multipv)[0]
+        ratings = ratings or {}
+        theirs = "black" if my_colour == "white" else "white"
+        game = {"game_id": "explore", "my_colour": my_colour, "time_control": None,
+                "my_rating": ratings.get(my_colour), "opponent_rating": ratings.get(theirs)}
+        m = classify_game(game, rows, multipv)[0]
         facts = extract(m, board, rows[0], rows[1], multipv.get(rows[0]["fen_key"]))
         wp_after = pov_win_pct(after_main["eval_cp"], after_main["mate_in"], rows[1]["side_to_move"], "white")
         return {
