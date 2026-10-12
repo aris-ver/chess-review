@@ -4,8 +4,8 @@ Account used: **Aris_Ver** (Diamond, unlimited reviews). UI language Greek; coac
 Review settings during every walk: engine *Torch Human*, strength *Fast (~1 s, Elo 3270)*, show-arrows mode *Coach Arrows* (the default; see `x08.*` for the other modes).
 Every game was walked ply by ply in the **visible** tab, with synthetic `ArrowRight` key presses from an in-page script. After each step the script waited until the board and coach text had been still for 0.9 s, then captured arrows, highlights, badges, coach headline, eval and buttons. Records are in `observations.jsonl` with ids `gNN.pMMM` (1-based ply).
 
-**Totals: 17 games, 1142 plies.**
-- Reviewed from White: 11 games (g01, g03–g08, g12, g13, g16, g17).
+**Totals: 18 games, 1225 plies.**
+- Reviewed from White: 12 games (g01, g03–g08, g12, g13, g16, g17, g18).
 - Reviewed from Black, with the board flipped: 6 games (g02, g09, g10, g11, g14, g15).
 
 | # | Game / source | Result | Reviewed as | Why picked | Coverage hits |
@@ -27,6 +27,7 @@ Every game was walked ply by ply in the **visible** tab, with synthetic `ArrowRi
 | g15 | [5918744487](https://www.chess.com/analysis/game/live/5918744487/review) sanjarsherqulov–kostasstax, rapid (Stockfish scan) | 0-1, White abandoned after 41…a2 | **Black** | missed mates | **brilliant** (g15.p032); missed mate-in-1 ×2 (g15.p022, p041); great ×3; "a recapture was available" → red arrow = the mover's own missed recapture (g15.p037, **new idiom**); `abandon` icon |
 | g16 | [184469387614](https://www.chess.com/analysis/game/live/184469387614/review) arisgmn1 (554)–Lakshya4599 (576), rapid 10 min | 0-1, White resigned | White | rating calibration below 800: 114 plies, 9 lead changes, both players ~560 | **different recording:** account arisgmn1 (basic membership, one review a day, default review engine, not Torch Human); only the coach headline label and the eval were captured, no arrows, highlights or coach text; 2026-10-09 |
 | g17 | [184729747036](https://www.chess.com/analysis/game/live/184729747036/review) mutuelle (1472)–melboydelfin (1479), rapid 10 min | 0-1, White resigned after 51…Rb1 | White | rating calibration at ~1500: 102 plies, 7 lead changes, both players ~1475 | recorded like g16 (arisgmn1, basic membership, default review engine; label and eval only); miss ×10, great ×4, blunder ×4, promotion (g17.p088); 2026-10-11 |
+| g18 | [185163384608](https://www.chess.com/analysis/game/live/185163384608/review) habil1973 (1949)–yakz1 (1943), rapid 30 min | 1-0, Black resigned after 42.Rxb5+ | White | rating calibration at ~2000: 83 plies, 4 lead changes, both players ~1945, Danish Gambit | recorded like g16 (arisgmn1, basic membership, default review engine; label and eval only); mistake ×11, miss ×7, great ×3, blunder ×3, brilliant (g18.p057 Rxf2); 2026-10-13 |
 
 Games opened but **not** logged:
 - 49989027721 was two plies long (1.e4 e5, then White won).
