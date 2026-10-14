@@ -210,15 +210,14 @@ class Runner:
         job.done += 1   # (rebuild_profile() is the same sequence without the progress counter)
 
     def _ingest(self, job: Job) -> None:
-        """New profile: fetch every archive, then build its site. done/total count months while fetching."""
+        """New profile: fetch every game, then build its site. done/total count months (chess.com) or games
+        (lichess) while fetching."""
         p = job.profile
-        if p.source != "chesscom":
-            raise ValueError(f"{p.source} profiles can't be fetched yet")
 
         def progress(done: int, total: int) -> None:
             job.done, job.total = done, total + 3
 
-        stats = ingest.fetch_archives(p, on_progress=progress)
+        stats = ingest.fetch(p, on_progress=progress)
         log.info("ingest %s: %s", p.id, stats)
         Handler.new_games.clear(p.id)
         job.total = max(job.total, 3)
@@ -229,7 +228,7 @@ class Runner:
         p = job.profile
         job.total = 4
         had = p.game_ids()
-        stats = ingest.fetch_archives(p, refresh_latest=True)
+        stats = ingest.fetch(p, refresh=True)
         log.info("refresh %s: %s", p.id, stats)
         Handler.new_games.clear(p.id)
         job.done = 1
@@ -241,7 +240,7 @@ class Runner:
 
 
 class NewGames:
-    """Once per launch, in the background: for each chess.com profile, how many games the site has that aren't
+    """Once per launch, in the background: for each chess.com or lichess profile, how many games the site has that aren't
     on disk yet -- the "3 new games" badge on the home screen's profile cards. Counts drop when the user opens
     the card (seen) or a fetch brings the games in."""
 
@@ -255,10 +254,10 @@ class NewGames:
 
     def _run(self) -> None:
         for p in profiles.list_profiles():
-            if p.source != "chesscom" or not p.raw_dir.exists():
+            if p.source not in ("chesscom", "lichess") or not p.raw_dir.exists():
                 continue
             try:
-                n = ingest.count_new_games(p)
+                n = ingest.count_new(p)
             except Exception as e:  # noqa: BLE001 - offline, rate-limited, renamed account: no badge, nothing else
                 log.info("new-games scan for %s failed: %s", p.id, e)
                 continue
@@ -445,8 +444,8 @@ class Handler(SimpleHTTPRequestHandler):
         if path == "/api/profiles":
             b = self._body()
             source, username = b.get("source", "chesscom"), (b.get("username") or "").strip()
-            if source != "chesscom":
-                return self._json({"error": "only chess.com profiles can be added for now"}, 400)
+            if source not in ("chesscom", "lichess"):
+                return self._json({"error": "profiles come from chess.com or lichess"}, 400)
             try:
                 p = profiles.create(source, username)
             except ValueError as e:
