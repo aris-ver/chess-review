@@ -657,6 +657,35 @@ svg.graph { width: 100%; height: 90px; display: block; cursor: pointer; backgrou
 </defs></svg>
 
 <script>
+// ---------- settings: localStorage, backed by the server's DATA/settings.json ----------
+// localStorage belongs to the origin, and the desktop app's port changes whenever 8123 is taken, so on its own
+// every setting would be lost then. Before anything reads it, the server's copy is loaded in (it wins; keys only
+// this localStorage has are sent up, which carries settings over from older versions), and every write is sent
+// on to the server, batched so a dragged volume slider is one request.
+(() => {
+  let ls; try { ls = window.localStorage; } catch (e) { return; }
+  let saved = null;
+  try {
+    const x = new XMLHttpRequest(); x.open('GET', 'api/settings', false); x.send();   // sync on purpose: the reads below run next
+    if (x.status === 200) saved = JSON.parse(x.responseText);
+  } catch (e) {}
+  if (!saved) return;     // no server (a static copy of the site): plain localStorage
+  const pending = {}; let timer = null;
+  const flush = () => {
+    clearTimeout(timer); timer = null;
+    const body = JSON.stringify(pending); for (const k in pending) delete pending[k];
+    if (body !== '{}') fetch('api/settings', { method: 'POST', body, keepalive: true }).catch(() => {});
+  };
+  const queue = (k, v) => { pending[k] = v; if (!timer) timer = setTimeout(flush, 400); };
+  try {
+    for (let i = 0; i < ls.length; i++) { const k = ls.key(i); if (!(k in saved)) queue(k, ls.getItem(k)); }
+    for (const k in saved) ls.setItem(k, saved[k]);
+  } catch (e) {}
+  const set = Storage.prototype.setItem, remove = Storage.prototype.removeItem;
+  Storage.prototype.setItem = function (k, v) { set.call(this, k, v); if (this === ls) queue(String(k), String(v)); };
+  Storage.prototype.removeItem = function (k) { remove.call(this, k); if (this === ls) queue(String(k), null); };
+  addEventListener('pagehide', flush);
+})();
 const PIECES = /*__PIECES__*/;
 const PIECE_ID = { p:'black-pawn', n:'black-knight', b:'black-bishop', r:'black-rook', q:'black-queen', k:'black-king',
                    P:'white-pawn', N:'white-knight', B:'white-bishop', R:'white-rook', Q:'white-queen', K:'white-king' };

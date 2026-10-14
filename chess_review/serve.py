@@ -27,6 +27,8 @@
                                         build only; check=1 asks GitHub again instead of using the hourly cache)
     POST /api/update/download           fetch the latest release into DATA/update (the small zip when it fits)
     POST /api/update/apply              swap the downloaded update in and restart the app (refused while a job runs)
+    GET  /api/settings                  the page's saved preferences (volume, theme, ...): {key: string}
+    POST /api/settings                  {key: string | null} -> merged into DATA/settings.json (null removes the key)
 
     /                                   the app (data/site)
     /p/<id>/...                         a profile's games.json, games/<slug>.json, insights.html
@@ -55,7 +57,7 @@ import requests
 
 from . import aggregates, classify, ingest, normalise, profiles, site, updater
 from .analyse import Analyser, export_parquet, open_db, pending_keys
-from .config import DEFAULT_NODES, ENGINE_IDLE_SECONDS, MULTIPV_N, SITE_DIR, USER_AGENT
+from .config import DATA, DEFAULT_NODES, ENGINE_IDLE_SECONDS, MULTIPV_N, SITE_DIR, USER_AGENT
 from .db import base_views
 from .explore import Explorer
 from .pov import pov_win_pct
@@ -384,6 +386,8 @@ class Handler(SimpleHTTPRequestHandler):
                 return self._json({"name": self.runner.explorer.name(), "nodes": self.runner.explorer.nodes, "multipv": MULTIPV_N})
             except Exception as e:  # noqa: BLE001
                 return self._json({"error": str(e)}, 500)
+        if url.path == "/api/settings":
+            return self._json(load_settings())
         if url.path == "/api/update":
             self.updates.check(force=parse_qs(url.query).get("check", ["0"])[0] == "1")
             return self._json(self.updates.status())
@@ -503,6 +507,12 @@ class Handler(SimpleHTTPRequestHandler):
             if r.job:
                 r.job.stop_requested = True
             return self._json({"ok": True})
+        if path == "/api/settings":
+            b = self._body()
+            if not isinstance(b, dict) or not all(v is None or isinstance(v, str) for v in b.values()):
+                return self._json({"error": "{key: string | null} expected"}, 400)
+            save_settings(b)
+            return self._json({"ok": True})
         if path == "/api/update/download":
             self.updates.check()
             return self._json({"ok": self.updates.download(), **self.updates.status()})
@@ -519,6 +529,33 @@ class Handler(SimpleHTTPRequestHandler):
 
 MAX_IMAGE_BYTES = 10 * 1024 * 1024
 PGN_PROFILE_NAME = "Pasted games"   # every pasted PGN lands in profile pgn-pasted-games
+
+# The page's preferences live here rather than only in localStorage: localStorage belongs to the origin, and the
+# desktop app's port changes whenever 8123 is taken, which handed the page an empty one and lost every setting.
+SETTINGS_FILE = DATA / "settings.json"
+_settings_lock = threading.Lock()
+
+
+def load_settings() -> dict:
+    try:
+        d = json.loads(SETTINGS_FILE.read_text(encoding="utf-8"))
+        return d if isinstance(d, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def save_settings(changes: dict) -> None:
+    with _settings_lock:
+        d = load_settings()
+        for k, v in changes.items():
+            if v is None:
+                d.pop(k, None)
+            else:
+                d[k] = v
+        SETTINGS_FILE.parent.mkdir(parents=True, exist_ok=True)
+        tmp = SETTINGS_FILE.with_suffix(".tmp")
+        tmp.write_text(json.dumps(d, indent=1, sort_keys=True), encoding="utf-8")
+        tmp.replace(SETTINGS_FILE)
 
 
 def _side_of_saved_player(pgn: str) -> str:
