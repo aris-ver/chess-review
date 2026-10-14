@@ -179,7 +179,10 @@ def write_static() -> None:
     if not out.exists() or out.read_text(encoding="utf-8") != html:
         out.write_text(html, encoding="utf-8")
     sync_tree(STATIC / "themes", SITE_DIR / "themes")
-    shutil.rmtree(SITE_DIR / "sounds", ignore_errors=True)   # the chess.com sounds older versions copied here
+    # chess.com files older versions used: the sounds they copied here, the pieces and icons install_assets.sh put
+    # in assets/ (copies -- the page draws its own badges now)
+    shutil.rmtree(SITE_DIR / "sounds", ignore_errors=True)
+    shutil.rmtree(SITE_DIR / "assets", ignore_errors=True)
 
 
 def sync_tree(src: Path, dst: Path) -> None:

@@ -288,8 +288,7 @@ svg.arrows.marks { z-index: auto; }
 .pc.dragging { transition: none; z-index: 5; filter: saturate(1.2) contrast(1.06) drop-shadow(0 6px 6px rgba(0,0,0,.35)); }
 .boardbox.dragging { cursor: grabbing; }
 .badge { position: absolute; width: 5.75%; height: 5.75%; transform: translate(-50%, -50%); filter: drop-shadow(0 .5px 1px rgba(0,0,0,.35)); }
-.badge img, .badge svg { width: 100%; height: 100%; display: block; }
-.ico img { width: 100%; height: 100%; display: block; }
+.badge svg { width: 100%; height: 100%; display: block; }
 /* the squares are the board theme's image (paintBoard); the rects stay for hit-testing. --light/--dark colour the coordinates */
 svg.board { background: var(--board-img, var(--dark)) center / 100% 100%; }
 .sq.light, .sq.dark { fill: transparent; }
@@ -632,18 +631,22 @@ svg.graph { width: 100%; height: 90px; display: block; cursor: pointer; backgrou
 
 <svg width="0" height="0" style="position:absolute"><defs id="piecedefs"></defs>
 <defs>
-  <!-- chess.com-style classification icons: coloured disc + glyph, 20x20 units -->
-  <symbol id="ic-brilliant" viewBox="0 0 20 20"><circle cx="10" cy="10" r="10" fill="#26c2a3"/><text x="10" y="14.5" text-anchor="middle" font-size="12" font-weight="800" fill="#fff" font-family="Arial">!!</text></symbol>
-  <symbol id="ic-great" viewBox="0 0 20 20"><circle cx="10" cy="10" r="10" fill="#749bbf"/><text x="10" y="14.5" text-anchor="middle" font-size="12" font-weight="800" fill="#fff" font-family="Arial">!</text></symbol>
-  <symbol id="ic-best" viewBox="0 0 20 20"><circle cx="10" cy="10" r="10" fill="#81b64c"/><path d="M10 3.6l1.9 4 4.4.6-3.2 3.1.8 4.4L10 13.6l-3.9 2.1.8-4.4L3.7 8.2l4.4-.6z" fill="#fff"/></symbol>
-  <symbol id="ic-excellent" viewBox="0 0 20 20"><circle cx="10" cy="10" r="10" fill="#96bc4b"/><path d="M5.5 10.5l3 3 6-6.5" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></symbol>
-  <symbol id="ic-good" viewBox="0 0 20 20"><circle cx="10" cy="10" r="10" fill="#96af8b"/><path d="M5.5 10.5l3 3 6-6.5" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
-  <symbol id="ic-book" viewBox="0 0 20 20"><circle cx="10" cy="10" r="10" fill="#d5a47a"/><path d="M4.6 5.6q2.8-.8 5.4.9v8.2q-2.6-1.5-5.4-.7zM15.4 5.6q-2.8-.8-5.4.9v8.2q2.6-1.5 5.4-.7z" fill="#fff"/><path d="M10 6.5v8.2" stroke="#d5a47a" stroke-width=".8"/></symbol>
-  <symbol id="ic-forced" viewBox="0 0 20 20"><circle cx="10" cy="10" r="10" fill="#96af8b"/><path d="M6 10h8M11 7l3 3-3 3" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
-  <symbol id="ic-inaccuracy" viewBox="0 0 20 20"><circle cx="10" cy="10" r="10" fill="#f7c631"/><text x="10" y="14.5" text-anchor="middle" font-size="11" font-weight="800" fill="#1b1b1b" font-family="Arial">?!</text></symbol>
-  <symbol id="ic-mistake" viewBox="0 0 20 20"><circle cx="10" cy="10" r="10" fill="#ffa459"/><text x="10" y="14.5" text-anchor="middle" font-size="12" font-weight="800" fill="#1b1b1b" font-family="Arial">?</text></symbol>
-  <symbol id="ic-miss" viewBox="0 0 20 20"><circle cx="10" cy="10" r="10" fill="#ff7769"/><path d="M6.5 6.5l7 7M13.5 6.5l-7 7" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round"/></symbol>
-  <symbol id="ic-blunder" viewBox="0 0 20 20"><circle cx="10" cy="10" r="10" fill="#fa412d"/><text x="10" y="14.5" text-anchor="middle" font-size="12" font-weight="800" fill="#fff" font-family="Arial">??</text></symbol>
+  <!-- our own classification badges: a rounded square in the class colour with the annotation glyph, 20x20 units -->
+  <symbol id="ic-brilliant" viewBox="0 0 20 20"><rect x=".5" y=".5" width="19" height="19" rx="5.5" fill="#26c2a3"/><text x="10" y="14.4" text-anchor="middle" font-size="12" font-weight="800" fill="#fff" font-family="Arial">!!</text></symbol>
+  <symbol id="ic-great" viewBox="0 0 20 20"><rect x=".5" y=".5" width="19" height="19" rx="5.5" fill="#749bbf"/><text x="10" y="14.4" text-anchor="middle" font-size="12" font-weight="800" fill="#fff" font-family="Arial">!</text></symbol>
+  <!-- best: a target hit; miss: the same target struck through -->
+  <symbol id="ic-best" viewBox="0 0 20 20"><rect x=".5" y=".5" width="19" height="19" rx="5.5" fill="#81b64c"/><circle cx="10" cy="10" r="5.3" fill="none" stroke="#fff" stroke-width="2"/><circle cx="10" cy="10" r="1.9" fill="#fff"/></symbol>
+  <symbol id="ic-excellent" viewBox="0 0 20 20"><rect x=".5" y=".5" width="19" height="19" rx="5.5" fill="#96bc4b"/><path d="M5.3 10.4l3.1 3.1 6.3-6.8" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="ic-good" viewBox="0 0 20 20"><rect x=".5" y=".5" width="19" height="19" rx="5.5" fill="#96af8b"/><path d="M6.3 10.4l2.6 2.6 4.9-5.3" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="ic-book" viewBox="0 0 20 20"><rect x=".5" y=".5" width="19" height="19" rx="5.5" fill="#d5a47a"/><rect x="5.6" y="4.4" width="8.8" height="11.2" rx="1.2" fill="#fff"/><path d="M7.7 4.4v11.2M9.7 8h3" stroke="#d5a47a" stroke-width="1.1"/></symbol>
+  <symbol id="ic-forced" viewBox="0 0 20 20"><rect x=".5" y=".5" width="19" height="19" rx="5.5" fill="#96af8b"/><path d="M5.8 6.4l3.6 3.6-3.6 3.6M10.6 6.4l3.6 3.6-3.6 3.6" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="ic-inaccuracy" viewBox="0 0 20 20"><rect x=".5" y=".5" width="19" height="19" rx="5.5" fill="#f7c631"/><text x="10" y="14.2" text-anchor="middle" font-size="11" font-weight="800" fill="#1b1b1b" font-family="Arial">?!</text></symbol>
+  <symbol id="ic-mistake" viewBox="0 0 20 20"><rect x=".5" y=".5" width="19" height="19" rx="5.5" fill="#ffa459"/><text x="10" y="14.4" text-anchor="middle" font-size="12" font-weight="800" fill="#1b1b1b" font-family="Arial">?</text></symbol>
+  <symbol id="ic-miss" viewBox="0 0 20 20"><rect x=".5" y=".5" width="19" height="19" rx="5.5" fill="#ff7769"/><circle cx="10" cy="10" r="5.3" fill="none" stroke="#fff" stroke-width="2"/><path d="M4.6 15.4L15.4 4.6" stroke="#ff7769" stroke-width="4"/><path d="M4.6 15.4L15.4 4.6" stroke="#fff" stroke-width="2" stroke-linecap="round"/></symbol>
+  <symbol id="ic-blunder" viewBox="0 0 20 20"><rect x=".5" y=".5" width="19" height="19" rx="5.5" fill="#fa412d"/><text x="10" y="14.4" text-anchor="middle" font-size="12" font-weight="800" fill="#fff" font-family="Arial">??</text></symbol>
+  <!-- the end of a game, on the kings: a crown on the winner's, a half on both for a draw -->
+  <symbol id="ic-winner" viewBox="0 0 20 20"><rect x=".5" y=".5" width="19" height="19" rx="5.5" fill="#d9a521"/><path d="M4.6 14.2h10.8l1-7-3.6 2.8L10 5l-2.8 5L3.6 7.2z" fill="#fff" stroke="#fff" stroke-width=".8" stroke-linejoin="round"/></symbol>
+  <symbol id="ic-equal" viewBox="0 0 20 20"><rect x=".5" y=".5" width="19" height="19" rx="5.5" fill="#9a958d"/><text x="10" y="14.6" text-anchor="middle" font-size="13" font-weight="800" fill="#fff" font-family="Arial">½</text></symbol>
 </defs></svg>
 
 <script>
@@ -660,7 +663,7 @@ const COLOR = { brilliant:'#26c2a3', great:'#749bbf', best:'#81b64c', excellent:
 const BAD = new Set(['inaccuracy', 'mistake', 'miss', 'blunder']);
 
 // ---------- themes: Lichess piece sets, boards and sound packs (static/themes, credits in themes/CREDITS.md) ----------
-// The choice lives in localStorage; themes.json lists what is installed. Badge icons are a separate, optional set.
+// The choice lives in localStorage; themes.json lists what is installed.
 const THEME_DEFAULT = { pieces: 'cburnett', board: 'brown', sound: 'sfx' };
 const THEME_LIST = { pieces: 'pieces', board: 'boards', sound: 'sounds' };   // choice -> its list in themes.json
 const theme = { ...THEME_DEFAULT };
@@ -695,22 +698,15 @@ async function paintBoard(id, el = document.documentElement) {
   const c = await boardColours(id);
   if (c) { el.style.setProperty('--light', c.light); el.style.setProperty('--dark', c.dark); }
 }
-const ASSETS = { icons: 'assets/icons' };
 const assetsReady = (async () => {
-  const ok = async u => { try { return (await fetch(u, { method: 'HEAD' })).ok; } catch (e) { return false; } };
   try { THEMES = await (await fetch('themes/themes.json')).json(); } catch (e) {}
   for (const [k, list] of Object.entries(THEME_LIST)) if (!themeInfo(list, theme[k])) theme[k] = THEME_DEFAULT[k];   // uninstalled set
   await paintBoard(theme.board);
-  ASSETS.hasIcons = await ok(`${ASSETS.icons}/best.svg`);
-  // warm the caches so badges and pieces never pop in
-  if (ASSETS.hasIcons) for (const lb of LABEL_ORDER.concat(['winner', 'equal'])) new Image().src = iconSrc(lb);
+  // warm the caches so pieces never pop in
   for (const c of PIECE_CODES) new Image().src = pieceUrl(c);
   warmSounds();
 })();
-const ICON_FILE = { great: 'great-find' };   // our label names -> icon set names
-const iconSrc = lb => `${ASSETS.icons}/${ICON_FILE[lb] || lb}.svg`;
-const icon = (lb, cls = 'ico') => !lb || !LABEL_NAME[lb] ? '' :
-  ASSETS.hasIcons ? `<span class="${cls}"><img src="${iconSrc(lb)}" alt="${LABEL_NAME[lb]}"></span>` : `<svg class="${cls}"><use href="#ic-${lb}"/></svg>`;
+const icon = (lb, cls = 'ico') => !lb || !LABEL_NAME[lb] ? '' : `<svg class="${cls}"><title>${LABEL_NAME[lb]}</title><use href="#ic-${lb}"/></svg>`;
 
 const $ = id => document.getElementById(id);
 const state = { profile: null, games: null, username: '', filters: { result:'', colour:'', analysed:'', brilliant:'' }, game: null, ply: 0, flipped: false,
@@ -2033,14 +2029,13 @@ $('boardbox').addEventListener('contextmenu', e => e.preventDefault());
 // --- badges: on the destination square of the played move; winner/equal on the kings at the end
 function badgeAt(name, lb, dx = 11.3, dy = 1.2) {
   const [x, y] = sqXY(name);
-  const img = ASSETS.hasIcons ? `<img src="${iconSrc(lb)}" alt="${lb}">` : `<svg><use href="#ic-${lb}"/></svg>`;
-  return `<div class="badge" style="left:${x + dx}%;top:${y + dy}%">${img}</div>`;
+  return `<div class="badge" style="left:${x + dx}%;top:${y + dy}%"><svg><use href="#ic-${lb}"/></svg></div>`;
 }
 function renderBadges() {
   const g = state.game, mv = currentMove();
   let out = '';
   if (mv && mv.label && LABEL_NAME[mv.label]) out += badgeAt(mv.uci.slice(2, 4), mv.label);
-  if (ASSETS.hasIcons && !inVariation() && state.ply === g.moves.length && g.moves.length && g.result) {
+  if (!inVariation() && state.ply === g.moves.length && g.moves.length && g.result) {
     const pieces = parseFen(currentFen());
     const kings = Object.entries(pieces).filter(([, ch]) => ch.toLowerCase() === 'k');
     const winner = g.result === 'draw' ? null : (g.result === 'win') === (g.my_colour === 'white') ? 'K' : 'k';
@@ -2619,7 +2614,7 @@ if (location.search.includes('selftest')) (async () => {
     await explore(fen, uci);
     say(`variation: base ${state.variation && state.variation.basePly}, moves ${state.variation && state.variation.moves.length}, ply ${state.ply}, inVariation=${inVariation()}`);
     say(`now panel: ${$('now').textContent.trim().slice(0, 120)}`);
-    say(`varrow present: ${!!document.querySelector('.varrow')}; pieces=${document.querySelectorAll('.pc').length} arrows=${$('arrows').children.length} badges=${$('badges').children.length} theme=${theme.pieces}/${theme.board}/${theme.sound} icons=${ASSETS.hasIcons}`);
+    say(`varrow present: ${!!document.querySelector('.varrow')}; pieces=${document.querySelectorAll('.pc').length} arrows=${$('arrows').children.length} badges=${$('badges').children.length} theme=${theme.pieces}/${theme.board}/${theme.sound}`);
     const legal2 = await legalFor(currentFen()); await explore(currentFen(), legal2[0]);
     say(`second explore: variation moves ${state.variation.moves.length}, ply ${state.ply}`);
     go(state.ply - 1); say(`back one: ply ${state.ply}, inVariation=${inVariation()}, moves kept ${state.variation.moves.length}`);

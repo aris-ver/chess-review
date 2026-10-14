@@ -46,10 +46,8 @@ the served site dir by `site.write_static()` on every start. The gear in the hea
 board and a play button per sound. `python scripts/import_lichess_themes.py <lila checkout>` refreshes them; it
 skips everything lila's COPYING.md marks non-free (that includes Lichess's standard sound pack).
 
-Badge icons: the page uses `data/site/assets/icons/<classification>.svg` when present
-(`bash scripts/install_assets.sh <icons>`), otherwise inline badges. **chess.com's icon files are proprietary —
-local personal use only**; `data/` is gitignored, so they never enter the repo. The arrow geometry is an
-independent reimplementation.
+The classification badges are the app's own drawings (`ic-*` symbols in `static/index.html`): a rounded square in
+the class colour with the annotation glyph. The arrow geometry is an independent reimplementation.
 
 ## Windows app
 
