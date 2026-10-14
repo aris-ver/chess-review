@@ -7,7 +7,7 @@
 
 Licences come from lila's COPYING.md: a file it doesn't list as an exception is lila's own (AGPLv3+). Sets
 it lists as non-free are left out, and so are the sound packs it doesn't name ("the other sounds in
-public/sound" are non-free -- that includes Lichess's standard pack).
+public/sound" are non-free -- that includes Lichess's standard pack). ALLOW names the exceptions to that.
 """
 import json
 import re
@@ -23,6 +23,8 @@ SOUND_FILES = ["Move", "Capture", "Castles", "Check", "Checkmate", "GenericNotif
                "Confirmation", "Victory", "Defeat", "Draw"]
 FREE_SOUNDS = ["futuristic", "lisp", "nes", "piano", "sfx"]
 SKIP_PIECES = {"mono"}   # one image per piece for both colours, tinted by Lichess's CSS: not a drop-in set
+# listed under COPYING.md's non-free heading, but with a CC BY 4.0 licence: free with credit, so they ship
+ALLOW = {"public/piece/totoy", "public/piece/papercut"}
 LILA = {"author": "the lila authors", "license": "AGPLv3+", "license_url": "https://www.gnu.org/licenses/agpl-3.0.html"}
 NAMES = {"icpieces": "IC Pieces", "mpchess": "MPChess", "rhosgfx": "RhosGFX", "xkcd": "xkcd", "kiwen-suwi": "Kiwen-suwi",
          "ic": "IC", "ncf-board": "NCF", "blue2": "Blue 2", "blue3": "Blue 3", "wood2": "Wood 2", "wood3": "Wood 3",
@@ -52,7 +54,7 @@ def licences(copying: str) -> tuple[dict, set]:
             continue
         for path in re.findall(r"public/[\w./{},-]+", cells[0]):
             path = path.rstrip(",").lower()
-            if section == "nonfree":
+            if section == "nonfree" and path not in ALLOW:
                 nonfree.add(path)
                 continue
             author, _ = plain(cells[1])

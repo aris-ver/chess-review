@@ -201,6 +201,14 @@
    "license_url": "https://www.gnu.org/licenses/quick-guide-gplv3.en.html"
   },
   {
+   "id": "papercut",
+   "name": "Papercut",
+   "ext": "svg",
+   "author": "Nikolay Anzarov",
+   "license": "CC BY 4.0",
+   "license_url": "https://creativecommons.org/licenses/by/4.0/"
+  },
+  {
    "id": "pirouetti",
    "name": "Pirouetti",
    "ext": "svg",
@@ -255,6 +263,14 @@
    "author": "sadsnake1",
    "license": "CC BY-NC-SA 4.0",
    "license_url": "https://creativecommons.org/licenses/by-nc-sa/4.0/"
+  },
+  {
+   "id": "totoy",
+   "name": "Totoy",
+   "ext": "svg",
+   "author": "Kosal Sen",
+   "license": "CC BY 4.0",
+   "license_url": "https://creativecommons.org/licenses/by/4.0/"
   },
   {
    "id": "xkcd",
