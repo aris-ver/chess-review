@@ -42,8 +42,12 @@ than the one already coming is an inaccuracy (as chess.com grades them).
 """
 
 import argparse
+import hashlib
+import json
 import logging
 import math
+from functools import lru_cache
+from pathlib import Path
 from typing import Optional
 
 import chess
@@ -53,6 +57,7 @@ import pyarrow.parquet as pq
 from . import book
 from .accuracy import move_accuracy
 from .config import (
+    BUNDLE_ROOT,
     BLUNDER,
     CP_BLUNDER,
     CP_MISTAKE,
@@ -339,7 +344,34 @@ def load_multipv(con, game_id: Optional[str] = None) -> dict[str, list[dict]]:
     return out
 
 
-def classify_all(con) -> list[dict]:
+@lru_cache(maxsize=1)
+def code_fingerprint() -> str:
+    """Changes whenever the code that turns a game into labels and a review might have: the package's sources in a
+    checkout, the build stamp in a packaged app (whose sources are compiled in), plus the opening book."""
+    h = hashlib.sha1()
+    for f in sorted(Path(__file__).parent.glob("*.py")):
+        h.update(f.name.encode() + f.read_bytes())
+    stamp = BUNDLE_ROOT / "build.json"
+    if stamp.exists():
+        h.update(stamp.read_bytes())
+    for f in sorted(book.BOOK_DIR.glob("*.tsv")):
+        st = f.stat()
+        h.update(f"{f.name}:{st.st_size}:{st.st_mtime_ns}".encode())
+    return h.hexdigest()
+
+
+def game_fingerprint(game: dict, rows: list[dict], multipv: dict[str, list[dict]], *extra) -> str:
+    """Everything a game's labels and review are made from: the game, its positions with their evals, their MultiPV
+    lines and the code. Equal fingerprints mean a rebuild would produce the same output, so it can be skipped."""
+    # load_multipv's order is whatever DuckDB returns, which needn't be the same for one game as for all of them
+    lines = [sorted(multipv.get(r.get("fen_key") or fen_key(r["fen"])) or [], key=lambda m: m["rank"]) for r in rows]
+    blob = json.dumps([code_fingerprint(), game, rows, lines, extra], default=str, sort_keys=True)
+    return hashlib.sha1(blob.encode()).hexdigest()
+
+
+def classify_all(con, previous: Optional[dict[str, tuple[str, list[dict]]]] = None) -> tuple[list[dict], dict[str, str]]:
+    """Every game's moves, and each game's fingerprint. previous: game_id -> (fingerprint, moves) from the last
+    build; a game whose fingerprint hasn't changed keeps those moves instead of being classified again."""
     games = {g["game_id"]: g for g in con.execute("SELECT * FROM games").fetch_arrow_table().to_pylist()}
     rows = con.execute("""
         SELECT p.game_id, p.ply, p.fen, p.fen_key, p.side_to_move, p.move_played, p.clock_remaining,
@@ -351,17 +383,36 @@ def classify_all(con) -> list[dict]:
     by_game: dict[str, list[dict]] = {}
     for r in rows:
         by_game.setdefault(r["game_id"], []).append(r)
+    previous = previous or {}
     out: list[dict] = []
+    fps: dict[str, str] = {}
     for gid, grows in by_game.items():
-        out.extend(classify_game(games[gid], grows, multipv))
-    return out
+        fps[gid] = fp = game_fingerprint(games[gid], grows, multipv)
+        old = previous.get(gid)
+        out.extend(old[1] if old and old[0] == fp else classify_game(games[gid], grows, multipv))
+    return out, fps
+
+
+def _previous_moves(profile: Profile) -> dict[str, tuple[str, list[dict]]]:
+    """game_id -> (fingerprint, moves) as the last build left them in moves.parquet and its fingerprint file."""
+    fp_path = profile.moves_parquet.with_suffix(".fp.json")
+    try:
+        fps = json.loads(fp_path.read_text(encoding="utf-8"))
+        rows = pq.read_table(profile.moves_parquet).to_pylist()
+    except (OSError, ValueError, pa.ArrowException):
+        return {}
+    by_game: dict[str, list[dict]] = {}
+    for r in rows:
+        by_game.setdefault(r["game_id"], []).append(r)
+    return {gid: (fps[gid], moves) for gid, moves in by_game.items() if gid in fps}
 
 
 def build(profile: Profile) -> dict:
     con = connect(profile)
-    out = classify_all(con)
+    out, fps = classify_all(con, _previous_moves(profile))
     profile.moves_parquet.parent.mkdir(parents=True, exist_ok=True)
     pq.write_table(pa.Table.from_pylist(out, schema=SCHEMA), profile.moves_parquet)
+    profile.moves_parquet.with_suffix(".fp.json").write_text(json.dumps(fps), encoding="utf-8")
     con = connect(profile)
     dist = con.execute("""
         SELECT label, count(*) n, round(100.0 * count(*) / sum(count(*)) OVER (), 1) pct

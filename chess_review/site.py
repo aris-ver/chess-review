@@ -5,7 +5,9 @@
     data/profiles/<id>/site/games/<slug>.json   full review: every move with eval/label/clock/comment, key moments
 
 Each game is classified live from positions ⋈ evals, so `write_game` can be
-called for one game while the server is still analysing it.
+called for one game while the server is still analysing it. Each review JSON
+carries the fingerprint of what it was built from, so `build` only redoes the
+games that are new or whose evals (or the code) changed since.
 """
 
 import argparse
@@ -22,7 +24,7 @@ import chess.svg
 
 from . import explain
 from .accuracy import game_accuracy
-from .classify import classify_game, load_multipv
+from .classify import classify_game, game_fingerprint, load_multipv
 from . import profiles
 from .config import SITE_DIR
 from .critical import select
@@ -33,6 +35,7 @@ from .pov import pov_win_pct, to_white_pov
 
 log = logging.getLogger("site")
 STATIC = Path(__file__).parent / "static"
+_themes_synced = False  # write_static copies the themes once per process
 
 POSITIONS_SQL = """
     SELECT p.game_id, p.ply, p.fen, p.fen_key, p.side_to_move, p.move_played, p.clock_remaining,
@@ -143,11 +146,26 @@ def index_entry(game: dict, review: dict) -> dict:
     }
 
 
+def _review(game: dict, positions: list[dict], multipv: dict, username: str) -> dict:
+    """The review JSON, stamped with the fingerprint of what it was built from (see _cached)."""
+    moves = classify_game(game, positions, multipv)
+    review = build_game(game, positions, moves, select(moves), multipv, username)
+    review["fp"] = game_fingerprint(game, positions, multipv, username)
+    return review
+
+
+def _cached(path: Path, fp: str) -> Optional[dict]:
+    """The review already on disk if it was built from exactly this input, else None."""
+    try:
+        review = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return review if review.get("fp") == fp else None
+
+
 def game_review(con, profile: Profile, game: dict) -> dict:
     positions = con.execute(POSITIONS_SQL.format(where="WHERE p.game_id = ?"), [game["game_id"]]).fetch_arrow_table().to_pylist()
-    multipv = load_multipv(con, game["game_id"])
-    moves = classify_game(game, positions, multipv)
-    return build_game(game, positions, moves, select(moves), multipv, profile.username)
+    return _review(game, positions, load_multipv(con, game["game_id"]), profile.username)
 
 
 def write_game(con, profile: Profile, game_id: str) -> dict:
@@ -178,7 +196,10 @@ def write_static() -> None:
     out = SITE_DIR / "index.html"
     if not out.exists() or out.read_text(encoding="utf-8") != html:
         out.write_text(html, encoding="utf-8")
-    sync_tree(STATIC / "themes", SITE_DIR / "themes")
+    global _themes_synced
+    if not _themes_synced:      # the bundled themes can't change while the app runs (an update restarts it)
+        sync_tree(STATIC / "themes", SITE_DIR / "themes")
+        _themes_synced = True
     # chess.com files older versions used: the sounds they copied here, the pieces and icons install_assets.sh put
     # in assets/ (copies -- the page draws its own badges now)
     shutil.rmtree(SITE_DIR / "sounds", ignore_errors=True)
@@ -186,8 +207,8 @@ def write_static() -> None:
 
 
 def sync_tree(src: Path, dst: Path) -> None:
-    """Make dst a copy of src (the Lichess pieces, boards and sounds), copying only files that changed --
-    write_static runs after every job, and the themes are a few MB."""
+    """Make dst a copy of src (the Lichess pieces, boards and sounds), copying only files that changed -- the
+    themes are a few MB."""
     want = {f.relative_to(src) for f in src.rglob("*") if f.is_file()}
     for rel in want:
         s, d = src / rel, dst / rel
@@ -213,17 +234,22 @@ def build(profile: Profile) -> dict:
     username = profile.username
     (profile.site_dir / "games").mkdir(parents=True, exist_ok=True)
     index = []
+    rebuilt = 0
     for g in games:
         pos = pos_g.get(g["game_id"])
         if not pos or len(pos) < 2:
             continue
-        moves = classify_game(g, pos, multipv)
-        review = build_game(g, pos, moves, select(moves), multipv, username)
-        (profile.site_dir / "games" / f"{review['id']}.json").write_text(json.dumps(review, ensure_ascii=False), encoding="utf-8")
+        # only games that are new, or whose evals (or the code) changed since their JSON was written, are redone
+        path = profile.site_dir / "games" / f"{slug(g['game_id'])}.json"
+        review = _cached(path, game_fingerprint(g, pos, multipv, username))
+        if review is None:
+            review = _review(g, pos, multipv, username)
+            path.write_text(json.dumps(review, ensure_ascii=False), encoding="utf-8")
+            rebuilt += 1
         index.append(index_entry(g, review))
     (profile.site_dir / "games.json").write_text(json.dumps({"username": username, "games": index}, ensure_ascii=False), encoding="utf-8")
     write_static()
-    return {"games": len(index), "dir": str(profile.site_dir)}
+    return {"games": len(index), "rebuilt": rebuilt, "dir": str(profile.site_dir)}
 
 
 def main(argv=None) -> None:

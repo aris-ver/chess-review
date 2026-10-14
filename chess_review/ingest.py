@@ -54,7 +54,6 @@ def fetch_archives(profile: Profile, force: bool = False, only: str | None = Non
 
     archive_urls = _get(session, API.format(username=profile.username)).json()["archives"]
     log.info("%d archives listed for %s", len(archive_urls), profile.username)
-    time.sleep(delay)
 
     stats = {"listed": len(archive_urls), "fetched": 0, "skipped": 0}
     for i, url in enumerate(archive_urls):
@@ -70,12 +69,12 @@ def fetch_archives(profile: Profile, force: bool = False, only: str | None = Non
         if out.exists() and not force and not (refresh_latest and is_latest):
             stats["skipped"] += 1
             continue
+        time.sleep(delay)       # between requests only: a refresh asks for one month and passes delay=0
         body = _get(session, url).text
         n = len(json.loads(body).get("games", []))
         out.write_text(body, encoding="utf-8")
         stats["fetched"] += 1
         log.info("%s: %d games", key, n)
-        time.sleep(delay)
     return stats
 
 
@@ -192,7 +191,8 @@ def count_new_lichess(profile: Profile) -> int:
 def fetch(profile: Profile, refresh: bool = False, on_progress=None) -> dict:
     """The profile's games from wherever it lives: everything for a new profile, what's new on a refresh."""
     if profile.source == "chesscom":
-        return fetch_archives(profile, refresh_latest=refresh, on_progress=on_progress)
+        # chess.com only rate-limits parallel requests; the pause is politeness for a whole history, not a refresh
+        return fetch_archives(profile, refresh_latest=refresh, delay=0 if refresh else 1.0, on_progress=on_progress)
     if profile.source == "lichess":
         return fetch_lichess(profile, on_progress=on_progress)
     raise ValueError(f"{profile.source} profiles can't be fetched")
