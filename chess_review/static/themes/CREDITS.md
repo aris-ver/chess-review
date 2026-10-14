@@ -32,6 +32,7 @@ Merida | Armando Hernandez Marroquin | [GPLv2+](https://www.gnu.org/licenses/gpl
 Minimal Warmth | blunder_reign | [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/)
 Monarchy | slither77 | [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/)
 MPChess | Maxime Chupin | [GPL3v3+](https://www.gnu.org/licenses/quick-guide-gplv3.en.html)
+Papercut | Nikolay Anzarov | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)
 Pirouetti | pirouetti | AGPLv3+
 Pixel | therealqtpi | AGPLv3+
 RhosGFX | RhosGFX | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/)
@@ -39,6 +40,7 @@ Shapes | flugsio | [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0
 Spatial | Maurizio Monge | [MIT](https://github.com/maurimo/chess-art/blob/main/LICENSE)
 Staunty | sadsnake1 | [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/)
 Tatiana | sadsnake1 | [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/)
+Totoy | Kosal Sen | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)
 xkcd | Randall Munroe | [CC BY-NC-SA 2.5](https://xkcd.com/license.html)
 
 ## Boards
