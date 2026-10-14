@@ -9,3 +9,6 @@
 # Binary assets: no diffs, no conversion.
 *.mp3 binary
 *.ico binary
+*.png binary
+*.jpg binary
+*.webp binary

@@ -275,9 +275,13 @@ class Handler(SimpleHTTPRequestHandler):
     runner: Runner = None  # set in main
     updates: updater.Updater = None
     new_games: NewGames = None
+    # the theme files, whatever the Windows registry says about these extensions
+    extensions_map = {**SimpleHTTPRequestHandler.extensions_map, ".svg": "image/svg+xml", ".webp": "image/webp",
+                      ".mp3": "audio/mpeg", ".jpg": "image/jpeg", ".png": "image/png", ".json": "application/json"}
 
     def end_headers(self):
-        self.send_header("Cache-Control", "no-store")
+        # themes (pieces, boards, sounds) may be cached and revalidated: no-store would refetch every piece image
+        self.send_header("Cache-Control", "no-cache" if self.path.startswith("/themes/") else "no-store")
         super().end_headers()
 
     def log_message(self, fmt, *args):

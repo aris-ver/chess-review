@@ -125,7 +125,7 @@ dialog#whatsnew .md p { margin: 8px 0; } dialog#whatsnew .md a { color: var(--ac
 .setup-board { display: grid; grid-template-columns: repeat(8, 1fr); aspect-ratio: 1; border-radius: 4px; overflow: hidden; }
 .setup-board .sq { position: relative; aspect-ratio: 1; container-type: inline-size; }
 .setup-board.tooling .sq { cursor: none; }
-.setup-board .sq.light { background: var(--light); } .setup-board .sq.dark { background: var(--dark); }
+.setup-board { background: var(--board-img, var(--dark)) center / 100% 100%; }
 .setup-board .coord { position: absolute; font-size: 21cqw; font-weight: 700; line-height: 1; pointer-events: none; user-select: none; }
 .setup-board .coord.rank { top: 6%; left: 5%; } .setup-board .coord.file { right: 5%; bottom: 3%; }
 .setup-board .coord.onlight { color: var(--dark); } .setup-board .coord.ondark { color: var(--light); }
@@ -280,7 +280,7 @@ svg.board { position: absolute; inset: 0; width: 100%; height: 100%; display: bl
 svg.arrows { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; z-index: 3; }
 svg.arrows.marks { z-index: auto; }
 .badges { z-index: 4; }
-.pc { position: absolute; left: 0; top: 0; width: 12.5%; height: 12.5%; background-size: contain; background-repeat: no-repeat; background-position: center; transition: transform .18s ease-out; will-change: transform; filter: saturate(1.2) contrast(1.06); }   /* the piece PNGs read a little washed out on the dark page */
+.pc { position: absolute; left: 0; top: 0; width: 12.5%; height: 12.5%; background-size: contain; background-repeat: no-repeat; background-position: center; transition: transform .18s ease-out; will-change: transform; }
 .pc svg { width: 100%; height: 100%; display: block; }
 .boardbox.playable { cursor: default; }
 .pc.top { z-index: 1; }
@@ -290,7 +290,9 @@ svg.arrows.marks { z-index: auto; }
 .badge { position: absolute; width: 5.75%; height: 5.75%; transform: translate(-50%, -50%); filter: drop-shadow(0 .5px 1px rgba(0,0,0,.35)); }
 .badge img, .badge svg { width: 100%; height: 100%; display: block; }
 .ico img { width: 100%; height: 100%; display: block; }
-.sq.light { fill: var(--light); } .sq.dark { fill: var(--dark); }
+/* the squares are the board theme's image (paintBoard); the rects stay for hit-testing. --light/--dark colour the coordinates */
+svg.board { background: var(--board-img, var(--dark)) center / 100% 100%; }
+.sq.light, .sq.dark { fill: transparent; }
 .coord { font-size: 2.6px; font-weight: 700; pointer-events: none; }
 .coord.onlight { fill: var(--dark); } .coord.ondark { fill: var(--light); }
 .arrow { opacity: 1; }
@@ -409,6 +411,37 @@ svg.graph { width: 100%; height: 90px; display: block; cursor: pointer; backgrou
 .m.inaccuracy .san { color: var(--c-inaccuracy); } .m.mistake .san { color: var(--c-mistake); } .m.miss .san { color: var(--c-miss); }
 .m.blunder .san { color: var(--c-blunder); font-weight: 700; } .m.book .san { color: var(--c-book); } .m.forced .san { color: var(--c-forced); }
 .empty { padding: 30px; text-align: center; color: var(--muted); }
+
+/* settings: pieces, board and sounds, previewed on a board before Apply */
+.themes { display: grid; grid-template-columns: minmax(260px, 460px) minmax(300px, 1fr); gap: 22px; max-width: 1120px; margin: 24px auto 0; align-items: start; }
+.tpreview { position: sticky; top: 70px; display: flex; flex-direction: column; gap: 10px; }
+.pv-board { position: relative; aspect-ratio: 1; border-radius: 4px; overflow: hidden; background: var(--board-img) center / 100% 100%; container-type: inline-size; }
+.pv-board > * { position: absolute; width: 12.5%; height: 12.5%; }
+.pv-board .hl { background: rgb(255, 255, 51); opacity: .5; }
+.pv-board .co { font-size: clamp(8px, 2.6cqw, 13px); font-weight: 700; line-height: 1; padding: 2px 3px; display: flex; pointer-events: none; }
+.pv-board .co.f { align-items: flex-end; justify-content: flex-end; } .pv-board .co.onlight { color: var(--dark); } .pv-board .co.ondark { color: var(--light); }
+.tcredit { color: var(--muted); font-size: 12px; line-height: 1.6; } .tcredit b { color: var(--text); font-weight: 600; }
+.tcredit a { color: var(--muted); text-decoration: underline; }
+.tpanel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.ttabs { display: flex; gap: 6px; } .ttabs button { flex: 1; }
+.tgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); gap: 8px; max-height: 58vh; overflow: auto; padding: 2px; }
+.tile { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 8px 6px; background: var(--panel2); border: 2px solid transparent; border-radius: 8px; }
+.tile:hover { background: #46423d; } .tile.on { border-color: var(--accent); }
+.tile .tp { display: flex; background: var(--board-img) 0 0 / 256px 256px; border-radius: 3px; }   /* three squares of the chosen board */
+.tile .tp img { width: 32px; height: 32px; display: block; }
+.tile .tb { width: 72px; height: 72px; border-radius: 4px; background: center / cover; }
+.tile .tn { font-size: 12px; text-align: center; } .tile .ta { font-size: 11px; color: var(--muted); text-align: center; }
+.tsounds { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 6px; }
+.tsounds .row { display: flex; align-items: center; gap: 8px; background: var(--panel2); border-radius: 6px; padding: 4px 8px 4px 4px; font-size: 13px; }
+.tsounds .row button { padding: 2px 9px; } .tsounds .row small { color: var(--muted); font-size: 11px; margin-left: auto; text-align: right; }
+.tsounds .all { grid-column: 1 / -1; justify-self: start; }
+.tactions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; border-top: 1px solid var(--line); padding-top: 12px; }
+.tactions .pending { color: var(--muted); font-size: 12px; }
+@media (max-width: 760px) {
+  .themes { grid-template-columns: 1fr; margin-top: 8px; }
+  .tpreview { position: static; max-width: 420px; width: 100%; margin: 0 auto; }
+  .tgrid { max-height: none; }
+}
 </style>
 </head>
 <body>
@@ -416,6 +449,7 @@ svg.graph { width: 100%; height: 90px; display: block; cursor: pointer; backgrou
   <h1><a href="#/">♞ Chess Review</a></h1>
   <span class="crumb" id="crumb"></span>
   <div class="right">
+    <button id="b-settings" class="snd" title="Pieces, board and sounds"><svg viewBox="0 0 24 24"><path fill-rule="evenodd" d="M19.14 12.94c.04-.3.06-.61.06-.94s-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.49.49 0 0 0-.59-.22l-2.39.96a7 7 0 0 0-1.62-.94l-.36-2.54a.48.48 0 0 0-.48-.41h-3.84a.47.47 0 0 0-.47.41l-.36 2.54a7.4 7.4 0 0 0-1.62.94l-2.39-.96a.48.48 0 0 0-.59.22L2.74 8.87a.47.47 0 0 0 .12.61l2.03 1.58a6 6 0 0 0 0 1.88l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54a7 7 0 0 0 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32a.47.47 0 0 0-.12-.61zM12 15.6a3.6 3.6 0 1 1 0-7.2 3.6 3.6 0 0 1 0 7.2z"/></svg></button>
     <button id="b-sound" class="snd" title="Toggle sound"></button>
     <button id="b-refresh" class="pctx" title="Fetch new games from chess.com"><span class="i">⟳</span><span class="t"> Refresh games</span></button>
     <span id="b-auto" class="switch pctx" title="Analyse newly fetched games automatically after a refresh (off: analyse each game on demand)"><span class="lbl">Auto-analyse</span><span class="track"></span></span>
@@ -486,6 +520,25 @@ svg.graph { width: 100%; height: 90px; display: block; cursor: pointer; backgrou
       <input type="file" id="imgfile" accept="image/*" class="hidden">
       <form id="imgurl"><input name="url" placeholder="…or an image URL" autocomplete="off" spellcheck="false"><button type="submit">Read</button></form>
       <div class="row"><label>Side to move</label><select id="imgstm"><option value="w">White</option><option value="b">Black</option></select><span class="st" id="imgstatus"></span><span style="margin-left:auto"></span><a href="#/" class="pbtn">← Cancel</a></div>
+    </div>
+  </section>
+  <section id="settings" class="hidden">
+    <div class="themes">
+      <div class="tpreview">
+        <div class="pv-board" id="pvboard"></div>
+        <div class="tcredit" id="tcredit"></div>
+      </div>
+      <div class="tpanel">
+        <div class="ttabs" id="ttabs"><button data-tab="pieces" class="active">Pieces</button><button data-tab="board">Board</button><button data-tab="sound">Sounds</button></div>
+        <div class="tgrid" id="tgrid"></div>
+        <div class="tsounds hidden" id="tsounds"></div>
+        <div class="tactions">
+          <button id="t-reset" title="Back to the defaults (applied when you press Apply)">Reset to defaults</button>
+          <span class="pending" id="t-pending"></span>
+          <span style="margin-left:auto"></span>
+          <a href="#/" class="pbtn" id="t-back">← Back</a><button class="primary" id="t-apply" disabled>Apply</button>
+        </div>
+      </div>
     </div>
   </section>
   <div class="ghost-piece hidden" id="ghostpiece"></div>
@@ -606,17 +659,53 @@ const COLOR = { brilliant:'#26c2a3', great:'#749bbf', best:'#81b64c', excellent:
                 inaccuracy:'#f7c631', mistake:'#ffa459', miss:'#ff7769', blunder:'#fa412d' };
 const BAD = new Set(['inaccuracy', 'mistake', 'miss', 'blunder']);
 
-// Swappable asset sets. chess.com's pieces/icons are for local personal use only; point these at
-// Lichess pieces / your own icons before exposing the page beyond localhost. Missing sets fall
-// back to the built-in cburnett pieces and inline badge symbols.
-const ASSETS = { pieces: 'assets/pieces', icons: 'assets/icons' };
+// ---------- themes: Lichess piece sets, boards and sound packs (static/themes, credits in themes/CREDITS.md) ----------
+// The choice lives in localStorage; themes.json lists what is installed. Badge icons are a separate, optional set.
+const THEME_DEFAULT = { pieces: 'cburnett', board: 'brown', sound: 'sfx' };
+const THEME_LIST = { pieces: 'pieces', board: 'boards', sound: 'sounds' };   // choice -> its list in themes.json
+const theme = { ...THEME_DEFAULT };
+try { Object.assign(theme, JSON.parse(localStorage.getItem('theme') || '{}')); } catch (e) {}
+let THEMES = { pieces: [], boards: [], sounds: [] };
+const themeInfo = (kind, id) => THEMES[kind].find(t => t.id === id);
+const PIECE_CODES = ['wp','wn','wb','wr','wq','wk','bp','bn','bb','br','bq','bk'];
+// code 'wk' -> that set's wK file
+function pieceUrl(code, set = theme.pieces) {
+  const t = themeInfo('pieces', set);
+  return `themes/pieces/${set}/${code[0]}${code[1].toUpperCase()}.${t ? t.ext : 'svg'}`;
+}
+// The coordinates are drawn in the board's own colours (dark on light squares and back), read off its image:
+// the middle of a8 (light) and b8 (dark). Remembered per board so the page doesn't flash the default ones.
+async function boardColours(id) {
+  const key = 'boardColours:' + id;
+  try { const c = JSON.parse(localStorage.getItem(key)); if (c) return c; } catch (e) {}
+  const t = themeInfo('boards', id); if (!t) return null;
+  const im = new Image(); im.src = `themes/boards/${t.file}`;
+  try { await im.decode(); } catch (e) { return null; }
+  const cv = document.createElement('canvas'); cv.width = cv.height = 64;
+  const cx = cv.getContext('2d', { willReadFrequently: true }); cx.drawImage(im, 0, 0, 64, 64);
+  const avg = x => { const d = cx.getImageData(x + 2, 2, 4, 4).data; let r = 0, g = 0, b = 0; for (let i = 0; i < d.length; i += 4) { r += d[i]; g += d[i + 1]; b += d[i + 2]; } const n = d.length / 4; return `rgb(${Math.round(r / n)}, ${Math.round(g / n)}, ${Math.round(b / n)})`; };
+  const c = { light: avg(0), dark: avg(8) };
+  try { localStorage.setItem(key, JSON.stringify(c)); } catch (e) {}
+  return c;
+}
+// paints the board image and its coordinate colours onto el's CSS variables (the page, or a preview board)
+async function paintBoard(id, el = document.documentElement) {
+  const t = themeInfo('boards', id); if (!t) return;
+  el.style.setProperty('--board-img', `url('themes/boards/${t.file}')`);
+  const c = await boardColours(id);
+  if (c) { el.style.setProperty('--light', c.light); el.style.setProperty('--dark', c.dark); }
+}
+const ASSETS = { icons: 'assets/icons' };
 const assetsReady = (async () => {
   const ok = async u => { try { return (await fetch(u, { method: 'HEAD' })).ok; } catch (e) { return false; } };
-  ASSETS.hasPieces = await ok(`${ASSETS.pieces}/wk.png`);
+  try { THEMES = await (await fetch('themes/themes.json')).json(); } catch (e) {}
+  for (const [k, list] of Object.entries(THEME_LIST)) if (!themeInfo(list, theme[k])) theme[k] = THEME_DEFAULT[k];   // uninstalled set
+  await paintBoard(theme.board);
   ASSETS.hasIcons = await ok(`${ASSETS.icons}/best.svg`);
   // warm the caches so badges and pieces never pop in
   if (ASSETS.hasIcons) for (const lb of LABEL_ORDER.concat(['winner', 'equal'])) new Image().src = iconSrc(lb);
-  if (ASSETS.hasPieces) for (const c of ['wp','wn','wb','wr','wq','wk','bp','bn','bb','br','bq','bk']) new Image().src = `${ASSETS.pieces}/${c}.png`;
+  for (const c of PIECE_CODES) new Image().src = pieceUrl(c);
+  warmSounds();
 })();
 const ICON_FILE = { great: 'great-find' };   // our label names -> icon set names
 const iconSrc = lb => `${ASSETS.icons}/${ICON_FILE[lb] || lb}.svg`;
@@ -641,44 +730,50 @@ function line() {
 const inVariation = () => !!state.variation && state.ply > state.variation.basePly;
 function dropVariation() { state.variation = null; }
 
-// ---------- sounds (shipped in chess_review/static/sounds/, synced to sounds/ by site.write_static) ----------
-const SOUND_FILES = {
-  start: ['game-start'], end: ['game-end'], capture: ['capture'], castle: ['castle'], self: ['move-self'],
-  opp: ['move-opponent'], check: ['move-check'], promote: ['promote'], tenseconds: ['tenseconds'], notify: ['notify'],
-  illegal: ['illegal'], brilliant: ['brilliant', 'brilliant.webm'],
+// ---------- sounds: the chosen Lichess pack (themes/sounds/<pack>/) ----------
+// Each event names the pack files it can use, best first: a pack without Castles plays Move for castling (Lichess does).
+const SOUND_EVENTS = {
+  self: ['Move'], opp: ['Move'], capture: ['Capture'], castle: ['Castles', 'Move'], check: ['Check'], mate: ['Checkmate', 'Check'],
+  promote: ['Move'], start: ['GenericNotify'], end: ['GenericNotify'], win: ['Victory', 'GenericNotify'],
+  loss: ['Defeat', 'GenericNotify'], draw: ['Draw', 'GenericNotify'], tenseconds: ['LowTime'], notify: ['GenericNotify'],
+  illegal: ['Error'], brilliant: ['Confirmation'],
 };
-const audioCache = {};
-function audioFor(name) {
-  if (name in audioCache) return audioCache[name];
-  const cands = SOUND_FILES[name] || [];
-  const src = c => `sounds/${c}${c.includes('.') ? '' : '.mp3'}`;
-  const a = new Audio(src(cands[0]));
-  a.preload = 'auto';
-  a.addEventListener('error', () => {
-    if (cands[1]) { const b = new Audio(src(cands[1])); b.addEventListener('error', () => { audioCache[name] = null; }, { once: true }); audioCache[name] = b; }
-    else audioCache[name] = null;   // missing file: stay silent
-  }, { once: true });
-  audioCache[name] = a;
-  return a;
+function soundFile(name, pack = theme.sound) {
+  const t = themeInfo('sounds', pack);
+  return t ? (SOUND_EVENTS[name] || []).find(f => t.files.includes(f)) : null;
 }
-function play(name, delay = 0) {
-  if (!state.sound) return;
-  const go = () => { try { const src = audioFor(name); if (!src) return; const a = src.cloneNode(); a.volume = 0.9; a.play().catch(() => {}); } catch (e) {} };
+const audioCache = {};
+function audioFor(name, pack = theme.sound) {
+  const f = soundFile(name, pack); if (!f) return null;
+  const src = `themes/sounds/${pack}/${f}.mp3`;
+  if (!(src in audioCache)) {
+    const a = new Audio(src); a.preload = 'auto';
+    a.addEventListener('error', () => { audioCache[src] = null; }, { once: true });   // missing file: stay silent
+    audioCache[src] = a;
+  }
+  return audioCache[src];
+}
+function warmSounds(pack = theme.sound) { Object.keys(SOUND_EVENTS).forEach(n => audioFor(n, pack)); }
+// pack: a preview from the settings page, which plays even while the sound is muted
+function play(name, delay = 0, pack = null) {
+  if (!state.sound && !pack) return;
+  const go = () => { try { const src = audioFor(name, pack || theme.sound); if (!src) return; const a = src.cloneNode(); a.volume = 0.9; a.play().catch(() => {}); } catch (e) {} };
   delay ? setTimeout(go, delay) : go();
 }
-Object.keys(SOUND_FILES).forEach(audioFor);
+// the end of a game: Victory, Defeat or Draw from my side when the game has a result (not in the sandbox)
+const endSound = () => state.game && ['win', 'loss', 'draw'].includes(state.game.result) ? state.game.result : 'end';
 
 let tenSecondsPlayedFor = null;
 function playMoveSound(m, isLast) {
   if (!m) return;
   const san = m.san;
-  if (san.includes('#')) { play('check'); play('end', 220); }
+  if (san.includes('#')) play('mate');
   else if (san.includes('+')) play('check');
   else if (san.startsWith('O-O')) play('castle');
   else if (san.includes('=')) play('promote');
   else if (san.includes('x')) play('capture');
   else play(m.is_mine ? 'self' : 'opp');
-  if (isLast && !san.includes('#') && !inVariation()) play('end', 250);
+  if (isLast && !inVariation()) play(endSound(), san.includes('#') ? 220 : 250);
   if (m.label === 'brilliant') play('brilliant', 180);
   if (m.clock != null && m.clock < 10 && m.is_mine && tenSecondsPlayedFor !== state.game.id) { tenSecondsPlayedFor = state.game.id; play('tenseconds', 120); }
 }
@@ -702,8 +797,11 @@ async function checkStale() {
   else if (lm !== pageStamp) { toast('The app was updated — click here to reload', 15000); $('toast').onclick = () => location.reload(); }
 }
 checkStale();
+let backHash = '#/';   // where Settings' Back returns to: the page it was opened from
 async function route() {
   const h = location.hash || '#/';
+  if (h === '#/settings') return showSettings();
+  backHash = h;
   const sm = h.match(/^#\/sandbox\/(.+)$/);
   if (sm) return showSandbox(decodeURIComponent(sm[1]));
   const em = h.match(/^#\/setup(?:\?fen=(.+))?$/);
@@ -819,7 +917,7 @@ function renderUpdate() {
 checkUpdate();
 const fmtNodes = n => n >= 1e6 ? `${(n / 1e6).toFixed(n % 1e6 ? 1 : 0)}M nodes` : `${Math.round(n / 1e3)}k nodes`;
 const engineName = snap => (snap && snap.engine) || (state.engine && state.engine.name) || 'Engine';
-const SECTIONS = ['home', 'list', 'review', 'editor', 'imgpage'];
+const SECTIONS = ['home', 'list', 'review', 'editor', 'imgpage', 'settings'];
 function showSection(id) { SECTIONS.forEach(s => $(s).classList.toggle('hidden', s !== id)); }
 async function showHome() {
   showSection('home');
@@ -831,6 +929,98 @@ async function showHome() {
 }
 $('card-setup').onclick = () => location.hash = '#/setup';
 $('card-image').onclick = () => location.hash = '#/image';
+
+// ---------- settings: pick pieces, board and sounds; the preview shows the pick, Apply makes it the app's ----------
+const settings = { tab: 'pieces', pend: null };
+// every piece type of both colours, Bf1-c4 just played so the highlight shows on the board too
+const PREVIEW_FEN = 'r1bqk2r/pppp1ppp/2n2n2/2b1p3/2B1P3/3P1N2/PPP2PPP/RNBQK2R w KQkq - 0 1', PREVIEW_LAST = ['f1', 'c4'];
+const SOUND_ROWS = [['self', 'Move'], ['capture', 'Capture'], ['castle', 'Castle'], ['check', 'Check'], ['mate', 'Checkmate'],
+  ['promote', 'Promotion'], ['start', 'Game start'], ['win', 'Victory'], ['loss', 'Defeat'], ['draw', 'Draw'],
+  ['tenseconds', 'Low time'], ['illegal', 'Illegal move'], ['brilliant', 'Brilliant move'], ['notify', 'Analysis done']];$('b-settings').onclick = () => { if (location.hash !== '#/settings') location.hash = '#/settings'; };
+async function showSettings() {
+  await assetsReady;
+  showSection('settings');
+  document.body.classList.remove('sandbox'); stopSandboxStream();
+  state.game = null; state.profile = null; state.games = null; dropVariation(); stopPolling(); stopPlay();
+  setContext(false); $('crumb').textContent = 'Pieces, board and sounds';
+  $('t-back').href = backHash;
+  settings.pend = { pieces: theme.pieces, board: theme.board, sound: theme.sound };
+  renderSettings();
+}
+const changed = () => Object.keys(THEME_DEFAULT).some(k => settings.pend[k] !== theme[k]);
+function renderSettings() {
+  const p = settings.pend;
+  paintBoard(p.board, $('settings'));    // the preview and the piece tiles sit on the board being tried
+  document.querySelectorAll('#ttabs button').forEach(b => b.classList.toggle('active', b.dataset.tab === settings.tab));
+  renderPreview();
+  const tile = (id, on, inner) => `<button class="tile${on ? ' on' : ''}" data-id="${id}">${inner}</button>`;
+  let html = '';
+  if (settings.tab === 'pieces')
+    html = THEMES.pieces.map(t => tile(t.id, t.id === p.pieces,
+      `<span class="tp">${['wk', 'wn', 'bq'].map(c => `<img src="${pieceUrl(c, t.id)}" alt="" loading="lazy">`).join('')}</span><span class="tn">${esc(t.name)}</span>`)).join('');
+  else if (settings.tab === 'board')
+    html = THEMES.boards.map(t => tile(t.id, t.id === p.board,
+      `<span class="tb" style="background-image:url('themes/boards/${t.thumb}')"></span><span class="tn">${esc(t.name)}</span>`)).join('');
+  else
+    html = THEMES.sounds.map(t => tile(t.id, t.id === p.sound, `<span class="tn">${esc(t.name)}</span><span class="ta">${esc(t.author)}</span>`)).join('');
+  $('tgrid').innerHTML = html;
+  $('tgrid').querySelectorAll('.tile').forEach(b => b.onclick = () => {
+    p[settings.tab] = b.dataset.id;      // the tabs are named after the choices
+    if (settings.tab === 'sound') { warmSounds(p.sound); play('self', 0, p.sound); }   // a taste of the pack straight away
+    renderSettings();
+  });
+  const snd = $('tsounds');
+  snd.classList.toggle('hidden', settings.tab !== 'sound');
+  if (settings.tab === 'sound') {
+    const first = {}, distinct = [];     // file -> the first row that plays it: later rows say "same as" that one
+    snd.innerHTML = `<button class="all" id="t-playall">▶ Play them all</button>` + SOUND_ROWS.map(([ev, label]) => {
+      const f = soundFile(ev, p.sound);
+      const note = !f ? 'none in this pack' : f in first ? `same as ${first[f]}` : '';
+      if (f && !(f in first)) { first[f] = label; distinct.push(ev); }
+      return `<div class="row"><button data-ev="${ev}" ${f ? '' : 'disabled'} title="Play">▶</button>${label}${note ? `<small>${note}</small>` : ''}</div>`;
+    }).join('');
+    snd.querySelectorAll('.row button').forEach(b => b.onclick = () => play(b.dataset.ev, 0, p.sound));
+    $('t-playall').onclick = () => distinct.forEach((ev, i) => play(ev, i * 1100, p.sound));
+  }
+  const credit = (what, kind, id) => {
+    const t = themeInfo(kind, id); if (!t) return '';
+    const lic = t.license_url ? `<a href="${t.license_url}" target="_blank" rel="noopener">${esc(t.license)}</a>` : esc(t.license);
+    return `<div>${what}: <b>${esc(t.name)}</b> by ${esc(t.author)} · ${lic}</div>`;
+  };
+  $('tcredit').innerHTML = credit('Pieces', 'pieces', p.pieces) + credit('Board', 'boards', p.board) + credit('Sounds', 'sounds', p.sound) +
+    `<div>From <a href="https://github.com/lichess-org/lila" target="_blank" rel="noopener">Lichess</a>, under each one's own licence.</div>`;
+  $('t-apply').disabled = !changed();
+  $('t-pending').textContent = changed() ? 'Not applied yet' : '';
+}
+function renderPreview() {
+  const p = settings.pend, pieces = parseFen(PREVIEW_FEN);
+  const at = (sq, cls, inner = '') => { const f = sq.charCodeAt(0) - 97, r = +sq[1] - 1;
+    return `<div class="${cls}" style="left:${f * 12.5}%;top:${(7 - r) * 12.5}%">${inner}</div>`; };
+  let html = PREVIEW_LAST.map(sq => at(sq, 'hl')).join('');
+  for (let i = 0; i < 8; i++) {
+    // a1 is dark: file letters along rank 1, rank numbers down the a-file, each in the other square colour
+    html += at('abcdefgh'[i] + '1', `co f ${i % 2 ? 'onlight' : 'ondark'}`, 'abcdefgh'[i]);
+    html += at('a' + (i + 1), `co ${i % 2 ? 'onlight' : 'ondark'}`, i + 1);
+  }
+  for (const [sq, ch] of Object.entries(pieces)) {
+    const code = (ch === ch.toUpperCase() ? 'w' : 'b') + ch.toLowerCase();
+    html += at(sq, 'pp', `<img src="${pieceUrl(code, p.pieces)}" alt="" style="width:100%;height:100%;display:block">`);
+  }
+  $('pvboard').innerHTML = html;
+}
+$('ttabs').querySelectorAll('button').forEach(b => b.onclick = () => { settings.tab = b.dataset.tab; renderSettings(); });
+$('t-reset').onclick = () => { settings.pend = { ...THEME_DEFAULT }; renderSettings(); };
+$('t-apply').onclick = async () => {
+  Object.assign(theme, settings.pend);
+  try { localStorage.setItem('theme', JSON.stringify({ pieces: theme.pieces, board: theme.board, sound: theme.sound })); } catch (e) {}
+  await paintBoard(theme.board);
+  for (const c of PIECE_CODES) new Image().src = pieceUrl(c);
+  warmSounds();
+  pieceTemplates = null;              // the screenshot reader matches against the pieces in use
+  $('pieces').innerHTML = '';         // the review board rebuilds its pieces in the new set next time it draws
+  renderSettings();
+  toast('Applied');
+};
 function showImagePage() {
   showSection('imgpage');
   document.body.classList.remove('sandbox'); stopSandboxStream();
@@ -1030,7 +1220,7 @@ const setup = { board: {}, turn: 'w', castle: { K: true, Q: true, k: true, q: tr
 let pendingSetup = null;   // a position handed to the editor by the image reader (consumed by showEditor)
 function pieceHTML(ch) {
   const code = (ch === ch.toUpperCase() ? 'w' : 'b') + ch.toLowerCase();
-  return ASSETS.hasPieces ? `<img src="${ASSETS.pieces}/${code}.png" alt="">` : `<svg viewBox="0 0 45 45"><use href="#${PIECE_ID[ch]}"/></svg>`;
+  return `<img src="${pieceUrl(code)}" alt="">`;
 }
 function renderPalette() {
   const order = ['P', 'B', 'N', 'R', 'Q', 'K'];
@@ -1223,7 +1413,7 @@ async function buildTemplates() {
   for (const t of ['p', 'n', 'b', 'r', 'q', 'k']) {
     for (const colour of ['w', 'b']) {
       const sources = [`data:image/svg+xml;charset=utf-8,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 45 45">${PIECES[colour === 'w' ? t.toUpperCase() : t]}</svg>`)}`];
-      if (ASSETS.hasPieces) sources.push(`${ASSETS.pieces}/${colour}${t}.png`);
+      if (theme.pieces !== 'cburnett') sources.push(pieceUrl(colour + t));   // the built-in ones are cburnett already
       for (const src of sources) {
         try { const im = await load(src); cx.clearRect(0, 0, N, N); cx.drawImage(im, 0, 0, N, N); const nm = grab(); if (nm) out.push({ type: t, ...nm }); } catch (e) {}
       }
@@ -1390,7 +1580,7 @@ async function showGame(id) {
   const same = state.game && state.game.id === id;
   state.game = g;
   if (!same) { stopPlay(); state.ply = 0; state.flipped = g.my_colour === 'black'; dropVariation(); state.sel = null; state.cycle = {}; $('pieces').innerHTML = ''; }
-  $('list').classList.add('hidden'); $('review').classList.remove('hidden');
+  showSection('review');
   $('crumb').textContent = `${g.white.name} vs ${g.black.name}`;
   $('ginfo').innerHTML = `${fmtDate(g.played_at)} · ${g.time_class} ${g.time_control || ''} · ${esc(g.termination || '')}` +
     (g.url.startsWith('http') ? ` · <a href="${g.url}" target="_blank" style="color:var(--accent)">chess.com ↗</a>` : '');
@@ -1622,8 +1812,7 @@ function renderBoard() {
 function pieceEl(code) {
   const el = document.createElement('div');
   el.className = 'pc'; el.dataset.code = code;
-  if (ASSETS.hasPieces) el.style.backgroundImage = `url('${ASSETS.pieces}/${code}.png')`;
-  else el.innerHTML = `<svg viewBox="0 0 45 45"><use href="#${PIECE_ID[code[0] === 'w' ? code[1].toUpperCase() : code[1]]}"/></svg>`;
+  el.style.backgroundImage = `url('${pieceUrl(code)}')`;
   return el;
 }
 function renderPieces(pieces, turn) {
@@ -2081,7 +2270,7 @@ function renderPlayers() {
     for (const ch of cap.out[side]) { const last = groups[groups.length - 1]; if (last && last[0] === ch) last.push(ch); else groups.push([ch]); }
     const caps = groups.map(grp => `<span class="grp">` + grp.map(ch => {
       const blk = ch === ch.toLowerCase() ? 'blk' : '';
-      if (ASSETS.hasPieces) return `<img class="${blk}" src="${ASSETS.pieces}/${blk ? 'b' : 'w'}${ch.toLowerCase()}.png" alt="">`;
+      // always the built-in cburnett shapes: the silhouette of a fancy set (letter, pixel) reads as a blob this small
       return `<svg viewBox="0 0 45 45" class="${blk}"><use href="#${PIECE_ID[ch]}"/></svg>`;
     }).join('') + `</span>`).join('');
     el.innerHTML = `<span class="dot ${side}"></span><span class="name">${esc(p.name)}</span><span class="rating">${p.rating ?? ''}</span>` +
@@ -2251,7 +2440,7 @@ function renderSummary() {
   const full = g.analysed >= 0.999;
   const acc = a => full && a != null ? a.toFixed(1) : '–';
   // a pawn of each colour above the name, like chess.com's avatar tiles; names wrap rather than truncate
-  const pawn = c => `<span class="avatar${c === g.my_colour ? ' me' : ''}">${ASSETS.hasPieces ? `<img src="${ASSETS.pieces}/${c[0]}p.png" alt="">` : `<svg viewBox="0 0 45 45"><use href="#${c}-pawn"/></svg>`}</span>`;
+  const pawn = c => `<span class="avatar${c === g.my_colour ? ' me' : ''}"><img src="${pieceUrl(c[0] + 'p')}" alt=""></span>`;
   let html = `<div class="row"><div class="lbl">Players</div>` +
     `<div class="w name">${pawn('white')}${esc(w.name)}</div><div></div>` +
     `<div class="b name">${pawn('black')}${esc(b.name)}</div></div>`;
@@ -2430,7 +2619,7 @@ if (location.search.includes('selftest')) (async () => {
     await explore(fen, uci);
     say(`variation: base ${state.variation && state.variation.basePly}, moves ${state.variation && state.variation.moves.length}, ply ${state.ply}, inVariation=${inVariation()}`);
     say(`now panel: ${$('now').textContent.trim().slice(0, 120)}`);
-    say(`varrow present: ${!!document.querySelector('.varrow')}; pieces=${document.querySelectorAll('.pc').length} arrows=${$('arrows').children.length} badges=${$('badges').children.length} assets=${ASSETS.hasPieces}/${ASSETS.hasIcons}`);
+    say(`varrow present: ${!!document.querySelector('.varrow')}; pieces=${document.querySelectorAll('.pc').length} arrows=${$('arrows').children.length} badges=${$('badges').children.length} theme=${theme.pieces}/${theme.board}/${theme.sound} icons=${ASSETS.hasIcons}`);
     const legal2 = await legalFor(currentFen()); await explore(currentFen(), legal2[0]);
     say(`second explore: variation moves ${state.variation.moves.length}, ply ${state.ply}`);
     go(state.ply - 1); say(`back one: ply ${state.ply}, inVariation=${inVariation()}, moves kept ${state.variation.moves.length}`);

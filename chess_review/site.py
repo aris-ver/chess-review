@@ -178,9 +178,23 @@ def write_static() -> None:
     out = SITE_DIR / "index.html"
     if not out.exists() or out.read_text(encoding="utf-8") != html:
         out.write_text(html, encoding="utf-8")
-    (SITE_DIR / "sounds").mkdir(exist_ok=True)
-    for f in (STATIC / "sounds").glob("*.mp3"):
-        shutil.copy2(f, SITE_DIR / "sounds" / f.name)
+    sync_tree(STATIC / "themes", SITE_DIR / "themes")
+    shutil.rmtree(SITE_DIR / "sounds", ignore_errors=True)   # the chess.com sounds older versions copied here
+
+
+def sync_tree(src: Path, dst: Path) -> None:
+    """Make dst a copy of src (the Lichess pieces, boards and sounds), copying only files that changed --
+    write_static runs after every job, and the themes are a few MB."""
+    want = {f.relative_to(src) for f in src.rglob("*") if f.is_file()}
+    for rel in want:
+        s, d = src / rel, dst / rel
+        if not d.exists() or d.stat().st_size != s.stat().st_size or d.stat().st_mtime < s.stat().st_mtime:
+            d.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(s, d)
+    if dst.exists():
+        for f in dst.rglob("*"):
+            if f.is_file() and f.relative_to(dst) not in want:
+                f.unlink()
 
 
 def build(profile: Profile) -> dict:
