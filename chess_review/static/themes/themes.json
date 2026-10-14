@@ -1,0 +1,614 @@
+{
+ "pieces": [
+  {
+   "id": "anarcandy",
+   "name": "Anarcandy",
+   "ext": "svg",
+   "author": "caderek",
+   "license": "CC BY-NC-SA 4.0",
+   "license_url": "https://creativecommons.org/licenses/by-nc-sa/4.0/"
+  },
+  {
+   "id": "caliente",
+   "name": "Caliente",
+   "ext": "svg",
+   "author": "avi",
+   "license": "CC BY-NC-SA 4.0",
+   "license_url": "https://creativecommons.org/licenses/by-nc-sa/4.0/"
+  },
+  {
+   "id": "california",
+   "name": "California",
+   "ext": "svg",
+   "author": "Jerry S.",
+   "license": "CC BY-NC-SA 4.0",
+   "license_url": "https://creativecommons.org/licenses/by-nc-sa/4.0/"
+  },
+  {
+   "id": "cardinal",
+   "name": "Cardinal",
+   "ext": "svg",
+   "author": "sadsnake1",
+   "license": "CC BY-NC-SA 4.0",
+   "license_url": "https://creativecommons.org/licenses/by-nc-sa/4.0/"
+  },
+  {
+   "id": "cburnett",
+   "name": "Cburnett",
+   "ext": "svg",
+   "author": "Colin M.L. Burnett",
+   "license": "GPLv2+",
+   "license_url": "https://www.gnu.org/licenses/gpl-2.0.txt"
+  },
+  {
+   "id": "celtic",
+   "name": "Celtic",
+   "ext": "svg",
+   "author": "Maurizio Monge",
+   "license": "MIT",
+   "license_url": "https://github.com/maurimo/chess-art/blob/main/LICENSE"
+  },
+  {
+   "id": "chessnut",
+   "name": "Chessnut",
+   "ext": "svg",
+   "author": "Alexis Luengas",
+   "license": "Apache 2.0",
+   "license_url": "https://github.com/LexLuengas/chessnut-pieces/blob/master/LICENSE.txt"
+  },
+  {
+   "id": "cooke",
+   "name": "Cooke",
+   "ext": "svg",
+   "author": "fejfar",
+   "license": "CC BY-NC-SA 4.0",
+   "license_url": "https://creativecommons.org/licenses/by-nc-sa/4.0/"
+  },
+  {
+   "id": "disguised",
+   "name": "Disguised",
+   "ext": "svg",
+   "author": "danegraphics",
+   "license": "CC BY-NC-SA 4.0",
+   "license_url": "https://creativecommons.org/licenses/by-nc-sa/4.0/"
+  },
+  {
+   "id": "dubrovny",
+   "name": "Dubrovny",
+   "ext": "svg",
+   "author": "sadsnake1",
+   "license": "CC BY-NC-SA 4.0",
+   "license_url": "https://creativecommons.org/licenses/by-nc-sa/4.0/"
+  },
+  {
+   "id": "fantasy",
+   "name": "Fantasy",
+   "ext": "svg",
+   "author": "Maurizio Monge",
+   "license": "MIT",
+   "license_url": "https://github.com/maurimo/chess-art/blob/main/LICENSE"
+  },
+  {
+   "id": "firi",
+   "name": "Firi",
+   "ext": "svg",
+   "author": "James Faure",
+   "license": "CC BY 4.0",
+   "license_url": "https://creativecommons.org/licenses/by/4.0/"
+  },
+  {
+   "id": "fresca",
+   "name": "Fresca",
+   "ext": "svg",
+   "author": "sadsnake1",
+   "license": "CC BY-NC-SA 4.0",
+   "license_url": "https://creativecommons.org/licenses/by-nc-sa/4.0/"
+  },
+  {
+   "id": "gioco",
+   "name": "Gioco",
+   "ext": "svg",
+   "author": "sadsnake1",
+   "license": "CC BY-NC-SA 4.0",
+   "license_url": "https://creativecommons.org/licenses/by-nc-sa/4.0/"
+  },
+  {
+   "id": "governor",
+   "name": "Governor",
+   "ext": "svg",
+   "author": "the lila authors",
+   "license": "AGPLv3+",
+   "license_url": "https://www.gnu.org/licenses/agpl-3.0.html"
+  },
+  {
+   "id": "horsey",
+   "name": "Horsey",
+   "ext": "svg",
+   "author": "cham, michael1241",
+   "license": "CC BY-NC-SA 4.0",
+   "license_url": "https://creativecommons.org/licenses/by-nc-sa/4.0/"
+  },
+  {
+   "id": "icpieces",
+   "name": "IC Pieces",
+   "ext": "svg",
+   "author": "sadsnake1",
+   "license": "CC BY-NC-SA 4.0",
+   "license_url": "https://creativecommons.org/licenses/by-nc-sa/4.0/"
+  },
+  {
+   "id": "kiwen-suwi",
+   "name": "Kiwen-suwi",
+   "ext": "svg",
+   "author": "neverRare",
+   "license": "CC BY 4.0",
+   "license_url": "https://creativecommons.org/licenses/by/4.0/"
+  },
+  {
+   "id": "kosal",
+   "name": "Kosal",
+   "ext": "svg",
+   "author": "the lila authors",
+   "license": "AGPLv3+",
+   "license_url": "https://www.gnu.org/licenses/agpl-3.0.html"
+  },
+  {
+   "id": "letter",
+   "name": "Letter",
+   "ext": "svg",
+   "author": "usolando",
+   "license": "AGPLv3+",
+   "license_url": null
+  },
+  {
+   "id": "maestro",
+   "name": "Maestro",
+   "ext": "svg",
+   "author": "sadsnake1",
+   "license": "CC BY-NC-SA 4.0",
+   "license_url": "https://creativecommons.org/licenses/by-nc-sa/4.0/"
+  },
+  {
+   "id": "merida",
+   "name": "Merida",
+   "ext": "svg",
+   "author": "Armando Hernandez Marroquin",
+   "license": "GPLv2+",
+   "license_url": "https://www.gnu.org/licenses/gpl-2.0.txt"
+  },
+  {
+   "id": "minimal-warmth",
+   "name": "Minimal Warmth",
+   "ext": "svg",
+   "author": "blunder_reign",
+   "license": "CC BY-NC-SA 4.0",
+   "license_url": "https://creativecommons.org/licenses/by-nc-sa/4.0/"
+  },
+  {
+   "id": "monarchy",
+   "name": "Monarchy",
+   "ext": "webp",
+   "author": "slither77",
+   "license": "CC BY-NC-SA 4.0",
+   "license_url": "https://creativecommons.org/licenses/by-nc-sa/4.0/"
+  },
+  {
+   "id": "mpchess",
+   "name": "MPChess",
+   "ext": "svg",
+   "author": "Maxime Chupin",
+   "license": "GPL3v3+",
+   "license_url": "https://www.gnu.org/licenses/quick-guide-gplv3.en.html"
+  },
+  {
+   "id": "papercut",
+   "name": "Papercut",
+   "ext": "svg",
+   "author": "Nikolay Anzarov",
+   "license": "CC BY 4.0",
+   "license_url": "https://creativecommons.org/licenses/by/4.0/"
+  },
+  {
+   "id": "pirouetti",
+   "name": "Pirouetti",
+   "ext": "svg",
+   "author": "pirouetti",
+   "license": "AGPLv3+",
+   "license_url": null
+  },
+  {
+   "id": "pixel",
+   "name": "Pixel",
+   "ext": "svg",
+   "author": "therealqtpi",
+   "license": "AGPLv3+",
+   "license_url": null
+  },
+  {
+   "id": "rhosgfx",
+   "name": "RhosGFX",
+   "ext": "svg",
+   "author": "RhosGFX",
+   "license": "CC0 1.0",
+   "license_url": "https://creativecommons.org/publicdomain/zero/1.0/"
+  },
+  {
+   "id": "shapes",
+   "name": "Shapes",
+   "ext": "svg",
+   "author": "flugsio",
+   "license": "CC BY-SA 4.0",
+   "license_url": "https://creativecommons.org/licenses/by-sa/4.0/"
+  },
+  {
+   "id": "spatial",
+   "name": "Spatial",
+   "ext": "svg",
+   "author": "Maurizio Monge",
+   "license": "MIT",
+   "license_url": "https://github.com/maurimo/chess-art/blob/main/LICENSE"
+  },
+  {
+   "id": "staunty",
+   "name": "Staunty",
+   "ext": "svg",
+   "author": "sadsnake1",
+   "license": "CC BY-NC-SA 4.0",
+   "license_url": "https://creativecommons.org/licenses/by-nc-sa/4.0/"
+  },
+  {
+   "id": "tatiana",
+   "name": "Tatiana",
+   "ext": "svg",
+   "author": "sadsnake1",
+   "license": "CC BY-NC-SA 4.0",
+   "license_url": "https://creativecommons.org/licenses/by-nc-sa/4.0/"
+  },
+  {
+   "id": "totoy",
+   "name": "Totoy",
+   "ext": "svg",
+   "author": "Kosal Sen",
+   "license": "CC BY 4.0",
+   "license_url": "https://creativecommons.org/licenses/by/4.0/"
+  },
+  {
+   "id": "xkcd",
+   "name": "xkcd",
+   "ext": "svg",
+   "author": "Randall Munroe",
+   "license": "CC BY-NC-SA 2.5",
+   "license_url": "https://xkcd.com/license.html"
+  }
+ ],
+ "boards": [
+  {
+   "id": "blue-marble",
+   "name": "Blue Marble",
+   "file": "blue-marble.jpg",
+   "thumb": "blue-marble.thumbnail.jpg",
+   "author": "the lila authors and pirouetti",
+   "license": "AGPLv3+",
+   "license_url": null
+  },
+  {
+   "id": "blue",
+   "name": "Blue",
+   "file": "blue.png",
+   "thumb": "blue.thumbnail.png",
+   "author": "the lila authors and pirouetti",
+   "license": "AGPLv3+",
+   "license_url": null
+  },
+  {
+   "id": "blue2",
+   "name": "Blue 2",
+   "file": "blue2.jpg",
+   "thumb": "blue2.thumbnail.jpg",
+   "author": "the lila authors and pirouetti",
+   "license": "AGPLv3+",
+   "license_url": null
+  },
+  {
+   "id": "blue3",
+   "name": "Blue 3",
+   "file": "blue3.jpg",
+   "thumb": "blue3.thumbnail.jpg",
+   "author": "the lila authors and pirouetti",
+   "license": "AGPLv3+",
+   "license_url": null
+  },
+  {
+   "id": "brown",
+   "name": "Brown",
+   "file": "brown.png",
+   "thumb": "brown.thumbnail.png",
+   "author": "the lila authors and pirouetti",
+   "license": "AGPLv3+",
+   "license_url": null
+  },
+  {
+   "id": "canvas2",
+   "name": "Canvas",
+   "file": "canvas2.jpg",
+   "thumb": "canvas2.thumbnail.jpg",
+   "author": "the lila authors and pirouetti",
+   "license": "AGPLv3+",
+   "license_url": null
+  },
+  {
+   "id": "green-plastic",
+   "name": "Green Plastic",
+   "file": "green-plastic.png",
+   "thumb": "green-plastic.thumbnail.png",
+   "author": "the lila authors and pirouetti",
+   "license": "AGPLv3+",
+   "license_url": null
+  },
+  {
+   "id": "green",
+   "name": "Green",
+   "file": "green.png",
+   "thumb": "green.thumbnail.png",
+   "author": "the lila authors and pirouetti",
+   "license": "AGPLv3+",
+   "license_url": null
+  },
+  {
+   "id": "grey",
+   "name": "Grey",
+   "file": "grey.jpg",
+   "thumb": "grey.thumbnail.jpg",
+   "author": "the lila authors and pirouetti",
+   "license": "AGPLv3+",
+   "license_url": null
+  },
+  {
+   "id": "horsey",
+   "name": "Horsey",
+   "file": "horsey.jpg",
+   "thumb": "horsey.thumbnail.jpg",
+   "author": "the lila authors and pirouetti",
+   "license": "AGPLv3+",
+   "license_url": null
+  },
+  {
+   "id": "ic",
+   "name": "IC",
+   "file": "ic.png",
+   "thumb": "ic.thumbnail.png",
+   "author": "the lila authors and pirouetti",
+   "license": "AGPLv3+",
+   "license_url": null
+  },
+  {
+   "id": "leather",
+   "name": "Leather",
+   "file": "leather.jpg",
+   "thumb": "leather.thumbnail.jpg",
+   "author": "the lila authors and pirouetti",
+   "license": "AGPLv3+",
+   "license_url": null
+  },
+  {
+   "id": "maple",
+   "name": "Maple",
+   "file": "maple.jpg",
+   "thumb": "maple.thumbnail.jpg",
+   "author": "the lila authors and pirouetti",
+   "license": "AGPLv3+",
+   "license_url": null
+  },
+  {
+   "id": "maple2",
+   "name": "Maple 2",
+   "file": "maple2.jpg",
+   "thumb": "maple2.thumbnail.jpg",
+   "author": "the lila authors and pirouetti",
+   "license": "AGPLv3+",
+   "license_url": null
+  },
+  {
+   "id": "marble",
+   "name": "Marble",
+   "file": "marble.jpg",
+   "thumb": "marble.thumbnail.jpg",
+   "author": "the lila authors and pirouetti",
+   "license": "AGPLv3+",
+   "license_url": null
+  },
+  {
+   "id": "metal",
+   "name": "Metal",
+   "file": "metal.jpg",
+   "thumb": "metal.thumbnail.jpg",
+   "author": "the lila authors and pirouetti",
+   "license": "AGPLv3+",
+   "license_url": null
+  },
+  {
+   "id": "ncf-board",
+   "name": "NCF",
+   "file": "ncf-board.png",
+   "thumb": "ncf-board.png",
+   "author": "the lila authors and pirouetti",
+   "license": "AGPLv3+",
+   "license_url": null
+  },
+  {
+   "id": "olive",
+   "name": "Olive",
+   "file": "olive.jpg",
+   "thumb": "olive.thumbnail.jpg",
+   "author": "the lila authors and pirouetti",
+   "license": "AGPLv3+",
+   "license_url": null
+  },
+  {
+   "id": "pink-pyramid",
+   "name": "Pink Pyramid",
+   "file": "pink-pyramid.png",
+   "thumb": "pink-pyramid.thumbnail.png",
+   "author": "the lila authors and pirouetti",
+   "license": "AGPLv3+",
+   "license_url": null
+  },
+  {
+   "id": "purple-diag",
+   "name": "Purple Diag",
+   "file": "purple-diag.png",
+   "thumb": "purple-diag.thumbnail.png",
+   "author": "the lila authors and pirouetti",
+   "license": "AGPLv3+",
+   "license_url": null
+  },
+  {
+   "id": "purple",
+   "name": "Purple",
+   "file": "purple.png",
+   "thumb": "purple.thumbnail.png",
+   "author": "the lila authors and pirouetti",
+   "license": "AGPLv3+",
+   "license_url": null
+  },
+  {
+   "id": "wood",
+   "name": "Wood",
+   "file": "wood.jpg",
+   "thumb": "wood.thumbnail.jpg",
+   "author": "the lila authors and pirouetti",
+   "license": "AGPLv3+",
+   "license_url": null
+  },
+  {
+   "id": "wood2",
+   "name": "Wood 2",
+   "file": "wood2.jpg",
+   "thumb": "wood2.thumbnail.jpg",
+   "author": "the lila authors and pirouetti",
+   "license": "AGPLv3+",
+   "license_url": null
+  },
+  {
+   "id": "wood3",
+   "name": "Wood 3",
+   "file": "wood3.jpg",
+   "thumb": "wood3.thumbnail.jpg",
+   "author": "the lila authors and pirouetti",
+   "license": "AGPLv3+",
+   "license_url": null
+  },
+  {
+   "id": "wood4",
+   "name": "Wood 4",
+   "file": "wood4.jpg",
+   "thumb": "wood4.thumbnail.jpg",
+   "author": "the lila authors and pirouetti",
+   "license": "AGPLv3+",
+   "license_url": null
+  }
+ ],
+ "sounds": [
+  {
+   "id": "futuristic",
+   "name": "Futuristic",
+   "files": [
+    "Move",
+    "Capture",
+    "Check",
+    "Checkmate",
+    "GenericNotify",
+    "LowTime",
+    "Error",
+    "Confirmation",
+    "Victory",
+    "Defeat",
+    "Draw"
+   ],
+   "author": "Enigmahack",
+   "license": "AGPLv3+",
+   "license_url": null
+  },
+  {
+   "id": "lisp",
+   "name": "Lisp",
+   "files": [
+    "Move",
+    "Capture",
+    "Castles",
+    "Check",
+    "Checkmate",
+    "GenericNotify",
+    "LowTime",
+    "Error",
+    "Confirmation",
+    "Victory",
+    "Defeat",
+    "Draw"
+   ],
+   "author": "EdinburghCollective",
+   "license": "CC BY-NC-SA 4.0",
+   "license_url": "https://creativecommons.org/licenses/by-nc-sa/4.0/"
+  },
+  {
+   "id": "nes",
+   "name": "NES",
+   "files": [
+    "Move",
+    "Capture",
+    "Check",
+    "Checkmate",
+    "GenericNotify",
+    "LowTime",
+    "Error",
+    "Confirmation",
+    "Victory",
+    "Defeat",
+    "Draw"
+   ],
+   "author": "Enigmahack",
+   "license": "AGPLv3+",
+   "license_url": null
+  },
+  {
+   "id": "piano",
+   "name": "Piano",
+   "files": [
+    "Move",
+    "Capture",
+    "Check",
+    "Checkmate",
+    "GenericNotify",
+    "LowTime",
+    "Error",
+    "Confirmation",
+    "Victory",
+    "Defeat",
+    "Draw"
+   ],
+   "author": "Enigmahack",
+   "license": "AGPLv3+",
+   "license_url": null
+  },
+  {
+   "id": "sfx",
+   "name": "SFX",
+   "files": [
+    "Move",
+    "Capture",
+    "Check",
+    "Checkmate",
+    "GenericNotify",
+    "LowTime",
+    "Error",
+    "Confirmation",
+    "Victory",
+    "Defeat",
+    "Draw"
+   ],
+   "author": "Enigmahack",
+   "license": "AGPLv3+",
+   "license_url": null
+  }
+ ]
+}

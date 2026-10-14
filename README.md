@@ -40,16 +40,14 @@ different move** — it is evaluated on the spot (`explore.py`, one multi-thread
 variation under the move it branches from; stepping back before the branch discards it.
 `index.html?selftest=1#/game/<id>` runs an in-page smoke test of navigation + exploration.
 
-Pieces and badge icons: the page uses `data/site/assets/pieces/{w,b}{p,n,b,r,q,k}.png` and
-`data/site/assets/icons/<classification>.svg` when present (`bash scripts/install_assets.sh <icons> [pieces]`),
-otherwise the built-in cburnett pieces and inline badges. The single config is `ASSETS` at the top of
-`static/index.html`. **chess.com's piece and icon files are proprietary — local personal use only**; before
-exposing the page beyond localhost swap in Lichess pieces (github.com/lichess-org/lila, free licence) and
-your own icons. `data/` is gitignored, so they never enter the repo. The arrow geometry is an independent
-reimplementation.
+Pieces, boards and sounds are Lichess's free sets — 35 piece sets, 25 boards, 5 sound packs — in
+`chess_review/static/themes/` (`themes.json` lists them, `CREDITS.md` names each author and licence), synced into
+the served site dir by `site.write_static()` on every start. The gear in the header picks them, with a preview
+board and a play button per sound. `python scripts/import_lichess_themes.py <lila checkout>` refreshes them; it
+skips everything lila's COPYING.md marks non-free (that includes Lichess's standard sound pack).
 
-Sounds ship with the app: `chess_review/static/sounds/*.mp3`, synced into the served site dir by
-`site.write_static()` on every start.
+The classification badges are the app's own drawings (`ic-*` symbols in `static/index.html`): a rounded square in
+the class colour with the annotation glyph. The arrow geometry is an independent reimplementation.
 
 ## Windows app
 
