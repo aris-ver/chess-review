@@ -2,6 +2,7 @@
 
 Piece sets, boards and sound packs from [Lichess](https://github.com/lichess-org/lila), each under its
 own licence as listed in lila's COPYING.md. Copied unmodified by scripts/import_lichess_themes.py.
+Sound packs from chess_review/sound_packs/ are this project's own.
 
 ## Piece sets
 
@@ -82,3 +83,4 @@ Lisp | EdinburghCollective | [CC BY-NC-SA 4.0](https://creativecommons.org/licen
 NES | Enigmahack | AGPLv3+
 Piano | Enigmahack | AGPLv3+
 SFX | Enigmahack | AGPLv3+
+Morning Wood | Aris | Personal use: piece sounds edited from the YouTube recording "Oddly Satisfying Chess Sounds 2 ♔ ASMR ♔ No talking"; GenericNotify, LowTime, Victory, Defeat and Draw are Lisp's, by EdinburghCollective (CC BY-NC-SA 4.0)

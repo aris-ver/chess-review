@@ -739,7 +739,7 @@ function dropVariation() { state.variation = null; }
 // Each event names the pack files it can use, best first: a pack without Castles plays Move for castling (Lichess does).
 const SOUND_EVENTS = {
   self: ['Move'], opp: ['Move'], capture: ['Capture'], castle: ['Castles', 'Move'], check: ['Check'], mate: ['Checkmate', 'Check'],
-  promote: ['Move'], start: ['GenericNotify'], end: ['GenericNotify'], win: ['Victory', 'GenericNotify'],
+  promote: ['Promote', 'Move'], start: ['GenericNotify'], end: ['GenericNotify'], win: ['Victory', 'GenericNotify'],
   loss: ['Defeat', 'GenericNotify'], draw: ['Draw', 'GenericNotify'], tenseconds: ['LowTime'], notify: ['GenericNotify'],
   illegal: ['Error'], brilliant: ['Confirmation'],
 };
