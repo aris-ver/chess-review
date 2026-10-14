@@ -36,7 +36,6 @@ button.snd.off { color: var(--muted); }
 .vol button.snd { background: transparent; border: 0; }
 .vol input { width: 0; min-width: 0; margin: 0; opacity: 0; pointer-events: none; accent-color: var(--accent); cursor: pointer; outline: none; transition: width .2s ease, margin .2s ease, opacity .15s; }
 .vol.open input { width: 110px; margin: 0 10px 0 0; opacity: 1; pointer-events: auto; }
-.vol.flat { background: transparent; border-color: transparent; } .vol.flat.open { background: var(--panel2); border-color: var(--line); }
 .switch { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; user-select: none; }
 .switch .lbl { font-size: 13px; color: var(--muted); }
 .switch .track { position: relative; width: 40px; height: 22px; border-radius: 11px; background: #55524c; transition: background .15s; flex-shrink: 0; }
@@ -599,7 +598,7 @@ svg.graph { width: 100%; height: 90px; display: block; cursor: pointer; backgrou
         <div class="phead">
           <a href="#/" class="pbtn back" id="a-back" title="Back (Esc)">← Games</a>
           <span class="ptitle"><svg class="ico"><use href="#ic-best"/></svg> <span id="ptitle-t">Game Review</span></span>
-          <span class="pright"><span class="vol flat"><button class="pbtn snd" id="b-sound2" title="Volume"></button><input type="range" min="0" max="100" step="1" aria-label="Volume"></span><button class="pbtn" id="b-flip" title="Flip (f)">⇅</button></span>
+          <span class="pright"><button class="pbtn" id="b-flip" title="Flip (f)">⇅</button></span>
         </div>
         <div class="ginfo" id="ginfo"></div>
         <div class="coach"><div class="avatar">♞</div><div class="bubble" id="now"></div></div>
