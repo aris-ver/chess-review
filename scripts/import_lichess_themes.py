@@ -19,9 +19,10 @@ ROOT = Path(__file__).resolve().parent.parent
 OUT = ROOT / "chess_review" / "static" / "themes"
 PIECES = ["wP", "wN", "wB", "wR", "wQ", "wK", "bP", "bN", "bB", "bR", "bQ", "bK"]
 # the files each pack contributes; the page falls back (castle -> move, mate -> check, ...) where one is missing
-SOUND_FILES = ["Move", "Capture", "Castles", "Check", "Checkmate", "GenericNotify", "LowTime", "Error",
+SOUND_FILES = ["Move", "Capture", "Castles", "Promote", "Check", "Checkmate", "GenericNotify", "LowTime", "Error",
                "Confirmation", "Victory", "Defeat", "Draw"]
 FREE_SOUNDS = ["futuristic", "lisp", "nes", "piano", "sfx"]
+OWN_SOUNDS = ROOT / "chess_review" / "sound_packs"   # <pack>/pack.json {name, author, license} + <File>.mp3
 SKIP_PIECES = {"mono"}   # one image per piece for both colours, tinted by Lichess's CSS: not a drop-in set
 # listed under COPYING.md's non-free heading, but with a CC BY 4.0 licence: free with credit, so they ship
 ALLOW = {"public/piece/totoy", "public/piece/papercut"}
@@ -104,11 +105,22 @@ def main(lila: Path) -> None:
         for n in have:
             shutil.copy2(src / f"{n}.mp3", dest / f"{n}.mp3")
         manifest["sounds"].append({"id": pack, "name": nice(pack), "files": have, **free.get(f"public/sounds/{pack}", LILA)})
+    # this project's own packs: kept outside OUT so the rmtree above can't lose them
+    for src in sorted(p for p in OWN_SOUNDS.iterdir() if p.is_dir()) if OWN_SOUNDS.exists() else []:
+        meta = json.loads((src / "pack.json").read_text(encoding="utf-8"))
+        dest = OUT / "sounds" / src.name
+        dest.mkdir(parents=True)
+        have = [n for n in SOUND_FILES if (src / f"{n}.mp3").exists()]
+        for n in have:
+            shutil.copy2(src / f"{n}.mp3", dest / f"{n}.mp3")
+        manifest["sounds"].append({"id": src.name, "name": meta["name"], "files": have, "author": meta["author"],
+                                   "license": meta["license"], "license_url": meta.get("license_url")})
 
     (OUT / "themes.json").write_text(json.dumps(manifest, indent=1) + "\n", encoding="utf-8")
     lines = ["# Themes", "",
              "Piece sets, boards and sound packs from [Lichess](https://github.com/lichess-org/lila), each under its",
-             "own licence as listed in lila's COPYING.md. Copied unmodified by scripts/import_lichess_themes.py.", ""]
+             "own licence as listed in lila's COPYING.md. Copied unmodified by scripts/import_lichess_themes.py.",
+             "Sound packs from chess_review/sound_packs/ are this project's own.", ""]
     for kind, title in (("pieces", "Piece sets"), ("boards", "Boards"), ("sounds", "Sound packs")):
         lines += [f"## {title}", "", "Name | Author | Licence", "--- | --- | ---"]
         for t in manifest[kind]:
