@@ -114,7 +114,7 @@ Arrows are never offset or bundled:
 | Brilliant display | exactly one orange arrow: the capture of the sacrificed piece (R12) | generic idea arrows | on brilliant, draw only the opponent's capture of the sacrificed piece | S |
 | Missed recapture | red arrow on the mover's own recapture (R18, 1 case) | not modelled | optional special case | S |
 | Arrow opacity | fill alpha 0.8 **×** element opacity 0.8 (≈0.64 effective) | fill alpha 0.75, no element opacity (`arrowStyle`) | `fill: rgba(r,g,b,0.8); opacity: 0.8` for weight 1 | S |
-| Knight arrow bend | always long leg first (135/135) | picks the short bend to avoid collisions (`drawArrows`) | always use `'long'` | S |
+| Knight arrow bend | always long leg first (135/135) | always long leg first (`knightArrow`) — done | — | S |
 | Tint colours | excellent = best 129,182,76; good 149,183,118; book 213,164,125; forced 255,255,51 | excellent `#96bc4b`, good `#96af8b`, book `#d5a47a`, forced `#96af8b` (`COLOR`, index.html:603) | excellent `#81b64c`, good `#95b776`, book `#d5a47d`, forced `#ffff33` | S |
 | Overlay vs tint on one square | a 0.8 overlay replaces the 0.5 tint (33 plies) | tint and marks stack | skip the tint on squares that get an overlay | S |
 | Castling better-move arrow | king → rook square (e8h8) | engine UCI e1g1 | map castling best moves to king→rook for the green arrow; readiness ideas stay king→g/c | S |

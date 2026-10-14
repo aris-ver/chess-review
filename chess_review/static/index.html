@@ -1709,11 +1709,11 @@ function arrowStyle(kind, weight) {
   // so the pieces under an arrow stay readable
   return `fill:rgba(${r}, ${g}, ${b}, ${(0.64 * (0.33 + 0.67 * weight * weight)).toFixed(2)})`;
 }
-function arrow(uci, kind, weight = 1, bend = 'long') {
+function arrow(uci, kind, weight = 1) {
   const [x1, y1] = sqXY(uci.slice(0, 2)).map(v => v + 6.25), [x2, y2] = sqXY(uci.slice(2, 4)).map(v => v + 6.25);
   const len = Math.hypot(x2 - x1, y2 - y1);
   const dx = Math.round((x2 - x1) / 12.5), dy = Math.round((y2 - y1) / 12.5);
-  if (Math.abs(dx) + Math.abs(dy) === 3 && dx && dy) return knightArrow(x1, y1, dx, dy, kind, weight, bend);
+  if (Math.abs(dx) + Math.abs(dy) === 3 && dx && dy) return knightArrow(x1, y1, dx, dy, kind, weight);
   // rotation taking the down-pointing polygon onto (dx, dy) in y-down SVG coords (SVG rotate is clockwise)
   const deg = Math.atan2(-(x2 - x1), y2 - y1) * 180 / Math.PI;
   const sw = ARROW_SW * weight, hw = ARROW_HW * weight, hl = ARROW_HL, gap = ARROW_GAP;
@@ -1722,52 +1722,23 @@ function arrow(uci, kind, weight = 1, bend = 'long') {
     .map(p => p.join(',')).join(' ');
   return `<polygon points="${pts}" transform="rotate(${deg} ${x1} ${y1})" style="${arrowStyle(kind, weight)}"/>`;
 }
-// Knight moves bend like on chess.com: two squares along the long axis, then one sideways with the head
-// (bend 'long'), or the other way round (bend 'short') when that keeps the elbow off squares other arrows use.
+// Knight moves bend like on chess.com: always two squares along the long axis, then one sideways with the head --
+// never the short leg first, even where the elbow crosses another arrow (chess.com: 135/135).
 // Authored as "down FIRST, then right SECOND" and mapped onto the real axes with a matrix (mirroring falls out for free).
-function knightArrow(x1, y1, dx, dy, kind, weight = 1, bend = 'long') {
+function knightArrow(x1, y1, dx, dy, kind, weight = 1) {
   const sw = ARROW_SW * weight, hw = ARROW_HW * weight, hl = ARROW_HL;
   const vertical = Math.abs(dy) === 2;
-  const longV = vertical ? [0, Math.sign(dy)] : [Math.sign(dx), 0], shortV = vertical ? [Math.sign(dx), 0] : [0, Math.sign(dy)];
-  const [first, second, A, B] = bend === 'short' ? [12.5, 25, shortV, longV] : [25, 12.5, longV, shortV];
+  const A = vertical ? [0, Math.sign(dy)] : [Math.sign(dx), 0], B = vertical ? [Math.sign(dx), 0] : [0, Math.sign(dy)];
+  const first = 25, second = 12.5;
   const pts = [[-sw, ARROW_GAP], [-sw, first + sw], [second - hl, first + sw], [second - hl, first + hw], [second, first], [second - hl, first - hw], [second - hl, first - sw], [sw, first - sw], [sw, ARROW_GAP]]
     .map(p => p.join(',')).join(' ');
   // local y (forward) -> first leg's unit vector A, local x (sideways) -> second leg's unit vector B
   return `<polygon points="${pts}" transform="matrix(${B[0]} ${B[1]} ${A[0]} ${A[1]} ${x1} ${y1})" style="${arrowStyle(kind, weight)}"/>`;
 }
-// The squares an arrow's shaft crosses (endpoints included) -- what the knight bend choice tries to avoid.
-// For a knight, bend 'long' passes the two squares along the long axis, 'short' the sideways one then one along.
-function arrowSquares(uci, bend = 'long') {
-  const f1 = 'abcdefgh'.indexOf(uci[0]), r1 = +uci[1] - 1, f2 = 'abcdefgh'.indexOf(uci[2]), r2 = +uci[3] - 1;
-  const df = f2 - f1, dr = r2 - r1, out = [sqName(f1, r1)];
-  if (Math.abs(df) + Math.abs(dr) === 3 && df && dr) {
-    const longF = Math.abs(df) === 2, sf = Math.sign(df), sr = Math.sign(dr);
-    let f = f1, r = r1;
-    const steps = longF ? (bend === 'short' ? [[0, sr], [sf, 0], [sf, 0]] : [[sf, 0], [sf, 0], [0, sr]])
-                        : (bend === 'short' ? [[sf, 0], [0, sr], [0, sr]] : [[0, sr], [0, sr], [sf, 0]]);
-    for (const [a, b] of steps) { f += a; r += b; out.push(sqName(f, r)); }
-    return out;
-  }
-  if (df && dr && Math.abs(df) !== Math.abs(dr)) return [out[0], sqName(f2, r2)];
-  const n = Math.max(Math.abs(df), Math.abs(dr)), sf = Math.sign(df), sr = Math.sign(dr);
-  for (let i = 1; i <= n; i++) out.push(sqName(f1 + sf * i, r1 + sr * i));
-  return out;
-}
-const isKnightMove = u => { const df = Math.abs(u.charCodeAt(2) - u.charCodeAt(0)), dr = Math.abs(u[3] - u[1]); return df + dr === 3 && df > 0 && dr > 0; };
-// Draws [uci, kind, weight] arrows; thin/faint ones first so the strongest paints on top. Each knight arrow takes
-// the bend whose middle squares collide least with everything else on the board.
+// Draws [uci, kind, weight] arrows; thin/faint ones first so the strongest paints on top.
 function drawArrows(list, el = $('arrows')) {
   list.sort((a, b) => a[2] - b[2]);
-  const others = u => list.filter(x => x[0] !== u).flatMap(x => arrowSquares(x[0]));
-  el.innerHTML = list.map(([u, k, w]) => {
-    let bend = 'long';
-    if (isKnightMove(u)) {
-      const taken = new Set(others(u));
-      const hits = b => arrowSquares(u, b).slice(1, 3).filter(sq => taken.has(sq)).length;
-      if (hits('short') < hits('long')) bend = 'short';
-    }
-    return arrow(u, k, w, bend);
-  }).join('');
+  el.innerHTML = list.map(([u, k, w]) => arrow(u, k, w)).join('');
 }
 // The pieces a bad move of mine left hanging: red squares on the board (the one the refutation takes is orange).
 // The opponent's errors don't get them -- the review is for me, and there the board says only how to punish.
