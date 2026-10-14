@@ -162,6 +162,77 @@ def parse_chesscom(g: dict, username: str) -> Optional[tuple[dict, list[dict]]]:
     return game_row, extract_positions(game, g["url"])
 
 
+# lichess speed -> this app's time classes (chess.com's four, plus classical, which chess.com doesn't have)
+LICHESS_CLASS = {"ultraBullet": "bullet", "bullet": "bullet", "blitz": "blitz", "rapid": "rapid",
+                 "classical": "classical", "correspondence": "daily"}
+# lichess status -> how chess.com words the ending ("X won by resignation", "Game drawn by stalemate")
+LICHESS_WIN = {"mate": "checkmate", "resign": "resignation", "outoftime": "time", "timeout": "abandonment",
+               "cheat": "fair play", "variantEnd": "variant end", "unknownFinish": "default"}
+LICHESS_DRAW = {"draw": "agreement", "stalemate": "stalemate", "outoftime": "timeout vs insufficient material",
+                "insufficientMaterialClaim": "insufficient material", "repetition": "repetition"}
+
+
+def _lichess_name(side: dict) -> Optional[str]:
+    if side.get("user"):
+        return side["user"].get("name")
+    if side.get("aiLevel"):
+        return f"lichess AI level {side['aiLevel']}"
+    return "Anonymous"
+
+
+def parse_lichess(g: dict, username: str) -> Optional[tuple[dict, list[dict]]]:
+    """One game from the lichess export (pgnInJson, clocks, opening)."""
+    if g.get("variant") != "standard" or g.get("status") in ("created", "started", "aborted", "noStart"):
+        return None
+    uname = username.lower()
+    players = g.get("players", {})
+    for colour, other in (("white", "black"), ("black", "white")):
+        if (players.get(colour, {}).get("user") or {}).get("id") == uname:
+            me, them = players[colour], players[other]
+            break
+    else:
+        return None
+
+    game = chess.pgn.read_game(io.StringIO(g.get("pgn", "")))
+    if game is None or not _is_standard(game):
+        return None
+
+    winner = g.get("winner")
+    result = "draw" if winner is None else "win" if winner == colour else "loss"
+    status = g.get("status")
+    if winner is None:
+        termination = f"Game drawn by {LICHESS_DRAW.get(status, status)}"
+    else:
+        termination = f"{_lichess_name(players[winner])} won by {LICHESS_WIN.get(status, status)}"
+    clock = g.get("clock")
+    if clock:
+        tc = f"{clock['initial']}+{clock['increment']}" if clock.get("increment") else f"{clock['initial']}"
+    elif g.get("daysPerTurn"):
+        tc = f"1/{g['daysPerTurn'] * 86400}"
+    else:
+        tc = "-"
+    # lichess gives the rating going into the game; chess.com's archives, and so the cards, the one after it
+    rating = lambda p: None if p.get("rating") is None else p["rating"] + p.get("ratingDiff", 0)
+    game_id = f"https://lichess.org/{g['id']}"
+    opening = g.get("opening") or {}
+    game_row = {
+        "game_id": game_id,
+        "played_at": datetime.fromtimestamp(g["createdAt"] // 1000, tz=timezone.utc).replace(tzinfo=None),
+        "time_control": tc,
+        "time_class": LICHESS_CLASS.get(g.get("speed"), g.get("speed")),
+        "my_colour": colour,
+        "my_rating": rating(me),
+        "opponent_rating": rating(them),
+        "result": result,
+        "termination": termination,
+        "eco": opening.get("eco") or game.headers.get("ECO") or None,
+        "opening_name": opening.get("name") or _opening_name(game.headers),
+        "opponent": _lichess_name(them),
+        "my_name": me["user"].get("name") or username,
+    }
+    return game_row, extract_positions(game, game_id)
+
+
 def parse_pgn_text(text: str, username: str, digest: str) -> Iterator[tuple[dict, list[dict]]]:
     stream = io.StringIO(text)
     idx = 0
@@ -220,6 +291,21 @@ def build(profile: Profile) -> dict:
         for g in json.loads(f.read_text(encoding="utf-8")).get("games", []):
             stats["raw_games"] += 1
             parsed = parse_chesscom(g, username)
+            if parsed is None:
+                stats["skipped_variant_or_other"] += 1
+                continue
+            row, pos = parsed
+            if row["game_id"] in games:
+                continue
+            games[row["game_id"]] = row
+            positions.extend(pos)
+
+    for f in sorted(profile.raw_dir.glob("*.ndjson")) if profile.raw_dir.exists() else []:
+        for line in f.read_text(encoding="utf-8").splitlines():
+            if not line.strip():
+                continue
+            stats["raw_games"] += 1
+            parsed = parse_lichess(json.loads(line), username)
             if parsed is None:
                 stats["skipped_variant_or_other"] += 1
                 continue

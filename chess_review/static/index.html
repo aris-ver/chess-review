@@ -50,6 +50,8 @@ main { padding: 16px 18px; max-width: 1800px; margin: 0 auto; }
 .card#card-setup:hover, .card#card-image:hover { border-color: var(--accent); }
 .card.soon { opacity: .55; }
 .card .src { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+.card .src .logo { width: 13px; height: 13px; vertical-align: -2px; margin-right: 5px; }
+.card .src .logo.chesscom { fill: #81b64c; } .card .src .logo.lichess { fill: var(--text); }
 .card .who { font-size: 17px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-right: 22px; }
 .card .meta { color: var(--muted); font-size: 12px; margin-top: auto; }
 .card .x { position: absolute; top: 8px; right: 8px; color: var(--muted); font-size: 14px; padding: 2px 6px; border-radius: 4px; }
@@ -417,7 +419,7 @@ svg.graph { width: 100%; height: 90px; display: block; cursor: pointer; backgrou
   <span class="crumb" id="crumb"></span>
   <div class="right">
     <button id="b-sound" class="snd" title="Toggle sound"></button>
-    <button id="b-refresh" class="pctx" title="Fetch new games from chess.com"><span class="i">⟳</span><span class="t"> Refresh games</span></button>
+    <button id="b-refresh" class="pctx" title="Fetch new games"><span class="i">⟳</span><span class="t"> Refresh games</span></button>
     <span id="b-auto" class="switch pctx" title="Analyse newly fetched games automatically after a refresh (off: analyse each game on demand)"><span class="lbl">Auto-analyse</span><span class="track"></span></span>
     <span id="jobstat" style="color:var(--muted);font-size:12px"></span>
     <a id="a-insights" class="pctx" href="#" title="Insights"><span class="i">📊</span><span class="t"> Insights →</span></a>
@@ -432,7 +434,7 @@ svg.graph { width: 100%; height: 90px; display: block; cursor: pointer; backgrou
         <div class="card add">
           <span class="src">Profile</span><span class="who">Add a profile</span>
           <form id="addform">
-            <select name="source"><option value="chesscom">chess.com</option><option value="lichess" disabled>lichess (soon)</option></select>
+            <select name="source"><option value="chesscom">chess.com</option><option value="lichess">lichess</option></select>
             <input name="username" placeholder="username" autocomplete="off" spellcheck="false" required>
             <button class="primary" type="submit">Add profile</button>
           </form>
@@ -725,14 +727,21 @@ function setContext(on) {   // profile-scoped header controls only make sense in
 
 // ---------- home ----------
 const SOURCE_NAME = { chesscom: 'chess.com', lichess: 'lichess', pgn: 'PGN' };
-// one rating per time class -- bullet, lightning, stopwatch, calendar -- with its 7-day change
+// where a profile's games come from, on its card: chess.com's pawn, lichess's knight
+const SOURCE_LOGO = {
+  chesscom: '<svg class="logo chesscom" viewBox="9 8 27 33"><path d="M22.5 9a4 4 0 0 0-3.22 6.38A5.5 5.5 0 0 0 18.41 26.03C15.41 27.09 11 31.58 11 39.5h23c0-7.92-4.41-12.41-7.41-13.47a5.5 5.5 0 0 0-.87-10.65A4 4 0 0 0 22.5 9z"/></svg>',
+  lichess: '<svg class="logo lichess" viewBox="5 6 34 34"><path d="M22 10c10.5 1 16.5 8 16 29H15c0-9 10-6.5 8-21 .38 2.91-5.55 7.37-8 9-3 2-2.82 4.34-5 4-1.04-.94 1.41-3.04 0-3-1 0 .19 1.23-1 2-1 0-4 1-4-4 0-2 6-12 6-12s1.89-1.9 2-3.5c-.73-.99-.5-2-.5-3 1-1 3 2.5 3 2.5h2s.78-1.99 2.5-3c1 0 1 3 1 3z"/></svg>',
+};
+const sourceName = pid => SOURCE_NAME[(pid || '').split('-')[0]] || 'chess.com';   // ids are <source>-<username>
+// one rating per time class -- bullet, lightning, stopwatch, hourglass (lichess's classical), calendar -- with its 7-day change
 const CLASS_ICON = {
   bullet: '<svg viewBox="0 0 20 20"><path d="M3 7h8.5a3 3 0 0 1 0 6H3z"/><path d="M13.5 7.5a2.5 2.5 0 0 1 0 5z" opacity=".5"/></svg>',
   blitz:  '<svg viewBox="0 0 20 20"><path d="M11.5 1 4 11.5h5l-1.5 7.5L15 8.5h-5z"/></svg>',
   rapid:  '<svg viewBox="0 0 20 20"><path d="M8 1h4v2H8z"/><path d="M10 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zm0 2a5 5 0 1 1 0 10 5 5 0 0 1 0-10zm-.8 1.5h1.6V11l2.4 1.6-.8 1.3L9.2 12z"/></svg>',
+  classical: '<svg viewBox="0 0 20 20"><path d="M4 1h12v2h-1v3l-3.5 4L15 14v3h1v2H4v-2h1v-3l3.5-4L5 6V3H4zm3 2v2.3L10 9l3-3.7V3zm3 9-3 2.8V17h6v-2.2z"/></svg>',
   daily:  '<svg viewBox="0 0 20 20"><path d="M3 4h14v13H3zm2 4v7h10V8zM5 2h2v3H5zm8 0h2v3h-2z"/></svg>',
 };
-const CLASS_NAME = { bullet: 'Bullet', blitz: 'Blitz', rapid: 'Rapid', daily: 'Daily' };
+const CLASS_NAME = { bullet: 'Bullet', blitz: 'Blitz', rapid: 'Rapid', classical: 'Classical', daily: 'Daily' };
 function ratingsHTML(ratings) {
   const out = Object.keys(CLASS_ICON).filter(c => ratings && ratings[c]).map(c => {
     const { rating, delta_7d: d } = ratings[c];
@@ -856,7 +865,7 @@ $('pgnform').onsubmit = async e => {
 let profilesScanT = null;
 async function renderProfiles() {
   let d; try { d = await (await fetch('api/profiles')).json(); } catch (e) { d = { profiles: [] }; }
-  // the launch-time scan for new games on chess.com may still be running: look again in a moment
+  // the launch-time scan for new games on chess.com and lichess may still be running: look again in a moment
   clearTimeout(profilesScanT);
   if (d.scan === 'running') profilesScanT = setTimeout(() => { if (!$('home').classList.contains('hidden')) renderProfiles(); }, 2000);
   const ps = d.profiles.slice().sort((a, b) => {
@@ -866,15 +875,15 @@ async function renderProfiles() {
   });
   $('profiles').innerHTML = ps.map(p => `
     <div class="card profile ${p.pinned ? 'pinned' : ''}" data-id="${p.id}" data-name="${esc(p.username)}">
-      <span class="src">${SOURCE_NAME[p.source] || p.source}</span>
+      <span class="src">${SOURCE_LOGO[p.source] || ''}${SOURCE_NAME[p.source] || p.source}</span>
       <span class="who" title="${esc(p.username)}"><span class="name">${esc(p.username)}</span></span>
       ${ratingsHTML(p.ratings)}
       <div class="progress hidden"><div></div></div>
-      ${p.new_games ? `<div class="banner"><span class="txt">${p.new_games} new game${p.new_games === 1 ? '' : 's'} on chess.com</span><button class="fetch" title="Open the profile and fetch them">Fetch</button><span class="dismiss" title="Dismiss">✕</span></div>` : ''}
+      ${p.new_games ? `<div class="banner"><span class="txt">${p.new_games} new game${p.new_games === 1 ? '' : 's'} on ${SOURCE_NAME[p.source]}</span><button class="fetch" title="Open the profile and fetch them">Fetch</button><span class="dismiss" title="Dismiss">✕</span></div>` : ''}
       <span class="meta">${p.games} games · ${p.analysed} analysed${p.unseen && p.unseen.length ? ` · <b style="color:var(--accent)">${p.unseen.length} not opened yet</b>` : ''}</span>
       <span class="pin" title="${p.pinned ? 'Unpin' : 'Pin to the top'}">${p.pinned ? '★' : '☆'}</span>
       <span class="x" title="Remove this profile (the engine cache is kept)">✕</span>
-    </div>`).join('') || `<div class="empty">No profiles yet — add a chess.com username above.</div>`;
+    </div>`).join('') || `<div class="empty">No profiles yet — add a chess.com or lichess username above.</div>`;
   $('profiles').querySelectorAll('.card.profile').forEach(c => {
     const seen = () => fetch(`api/profiles/${c.dataset.id}/seen`, { method: 'POST' });   // banner shown, job done
     c.onclick = () => { if (c.querySelector('.banner')) seen(); location.hash = '#/p/' + c.dataset.id; };
@@ -913,7 +922,7 @@ async function renderProfiles() {
     if (!r.ok) { toast(d.error === 'busy' ? `Busy: ${jobText(d.job)}` : d.error); return; }
     f.username.value = '';
     if (!d.job) { location.hash = '#/p/' + d.profile.id; return; }
-    toast(`Fetching ${body.username}'s games from chess.com…`);
+    toast(`Fetching ${body.username}'s games from ${SOURCE_NAME[body.source]}…`);
     await renderProfiles();
     pollStatus();
   };
@@ -1393,7 +1402,7 @@ async function showGame(id) {
   $('list').classList.add('hidden'); $('review').classList.remove('hidden');
   $('crumb').textContent = `${g.white.name} vs ${g.black.name}`;
   $('ginfo').innerHTML = `${fmtDate(g.played_at)} · ${g.time_class} ${g.time_control || ''} · ${esc(g.termination || '')}` +
-    (g.url.startsWith('http') ? ` · <a href="${g.url}" target="_blank" style="color:var(--accent)">chess.com ↗</a>` : '');
+    (g.url.startsWith('http') ? ` · <a href="${g.url}" target="_blank" style="color:var(--accent)">${new URL(g.url).hostname.replace(/^www\./, '')} ↗</a>` : '');
   renderSummary(); renderMoments(); renderMoveList(); renderGraph(); renderAnalyseBox(); renderOpening();
   update(false);
   if (!same) play('start');
@@ -1474,7 +1483,8 @@ $('b-refresh').onclick = async () => {
   const r = await fetch(`api/${P()}/refresh`, { method: 'POST', body: JSON.stringify({ analyse: state.autoAnalyse }) });
   const d = await r.json();
   if (!r.ok) { toast(d.error === 'busy' ? `Busy: ${jobText(d.job)}` : d.error); return; }
-  toast(state.autoAnalyse ? 'Fetching new games from chess.com — new ones are analysed automatically…' : 'Fetching new games from chess.com…');
+  const from = sourceName(state.profile);
+  toast(state.autoAnalyse ? `Fetching new games from ${from} — new ones are analysed automatically…` : `Fetching new games from ${from}…`);
   pollStatus();
 };
 function renderAuto() {
