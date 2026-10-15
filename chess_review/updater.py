@@ -78,13 +78,47 @@ def _fetch_latest() -> dict:
     return r.json()
 
 
+def _fetch_releases() -> list:
+    r = requests.get(f"https://api.github.com/repos/{GITHUB_REPO}/releases", params={"per_page": 100}, timeout=10,
+                     headers={"User-Agent": USER_AGENT, "Accept": "application/vnd.github+json"})
+    r.raise_for_status()
+    return r.json()
+
+
+def whats_new(body: Optional[str]) -> str:
+    """The '## What's new' part of a release body as the workflow writes it, without the download instructions
+    above it or the changelog link under it. A body without that heading is returned whole."""
+    lines = (body or "").splitlines()
+    start = next((i for i, l in enumerate(lines) if re.match(r"^#{1,3}\s+what'?s new", l.strip(), re.I)), None)
+    if start is None:
+        return (body or "").strip()
+    out = []
+    for l in lines[start + 1:]:
+        if re.match(r"^#{1,3}\s", l) or l.strip().lower().startswith("**full changelog**"):
+            break
+        out.append(l)
+    return "\n".join(out).strip()
+
+
+def changes_since(releases: list, mine: tuple, latest: tuple) -> list:
+    """Every published release after the installed version up to the latest, newest first: what an update brings."""
+    out = []
+    for rel in releases:
+        v = parse_version(rel.get("tag_name"))
+        if rel.get("draft") or rel.get("prerelease") or not v or not mine < v <= latest:
+            continue
+        out.append({"version": rel["tag_name"], "date": (rel.get("published_at") or "")[:10],
+                    "notes": whats_new(rel.get("body"))})
+    return sorted(out, key=lambda c: parse_version(c["version"]), reverse=True)
+
+
 class Updater:
     """One per server. check() is cached; download() runs in a thread and status() reports its progress."""
 
     def __init__(self):
         self.lock = threading.Lock()
         self.installed = installed()
-        self.latest: Optional[dict] = None      # {version, url, notes, asset} once checked
+        self.latest: Optional[dict] = None      # {version, url, notes, asset, changes} once checked
         self.checked_at = 0.0
         self.check_error: Optional[str] = None
         self.state = "idle"                     # idle | downloading | ready | error
@@ -102,8 +136,14 @@ class Updater:
         try:
             rel = _fetch_latest()
             self.latest = {"version": rel.get("tag_name"), "url": rel.get("html_url"), "notes": rel.get("body") or "",
-                           "asset": pick_asset(rel, self.installed["runtime"])}
+                           "asset": pick_asset(rel, self.installed["runtime"]), "changes": []}
             self.check_error = None
+            if self.newer:      # one more request, only when there is an update: the notes of every skipped release
+                try:
+                    self.latest["changes"] = changes_since(_fetch_releases(), parse_version(self.installed["version"]),
+                                                           parse_version(self.latest["version"]))
+                except (requests.RequestException, ValueError) as e:
+                    log.warning("could not list releases: %s", e)     # the latest release's notes still show
         except (requests.RequestException, ValueError) as e:
             log.warning("update check failed: %s", e)
             self.check_error = str(e)
@@ -119,6 +159,7 @@ class Updater:
                "done": self.done, "total": self.total, "error": self.error, "check_error": self.check_error}
         if self.latest:
             out.update(latest=self.latest["version"], url=self.latest["url"], notes=self.latest["notes"], newer=self.newer,
+                       changes=self.latest.get("changes", []),
                        kind=self.latest["asset"]["kind"] if self.latest["asset"] else None,
                        size=self.latest["asset"]["size"] if self.latest["asset"] else None)
         return out
