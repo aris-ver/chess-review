@@ -25,6 +25,12 @@ button.primary { background: var(--accent); color: #1b1b1b; border-color: var(--
 button.primary:hover { background: #8fc55a; }
 header { display: flex; align-items: center; gap: 16px; padding: 10px 18px; background: var(--panel); border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 5; }
 header h1 { font-size: 18px; margin: 0; }
+/* the title is the Home button: it looks like one under the mouse */
+header h1 a { display: inline-block; padding: 4px 10px; margin: 0 -10px; border: 1px solid transparent; border-radius: 6px; transition: background .12s, border-color .12s; }
+header h1 a:hover { background: var(--panel2); border-color: var(--line); }
+header h1 a:active { background: #46423d; }
+header button.back { color: var(--text); white-space: nowrap; }
+header button.back:not(.hidden) + h1 a { margin-left: 0; }
 header .crumb { color: var(--muted); }
 header .right { margin-left: auto; display: flex; gap: 10px; align-items: center; }
 header .right a { color: var(--muted); }
@@ -431,9 +437,6 @@ svg.graph { width: 100%; height: 90px; display: block; cursor: pointer; backgrou
 .tcredit a { color: var(--muted); text-decoration: underline; }
 .tpanel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
 .ttabs { display: flex; gap: 6px; } .ttabs button { flex: 1; }
-.tback { max-width: 1120px; margin: 16px auto 0; } .tback + .themes { margin-top: 10px; }
-.tback .pbtn { display: inline-block; font-size: 15px; color: var(--text); border: 1px solid var(--line); padding: 6px 12px; text-decoration: none; }
-.tback .pbtn:hover { background: var(--panel); }
 .tgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); gap: 8px; max-height: 58vh; overflow: auto; padding: 2px; }
 .tile { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 8px 6px; background: var(--panel2); border: 2px solid transparent; border-radius: 8px; }
 .tile:hover { background: #46423d; } .tile.on { border-color: var(--accent); }
@@ -456,7 +459,8 @@ svg.graph { width: 100%; height: 90px; display: block; cursor: pointer; backgrou
 </head>
 <body>
 <header>
-  <h1><a href="#/">♞ Chess Review</a></h1>
+  <button id="b-back" class="back hidden" title="Back to where you were">←<span class="t"> Back</span></button>
+  <h1><a href="#/" title="Home">♞ Chess Review</a></h1>
   <span class="crumb" id="crumb"></span>
   <div class="right">
     <button id="b-settings" class="snd" title="Pieces, board and sounds"><svg viewBox="0 0 24 24"><path fill-rule="evenodd" d="M19.14 12.94c.04-.3.06-.61.06-.94s-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.49.49 0 0 0-.59-.22l-2.39.96a7 7 0 0 0-1.62-.94l-.36-2.54a.48.48 0 0 0-.48-.41h-3.84a.47.47 0 0 0-.47.41l-.36 2.54a7.4 7.4 0 0 0-1.62.94l-2.39-.96a.48.48 0 0 0-.59.22L2.74 8.87a.47.47 0 0 0 .12.61l2.03 1.58a6 6 0 0 0 0 1.88l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54a7 7 0 0 0 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32a.47.47 0 0 0-.12-.61zM12 15.6a3.6 3.6 0 1 1 0-7.2 3.6 3.6 0 0 1 0 7.2z"/></svg></button>
@@ -533,7 +537,6 @@ svg.graph { width: 100%; height: 90px; display: block; cursor: pointer; backgrou
     </div>
   </section>
   <section id="settings" class="hidden">
-    <div class="tback"><a href="#/" class="pbtn" id="t-back" title="Back (Esc)">← Back</a></div>
     <div class="themes">
       <div class="tpreview">
         <div class="pv-board" id="pvboard"></div>
@@ -863,11 +866,21 @@ async function checkStale() {
   else if (lm !== pageStamp) { toast('The app was updated — click here to reload', 15000); $('toast').onclick = () => location.reload(); }
 }
 checkStale();
-let backHash = '#/';   // where Settings' Back returns to: the page it was opened from
+// the pages visited in this app, so Back can return to the one before -- and is hidden on the first
+const visited = [];
+function noteVisit(h) {
+  if (visited.length > 1 && visited[visited.length - 2] === h) visited.pop();   // went back (Back, browser, Alt+Left)
+  else if (visited[visited.length - 1] !== h) visited.push(h);
+  $('b-back').classList.toggle('hidden', visited.length < 2);
+}
+function goBack() { if (visited.length > 1) history.back(); else if ((location.hash || '#/') !== '#/') location.hash = '#/'; }
+$('b-back').onclick = goBack;
 async function route() {
   const h = location.hash || '#/';
+  noteVisit(h);
+  // leaving a review: remember the move and which way up the board was, so coming back lands there
+  if (state.game && !h.includes(`/game/${state.game.id}`)) state.resume = { id: state.game.id, ply: state.ply, flipped: state.flipped };
   if (h === '#/settings') return showSettings();
-  backHash = h;
   const sm = h.match(/^#\/sandbox\/(.+)$/);
   if (sm) return showSandbox(decodeURIComponent(sm[1]));
   const em = h.match(/^#\/setup(?:\?fen=(.+))?$/);
@@ -1014,13 +1027,8 @@ async function showSettings() {
   await assetsReady;
   showSection('settings');
   document.body.classList.remove('sandbox'); stopSandboxStream();
-  // remember where the review was, so Back lands on the same move with the board the same way up
-  state.resume = state.game ? { id: state.game.id, ply: state.ply, flipped: state.flipped } : null;
   state.game = null; state.profile = null; state.games = null; dropVariation(); stopPolling(); stopPlay();
   setContext(false); $('crumb').textContent = 'Pieces, board and sounds';
-  $('t-back').href = backHash;
-  $('t-back').textContent = /\/game\//.test(backHash) ? '← Back to game' : /^#\/p\//.test(backHash) ? '← Back to games'
-    : backHash === '#/' ? '← Back to home' : '← Back';
   settings.pend = { pieces: theme.pieces, board: theme.board, sound: theme.sound };
   renderSettings();
 }
@@ -1657,7 +1665,7 @@ async function showGame(id) {
   const same = state.game && state.game.id === id;
   state.game = g;
   if (!same) { stopPlay(); state.ply = 0; state.flipped = g.my_colour === 'black'; dropVariation(); state.sel = null; state.cycle = {}; $('pieces').innerHTML = ''; }
-  const back = state.resume && state.resume.id === id ? state.resume : null;   // returning from Settings
+  const back = state.resume && state.resume.id === id ? state.resume : null;   // coming back to this review
   if (back) { state.ply = back.ply; state.flipped = back.flipped; }
   state.resume = null;
   showSection('review');
@@ -2660,7 +2668,7 @@ $('b-flip').onclick = () => { state.flipped = !state.flipped; $('pieces').innerH
 $('b-play').onclick = togglePlay;
 $('b-key').onclick = nextKey;
 document.addEventListener('keydown', e => {
-  if (e.key === 'Escape' && location.hash === '#/settings') { location.hash = $('t-back').getAttribute('href'); return; }
+  if (e.key === 'Escape' && location.hash === '#/settings') { goBack(); return; }
   if (!state.game|| state.exploring || e.target.type === 'range') return;   // the volume slider has the arrows
   if (e.key === 'ArrowLeft') { go(state.ply - 1); e.preventDefault(); }
   else if (e.key === 'ArrowRight') { go(state.ply + 1); e.preventDefault(); }
