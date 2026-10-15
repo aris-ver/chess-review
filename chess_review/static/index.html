@@ -431,6 +431,9 @@ svg.graph { width: 100%; height: 90px; display: block; cursor: pointer; backgrou
 .tcredit a { color: var(--muted); text-decoration: underline; }
 .tpanel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
 .ttabs { display: flex; gap: 6px; } .ttabs button { flex: 1; }
+.tback { max-width: 1120px; margin: 16px auto 0; } .tback + .themes { margin-top: 10px; }
+.tback .pbtn { display: inline-block; font-size: 15px; color: var(--text); border: 1px solid var(--line); padding: 6px 12px; text-decoration: none; }
+.tback .pbtn:hover { background: var(--panel); }
 .tgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); gap: 8px; max-height: 58vh; overflow: auto; padding: 2px; }
 .tile { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 8px 6px; background: var(--panel2); border: 2px solid transparent; border-radius: 8px; }
 .tile:hover { background: #46423d; } .tile.on { border-color: var(--accent); }
@@ -530,6 +533,7 @@ svg.graph { width: 100%; height: 90px; display: block; cursor: pointer; backgrou
     </div>
   </section>
   <section id="settings" class="hidden">
+    <div class="tback"><a href="#/" class="pbtn" id="t-back" title="Back (Esc)">← Back</a></div>
     <div class="themes">
       <div class="tpreview">
         <div class="pv-board" id="pvboard"></div>
@@ -543,7 +547,7 @@ svg.graph { width: 100%; height: 90px; display: block; cursor: pointer; backgrou
           <button id="t-reset" title="Back to the defaults (applied when you press Apply)">Reset to defaults</button>
           <span class="pending" id="t-pending"></span>
           <span style="margin-left:auto"></span>
-          <a href="#/" class="pbtn" id="t-back">← Back</a><button class="primary" id="t-apply" disabled>Apply</button>
+          <button class="primary" id="t-apply" disabled>Apply</button>
         </div>
       </div>
     </div>
@@ -1010,9 +1014,13 @@ async function showSettings() {
   await assetsReady;
   showSection('settings');
   document.body.classList.remove('sandbox'); stopSandboxStream();
+  // remember where the review was, so Back lands on the same move with the board the same way up
+  state.resume = state.game ? { id: state.game.id, ply: state.ply, flipped: state.flipped } : null;
   state.game = null; state.profile = null; state.games = null; dropVariation(); stopPolling(); stopPlay();
   setContext(false); $('crumb').textContent = 'Pieces, board and sounds';
   $('t-back').href = backHash;
+  $('t-back').textContent = /\/game\//.test(backHash) ? '← Back to game' : /^#\/p\//.test(backHash) ? '← Back to games'
+    : backHash === '#/' ? '← Back to home' : '← Back';
   settings.pend = { pieces: theme.pieces, board: theme.board, sound: theme.sound };
   renderSettings();
 }
@@ -1649,13 +1657,16 @@ async function showGame(id) {
   const same = state.game && state.game.id === id;
   state.game = g;
   if (!same) { stopPlay(); state.ply = 0; state.flipped = g.my_colour === 'black'; dropVariation(); state.sel = null; state.cycle = {}; $('pieces').innerHTML = ''; }
+  const back = state.resume && state.resume.id === id ? state.resume : null;   // returning from Settings
+  if (back) { state.ply = back.ply; state.flipped = back.flipped; }
+  state.resume = null;
   showSection('review');
   $('crumb').textContent = `${g.white.name} vs ${g.black.name}`;
   $('ginfo').innerHTML = `${fmtDate(g.played_at)} · ${g.time_class} ${g.time_control || ''} · ${esc(g.termination || '')}` +
     (g.url.startsWith('http') ? ` · <a href="${g.url}" target="_blank" style="color:var(--accent)">${new URL(g.url).hostname.replace(/^www\./, '')} ↗</a>` : '');
   renderSummary(); renderMoments(); renderMoveList(); renderGraph(); renderAnalyseBox(); renderOpening();
   update(false);
-  if (!same) play('start');
+  if (!same && !back) play('start');
   pollStatus();
 }
 async function reloadGame() {
@@ -2649,7 +2660,8 @@ $('b-flip').onclick = () => { state.flipped = !state.flipped; $('pieces').innerH
 $('b-play').onclick = togglePlay;
 $('b-key').onclick = nextKey;
 document.addEventListener('keydown', e => {
-  if (!state.game || state.exploring || e.target.type === 'range') return;   // the volume slider has the arrows
+  if (e.key === 'Escape' && location.hash === '#/settings') { location.hash = $('t-back').getAttribute('href'); return; }
+  if (!state.game|| state.exploring || e.target.type === 'range') return;   // the volume slider has the arrows
   if (e.key === 'ArrowLeft') { go(state.ply - 1); e.preventDefault(); }
   else if (e.key === 'ArrowRight') { go(state.ply + 1); e.preventDefault(); }
   else if (e.key === 'Home') go(0);
