@@ -611,6 +611,28 @@
    "license_url": null
   },
   {
+   "id": "clubhouse",
+   "name": "Clubhouse",
+   "files": [
+    "Move",
+    "Capture",
+    "Castles",
+    "Promote",
+    "Check",
+    "Checkmate",
+    "GenericNotify",
+    "LowTime",
+    "Error",
+    "Confirmation",
+    "Victory",
+    "Defeat",
+    "Draw"
+   ],
+   "author": "Aris",
+   "license": "Own work: every sound synthesized from scratch by scripts/synth_clubhouse_sounds.py",
+   "license_url": null
+  },
+  {
    "id": "morning-wood",
    "name": "Morning Wood",
    "files": [
