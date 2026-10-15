@@ -45,6 +45,7 @@ def test_pick_asset_falls_back_to_the_full_zip():
 def _updater(monkeypatch, installed_version, runtime="abc123def456", release=RELEASE):
     monkeypatch.setattr(updater, "installed", lambda: {"version": installed_version, "runtime": runtime})
     monkeypatch.setattr(updater, "_fetch_latest", lambda: release)
+    monkeypatch.setattr(updater, "_fetch_releases", lambda: [release])
     monkeypatch.setattr(updater.sys, "platform", "win32")
     return updater.Updater()
 
@@ -54,6 +55,48 @@ def test_check_reports_a_newer_release(monkeypatch):
     u.check()
     s = u.status()
     assert s["enabled"] and s["newer"] and s["latest"] == "v0.2.0" and s["kind"] == "update" and s["size"] == 3_000_000
+
+
+BODY = """## Download
+
+**[chess-review-windows.zip](https://dl/full.zip)** - this is the app.
+
+## What's new
+
+* {item}
+
+**Full changelog**: https://github.com/x/y/compare/a...b
+"""
+
+
+def test_whats_new_keeps_only_the_changes():
+    assert updater.whats_new(BODY.format(item="Back button")) == "* Back button"
+    assert updater.whats_new("just a note") == "just a note"
+    assert updater.whats_new(None) == ""
+
+
+def test_an_update_lists_every_skipped_release_newest_first(monkeypatch):
+    def rel(tag, **kw):
+        return {"tag_name": tag, "published_at": "2026-10-15T09:00:00Z", "body": BODY.format(item=f"in {tag}"), **kw}
+    releases = [rel("v0.1.13"), rel("v0.1.14"), rel("v0.1.20"), rel("v0.2.0"), rel("v0.1.9"),
+                rel("v0.1.15", draft=True), rel("v0.2.1"), rel("v0.1.21", prerelease=True)]
+    u = _updater(monkeypatch, "v0.1.14")
+    monkeypatch.setattr(updater, "_fetch_releases", lambda: releases)
+    u.check()
+    changes = u.status()["changes"]
+    assert [c["version"] for c in changes] == ["v0.2.0", "v0.1.20"]   # not installed, older, newer than latest, drafts or betas
+    assert changes[0] == {"version": "v0.2.0", "date": "2026-10-15", "notes": "* in v0.2.0"}
+
+
+def test_listing_releases_failing_still_offers_the_update(monkeypatch):
+    u = _updater(monkeypatch, "v0.1.14")
+
+    def boom():
+        raise updater.requests.ConnectionError("rate limited")
+    monkeypatch.setattr(updater, "_fetch_releases", boom)
+    u.check()
+    s = u.status()
+    assert s["newer"] and s["changes"] == [] and s["check_error"] is None
 
 
 def test_check_is_quiet_when_up_to_date_or_ahead(monkeypatch):
