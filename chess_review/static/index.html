@@ -2103,6 +2103,7 @@ renderAuto();
 function jobText(j) {
   if (j.kind === 'analyse_all') return `analysing all games: ${j.done}/${j.total} done, current ${j.game} ${j.game_done}/${j.game_total}`;
   if (j.kind === 'ingest') return `fetching ${j.profile} (${j.done}/${j.total})`;
+  if (j.kind === 'puzzles') return `finding puzzle lines (${j.done}/${j.total})`;
   return j.kind === 'analyse' ? `analysing game ${j.game} (${j.done}/${j.total})` : `refreshing games (${j.done}/${j.total})`;
 }
 let lastJobStatus = null, lastJobDone = -1;
@@ -2116,7 +2117,7 @@ async function pollStatus() {
     if (gen !== pollGen) return;
     const j = d.job;
     const active = j && ['queued', 'running', 'finishing'].includes(j.status);
-    $('b-refresh').disabled = !!active;
+    $('b-refresh').disabled = !!active && j.kind !== 'puzzles';   // the background puzzles job gives way to a refresh
     $('jobstat').textContent = active ? jobText(j) : '';
     const mine = j && j.profile === state.profile;   // jobs belong to a profile; only react to the one being viewed
     if (j && j.kind === 'ingest') {

@@ -35,6 +35,9 @@
     GET  /api/puzzles/get?id=           one puzzle by id, Lichess or your games (a reload, or Back to it) -> {puzzle, stats}
     GET  /api/puzzles/themes            the pack's themes with readable names and counts, and your stats
     GET  /api/puzzles/sources           what the trainer can deal from: the Lichess pack, and each profile with puzzles
+                                        (this and next?source=mine: start job "puzzles" in the background when a
+                                        profile's puzzles still wait for the engine to settle their lines; any
+                                        other job takes over from it)
     POST /api/puzzles/attempt           {id, solved, ms?, hinted?} -> a Lichess puzzle's first try recorded {stats, counted};
                                         a puzzle from your games: every showing recorded {stats, review}
 
@@ -100,7 +103,9 @@ class Runner:
         self.analyser = Analyser(workers=workers, nodes=nodes)
         self.explorer = Explorer(nodes=nodes, threads=workers)
         self.job: Optional[Job] = None
+        self.thread: Optional[threading.Thread] = None
         self.lock = threading.Lock()
+        self._lines_tried: dict[str, float] = {}     # profile -> moves.parquet stamp the puzzles job last ran for
 
     def busy(self) -> bool:
         return self.job is not None and self.job.status in ("queued", "running", "finishing")
@@ -116,17 +121,65 @@ class Runner:
             self.explorer.close()
 
     def start(self, job: Job) -> bool:
+        """Start `job` unless another one runs. The background puzzles job gives way: it is asked to stop and the
+        new job starts once it has."""
         with self.lock:
+            before = None
             if self.busy():
-                return False
+                if self.job.kind != "puzzles" or job.kind == "puzzles":
+                    return False
+                self.job.stop_requested = True
+                before = self.thread
             self.job = job
-        threading.Thread(target=self._run, args=(job,), daemon=True).start()
+            self.thread = threading.Thread(target=self._run, args=(job, before), daemon=True)
+            self.thread.start()
         return True
 
-    def _run(self, job: Job) -> None:
+    def extend_puzzles(self, profile: Profile) -> None:
+        """Start the puzzles job for `profile` if some of its puzzles wait for engine lines. Once per change of its
+        classified moves, so a job that can't finish (the engine cache locked by the CLI) isn't retried each request."""
+        try:
+            stamp = profile.moves_parquet.stat().st_mtime
+        except OSError:
+            return
+        if self.busy() or self._lines_tried.get(profile.id) == stamp or not own_puzzles.POOL.waiting(profile):
+            return
+        self.start(Job("puzzles", profile))
+
+    def _puzzles(self, job: Job) -> None:
+        """Settle the lines of the profile's own-game puzzles: MultiPV searches of the positions they wait on, a ply
+        at a time, into the shared cache (own_puzzles.extend)."""
+        p = job.profile
+        self._lines_tried[p.id] = p.moves_parquet.stat().st_mtime
+        con = open_db()
+        base_views(con, p)
+        try:
+            def progress(done: int, total: int) -> None:
+                job.done, job.total = done, total
+
+            def search(keys: list[str]) -> None:
+                self.analyser.run(keys, con, batch=self.analyser.workers * 2, should_stop=lambda: job.stop_requested)
+                own_puzzles.POOL.invalidate(p.id)
+
+            stats = own_puzzles.extend(con, search, should_stop=lambda: job.stop_requested, on_progress=progress)
+            log.info("puzzle lines %s: %s", p.id, stats)
+            if job.stop_requested:
+                self._lines_tried.pop(p.id, None)     # given way to another job: try again later
+            else:
+                job.status = "finishing"
+                export_parquet(con)
+        finally:
+            con.close()
+            own_puzzles.POOL.invalidate(p.id)
+
+    def _run(self, job: Job, before: Optional[threading.Thread] = None) -> None:
+        if before is not None:
+            before.join()
         try:
             job.status = "running"
-            if job.kind == "analyse":
+            if job.kind == "puzzles":
+                self._puzzles(job)
+            elif job.kind == "analyse":
                 self._analyse(job)
             elif job.kind == "analyse_all":
                 self._analyse_all(job)
@@ -425,6 +478,7 @@ class Handler(SimpleHTTPRequestHandler):
                 st = own_puzzles.summary(p)
                 if st["total"]:
                     out.append({"id": f"mine:{p.id}", "name": p.username, "count": st["total"], "stats": st})
+                    self.runner.extend_puzzles(p)
             return self._json({"sources": out})
         if what == "next":
             source = q.get("source", ["lichess"])[0]
@@ -433,6 +487,7 @@ class Handler(SimpleHTTPRequestHandler):
                 if prof is None:
                     return self._json({"error": "unknown profile"}, 404)
                 p, st = own_puzzles.next_puzzle(prof, q.get("skip", [None])[0])
+                self.runner.extend_puzzles(prof)
                 if p is None:
                     msg = "no puzzles from these games yet: analyse some games first" if not st["total"] else "all caught up with your games"
                     return self._json({"error": msg, "stats": st}, 404)
@@ -581,7 +636,7 @@ class Handler(SimpleHTTPRequestHandler):
             self.updates.check()
             return self._json({"ok": self.updates.download(), **self.updates.status()})
         if path == "/api/update/apply":
-            if r.busy():
+            if r.busy() and r.job.kind != "puzzles":     # the puzzles job just starts over after the restart
                 return self._json({"error": "busy", "job": r.job.to_dict()}, 409)
             try:
                 self.updates.apply()
