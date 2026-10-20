@@ -4,9 +4,13 @@ puzzles and brought back on a schedule until you find them.
 A position qualifies when it was your move, not forced and out of book, you lost at least MISTAKE win% with the
 move you played, you were level or better before it (wp_before >= 50: "find the move", not "pick the least bad"),
 and MultiPV says the engine's first choice was the only good one (classify.only_move). The puzzle starts one move
-early, like a Lichess one: the opponent's move before yours is played first. The solution is the engine's move;
-until later moves are checked as the only good ones too (phase 3), that one move is the whole puzzle, and the
-engine's line after it is handed along (`follow`) for the board to show once the puzzle is over.
+early, like a Lichess one: the opponent's move before yours is played first. The solution is the engine's move,
+and then, the way lichess-puzzler does it, the engine's line for as long as each of your moves in it is the only
+good one too: the opponent's replies come from MultiPV #1's line, and the solution stops at the first move of yours
+where #2 is within ONLY_MOVE_GAP of #1, so it always ends on your move. Those searches run in the background
+(extend(), a server job) and go into the shared engine cache; until a puzzle's line is settled it is a one-move
+puzzle. The engine's line after the last move of the solution is handed along (`follow`) for the board to show
+once the puzzle is over.
 
 These stay out of the puzzle rating. Every finished showing is recorded in the profile's
 puzzle_attempts.jsonl, and a puzzle you missed comes back after 1 day, then 3, then 7 days for as long as you keep
@@ -21,13 +25,16 @@ import random
 import threading
 import time
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Iterable, Optional
 
 import chess
+import duckdb
 
 from . import profiles
+from .classify import only_move
 from .config import MISTAKE
 from .db import connect
+from .fen import fen_key
 from .puzzles import line
 from .site import slug
 
@@ -36,6 +43,7 @@ log = logging.getLogger("own_puzzles")
 INTERVALS = [1, 3, 7]   # days until the next showing, after a miss and then each review found
 DAY = 86400
 FOLLOW_PLIES = 6        # the engine's line after the answer, for the board to show
+MAX_SOLVER_MOVES = 8    # a solution stops here even while every move in it is still the only good one
 
 CANDIDATES_SQL = f"""
     SELECT m.game_id, m.ply, m.side_to_move, m.san, m.best_move, m.best_san, m.label, m.wp_before, m.wp_after,
@@ -76,7 +84,90 @@ def _follow(fen_after_best: str, pv: Optional[list]) -> list[dict]:
     return out
 
 
-def _puzzle(profile: profiles.Profile, r: dict) -> Optional[dict]:
+# ---------- the line: as long as every move of yours is the only good one ----------
+
+Lines = Callable[[str], Optional[list[dict]]]     # fen_key -> its MultiPV rows, None while not searched yet
+
+
+def walk(board: chess.Board, first: str, lines_of: Lines) -> tuple[Optional[str], list[str], Optional[list[str]]]:
+    """The solution from `board` (the solver to move; `first` is the game's best move there, already known to be
+    the only good one): (waiting, solution, pv).
+
+    Each solver move is MultiPV #1 of its position and the opponent's reply is the next move of #1's line. The
+    solution grows by a reply and the solver's next move only when that move is the only good one too
+    (classify.only_move), so it always ends on a solver move. `pv` is #1's line from the last solver move on.
+    `waiting` is the first position on the way whose MultiPV isn't searched yet: the line can't be settled
+    without it, and the puzzle stays the one move it was ([first], pv None)."""
+    board = board.copy(stack=False)
+    solver = "white" if board.turn == chess.WHITE else "black"
+    solution: list[str] = []
+    pv: Optional[list[str]] = None
+    reply: Optional[str] = None
+    while True:
+        key = fen_key(board.fen())
+        ranks = lines_of(key)
+        if ranks is None:
+            return key, [first], None
+        ranks = sorted((r for r in ranks if r["rank"] > 0 and r["move"]), key=lambda r: r["rank"])   # rank 0: game over
+        if not ranks:
+            break
+        top = ranks[0]
+        if not solution and top["move"] != first:
+            break       # the game's analysis named another move: keep the one-move puzzle as it was
+        if solution and not only_move(ranks, solver):
+            break
+        try:
+            mv = chess.Move.from_uci(top["move"])
+        except ValueError:
+            break
+        if mv not in board.legal_moves:
+            break
+        if reply:
+            solution.append(reply)
+        solution.append(top["move"])
+        pv = list(top["pv"] or [top["move"]])
+        board.push(mv)
+        if (len(solution) + 1) // 2 >= MAX_SOLVER_MOVES or board.is_game_over() or len(pv) < 2:
+            break
+        try:
+            answer = chess.Move.from_uci(pv[1])
+        except ValueError:
+            break
+        if answer not in board.legal_moves:
+            break
+        board.push(answer)
+        if board.is_game_over():
+            break
+        reply = pv[1]
+    return None, solution or [first], pv
+
+
+def settle(starts: list[tuple[chess.Board, str]], fetch: Callable[[set[str]], dict[str, list[dict]]]) -> list[tuple]:
+    """walk() for many puzzles at once, reading the cache a ply at a time for all of them (one query per round,
+    not one per position). `fetch(keys)` returns the MultiPV rows of those keys that are in the cache."""
+    known: dict[str, list[dict]] = {}
+    asked: set[str] = set()
+    while True:
+        out = [walk(b, first, known.get) for b, first in starts]
+        need = {w for w, _, _ in out if w is not None} - asked
+        if not need:
+            return out
+        asked |= need
+        known.update(fetch(need))
+
+
+def cached_lines(con: duckdb.DuckDBPyConnection, keys: Iterable[str]) -> dict[str, list[dict]]:
+    """MultiPV rows of `keys` from evals_multipv (a table on a write connection, a view on a read one)."""
+    out: dict[str, list[dict]] = {}
+    rows = con.execute("SELECT fen_key, rank, move, eval_cp, mate_in, pv FROM evals_multipv WHERE list_contains(?, fen_key)",
+                       [list(keys)]).fetchall()
+    for k, rank, move, cp, mate, pv in rows:
+        out.setdefault(k, []).append({"rank": rank, "move": move, "eval_cp": cp, "mate_in": mate, "pv": pv or []})
+    return out
+
+
+def _start(r: dict) -> Optional[tuple[chess.Board, str]]:
+    """The position the solver faces (after the opponent's setup move) and the game's best move there."""
     try:
         board = chess.Board(r["setup_fen"])
         board.push(chess.Move.from_uci(r["setup_move"]))
@@ -84,9 +175,15 @@ def _puzzle(profile: profiles.Profile, r: dict) -> Optional[dict]:
             return None
     except ValueError:
         return None
+    return board, r["best_move"]
+
+
+def _puzzle(profile: profiles.Profile, r: dict, walked: tuple) -> dict:
+    waiting, solution, pv = walked
+    if pv is None:      # not settled yet (or the cache disagrees with the game): the one-move puzzle
+        pv = r["pv"] if r["pv"] and r["pv"][0] == r["best_move"] else None
     pid = puzzle_id(r["game_id"], r["ply"])
-    p = line({"id": pid, "fen": r["setup_fen"], "moves": f"{r['setup_move']} {r['best_move']}", "rating": None, "themes": []})
-    pv = r["pv"] if r["pv"] and r["pv"][0] == r["best_move"] else None
+    p = line({"id": pid, "fen": r["setup_fen"], "moves": " ".join([r["setup_move"], *solution]), "rating": None, "themes": []})
     played = r["played_at"]
     p.update({"source": "mine", "profile": profile.id, "themes": [],
               "follow": _follow(p["moves"][-1]["fen"], pv),
@@ -96,31 +193,72 @@ def _puzzle(profile: profiles.Profile, r: dict) -> Optional[dict]:
     return p
 
 
+def extend(con: duckdb.DuckDBPyConnection, search: Callable[[list[str]], None], should_stop: Callable[[], bool] = lambda: False,
+           on_progress: Optional[Callable[[int, int], None]] = None) -> dict:
+    """The background half: search every position the puzzles' lines are waiting on, a round (a ply) at a time,
+    until each line is settled. `con` is a write connection to evals.duckdb with the profile's views on it, and
+    `search(keys)` puts the MultiPV of those positions into it. Settled lines cost a few cache reads, nothing else."""
+    rows = con.execute(CANDIDATES_SQL).fetch_arrow_table().to_pylist()
+    starts = [s for s in map(_start, rows) if s]
+    searched: set[str] = set()
+    out = []
+    while True:
+        out = settle(starts, lambda keys: cached_lines(con, keys))
+        need = sorted({w for w, _, _ in out if w is not None})
+        if on_progress:
+            on_progress(len(out) - sum(1 for w, _, _ in out if w is not None), len(out))
+        if not need or should_stop() or searched.issuperset(need):    # (the last: a search that stored nothing)
+            break
+        search(need)
+        searched.update(need)
+    return {"puzzles": len(out), "searched": len(searched), "waiting": sum(1 for w, _, _ in out if w is not None),
+            "lines": sum(1 for _, s, _ in out if len(s) > 1)}
+
+
 class Pool:
-    """Each profile's puzzles, rebuilt when its classified moves change (after an analysis or a refresh)."""
+    """Each profile's puzzles, rebuilt when its classified moves change (after an analysis or a refresh) or the
+    background job has settled more lines (invalidate())."""
 
     def __init__(self):
-        self._cache: dict[str, tuple[float, list[dict]]] = {}
+        self._cache: dict[str, tuple[float, list[dict], int]] = {}
         self._lock = threading.Lock()
 
+    def invalidate(self, profile_id: str) -> None:
+        with self._lock:
+            self._cache.pop(profile_id, None)
+
     def puzzles(self, profile: profiles.Profile) -> list[dict]:
+        return self._load(profile)[1]
+
+    def waiting(self, profile: profiles.Profile) -> int:
+        """How many of the profile's puzzles are still one-move puzzles until the background job searches more."""
+        return self._load(profile)[2]
+
+    def _load(self, profile: profiles.Profile) -> tuple[float, list[dict], int]:
         try:
             stamp = profile.moves_parquet.stat().st_mtime
         except OSError:
-            return []
+            return 0.0, [], 0
         with self._lock:
             hit = self._cache.get(profile.id)
             if hit and hit[0] == stamp:
-                return hit[1]
+                return hit
             con = connect(profile)
             try:
                 rows = con.execute(CANDIDATES_SQL).fetch_arrow_table().to_pylist()
+                rows = [(r, s) for r, s in ((r, _start(r)) for r in rows) if s]
+                walked = settle([s for _, s in rows], lambda keys: cached_lines(con, keys))
+                # without the live cache (the engine job has it open) every line looks unsettled: don't keep that
+                live = con.execute("SELECT count(*) FROM duckdb_databases() WHERE database_name = 'evdb'").fetchone()[0] > 0
             finally:
                 con.close()
-            out = [p for p in (_puzzle(profile, r) for r in rows) if p]
-            self._cache[profile.id] = (stamp, out)
-            log.info("own puzzles for %s: %d", profile.id, len(out))
-            return out
+            out = [_puzzle(profile, r, w) for (r, _), w in zip(rows, walked)]
+            entry = (stamp, out, sum(1 for w, _, _ in walked if w is not None))
+            if live:
+                self._cache[profile.id] = entry
+            log.info("own puzzles for %s: %d, %d with a line, %d waiting", profile.id, len(out),
+                     sum(1 for _, s, _ in walked if len(s) > 1), entry[2])
+            return entry
 
     def find(self, pid: str) -> Optional[dict]:
         for p in profiles.list_profiles():
