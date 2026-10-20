@@ -58,8 +58,8 @@ main { padding: 16px 18px; max-width: 1800px; margin: 0 auto; }
 .home h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 26px 0 10px; }
 .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; }
 .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; cursor: default; position: relative; min-height: 96px; display: flex; flex-direction: column; gap: 4px; }
-.card#card-setup, .card#card-image { cursor: pointer; }
-.card#card-setup:hover, .card#card-image:hover { border-color: var(--accent); }
+.card#card-setup, .card#card-image, .card#card-puzzles { cursor: pointer; }
+.card#card-setup:hover, .card#card-image:hover, .card#card-puzzles:hover { border-color: var(--accent); }
 .card.soon { opacity: .55; }
 .card .src { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
 .card .src .logo { width: 13px; height: 13px; vertical-align: -2px; margin-right: 5px; }
@@ -188,6 +188,23 @@ body.sandbox .lines { display: block; }
 /* sandbox review: hide the game-specific chrome that doesn't apply to a free position */
 body.sandbox .sections, body.sandbox svg.graph, body.sandbox .pfoot, body.sandbox #b-explain, body.sandbox #b-nextm, body.sandbox #b-key { display: none !important; }
 body.sandbox .actions { padding-bottom: 10px; }
+/* puzzles: the review board with the puzzle box in place of the game's panels */
+.pzbox { display: none; padding: 4px 12px 12px; }
+body.puzzle .pzbox { display: block; }
+body.puzzle .sections, body.puzzle svg.graph, body.puzzle .pfoot, body.puzzle .actions, body.puzzle .lines, body.puzzle #aprog { display: none !important; }
+body.puzzle .evalbar { visibility: hidden; }
+.pzhead { display: flex; align-items: baseline; gap: 10px; padding: 6px 2px 10px; }
+.pzhead .r { font-size: 26px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.pzhead .r small { font-size: 16px; color: var(--muted); font-weight: 600; }
+.pzhead .delta { font-size: 13px; font-weight: 700; } .pzhead .delta.up { color: var(--accent); } .pzhead .delta.down { color: var(--c-blunder); }
+.pzhead .meta { margin-left: auto; color: var(--muted); font-size: 12px; text-align: right; }
+.pzbtns { display: flex; gap: 8px; }
+.pzbtns button { flex: 1; padding: 9px 6px; font-weight: 600; }
+.pzinfo { color: var(--muted); font-size: 12px; padding: 10px 2px 0; display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; }
+.pzinfo .tag { background: var(--panel2); border-radius: 4px; padding: 1px 7px; color: var(--text); }
+.pzinfo a { color: var(--accent); text-decoration: none; }
+.pzfoot { display: flex; gap: 8px; align-items: center; padding-top: 12px; }
+.pzfoot select { flex: 1; font: inherit; color: var(--text); background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; min-width: 0; }
 
 /* game list */
 .filters { display: flex; gap: 8px; margin-bottom: 12px; align-items: center; }
@@ -497,6 +514,7 @@ svg.graph { width: 100%; height: 90px; display: block; cursor: pointer; backgrou
           </form>
         </div>
         <div class="card" id="card-image"><span class="src">Image</span><span class="who">From a screenshot</span><span class="desc">Read the pieces off a picture of a board, then analyse.</span></div>
+        <div class="card" id="card-puzzles"><span class="src">Puzzles</span><span class="who">Solve puzzles</span><span class="desc" id="card-puzzles-desc">Rated tactics from Lichess, picked near your level.</span></div>
       </div>
       <h2>Profiles</h2>
       <div class="cards" id="profiles"></div>
@@ -612,6 +630,7 @@ svg.graph { width: 100%; height: 90px; display: block; cursor: pointer; backgrou
         </div>
         <div class="ginfo" id="ginfo"></div>
         <div class="coach"><div class="avatar">♞</div><div class="bubble" id="now"></div></div>
+        <div class="pzbox" id="pzbox"></div>
         <div class="actions">
           <button id="b-explain" title="Show the full explanation">💡 Explain</button>
           <button id="b-best" title="Show the best move here; press again to play it">★ Best</button>
@@ -819,7 +838,7 @@ function playMoveSound(m, isLast) {
   else if (san.includes('=')) play('promote');
   else if (san.includes('x')) play('capture');
   else play(m.is_mine ? 'self' : 'opp');
-  if (isLast && !inVariation()) play(endSound(), san.includes('#') ? 220 : 250);
+  if (isLast && !inVariation() && !state.game.puzzle) play(endSound(), san.includes('#') ? 220 : 250);   // a puzzle's line grows move by move
   if (m.label === 'brilliant') play('brilliant', 180);
   if (m.clock != null && m.clock < 10 && m.is_mine && tenSecondsPlayedFor !== state.game.id) { tenSecondsPlayedFor = state.game.id; play('tenseconds', 120); }
 }
@@ -881,6 +900,7 @@ $('b-back').onclick = goBack;
 async function route() {
   const h = location.hash || '#/';
   noteVisit(h);
+  if (state.game && state.game.puzzle) state.exploring = false;   // a puzzle's pending timer would leave the next board locked
   // leaving a review: remember the move and which way up the board was, so coming back lands there
   if (state.game && !h.includes(`/game/${state.game.id}`)) state.resume = { id: state.game.id, ply: state.ply, flipped: state.flipped };
   if (h === '#/settings') return showSettings();
@@ -889,6 +909,8 @@ async function route() {
   const em = h.match(/^#\/setup(?:\?fen=(.+))?$/);
   if (em) { if (em[1] && loadFen(decodeURIComponent(em[1]))) pendingSetup = setupSnapshot(); return showEditor(); }
   if (h === '#/image') return showImagePage();
+  const pm = h.match(/^#\/puzzles(?:\/([A-Za-z0-9]+))?$/);
+  if (pm) return showPuzzle(pm[1]);
   const m = h.match(/^#\/p\/([A-Za-z0-9_.-]+)(?:\/game\/([^/?]+))?/);
   if (!m) return showHome();
   if (state.profile !== m[1]) { state.profile = m[1]; state.games = null; state.game = null; }
@@ -1017,14 +1039,16 @@ const SECTIONS = ['home', 'list', 'review', 'editor', 'imgpage', 'settings'];
 function showSection(id) { SECTIONS.forEach(s => $(s).classList.toggle('hidden', s !== id)); }
 async function showHome() {
   showSection('home');
-  document.body.classList.remove('sandbox'); stopSandboxStream();
+  document.body.classList.remove('sandbox', 'puzzle'); stopSandboxStream();
   state.game = null; state.profile = null; state.games = null; dropVariation(); stopPlay();
   setContext(false); $('crumb').textContent = '';
   await renderProfiles();
+  renderPuzzleCard();
   pollStatus();
 }
 $('card-setup').onclick = () => location.hash = '#/setup';
 $('card-image').onclick = () => location.hash = '#/image';
+$('card-puzzles').onclick = () => location.hash = '#/puzzles';
 
 // ---------- settings: pick pieces, board and sounds; the preview shows the pick, Apply makes it the app's ----------
 const settings = { tab: 'pieces', pend: null };
@@ -1036,7 +1060,7 @@ const SOUND_ROWS = [['self', 'Move'], ['capture', 'Capture'], ['castle', 'Castle
 async function showSettings() {
   await assetsReady;
   showSection('settings');
-  document.body.classList.remove('sandbox'); stopSandboxStream();
+  document.body.classList.remove('sandbox', 'puzzle'); stopSandboxStream();
   state.game = null; state.profile = null; state.games = null; dropVariation(); stopPolling(); stopPlay();
   setContext(false); $('crumb').textContent = 'Pieces, board and sounds';
   settings.pend = { pieces: theme.pieces, board: theme.board, sound: theme.sound };
@@ -1118,7 +1142,7 @@ $('t-apply').onclick = async () => {
 };
 function showImagePage() {
   showSection('imgpage');
-  document.body.classList.remove('sandbox'); stopSandboxStream();
+  document.body.classList.remove('sandbox', 'puzzle'); stopSandboxStream();
   state.game = null; state.profile = null; state.games = null; dropVariation(); stopPolling(); stopPlay();
   setContext(false); $('crumb').textContent = 'From a screenshot';
   $('imgstatus').textContent = '';
@@ -1207,7 +1231,7 @@ async function renderProfiles() {
 // ---------- list ----------
 async function showList() {
   showSection('list');
-  document.body.classList.remove('sandbox'); stopSandboxStream();
+  document.body.classList.remove('sandbox', 'puzzle'); stopSandboxStream();
   state.game = null; dropVariation(); stopPolling(); stopPlay();
   setContext(true);
   let games;
@@ -1292,11 +1316,218 @@ async function showSandbox(fen) {
   state.profile = null; state.games = null; state.game = sandboxGame(fen);
   state.ply = 0; state.flipped = false; dropVariation(); state.sel = null; state.cycle = {}; $('pieces').innerHTML = '';
   showSection('review');
-  document.body.classList.add('sandbox');
+  document.body.classList.remove('puzzle'); document.body.classList.add('sandbox');
   setContext(false); $('crumb').textContent = 'Sandbox';
   $('a-back').href = '#/'; $('a-back').textContent = '← Home'; $('ginfo').textContent = ''; $('ptitle-t').textContent = 'Sandbox';
   renderMoveList();
   update(false);
+}
+
+// ---------- puzzles: the review board plays a Lichess puzzle; the server picks it and keeps the rating ----------
+// The puzzle's moves are revealed into state.game.moves as they are played: the opponent's setup move first, then
+// each right answer and the reply to it. A wrong move is shown for a moment and taken back. The first try is what
+// counts: the result goes to the server the moment you go wrong, take a hint or the solution, or solve it.
+const pz = { p: null, game: null, pending: null, token: 0, failed: false, hinted: false, reported: false, done: false, shown: false, wrong: null,
+             hint: null, t0: 0, stats: null, delta: null, themes: null, theme: '' };
+try { pz.theme = localStorage.getItem('puzzleTheme') || ''; } catch (e) {}
+const PZ_STEP_MS = 450;   // the opponent's reply, and each move of a shown solution
+function puzzleGame(p) {
+  const side = c => ({ name: c === p.colour ? 'You' : 'Opponent', rating: null, accuracy: null, counts: {} });
+  return { id: 'puzzle-' + p.id, url: null, puzzle: true, played_at: null, time_control: null, time_class: null, termination: null,
+           my_colour: p.colour, result: null, eco: null, opening_name: null, left_book_ply: 0, white: side('white'), black: side('black'),
+           start_fen: p.fen, start_wp_white: null, start_eval_text: null, analysed: 1, moves: [], key_moments: [] };
+}
+function puzzlePly(m, i, label = null) {
+  return { ply: i, san: m.san, uci: m.uci, fen: m.fen, label, is_mine: i % 2 === 1, wp_white: null, eval: null, wp_loss: null,
+           best_san: null, best_uci: null, clock: null, spent: null, comment: [], hung: [], reply_uci: null, idea: [], next_best_uci: null, next_best_san: null };
+}
+async function showPuzzle(id) {
+  if (id && pz.p && pz.p.id === id && pz.game) {      // back to it (from the sandbox, say): where it was left
+    state.profile = null; state.games = null; state.game = pz.game; dropVariation(); state.sel = null;
+    state.flipped = pz.p.colour === 'black'; $('pieces').innerHTML = '';
+    // finish what a timer was doing when you left: take back a wrong move, play the reply or the rest of the solution
+    const mv = pz.game.moves, n = () => mv.length;
+    if (n() && mv[n() - 1].label === 'miss') mv.pop();
+    if (!pz.done && pz.shown) { while (n() < pz.p.moves.length) mv.push(puzzlePly(pz.p.moves[n()], n(), n() % 2 ? 'best' : null)); pz.done = true; }
+    else if (!pz.done && n() < pz.p.moves.length && n() % 2 === 0) mv.push(puzzlePly(pz.p.moves[n()], n()));
+    state.ply = n(); state.exploring = false;
+    enterPuzzleView(); renderMoveList(); update(false);
+    return;
+  }
+  let d, r;
+  if (id && pz.pending && pz.pending.puzzle.id === id) { d = pz.pending; r = { ok: true }; }
+  else {
+    const q = id ? `get?id=${encodeURIComponent(id)}` : `next?themes=${encodeURIComponent(pz.theme)}` + (pz.p ? `&skip=${pz.p.id}` : '');
+    try { r = await fetch('api/puzzles/' + q); d = await r.json(); } catch (e) { d = { error: String(e) }; r = { ok: false }; }
+  }
+  pz.pending = null;
+  if (!r.ok) {
+    if (d.stats) pz.stats = d.stats;
+    toast(d.error || 'No puzzle');
+    if (!id && pz.theme) { pz.theme = ''; try { localStorage.setItem('puzzleTheme', ''); } catch (e) {} location.replace('#/puzzles'); }
+    else location.hash = '#/';
+    return;
+  }
+  if (!id) {     // the URL names the puzzle, so a reload keeps it; Back skips the bare #/puzzles that would deal a new one
+    pz.pending = d;
+    if (visited[visited.length - 1] === '#/puzzles') visited.pop();
+    location.replace('#/puzzles/' + d.puzzle.id);
+    return;
+  }
+  startPuzzle(d.puzzle, d.stats);
+}
+const pzLive = tok => tok === pz.token && !!state.game && state.game === pz.game;   // a timer still belongs to the puzzle on screen
+function enterPuzzleView() {
+  stopSandboxStream(); stopPolling(); stopPlay();
+  showSection('review');
+  document.body.classList.remove('sandbox'); document.body.classList.add('puzzle');
+  setContext(false); $('crumb').textContent = 'Puzzles';
+  $('a-back').href = '#/'; $('a-back').textContent = '← Home'; $('ginfo').textContent = ''; $('ptitle-t').textContent = 'Puzzle';
+  renderPuzzleBox();
+}
+function startPuzzle(p, stats) {
+  const tok = ++pz.token;
+  Object.assign(pz, { p, stats, failed: false, hinted: false, reported: false, done: false, shown: false, wrong: null, hint: null, delta: null, t0: 0 });
+  state.profile = null; state.games = null; state.game = pz.game = puzzleGame(p);
+  state.ply = 0; state.flipped = p.colour === 'black'; dropVariation(); state.sel = null; state.cycle = {}; $('pieces').innerHTML = '';
+  state.exploring = true;     // the board waits for the setup move
+  enterPuzzleView();
+  renderMoveList(); update(false);
+  setTimeout(() => {
+    if (!pzLive(tok)) return;
+    state.exploring = false;
+    revealPuzzleMove(0);
+    pz.t0 = Date.now();
+  }, 600);
+}
+function revealPuzzleMove(i, label = null) {
+  state.game.moves.push(puzzlePly(pz.p.moves[i], i, label));
+  renderMoveList(); go(state.game.moves.length);
+}
+function puzzleMove(uci) {
+  const g = state.game, i = g.moves.length;
+  if (state.ply !== i) { go(i); return; }            // stepped back through the moves: the puzzle carries on from its end
+  const exp = pz.p.moves[i], last = i === pz.p.moves.length - 1;
+  // auto-queening can't play the underpromotion a puzzle wants: the right squares are the right move
+  const hit = uci === exp.uci || uci.slice(0, 4) === exp.uci.slice(0, 4) ? exp : last ? pz.p.mates.find(m => m.uci === uci) : null;
+  pz.hint = null;
+  if (hit) {
+    pz.wrong = null;
+    g.moves.push(puzzlePly(hit, i, 'best'));
+    renderMoveList(); go(g.moves.length);
+    if (last) return finishPuzzle();
+    const tok = pz.token;
+    state.exploring = true; renderPuzzleBox();
+    setTimeout(() => { if (!pzLive(tok)) return; state.exploring = false; revealPuzzleMove(i + 1); renderPuzzleBox(); }, PZ_STEP_MS);
+    return;
+  }
+  // wrong: the move stands on the board for a moment with a miss badge, then goes back
+  const prov = applyMove(currentFen(), uci); if (!prov) return;
+  pz.wrong = prov.san;
+  if (!pz.failed) { pz.failed = true; reportPuzzle(false); }
+  g.moves.push(puzzlePly({ uci, san: prov.san, fen: prov.fen }, i, 'miss'));
+  renderMoveList(); go(g.moves.length);
+  play('illegal', 150);
+  const tok = pz.token;
+  state.exploring = true;
+  setTimeout(() => {
+    if (!pzLive(tok)) return;
+    go(i); g.moves.pop(); renderMoveList(); highlightCurrent();
+    state.exploring = false; renderBoard(); renderNow();
+  }, 700);
+}
+function finishPuzzle() {
+  pz.done = true; state.exploring = false;
+  if (!pz.reported) reportPuzzle(true);
+  if (!pz.failed && !pz.hinted && !pz.shown) play('win', 250);
+  renderNow(); renderPuzzleBox();
+}
+async function reportPuzzle(solved) {
+  pz.reported = true;
+  const p = pz.p;
+  let d; try { d = await (await fetch('api/puzzles/attempt', { method: 'POST', body: JSON.stringify({ id: p.id, solved, hinted: pz.hinted, ms: pz.t0 ? Date.now() - pz.t0 : null }) })).json(); } catch (e) { return; }
+  if (pz.p !== p || !d.stats) return;
+  pz.stats = d.stats; pz.delta = d.counted ? d.stats.last_delta : null;
+  renderPuzzleBox(); renderNow();
+}
+function puzzleHint() {
+  if (pz.done || state.exploring) return;
+  const i = state.game.moves.length;
+  if (state.ply !== i) go(i);
+  pz.hint = pz.p.moves[i].uci.slice(0, 2);
+  pz.hinted = true;
+  if (!pz.reported) reportPuzzle(false);
+  renderBoard(); renderNow();
+}
+function puzzleSolution() {
+  if (pz.done || state.exploring) return;
+  pz.shown = true; pz.hint = null; pz.wrong = null;
+  if (!pz.reported) reportPuzzle(false);
+  const tok = pz.token;
+  state.exploring = true;
+  if (state.ply !== state.game.moves.length) go(state.game.moves.length);
+  const step = () => {
+    if (!pzLive(tok)) return;
+    const i = state.game.moves.length;
+    revealPuzzleMove(i, i % 2 === 1 ? 'best' : null);
+    if (i + 1 < pz.p.moves.length) setTimeout(step, PZ_STEP_MS * 1.5); else finishPuzzle();
+  };
+  step();
+}
+function renderPuzzleNow() {
+  const el = $('now'), p = pz.p, side = p.colour === 'white' ? 'White' : 'Black';
+  const top = (ic, text, colour) => `<div class="top">${ic ? icon(ic) : ''}<span class="verdict"${colour ? ` style="color:${colour}"` : ''}>${text}</span></div>`;
+  if (!state.game.moves.length) { el.innerHTML = top(null, 'Get ready…') + `<p>Watch the opponent's move.</p>`; return; }
+  if (pz.done) {
+    const delta = pz.delta == null ? '' : ` Your puzzle rating ${pz.delta >= 0 ? 'went up' : 'went down'} ${Math.abs(pz.delta)}.`;
+    if (pz.shown) el.innerHTML = top(null, 'Solution') + `<p>That's how it goes.${delta} Step through the moves, or try your own on the board.</p>`;
+    else if (pz.failed || pz.hinted) el.innerHTML = top('best', 'Solved', COLOR.best) + `<p>Got there in the end, but only the first try counts.${delta}</p>`;
+    else el.innerHTML = top('best', 'Solved!', COLOR.best) + `<p>${delta.trim() || 'Well played.'} Try other moves on the board to see why they don't work.</p>`;
+    return;
+  }
+  if (pz.wrong) { el.innerHTML = top('miss', `${esc(pz.wrong)} isn't it`, COLOR.miss) + `<p>Try again. This puzzle no longer counts toward your rating.</p>`; return; }
+  if (pz.hint) { el.innerHTML = top(null, 'Hint') + `<p>Move the highlighted piece.</p>`; return; }
+  const mine = state.game.moves.filter(m => m.is_mine).length;
+  if (mine) el.innerHTML = top('best', 'Best move!', COLOR.best) + `<p>Keep going…</p>`;
+  else el.innerHTML = top(null, 'Your turn') + `<p>Find the best move for ${side}.</p>`;
+}
+async function puzzleThemes() {
+  if (pz.themes) return pz.themes;
+  try { const d = await (await fetch('api/puzzles/themes')).json(); pz.themes = d.themes; if (!pz.stats) pz.stats = d.stats; } catch (e) { pz.themes = []; }
+  return pz.themes;
+}
+function renderPuzzleBox() {
+  const st = pz.stats, p = pz.p; if (!p) return;
+  const delta = pz.delta == null ? '' : `<span class="delta ${pz.delta >= 0 ? 'up' : 'down'}">${pz.delta >= 0 ? '+' : '−'}${Math.abs(pz.delta)}</span>`;
+  const head = st ? `<div class="pzhead"><span class="r">${st.rating}${st.provisional ? '<small>?</small>' : ''}</span>${delta}` +
+    `<span class="meta">Puzzle rating<br>${st.played ? `${st.solved} of ${st.played} solved · streak ${st.streak}` : 'Solve one to start it moving'}</span></div>` : '';
+  const busy = pz.done || state.exploring || !state.game.moves.length;
+  const tags = pz.done ? p.themes.filter(t => !['short', 'long', 'veryLong', 'oneMove'].includes(t.id)).map(t => `<span class="tag">${esc(t.name)}</span>`).join('') : '';
+  const theme = pz.theme;
+  const opts = (pz.themes || []).map(t => `<option value="${t.id}"${t.id === theme ? ' selected' : ''}>${esc(t.name)} (${t.count.toLocaleString()})</option>`).join('');
+  $('pzbox').innerHTML = head +
+    `<div class="pzbtns"><button id="pz-hint" title="Highlight the piece to move. The puzzle then counts as not solved."${busy ? ' disabled' : ''}>💡 Hint</button>` +
+    `<button id="pz-sol" title="Play the solution out. The puzzle counts as not solved."${busy ? ' disabled' : ''}>Solution</button>` +
+    `<button class="${pz.done ? 'primary' : ''}" id="pz-next" title="${pz.done ? 'Next puzzle (n)' : 'Skip this one: it is not counted (n)'}">${pz.done ? 'Next puzzle →' : 'Skip'}</button></div>` +
+    `<div class="pzinfo">Puzzle ${esc(p.id)} · rated ${pz.done ? p.rating : '?'}${tags ? ' · ' + tags : ''}` +
+    (pz.done && p.game_url ? ` · <a href="${esc(p.game_url)}" target="_blank">Lichess game ↗</a>` : '') + `</div>` +
+    `<div class="pzfoot"><select id="pz-theme" title="Only puzzles with this theme"><option value="">All themes</option>${opts}</select>` +
+    `<button id="pz-analyse" title="Open this position in the sandbox">Analyse</button></div>`;
+  $('pz-hint').onclick = puzzleHint;
+  $('pz-sol').onclick = puzzleSolution;
+  $('pz-next').onclick = nextPuzzle;
+  $('pz-analyse').onclick = () => { location.hash = '#/sandbox/' + encodeURIComponent(currentFen()); };
+  $('pz-theme').onchange = e => {
+    pz.theme = e.target.value; try { localStorage.setItem('puzzleTheme', pz.theme); } catch (err) {}
+    nextPuzzle();
+  };
+  if (!pz.themes) puzzleThemes().then(() => { if (pz.p === p) renderPuzzleBox(); });
+}
+function nextPuzzle() { if (!state.exploring || pz.done) location.hash = '#/puzzles'; }
+// the home card: your puzzle rating once there is one
+async function renderPuzzleCard() {
+  let st; try { st = (await (await fetch('api/puzzles/themes')).json()).stats; } catch (e) { return; }
+  if (st && st.played) $('card-puzzles-desc').textContent = `Puzzle rating ${st.rating}${st.provisional ? '?' : ''} · ${st.solved} of ${st.played} solved. Rated tactics from Lichess, picked near your level.`;
 }
 
 // ---------- board setup: a chess.com-style editor -> a FEN handed to the sandbox ----------
@@ -1410,7 +1641,7 @@ $('s-undo').onclick = () => applySetupHistory(setup.undo, setup.redo);
 $('s-redo').onclick = () => applySetupHistory(setup.redo, setup.undo);
 function showEditor() {
   showSection('editor');
-  document.body.classList.remove('sandbox'); stopSandboxStream();
+  document.body.classList.remove('sandbox', 'puzzle'); stopSandboxStream();
   setContext(false); $('crumb').textContent = 'Set up a position';
   setup.flipped = false; setup.tool = null; setup.undo = []; setup.redo = [];
   if (pendingSetup) { Object.assign(setup, pendingSetup); pendingSetup = null; }
@@ -1670,7 +1901,7 @@ async function loadGame(id) { return (await fetch(`${P()}/games/${id}.json`)).js
 async function showGame(id) {
   let g; try { g = await loadGame(id); } catch (e) { location.hash = state.profile ? `#/p/${state.profile}` : '#/'; return; }
   if (state.unseen && state.unseen.has(id)) { state.unseen.delete(id); fetch(`api/profiles/${state.profile}/games/${id}/seen`, { method: 'POST' }); }   // opened: no longer new
-  document.body.classList.remove('sandbox'); stopSandboxStream();
+  document.body.classList.remove('sandbox', 'puzzle'); stopSandboxStream();
   $('a-back').href = `#/p/${state.profile}`; $('a-back').textContent = '← Games'; $('a-insights2').href = `${P()}/insights.html`; $('ptitle-t').textContent = 'Game Review'; setContext(true);
   const same = state.game && state.game.id === id;
   state.game = g;
@@ -2061,6 +2292,7 @@ function squareOverlays(mv) {
   hungSquares(mv).forEach(sq => { out[sq] = 'punish'; });
   const o = orangeSquare(mv);
   if (o) out[o] = 'threat';
+  if (state.game && state.game.puzzle && pz.hint && state.ply === state.game.moves.length) out[pz.hint] = 'best';   // the piece a hint points at
   return out;
 }
 // What the board says about the current move, like chess.com's review -- at most three things, all about one story:
@@ -2209,6 +2441,7 @@ function givesCheck(pieces, white) {
 async function commitMove(uci, instant) {
   state.sel = null; state.legal = null;
   if (instant) skipAnim = true;
+  if (state.game.puzzle && !pz.done && !inVariation()) return puzzleMove(uci);   // solved: the board is free to explore
   await explore(currentFen(), uci);
 }
 function deselect() { state.sel = null; state.legal = null; renderOverlays(parseFen(currentFen()), currentMove()); }
@@ -2405,6 +2638,7 @@ function fmtEvalBox(ev) {
 function renderNow() {
   const g = state.game, el = $('now');
   el.classList.remove('loading');
+  if (g.puzzle && !inVariation()) return renderPuzzleNow();
   if (state.ply === 0 && g.sandbox) {
     const top = sandboxTop(currentFen());
     el.innerHTML = `<div class="top"><span class="verdict">Sandbox</span><span class="evbox">${top ? esc(fmtEvalBox(top.eval)) : ''}</span></div>` +
@@ -2591,10 +2825,13 @@ function renderMoveList() {
       `<span class="x" title="discard variation">✕</span></div>`;
   };
   if (v && v.basePly === 0) html += varRow();
-  for (let i = 0; i < g.moves.length; i += 2) {
-    const w = g.moves[i], b = g.moves[i + 1];
-    html += `<div class="mrow${i % 4 ? ' alt' : ''}"><div class="n">${i / 2 + 1}.</div>${moveCell(w)}${b ? moveCell(b) : '<div class="e"></div>'}</div>`;
-    if (v && (v.basePly === i + 1 || v.basePly === i + 2)) html += varRow();
+  // a puzzle starts mid-game, often with Black to move: real move numbers, and a blank White cell before the first move
+  const fen = g.start_fen.split(' '), off = g.puzzle && fen[1] === 'b' ? 1 : 0, n0 = g.puzzle ? (+fen[5] || 1) : 1;
+  const cells = off ? [null, ...g.moves] : g.moves;
+  for (let i = 0; i < cells.length; i += 2) {
+    const w = cells[i], b = cells[i + 1];
+    html += `<div class="mrow${i % 4 ? ' alt' : ''}"><div class="n">${n0 + i / 2}.</div>${w ? moveCell(w) : '<div class="e">…</div>'}${b ? moveCell(b) : '<div class="e"></div>'}</div>`;
+    if (v && (v.basePly === i + 1 - off || v.basePly === i + 2 - off)) html += varRow();
   }
   $('movelist').innerHTML = html;
   $('movelist').querySelectorAll('.m').forEach(el => el.onclick = () => { dropVariation(); renderMoveList(); go(+el.dataset.ply + 1); });
@@ -2686,6 +2923,7 @@ document.addEventListener('keydown', e => {
   else if (e.key === 'End') go(line().length);
   else if (e.key === 'f') $('b-flip').onclick();
   else if (e.key === 'p') togglePlay();
+  else if (e.key === 'n' && state.game.puzzle) nextPuzzle();
   else if (e.key === ' ') { nextKey(); e.preventDefault(); }
   else if (e.key === 'Escape') { if (state.variation) { const p = Math.min(state.ply, state.variation.basePly); dropVariation(); renderMoveList(); go(p); update(false); } else location.hash = state.profile ? `#/p/${state.profile}` : '#/'; }
 });

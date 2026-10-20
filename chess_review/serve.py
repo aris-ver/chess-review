@@ -29,6 +29,10 @@
     POST /api/update/apply              swap the downloaded update in and restart the app (refused while a job runs)
     GET  /api/settings                  the page's saved preferences (volume, theme, ...): {key: string}
     POST /api/settings                  {key: string | null} -> merged into DATA/settings.json (null removes the key)
+    GET  /api/puzzles/next[?themes=a,b&skip=id]   a puzzle near your puzzle rating, not tried before -> {puzzle, stats}
+    GET  /api/puzzles/get?id=           one puzzle by id (a reload, or Back to it) -> {puzzle, stats}
+    GET  /api/puzzles/themes            the pack's themes with readable names and counts, and your stats
+    POST /api/puzzles/attempt           {id, solved, ms?, hinted?} -> the first try at a puzzle recorded; {stats, counted}
 
     /                                   the app (data/site)
     /p/<id>/...                         a profile's games.json, games/<slug>.json, insights.html
@@ -55,7 +59,7 @@ from urllib.parse import parse_qs, unquote, urlparse
 import chess
 import requests
 
-from . import aggregates, classify, ingest, normalise, profiles, site, updater
+from . import aggregates, classify, ingest, normalise, profiles, puzzles, site, updater
 from .analyse import Analyser, export_parquet, open_db, pending_keys
 from .config import DATA, DEFAULT_NODES, ENGINE_IDLE_SECONDS, MULTIPV_N, SITE_DIR, USER_AGENT
 from .db import base_views
@@ -388,6 +392,8 @@ class Handler(SimpleHTTPRequestHandler):
                 return self._json({"error": str(e)}, 500)
         if url.path == "/api/settings":
             return self._json(load_settings())
+        if url.path.startswith("/api/puzzles/"):
+            return self._puzzles_get(url.path[len("/api/puzzles/"):], parse_qs(url.query))
         if url.path == "/api/update":
             self.updates.check(force=parse_qs(url.query).get("check", ["0"])[0] == "1")
             return self._json(self.updates.status())
@@ -404,6 +410,23 @@ class Handler(SimpleHTTPRequestHandler):
                 return self._json({"error": str(e)}, 400)
             return self._stream_eval(board, multipv)
         return super().do_GET()
+
+    def _puzzles_get(self, what: str, q: dict) -> None:
+        pack = puzzles.PACK_INSTANCE
+        if what == "themes":
+            return self._json({"themes": pack.themes(), "total": len(pack.rows()), "stats": puzzles.stats(puzzles.attempts())})
+        if what == "next":
+            themes = {t for t in q.get("themes", [""])[0].split(",") if t}
+            p, st = puzzles.next_puzzle(themes or None, q.get("skip", [None])[0])
+            if p is None:
+                return self._json({"error": "no puzzles left with those themes", "stats": st}, 404)
+            return self._json({"puzzle": p, "stats": st})
+        if what == "get":
+            row = pack.get(q.get("id", [""])[0])
+            if row is None:
+                return self._json({"error": "unknown puzzle"}, 404)
+            return self._json({"puzzle": puzzles.line(row), "stats": puzzles.stats(puzzles.attempts())})
+        return self._json({"error": "not found"}, 404)
 
     def _stream_eval(self, board: chess.Board, multipv: int) -> None:
         """NDJSON, one line per snapshot as the engine iterates, so the client can draw live-updating
@@ -513,6 +536,15 @@ class Handler(SimpleHTTPRequestHandler):
                 return self._json({"error": "{key: string | null} expected"}, 400)
             save_settings(b)
             return self._json({"ok": True})
+        if path == "/api/puzzles/attempt":
+            b = self._body()
+            row = puzzles.PACK_INSTANCE.get(str(b.get("id", "")))
+            if row is None:
+                return self._json({"error": "unknown puzzle"}, 404)
+            ms = b.get("ms")
+            st = puzzles.record(row["id"], row["rating"], bool(b.get("solved")), int(ms) if isinstance(ms, (int, float)) else None,
+                                bool(b.get("hinted")))
+            return self._json({"stats": st or puzzles.stats(puzzles.attempts()), "counted": st is not None})
         if path == "/api/update/download":
             self.updates.check()
             return self._json({"ok": self.updates.download(), **self.updates.status()})
