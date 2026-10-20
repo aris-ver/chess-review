@@ -1,21 +1,25 @@
 """Local server: static site + a tiny JSON API for on-demand work. Stdlib only.
 
-    GET  /api/status                    current job (or null)
+    GET  /api/status                    {job (or null), queue: analyses waiting their turn, builds: the puzzle builds
+                                        in order with their state (running, fetching, paused, waiting), finished:
+                                        how the last build of each profile ended}
     GET  /api/profiles                  saved profiles with game counts; new_games per profile is what chess.com has
                                         that a refresh would fetch (scanned once per launch, in the background)
     POST /api/profiles/<id>/seen        the user has seen the new-games badge: drop it until the next scan
     GET  /api/profiles/<id>/unseen      games a refresh brought in that haven't been opened yet (flagged NEW in the list
                                         until opened, or until the launch after the list has shown them)
     POST /api/profiles/<id>/games/<game>/seen   the game was opened: drop its "new" flag in the list
-    POST /api/profiles                  {source, username} -> create the profile and fetch its games (job "ingest")
+    POST /api/profiles                  {source, username, puzzles?} -> create the profile and fetch its games (job
+                                        "ingest"); puzzles=true makes its puzzles afterwards (a build, see below)
     POST /api/profiles/<id>/delete      remove a profile and everything under it (the engine cache is shared and stays)
     POST /api/profiles/<id>/pin         {pinned: bool} keep it at the top of the home screen
-    POST /api/p/<id>/analyse/<slug>     analyse one game (MultiPV=3, fixed nodes), streaming progress into its JSON
+    POST /api/p/<id>/analyse/<slug>     analyse one game (MultiPV=3, fixed nodes), streaming progress into its JSON;
+                                        queued behind another foreground job, ahead of a puzzle build
     POST /api/p/<id>/refresh            {analyse?: bool} re-fetch the latest chess.com month, normalise, rebuild the
                                         site; with analyse=true the new games are analysed in the same job
     POST /api/p/<id>/analyse_all        analyse every game that isn't fully analysed yet, newest first (no UI button;
                                         `python -m chess_review analyse` does the same from the CLI)
-    POST /api/stop                      stop the running job
+    POST /api/stop                      stop the running job (a puzzle build: for good, see build/stop)
     GET  /api/legal?fen=                legal moves in a position (for the board UI)
     POST /api/explore                   {fen, uci, my_colour} -> the move evaluated and classified on the spot
     POST /api/pgn                       {pgn, review_as?} -> stored in the "Pasted games" profile and reviewable at once
@@ -34,22 +38,37 @@
                                         new one -> {puzzle, stats}; 404 {error, stats} when there is neither
     GET  /api/puzzles/get?id=           one puzzle by id, Lichess or your games (a reload, or Back to it) -> {puzzle, stats}
     GET  /api/puzzles/themes            the pack's themes with readable names and counts, and your stats
-    GET  /api/puzzles/sources           what the trainer can deal from: the Lichess pack, and each profile with puzzles
-                                        (this and next?source=mine: start job "puzzles" in the background when a
-                                        profile's puzzles still wait for the engine to settle their lines; any
-                                        other job takes over from it)
+    GET  /api/puzzles/sources           what the trainer can deal from: the Lichess pack, and each profile with games
+                                        (its puzzle stats, games and how many are analysed). This and
+                                        next?source=mine: start job "puzzles" in the background when a profile's
+                                        puzzles still wait for the engine to settle their lines; any other job
+                                        takes over from it
     POST /api/puzzles/attempt           {id, solved, ms?, hinted?} -> a Lichess puzzle's first try recorded {stats, counted};
                                         a puzzle from your games: every showing recorded {stats, review}
+    POST /api/puzzles/build             {profile} -> make its puzzles in the background (job "build": analyse the
+                                        games not analysed yet, newest first, reclassifying as it goes so puzzles
+                                        appear game by game, then settle their lines) -> status
+    POST /api/puzzles/build/stop        {profile} -> stop making them (what is analysed stays) -> status
+    POST /api/puzzles/reset             {what: "rating"} -> the Lichess puzzle rating starts over at 1500: the record
+                                        is moved to puzzle_attempts.reset-<when>.jsonl (rename it back to undo);
+                                        puzzles tried before still aren't dealt again
+                                        {what: "schedule", profile} -> that profile's review schedule starts over (its
+                                        record archived the same way): every puzzle from its games is new again
 
     /                                   the app (data/site)
     /p/<id>/...                         a profile's games.json, games/<slug>.json, insights.html
 
 One job at a time: analysis uses every core. The DuckDB write lock is held only
-while a job runs, so the CLI stages still work in between.
+while a job runs, so the CLI stages still work in between. A puzzle build can run for hours, so it never makes
+the user wait: whatever they ask for (analyse a game, refresh, add a profile) stops it at the next position and
+gets every core, and the build carries on where it was once that is done (Runner). Builds still to do are kept
+in DATA/puzzle_builds.json and carry on after a restart.
 """
 
 import argparse
+import collections
 import functools
+import itertools
 import json
 import logging
 import posixpath
@@ -60,10 +79,12 @@ import threading
 import time
 import traceback
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 from typing import Optional
 from urllib.parse import parse_qs, unquote, urlparse
 
 import chess
+import duckdb
 import requests
 
 from . import aggregates, classify, ingest, normalise, own_puzzles, profiles, puzzles, site, updater
@@ -79,9 +100,13 @@ log = logging.getLogger("serve")
 _PROFILE_PATH = re.compile(r"^/p/([A-Za-z0-9_.-]+)/(.*)$")
 
 
+_job_ids = itertools.count(1)
+
+
 class Job:
     def __init__(self, kind: str, profile: Profile, game_id: Optional[str] = None, slug: Optional[str] = None,
                  analyse: bool = False):
+        self.id = next(_job_ids)
         self.kind, self.profile, self.game_id, self.slug = kind, profile, game_id, slug
         self.analyse = analyse                 # refresh: analyse the new games afterwards
         self.status = "queued"          # queued | running | finishing | done | error | stopped
@@ -89,26 +114,63 @@ class Job:
         self.error: Optional[str] = None
         self.started = time.time()
         self.stop_requested = False
+        self.preempted = False          # stopped to make way for another job: it comes back once that one is done
 
         self.game_done, self.game_total = 0, 0   # analyse_all: position progress within the current game
+        self.phase: Optional[str] = None         # build: "analysing" (done/total count games) or "lines" (puzzles)
+        self.puzzles: Optional[int] = None       # build: puzzles the profile has so far
 
     def to_dict(self) -> dict:
-        return {"kind": self.kind, "profile": self.profile.id, "game": self.slug, "status": self.status,
+        return {"id": self.id, "kind": self.kind, "profile": self.profile.id, "username": self.profile.username,
+                "game": self.slug, "status": self.status,
                 "done": self.done, "total": self.total, "game_done": self.game_done, "game_total": self.game_total,
-                "error": self.error, "elapsed": round(time.time() - self.started, 1)}
+                "error": self.error, "elapsed": round(time.time() - self.started, 1),
+                "phase": self.phase, "puzzles": self.puzzles}
+
+
+BACKGROUND = ("puzzles", "build")    # jobs that give way to anything the user asks for
+PUZZLE_REFRESH_S = 20                # a build reclassifies the profile (its puzzles) at most this often, after a game
 
 
 class Runner:
-    def __init__(self, nodes: int, workers: Optional[int] = None):
+    """One job at a time, since analysis uses every core. What the user asks for comes first: a background job
+    (a puzzle build, or settling puzzle lines) is stopped at the next position to make way, and a build picks up
+    where it was once the way is clear. An analysis asked for while another foreground job runs waits its turn
+    in `queue` instead of being refused."""
+
+    def __init__(self, nodes: int, workers: Optional[int] = None, builds_file: Optional[Path] = None):
         self.analyser = Analyser(workers=workers, nodes=nodes)
         self.explorer = Explorer(nodes=nodes, threads=workers)
         self.job: Optional[Job] = None
         self.thread: Optional[threading.Thread] = None
-        self.lock = threading.Lock()
+        self.lock = threading.RLock()
         self._lines_tried: dict[str, float] = {}     # profile -> moves.parquet stamp the puzzles job last ran for
+        self.queue: list[Job] = []                   # analyses waiting for the running foreground job
+        self.builds_file = builds_file               # the builds still to do, so they carry on after a restart
+        self.builds: list[str] = self._load_builds()  # profiles whose puzzles are being made, the current one first
+        self.build_state: dict[str, dict] = {}       # profile -> its build's last progress (shown while it waits)
+        self.finished: dict[str, dict] = {}          # profile -> how its last build ended (done or error)
+        # jobs just ended: a build takes over the moment an analysis ends, and the page still learns how that went
+        self.recent: collections.deque = collections.deque(maxlen=8)
 
     def busy(self) -> bool:
         return self.job is not None and self.job.status in ("queued", "running", "finishing")
+
+    def _load_builds(self) -> list[str]:
+        try:
+            ids = json.loads(self.builds_file.read_text(encoding="utf-8")) if self.builds_file else []
+            return [i for i in ids if isinstance(i, str)]
+        except (OSError, ValueError):
+            return []
+
+    def _save_builds(self) -> None:
+        if self.builds_file is None:
+            return
+        try:
+            self.builds_file.parent.mkdir(parents=True, exist_ok=True)
+            self.builds_file.write_text(json.dumps(self.builds), encoding="utf-8")
+        except OSError as e:
+            log.warning("could not save the puzzle builds: %s", e)
 
     def reap_idle(self) -> None:
         """Free engine memory when nothing has used the engines for a while."""
@@ -120,20 +182,103 @@ class Runner:
             log.info("idle: shutting down the exploration engine")
             self.explorer.close()
 
-    def start(self, job: Job) -> bool:
-        """Start `job` unless another one runs. The background puzzles job gives way: it is asked to stop and the
-        new job starts once it has."""
+    def start(self, job: Job, then_build: bool = False) -> Optional[Job]:
+        """Start `job`, or queue it: the job that will do the work (`job`, or the same analysis already running or
+        queued), None when another foreground job runs and this one can't wait for it. A background job gives way:
+        it is asked to stop and the new job starts once it has. then_build: make the profile's puzzles afterwards
+        (a profile added from the Personal puzzles screen)."""
         with self.lock:
-            before = None
-            if self.busy():
-                if self.job.kind != "puzzles" or job.kind == "puzzles":
-                    return False
-                self.job.stop_requested = True
+            out = self._start(job)
+            if out is not None and then_build and job.profile.id not in self.builds:
+                self.builds.append(job.profile.id)
+                self._save_builds()
+            return out
+
+    def _start(self, job: Job) -> Optional[Job]:
+        before = None
+        if self.busy():
+            cur = self.job
+            if cur.kind in BACKGROUND and (job.kind not in BACKGROUND or (job.kind == "build" and cur.kind == "puzzles")):
+                cur.stop_requested = cur.preempted = True
                 before = self.thread
-            self.job = job
-            self.thread = threading.Thread(target=self._run, args=(job, before), daemon=True)
-            self.thread.start()
-        return True
+            elif job.kind == "analyse":
+                same = next((j for j in [cur, *self.queue] if j.kind == "analyse" and j.profile.id == job.profile.id
+                             and j.game_id == job.game_id), None)
+                if same is not None:
+                    return same
+                self.queue.append(job)
+                return job
+            else:
+                return None
+        self.job = job
+        self.thread = threading.Thread(target=self._run, args=(job, before), daemon=True)
+        self.thread.start()
+        return job
+
+    def _kick(self) -> None:
+        """Start what waits once the way is clear: a queued analysis first, then the next puzzle build (which also
+        takes over from a puzzles job settling lines)."""
+        with self.lock:
+            if self.busy() and self.job.kind != "puzzles":
+                return
+            if self.queue and not self.busy():
+                self._start(self.queue.pop(0))
+                return
+            while self.builds:
+                p = profiles.load(self.builds[0])
+                if p is not None and (p.site_dir / "games.json").exists():
+                    self._start(Job("build", p))
+                    return
+                self.builds.pop(0)          # removed, or its games never came (an unknown username)
+                self._save_builds()
+
+    def request_build(self, profile: Profile) -> None:
+        """Make the profile's puzzles in the background: analyse its games, newest first, then settle the lines."""
+        with self.lock:
+            self.finished.pop(profile.id, None)
+            if profile.id not in self.builds:
+                self.builds.append(profile.id)
+                self._save_builds()
+            self._kick()
+
+    def cancel_build(self, pid: str) -> bool:
+        """Stop making the profile's puzzles (what is analysed so far stays, and its puzzles with it)."""
+        with self.lock:
+            had = pid in self.builds
+            if had:
+                self.builds.remove(pid)
+                self._save_builds()
+            self.build_state.pop(pid, None)
+            if self.busy() and self.job.kind == "build" and self.job.profile.id == pid:
+                self.job.stop_requested, self.job.preempted = True, False
+                had = True
+            return had
+
+    def builds_status(self) -> list[dict]:
+        """The builds for the bottom bar, in order: running, fetching (the profile's games), paused (another job has
+        the engines), waiting (its turn hasn't come)."""
+        with self.lock:
+            out = []
+            for i, pid in enumerate(self.builds):
+                cur = self.job if self.busy() else None
+                if cur is not None and cur.profile.id == pid and cur.kind in ("build", "ingest"):
+                    d = cur.to_dict()
+                    d["state"] = "running" if cur.kind == "build" else "fetching"
+                    if cur.kind == "ingest":
+                        d["phase"] = "fetching"
+                else:
+                    d = dict(self.build_state.get(pid) or {"profile": pid, "phase": None, "done": 0, "total": 0, "puzzles": None})
+                    d["state"] = "paused" if i == 0 and cur is not None else "waiting"
+                    d["game"] = None
+                p = profiles.load(pid)
+                d["username"] = p.username if p else pid
+                out.append(d)
+            return out
+
+    def status(self) -> dict:
+        with self.lock:
+            return {"job": self.job.to_dict() if self.job else None, "queue": [j.to_dict() for j in self.queue],
+                    "recent": list(self.recent), "builds": self.builds_status(), "finished": list(self.finished.values())}
 
     def extend_puzzles(self, profile: Profile) -> None:
         """Start the puzzles job for `profile` if some of its puzzles wait for engine lines. Once per change of its
@@ -142,7 +287,7 @@ class Runner:
             stamp = profile.moves_parquet.stat().st_mtime
         except OSError:
             return
-        if self.busy() or self._lines_tried.get(profile.id) == stamp or not own_puzzles.POOL.waiting(profile):
+        if self.busy() or self.builds or self._lines_tried.get(profile.id) == stamp or not own_puzzles.POOL.waiting(profile):
             return
         self.start(Job("puzzles", profile))
 
@@ -176,9 +321,34 @@ class Runner:
         if before is not None:
             before.join()
         try:
+            self._do(job)
+        finally:
+            self.recent.append(job.to_dict())
+            if job.kind == "build":
+                self._build_ended(job)
+            if self.job is job:
+                self._kick()
+
+    def _build_ended(self, job: Job) -> None:
+        pid = job.profile.id
+        with self.lock:
+            if job.preempted and job.status == "stopped":
+                self.build_state[pid] = {**job.to_dict(), "status": "paused"}
+                return
+            if pid in self.builds:          # done, failed, or stopped by the user: it doesn't come back by itself
+                self.builds.remove(pid)
+                self._save_builds()
+            self.build_state.pop(pid, None)
+            if job.status in ("done", "error"):
+                self.finished[pid] = {**job.to_dict(), "username": job.profile.username, "ended": time.time()}
+
+    def _do(self, job: Job) -> None:
+        try:
             job.status = "running"
             if job.kind == "puzzles":
                 self._puzzles(job)
+            elif job.kind == "build":
+                self._build(job)
             elif job.kind == "analyse":
                 self._analyse(job)
             elif job.kind == "analyse_all":
@@ -224,34 +394,49 @@ class Runner:
         classify.build(p)
         aggregates.build(p)
 
+    @staticmethod
+    def _todo(con, p: Profile) -> tuple[int, list[tuple[str, list[str]]]]:
+        """(games, the ones not fully analysed with their pending positions), newest first. One query for all of
+        them (pending_keys per game took seconds for a few dozen games, and a build lists them at every resume)."""
+        games = [r[0] for r in con.execute("SELECT game_id FROM games ORDER BY played_at DESC").fetchall()]
+        pending = dict(con.execute("""
+            WITH k AS (SELECT DISTINCT game_id, fen_key FROM positions)
+            SELECT k.game_id, list(k.fen_key) FROM k
+            LEFT JOIN evals e USING (fen_key)
+            LEFT JOIN (SELECT DISTINCT fen_key FROM evals_multipv) m USING (fen_key)
+            WHERE e.fen_key IS NULL OR m.fen_key IS NULL
+            GROUP BY 1
+        """).fetchall())
+        return len(games), [(gid, list(pending[gid])) for gid in games if gid in pending]
+
+    def _analyse_game(self, job: Job, con, gid: str, keys: list[str]) -> None:
+        """One game of a batch, its positions in game order, then its review page."""
+        p = job.profile
+        job.slug, job.game_done, job.game_total = site.slug(gid), 0, len(keys)
+        order = {r[0]: i for i, r in enumerate(con.execute(
+            "SELECT fen_key, min(ply) FROM positions WHERE game_id = ? GROUP BY 1 ORDER BY 2", [gid]).fetchall())}
+        keys.sort(key=lambda k: order.get(k, 1 << 30))
+
+        def progress(done: int, _total: int) -> None:
+            job.game_done = done
+
+        self.analyser.run(keys, con, on_progress=progress, batch=self.analyser.workers * 2,
+                          should_stop=lambda: job.stop_requested)
+        site.update_index(p, site.write_game(con, p, gid))
+
     def _analyse_all(self, job: Job) -> None:
         p = job.profile
         job.kind, job.done, job.total = "analyse_all", 0, 0
         con = open_db()
         base_views(con, p)
         try:
-            games = con.execute("SELECT game_id FROM games ORDER BY played_at DESC").fetchall()
-            todo = []
-            for (gid,) in games:
-                keys, _ = pending_keys(con, p, gid)
-                if keys:
-                    todo.append((gid, keys))
+            _, todo = self._todo(con, p)
             job.total = len(todo)
             log.info("analyse_all %s: %d games need work", p.id, len(todo))
             for gid, keys in todo:
                 if job.stop_requested:
                     break
-                job.slug, job.game_done, job.game_total = site.slug(gid), 0, len(keys)
-                order = {r[0]: i for i, r in enumerate(con.execute(
-                    "SELECT fen_key, min(ply) FROM positions WHERE game_id = ? GROUP BY 1 ORDER BY 2", [gid]).fetchall())}
-                keys.sort(key=lambda k: order.get(k, 1 << 30))
-
-                def progress(done: int, _total: int) -> None:
-                    job.game_done = done
-
-                self.analyser.run(keys, con, on_progress=progress, batch=self.analyser.workers * 2,
-                                  should_stop=lambda: job.stop_requested)
-                site.update_index(p, site.write_game(con, p, gid))
+                self._analyse_game(job, con, gid, keys)
                 job.done += 1
                 log.info("analyse_all: %d/%d games done (%s)", job.done, job.total, job.slug)
             job.status = "finishing"
@@ -260,6 +445,57 @@ class Runner:
             con.close()
         classify.build(p)
         aggregates.build(p)
+
+    def _build(self, job: Job) -> None:
+        """Make a profile's puzzles: analyse the games that aren't yet, newest first, reclassifying after each
+        game (at most every PUZZLE_REFRESH_S) so its puzzles can be played while the rest are analysed; then
+        settle their lines (_puzzles). done/total count the profile's games, all of them, analysed or not.
+        Stopped to make way for another job, it skips the bookkeeping: it comes back and does it then."""
+        p = job.profile
+        job.phase = "analysing"
+        job.puzzles = (self.build_state.get(p.id) or {}).get("puzzles")
+        if job.puzzles is None:
+            job.puzzles = len(own_puzzles.POOL.puzzles(p))      # the ones its analysed games already have
+        con = _open_db_retry()
+        base_views(con, p)
+        try:
+            n, todo = self._todo(con, p)
+            job.total, job.done = n, n - len(todo)
+            log.info("build %s: %d of %d games to analyse", p.id, len(todo), n)
+            last = 0.0
+            for gid, keys in todo:
+                if job.stop_requested:
+                    break
+                self._analyse_game(job, con, gid, keys)
+                if job.stop_requested:
+                    break               # cut short: not done (what it searched is cached)
+                job.done += 1
+                if time.time() - last >= PUZZLE_REFRESH_S:
+                    con.close()         # classify reads the live cache, which this write connection would lock
+                    self._refresh_puzzles(job)
+                    last = time.time()
+                    con = _open_db_retry()
+                    base_views(con, p)
+            job.slug = None
+            if not job.preempted:
+                export_parquet(con)
+        finally:
+            con.close()
+        if job.preempted:
+            return
+        self._refresh_puzzles(job)
+        aggregates.build(p)
+        if job.stop_requested:
+            return
+        job.phase, job.done, job.total = "lines", 0, 0
+        self._puzzles(job)
+
+    def _refresh_puzzles(self, job: Job) -> None:
+        p = job.profile
+        classify.build(p)
+        own_puzzles.POOL.invalidate(p.id)
+        job.puzzles = len(own_puzzles.POOL.puzzles(p))
+        self.build_state[p.id] = job.to_dict()
 
     def _rebuild(self, job: Job) -> None:
         """normalise -> site -> classify -> aggregates for the job's profile (no engine work)."""
@@ -300,6 +536,18 @@ class Runner:
         if job.analyse:
             # the UI switches to the batch progress display for the rest of the job
             self._analyse_all(job)
+
+
+def _open_db_retry(tries: int = 20):
+    """The engine cache for writing. A request thread may hold it read-only for a moment (DuckDB won't open one
+    file both ways in one process), so a build that reopens it after each game waits for that instead of failing."""
+    for i in range(tries):
+        try:
+            return open_db()
+        except duckdb.Error:
+            if i == tries - 1:
+                raise
+            time.sleep(0.25)
 
 
 class NewGames:
@@ -372,15 +620,16 @@ class Handler(SimpleHTTPRequestHandler):
         n = int(self.headers.get("Content-Length") or 0)
         return json.loads(self.rfile.read(n) or b"{}") if n else {}
 
-    def _start(self, job: Job) -> None:
-        if not self.runner.start(job):
+    def _start(self, job: Job, then_build: bool = False) -> None:
+        out = self.runner.start(job, then_build)
+        if out is None:
             return self._json({"error": "busy", "job": self.runner.job.to_dict()}, 409)
-        return self._json({"job": job.to_dict()})
+        return self._json({"job": out.to_dict()})
 
     def do_GET(self):
         url = urlparse(self.path)
         if url.path == "/api/status":
-            return self._json({"job": self.runner.job.to_dict() if self.runner.job else None})
+            return self._json(self.runner.status())
         if url.path == "/api/profiles":
             out = []
             for p in profiles.list_profiles():
@@ -475,9 +724,13 @@ class Handler(SimpleHTTPRequestHandler):
         if what == "sources":
             out = [{"id": "lichess", "name": "Lichess puzzles", "count": len(pack.rows())}]
             for p in profiles.list_profiles():
+                s = p.summary()
+                if not s["games"]:
+                    continue
                 st = own_puzzles.summary(p)
+                out.append({"id": f"mine:{p.id}", "profile": p.id, "name": p.username, "source": p.source,
+                            "count": st["total"], "stats": st, "games": s["games"], "analysed": s["analysed"]})
                 if st["total"]:
-                    out.append({"id": f"mine:{p.id}", "name": p.username, "count": st["total"], "stats": st})
                     self.runner.extend_puzzles(p)
             return self._json({"sources": out})
         if what == "next":
@@ -563,9 +816,12 @@ class Handler(SimpleHTTPRequestHandler):
                 p = profiles.create(source, username)
             except ValueError as e:
                 return self._json({"error": str(e)}, 400)
+            want = bool(b.get("puzzles"))     # from Personal puzzles: make its puzzles once its games are in
             if (p.site_dir / "games.json").exists():
+                if want:
+                    r.request_build(p)
                 return self._json({"profile": p.summary(), "job": None})   # already set up: just open it
-            return self._start(Job("ingest", p))
+            return self._start(Job("ingest", p), then_build=want)
         m = re.match(r"^/api/profiles/([A-Za-z0-9_.-]+)/seen$", path)
         if m:
             self.new_games.clear(m.group(1))
@@ -582,6 +838,7 @@ class Handler(SimpleHTTPRequestHandler):
         if m:
             if r.busy() and r.job.profile.id == m.group(1):
                 return self._json({"error": "busy", "job": r.job.to_dict()}, 409)
+            r.cancel_build(m.group(1))
             return self._json({"ok": profiles.delete(m.group(1))})
         m = re.match(r"^/api/p/([A-Za-z0-9_.-]+)/(analyse_all|refresh|analyse/([^/]+))$", path)
         if m:
@@ -609,9 +866,32 @@ class Handler(SimpleHTTPRequestHandler):
                 log.error("explore failed: %s", traceback.format_exc())
                 return self._json({"error": str(e)}, 500)
         if path.startswith("/api/stop"):
-            if r.job:
+            if r.job and r.job.kind == "build":
+                r.cancel_build(r.job.profile.id)
+            elif r.job:
                 r.job.stop_requested = True
             return self._json({"ok": True})
+        if path == "/api/puzzles/build" or path == "/api/puzzles/build/stop":
+            p = profiles.load(str(self._body().get("profile", "")))
+            if p is None:
+                return self._json({"error": "unknown profile"}, 404)
+            if path.endswith("/stop"):
+                r.cancel_build(p.id)
+            else:
+                r.request_build(p)
+            return self._json(r.status())
+        if path == "/api/puzzles/reset":
+            b = self._body()
+            if b.get("what") == "rating":
+                moved = puzzles.reset()
+                return self._json({"archived": moved.name if moved else None, "stats": puzzles.stats(puzzles.attempts())})
+            if b.get("what") == "schedule":
+                p = profiles.load(str(b.get("profile", "")))
+                if p is None:
+                    return self._json({"error": "unknown profile"}, 404)
+                moved = own_puzzles.reset(p)
+                return self._json({"archived": moved.name if moved else None, "stats": own_puzzles.summary(p)})
+            return self._json({"error": "what: rating or schedule"}, 400)
         if path == "/api/settings":
             b = self._body()
             if not isinstance(b, dict) or not all(v is None or isinstance(v, str) for v in b.values()):
@@ -636,7 +916,7 @@ class Handler(SimpleHTTPRequestHandler):
             self.updates.check()
             return self._json({"ok": self.updates.download(), **self.updates.status()})
         if path == "/api/update/apply":
-            if r.busy() and r.job.kind != "puzzles":     # the puzzles job just starts over after the restart
+            if r.busy() and r.job.kind not in BACKGROUND:     # these just carry on after the restart
                 return self._json({"error": "busy", "job": r.job.to_dict()}, 409)
             try:
                 self.updates.apply()
@@ -712,7 +992,8 @@ def main(argv=None) -> None:
     profiles.migrate_legacy()
     profiles.expire_shown()  # "new" flags the list displayed in an earlier run: seen
     site.write_static()     # index.html is a pure copy of static/, so it is always current after a restart
-    Handler.runner = Runner(args.nodes, args.workers)
+    Handler.runner = Runner(args.nodes, args.workers, builds_file=DATA / "puzzle_builds.json")
+    Handler.runner._kick()      # a puzzle build the last run didn't finish carries on
     Handler.updates = updater.Updater()
     Handler.new_games = NewGames()
     Handler.new_games.start()

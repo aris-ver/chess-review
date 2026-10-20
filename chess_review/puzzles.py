@@ -11,6 +11,9 @@ Only the first try at a puzzle counts, the way Lichess does it: the page posts t
 goes wrong, asks for a hint or the solution, or solves it, and solving it on a second try changes nothing. The
 rating is Glicko-1, replayed from the record (a few thousand lines at most), so there is nothing else to keep
 in step with it.
+
+Resetting the rating moves the record aside as puzzle_attempts.reset-<when>.jsonl (rename it back to undo) and
+the rating starts again at 1500. The puzzles tried before stay out of the deal.
 """
 
 import json
@@ -184,6 +187,39 @@ def record(pid: str, puzzle_rating: int, solved: bool, ms: Optional[int] = None,
         return stats(rec + [a])
 
 
+def archive(path: Path) -> Optional[Path]:
+    """Move an attempts file aside as <name>.reset-<when>.jsonl next to it, so a reset can be undone by renaming it
+    back. None when there was nothing to move."""
+    stamp = time.strftime("%Y%m%d-%H%M%S")
+    dest = path.with_name(f"{path.stem}.reset-{stamp}{path.suffix}")
+    n = 1
+    while dest.exists():
+        n += 1
+        dest = path.with_name(f"{path.stem}.reset-{stamp}-{n}{path.suffix}")
+    try:
+        path.rename(dest)
+    except FileNotFoundError:
+        return None
+    return dest
+
+
+def reset(path: Path = None) -> Optional[Path]:
+    """Start the rating over from 1500: the record is archived, not deleted (see archive())."""
+    path = path or ATTEMPTS
+    with _lock:
+        return archive(path)
+
+
+def tried(path: Path = None) -> set[str]:
+    """Every puzzle tried, before a reset as well: those stay out of the deal, so a new rating isn't propped up by
+    puzzles you remember the answer to."""
+    path = path or ATTEMPTS
+    ids = {a["id"] for a in attempts(path)}
+    for old in path.parent.glob(f"{path.stem}.reset-*{path.suffix}"):
+        ids |= {a["id"] for a in attempts(old)}
+    return ids
+
+
 def pick(rows: list[dict], rating: float, themes: Optional[set[str]] = None, exclude: Optional[set[str]] = None,
          rng: random.Random = random) -> Optional[dict]:
     """A random puzzle near `rating` carrying any of `themes` (all when empty), never one in `exclude`. The window
@@ -205,6 +241,6 @@ PACK_INSTANCE = Pack()
 def next_puzzle(themes: Optional[set[str]] = None, skip: Optional[str] = None) -> tuple[Optional[dict], dict]:
     rec = attempts()
     st = stats(rec)
-    exclude = {a["id"] for a in rec} | ({skip} if skip else set())
+    exclude = tried() | ({skip} if skip else set())
     p = pick(PACK_INSTANCE.rows(), st["rating"], themes, exclude)
     return (line(p) if p else None), st

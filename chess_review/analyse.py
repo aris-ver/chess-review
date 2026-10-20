@@ -244,6 +244,10 @@ class Analyser:
                     log.info("%d/%d  %.2f pos/s", done, len(keys), rate)
                 if should_stop and should_stop():
                     log.warning("job stopped after %d/%d", done, len(keys))
+                    if buf:     # what is in hand is kept: a stopped job resumes without searching it again
+                        write_results(con, buf)
+                        if on_progress:
+                            on_progress(done, len(keys))
                     # drain: results for remaining keys are cheap to keep, but stop waiting on them
                     self.close()
                     break
