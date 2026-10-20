@@ -13,13 +13,14 @@ unzip anywhere, run `Chess Review.exe` (details under *Windows app* below). From
 bash scripts/restart_server.sh          # http://127.0.0.1:8123/  (log: data/serve.log)
 ```
 
-The home screen lists **profiles** (one per chess.com user; add any username, remove with ✕) plus
-the actions — **Add a profile**, **Paste a PGN** (pick the side you played; the game lands in a "Pasted games"
-profile and opens at once), **Set up a position** (chess.com-style editor: piece palette with undo/redo/eraser,
-side to move, castling rights, an editable FEN box) and **From a screenshot** (drop, paste or link a picture of a
-board; the 8×8 grid is found and every square classified against the app's piece silhouettes, in the browser, and
-the result opens in the editor for a check before analysis) — then the **profile list**, pinnable (★) so favourites
-stay on top in the order they were pinned. A position from the editor opens the **sandbox**: the engine's top 3
+The home screen leads with the **profile list** (one per chess.com or lichess user; **+ Add profile** in its
+heading opens the username form, ✕ removes one), pinnable (★) so favourites stay on top in the order they were
+pinned. Below it come the two **Puzzles** tiles, then a row of small buttons for one-off reviews: **Paste a PGN**
+(opens a box for it; the game lands in a "Pasted games" profile and opens at once), **Set up a position**
+(chess.com-style editor: piece palette with undo/redo/eraser, side to move, castling rights, an editable FEN box)
+and **From a screenshot** (drop, paste or link a picture of a board; the 8×8 grid is found and every square
+classified against the app's piece silhouettes, in the browser, and the result opens in the editor for a check
+before analysis). A position from the editor opens the **sandbox**: the engine's top 3
 lines and best-move arrows update live as it searches. Open a profile → its games; any game
 not fully analysed has an **Analyse** button right in the list; open a game → **Analyse game**
 (≈1-2 min for a rapid game: MultiPV=3, 1M nodes/position, 6 engines). The board, graph, move list and key
