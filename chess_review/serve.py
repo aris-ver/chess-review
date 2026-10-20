@@ -26,7 +26,7 @@
                                         (review_as defaults to the side a saved profile played, else white)
     GET  /api/engine                    {name, nodes, multipv} of the on-demand engine (shown next to results)
     GET  /api/fetch_image?url=          proxy an image so the board reader can inspect it on a canvas
-    GET  /api/eval?fen=                 the engine's eval and best move in a position, no move required (sandbox)
+    GET  /api/eval?fen=                 the engine's eval and best move in a position, no move required (sandbox), and its line in SAN (a puzzle's wrong move)
     GET  /api/update[?check=1]          installed version, the latest release if newer, download progress (desktop
                                         build only; check=1 asks GitHub again instead of using the hourly cache)
     POST /api/update/download           fetch the latest release into DATA/update (the small zip when it fits)
@@ -38,13 +38,18 @@
                                         new one -> {puzzle, stats}; 404 {error, stats} when there is neither
     GET  /api/puzzles/get?id=           one puzzle by id, Lichess or your games (a reload, or Back to it) -> {puzzle, stats}
     GET  /api/puzzles/themes            the pack's themes with readable names and counts, and your stats
-    GET  /api/puzzles/sources           what the trainer can deal from: the Lichess pack, and each profile with games
+    GET  /api/puzzles/packs             every puzzle pack's progress (packs.py), your stats and today's daily
+    GET  /api/puzzles/pack?id=          one pack's stages, which are open, and the state of every puzzle in them
+    GET  /api/puzzles/daily             the puzzle of the day {date, n, id, result (once played), streak, best_streak}
+    GET  /api/puzzles/sources          what the trainer can deal from: the Lichess pack, and each profile with games
                                         (its puzzle stats, games and how many are analysed). This and
                                         next?source=mine: start job "puzzles" in the background when a profile's
                                         puzzles still wait for the engine to settle their lines; any other job
                                         takes over from it
     POST /api/puzzles/attempt           {id, solved, ms?, hinted?} -> a Lichess puzzle's first try recorded {stats, counted};
                                         a puzzle from your games: every showing recorded {stats, review}
+    POST /api/puzzles/solved            {id} -> a Lichess puzzle solved after a miss or a hint (its pack counts it)
+    POST /api/puzzles/daily             {id, solved, clean, ms, marks} -> today's first showing, kept once -> as GET
     POST /api/puzzles/build             {profile} -> make its puzzles in the background (job "build": analyse the
                                         games not analysed yet, newest first, reclassifying as it goes so puzzles
                                         appear game by game, then settle their lines) -> status
@@ -67,6 +72,7 @@ in DATA/puzzle_builds.json and carry on after a restart.
 
 import argparse
 import collections
+import datetime
 import functools
 import itertools
 import json
@@ -87,7 +93,7 @@ import chess
 import duckdb
 import requests
 
-from . import aggregates, classify, ingest, normalise, own_puzzles, profiles, puzzles, site, updater
+from . import aggregates, classify, ingest, normalise, own_puzzles, packs, profiles, puzzles, site, updater
 from .analyse import Analyser, export_parquet, open_db, pending_keys
 from .config import DATA, DEFAULT_NODES, ENGINE_IDLE_SECONDS, MULTIPV_N, SITE_DIR, USER_AGENT
 from .db import base_views
@@ -666,9 +672,18 @@ class Handler(SimpleHTTPRequestHandler):
             side = "white" if board.turn else "black"
             has_eval = main["eval_cp"] is not None or main["mate_in"] is not None
             wp = pov_win_pct(main["eval_cp"], main["mate_in"], side, "white") if has_eval else None
+            pv_san, b = [], board.copy(stack=False)     # the line, for a puzzle's "why not" (a few moves)
+            for u in (main.get("pv") or [])[:6]:
+                try:
+                    mv = chess.Move.from_uci(u)
+                    pv_san.append(b.san(mv))
+                    b.push(mv)
+                except (ValueError, AssertionError):
+                    break
             return self._json({"eval": eval_text(main["eval_cp"], main["mate_in"], side),
                                "wp_white": round(wp, 1) if wp is not None else None,
-                               "best_uci": best_uci, "best_san": best_san})
+                               "best_uci": best_uci, "best_san": best_san, "pv_san": pv_san,
+                               "mate_in": main["mate_in"], "eval_cp": main["eval_cp"]})
         if url.path == "/api/fetch_image":
             # the browser reads the board off a canvas, and a cross-origin image would taint it: fetch it server-side
             target = parse_qs(url.query).get("url", [""])[0]
@@ -750,6 +765,18 @@ class Handler(SimpleHTTPRequestHandler):
             if p is None:
                 return self._json({"error": "no puzzles left with those themes", "stats": st}, 404)
             return self._json({"puzzle": p, "stats": st})
+        if what == "packs":
+            st = puzzles.stats(puzzles.attempts())
+            return self._json({"packs": packs.shelf(st), "stats": st, "daily": packs.daily(datetime.date.today())})
+        if what == "pack":
+            p = packs.INSTANCE.get(q.get("id", [""])[0])
+            if p is None:
+                return self._json({"error": "unknown pack"}, 404)
+            st = puzzles.stats(puzzles.attempts())
+            ratings = {i: (pack.get(i) or {}).get("rating") for s in p["stages"] for i in s["ids"]}
+            return self._json({"pack": packs.ladder(p, packs.first_tries(), packs.solved_later(), st, ratings), "stats": st})
+        if what == "daily":
+            return self._json(packs.daily(datetime.date.today()))
         if what == "get":
             pid = q.get("id", [""])[0]
             if own_puzzles.is_own_id(pid):
@@ -912,6 +939,18 @@ class Handler(SimpleHTTPRequestHandler):
                 return self._json({"error": "unknown puzzle"}, 404)
             st = puzzles.record(row["id"], row["rating"], bool(b.get("solved")), ms, bool(b.get("hinted")))
             return self._json({"stats": st or puzzles.stats(puzzles.attempts()), "counted": st is not None})
+        if path == "/api/puzzles/solved":
+            pid = str(self._body().get("id", ""))
+            if puzzles.PACK_INSTANCE.get(pid) is None:
+                return self._json({"error": "unknown puzzle"}, 404)
+            packs.mark_solved(pid)
+            return self._json({"ok": True})
+        if path == "/api/puzzles/daily":
+            b = self._body()
+            ms = b.get("ms")
+            return self._json(packs.record_daily(datetime.date.today(), str(b.get("id", "")), bool(b.get("solved")),
+                                                 bool(b.get("clean")), int(ms) if isinstance(ms, (int, float)) else None,
+                                                 b.get("marks") if isinstance(b.get("marks"), list) else []))
         if path == "/api/update/download":
             self.updates.check()
             return self._json({"ok": self.updates.download(), **self.updates.status()})
