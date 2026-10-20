@@ -805,24 +805,43 @@ function soundFile(name, pack = theme.sound) {
   const t = themeInfo('sounds', pack);
   return t ? (SOUND_EVENTS[name] || []).find(f => t.files.includes(f)) : null;
 }
-const audioCache = {};
-function audioFor(name, pack = theme.sound) {
-  const f = soundFile(name, pack); if (!f) return null;
-  const src = `themes/sounds/${pack}/${f}.mp3`;
-  if (!(src in audioCache)) {
-    const a = new Audio(src); a.preload = 'auto';
-    a.addEventListener('error', () => { audioCache[src] = null; }, { once: true });   // missing file: stay silent
-    audioCache[src] = a;
-  }
-  return audioCache[src];
+function soundSrc(name, pack = theme.sound) { const f = soundFile(name, pack); return f ? `themes/sounds/${pack}/${f}.mp3` : null; }
+// Web Audio: each file is fetched and decoded once, then every sound plays from memory. Cloning an <audio> element
+// per sound started a fresh load of the file each time, and now and then one never played (most of all in the
+// desktop app's WebView). The context starts suspended until the first click or key, as browsers require.
+let actx = null;
+function audioCtx() {
+  if (actx === null) { try { actx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { actx = false; } }
+  return actx || null;
 }
-function warmSounds(pack = theme.sound) { Object.keys(SOUND_EVENTS).forEach(n => audioFor(n, pack)); }
+['pointerdown', 'keydown'].forEach(ev => document.addEventListener(ev, () => { const c = audioCtx(); if (c && c.state === 'suspended') c.resume().catch(() => {}); }, true));
+const bufCache = {};   // src -> Promise<AudioBuffer | null>; null: missing or undecodable, stay silent
+function bufferFor(src) {
+  if (!(src in bufCache)) {
+    const c = audioCtx();
+    bufCache[src] = !c ? Promise.resolve(null) : fetch(src).then(r => r.ok ? r.arrayBuffer() : Promise.reject(new Error(r.status)))
+      .then(b => new Promise((res, rej) => c.decodeAudioData(b, res, rej))).catch(() => null);
+  }
+  return bufCache[src];
+}
+function warmSounds(pack = theme.sound) { Object.keys(SOUND_EVENTS).forEach(n => { const s = soundSrc(n, pack); if (s) bufferFor(s); }); }
 const audible = () => state.sound && state.volume > 0;
 // pack: a preview from the settings page, which plays even while the sound is muted (at 90 if it's muted)
 function play(name, delay = 0, pack = null) {
   if (!audible() && !pack) return;
   const vol = (audible() ? state.volume : 90) / 100;
-  const go = () => { try { const src = audioFor(name, pack || theme.sound); if (!src) return; const a = src.cloneNode(); a.volume = vol; a.play().catch(() => {}); } catch (e) {} };
+  const go = async () => {
+    try {
+      const src = soundSrc(name, pack || theme.sound); if (!src) return;
+      const c = audioCtx(), buf = c && c.state === 'running' ? await bufferFor(src) : null;
+      if (buf) {
+        const s = c.createBufferSource(), g = c.createGain();
+        s.buffer = buf; g.gain.value = vol; s.connect(g).connect(c.destination); s.start();
+        return;
+      }
+      const a = new Audio(src); a.volume = vol; a.play().catch(() => {});    // no Web Audio (or not unlocked yet)
+    } catch (e) {}
+  };
   delay ? setTimeout(go, delay) : go();
 }
 // the end of a game: Victory, Defeat or Draw from my side when the game has a result (not in the sandbox)
@@ -1439,7 +1458,7 @@ function puzzleMove(uci) {
 function finishPuzzle() {
   pz.done = true; state.exploring = false;
   if (!pz.reported) reportPuzzle(true);
-  if (!pz.failed && !pz.hinted && !pz.shown) play('win', 250);
+  if (!pz.shown) play('win', 250);     // solved, first try or not; a solution you were shown is not a win
   renderNow(); renderPuzzleBox();
 }
 async function reportPuzzle(solved) {
