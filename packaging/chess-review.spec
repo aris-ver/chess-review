@@ -29,6 +29,7 @@ a = Analysis(
     noarchive=False,
 )
 a.datas += Tree(str(ROOT / "chess_review" / "static"), prefix="chess_review/static")
+a.datas += Tree(str(ROOT / "chess_review" / "puzzle_packs"), prefix="chess_review/puzzle_packs")
 a.datas += Tree(str(ROOT / "packaging" / "assets" / "book"), prefix="assets/book")
 
 pyz = PYZ(a.pure, a.zipped_data)

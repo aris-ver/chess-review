@@ -40,6 +40,14 @@ different move** — it is evaluated on the spot (`explore.py`, one multi-thread
 variation under the move it branches from; stepping back before the branch discards it.
 `index.html?selftest=1#/game/<id>` runs an in-page smoke test of navigation + exploration.
 
+**Puzzles** (the home screen card, `#/puzzles`): about 28,000 rated puzzles from the Lichess puzzle database (CC0),
+shipped in `chess_review/puzzle_packs/lichess.parquet` and picked within ±150 of your puzzle rating, never one
+you've tried. The opponent's move plays first, then you find the answer. A wrong move is shown and taken back, and
+you can keep trying. Only the first try counts (a hint or the solution counts as not solved): it lands in
+`data/puzzle_attempts.jsonl` and the rating (Glicko-1) is replayed from that file (`puzzles.py`). Once a puzzle is
+over, the board is free to explore like a review. Pick a theme (fork, mate in 2, rook endgame, …) under the
+buttons. `python scripts/build_puzzle_pack.py lichess_db_puzzle.csv.zst` rebuilds the pack from a fresh download.
+
 Pieces, boards and sounds are Lichess's free sets — 35 piece sets, 25 boards, 5 sound packs — in
 `chess_review/static/themes/` (`themes.json` lists them, `CREDITS.md` names each author and licence), synced into
 the served site dir by `site.write_static()` on every start. The gear in the header picks them, with a preview
