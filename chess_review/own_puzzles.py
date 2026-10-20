@@ -15,7 +15,7 @@ once the puzzle is over.
 These stay out of the puzzle rating. Every finished showing is recorded in the profile's
 puzzle_attempts.jsonl, and a puzzle you missed comes back after 1 day, then 3, then 7 days for as long as you keep
 finding it; a miss at any point starts it over. Solved first time, or found at the 7-day review, it is learned
-and stays away.
+and stays away. Starting the schedule over (reset()) archives that file, and every puzzle is new again.
 """
 
 import hashlib
@@ -35,7 +35,7 @@ from .classify import only_move
 from .config import MISTAKE
 from .db import connect
 from .fen import fen_key
-from .puzzles import line
+from .puzzles import archive, line
 from .site import slug
 
 log = logging.getLogger("own_puzzles")
@@ -343,6 +343,13 @@ def next_puzzle(profile: profiles.Profile, skip: Optional[str] = None) -> tuple[
 def summary(profile: profiles.Profile) -> dict:
     puzzles = POOL.puzzles(profile)
     return stats(puzzles, schedule(attempts(attempts_path(profile))))
+
+
+def reset(profile: profiles.Profile) -> Optional[Path]:
+    """Start the review schedule over: every puzzle is new again. The record is archived next to it, not deleted
+    (puzzles.archive), so renaming it back undoes this."""
+    with _lock:
+        return archive(attempts_path(profile))
 
 
 def record(profile: profiles.Profile, pid: str, solved: bool, ms: Optional[int] = None, hinted: bool = False) -> dict:
