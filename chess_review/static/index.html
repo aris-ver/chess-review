@@ -25,12 +25,14 @@ button.primary { background: var(--accent); color: #1b1b1b; border-color: var(--
 button.primary:hover { background: #8fc55a; }
 header { display: flex; align-items: center; gap: 16px; padding: 10px 18px; background: var(--panel); border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 5; }
 header h1 { font-size: 18px; margin: 0; }
-/* the title is the Home button: it looks like one under the mouse */
-header h1 a { display: inline-block; padding: 4px 10px; margin: 0 -10px; border: 1px solid transparent; border-radius: 6px; transition: background .12s, border-color .12s; }
-header h1 a:hover { background: var(--panel2); border-color: var(--line); }
-header h1 a:active { background: #46423d; }
-header button.back { color: var(--text); white-space: nowrap; }
-header button.back:not(.hidden) + h1 a { margin-left: 0; }
+/* the title: "Chess Review" on the home screen, everywhere else a Home button that looks like one */
+header h1 a { display: inline-block; padding: 4px 10px; margin: 0 -10px; border: 1px solid transparent; border-radius: 6px; cursor: default; transition: background .12s, border-color .12s; }
+header h1 a.away { margin: 0; font-size: 15px; background: var(--panel2); border-color: var(--line); cursor: pointer; }
+header h1 a.away:hover { border-color: var(--accent); }
+header h1 a.away:active { background: #46423d; }
+/* Back: one level up (a puzzle -> its pack, a game -> its list), never a replay of the history */
+header button.back { color: var(--text); white-space: nowrap; font-size: 15px; font-weight: 600; padding: 4px 10px; }
+header button.back:hover { border-color: var(--accent); }
 header .crumb { color: var(--muted); }
 header .right { margin-left: auto; display: flex; gap: 10px; align-items: center; }
 header .right a { color: var(--muted); }
@@ -84,6 +86,69 @@ main { padding: 16px 18px; max-width: 1800px; margin: 0 auto; }
 .card.pzp .btns a { color: var(--muted); font-size: 12px; cursor: pointer; margin-left: auto; text-decoration: underline; }
 .card.pzp .btns a:hover { color: var(--text); }
 .card.pzp .bstate { color: var(--accent); font-size: 12px; }
+/* puzzle packs: the shelf (a card per pack, by family) and a pack's ladder (its stages, a numbered cell per puzzle) */
+/* a cover: a tinted square with a piece or two from your piece set, coloured by family, so the cards tell apart */
+.card.covered { flex-direction: row; align-items: center; gap: 14px; }
+.card.covered .cbody { display: flex; flex-direction: column; gap: 4px; min-width: 0; flex: 1; }
+.cover { --fc: var(--accent); width: 64px; height: 64px; flex-shrink: 0; position: relative; border-radius: 12px;
+  background: color-mix(in srgb, var(--fc) 24%, var(--panel2)); border: 1px solid color-mix(in srgb, var(--fc) 60%, transparent); }
+.cover img { position: absolute; display: block; pointer-events: none; }
+.cover img.m { left: 5px; bottom: 3px; width: 46px; height: 46px; filter: drop-shadow(0 2px 2px rgba(0,0,0,.35)); }
+.cover img.s1 { right: 3px; top: 3px; width: 26px; height: 26px; }
+.cover img.s2 { right: 3px; top: 25px; width: 22px; height: 22px; opacity: .9; }
+.cover .mk { position: absolute; right: 5px; bottom: 2px; font-size: 14px; font-weight: 800; color: var(--fc); text-shadow: 0 1px 2px rgba(0,0,0,.6); }
+.cover.cal { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; overflow: hidden; }
+.cover.cal .mon { position: absolute; left: 0; right: 0; top: 0; padding: 2px 0; background: var(--fc); color: #1b1b1b; font-size: 11px; font-weight: 800; text-transform: uppercase; text-align: center; letter-spacing: .05em; }
+.cover.cal .day { font-size: 28px; font-weight: 800; line-height: 1; margin-bottom: 7px; color: var(--text); }
+.card.pack .cover { width: 56px; height: 56px; }
+.card.pack .cover img.m { width: 40px; height: 40px; }
+.card.pack .cover img.s1 { width: 22px; height: 22px; } .card.pack .cover img.s2 { top: 22px; width: 19px; height: 19px; }
+/* difficulty, by rating: the stage titles, the bars and the chips */
+.diff { font-size: 11px; font-weight: 700; padding: 1px 7px; border-radius: 4px; color: var(--dc); background: color-mix(in srgb, var(--dc) 18%, transparent); white-space: nowrap; }
+.card.pack { cursor: pointer; min-height: 0; }
+.card.pack:hover { border-color: var(--accent); }
+.card.pack .who { display: flex; align-items: baseline; gap: 8px; }
+.pbadge { flex-shrink: 0; margin-left: auto; font-size: 12px; font-weight: 700; line-height: 1; white-space: nowrap; color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 16%, transparent); border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent); border-radius: 12px; padding: 4px 9px; }
+.pbadge.crown { color: var(--c-inaccuracy); background: color-mix(in srgb, var(--c-inaccuracy) 16%, transparent); border-color: color-mix(in srgb, var(--c-inaccuracy) 45%, transparent); }
+.card.pack .who { padding-right: 0; align-items: center; }
+.card.pack .who .wt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.card.pack .meta, .stage .meta { color: var(--muted); font-size: 12px; }
+.card.pack .desc { color: var(--muted); font-size: 13px; }
+.ladhead { display: flex; align-items: center; gap: 14px; margin: 22px 0 4px; }
+.ladhead h1 { font-size: 22px; margin: 0; }
+.ladhead .pbadge { margin-left: 0; }
+.ladhead .meta { margin-left: auto; color: var(--muted); font-size: 13px; }
+.stage { --dc: var(--accent); background: var(--panel); border: 1px solid var(--line); border-left: 4px solid var(--dc); border-radius: 10px; padding: 10px 14px 12px; margin-top: 10px; }
+.stage .sh b { color: var(--dc); }
+.stage.current { border-color: var(--dc); box-shadow: 0 0 0 1px var(--dc); }
+.stage .cell.clean { background: var(--dc); }
+.stage .cell.solved { background: color-mix(in srgb, var(--dc) 30%, transparent); }
+.stage .cell.next { border-color: var(--dc); }
+.stage.locked { opacity: .5; }
+.stage .sh { display: flex; align-items: baseline; gap: 10px; }
+.stage .sh b { font-size: 14px; }
+.stage .sh .meta { margin-left: auto; }
+.stage .cells { display: grid; grid-template-columns: repeat(15, minmax(0, 1fr)); gap: 4px; margin-top: 8px; }
+.stage .cell { font-size: 12px; text-align: center; line-height: 26px; border-radius: 4px; background: var(--panel2); color: var(--muted); cursor: pointer; font-variant-numeric: tabular-nums; border: 1px solid transparent; }
+.stage .cell:hover { border-color: var(--text); }
+.stage .cell.clean { color: #1b1b1b; font-weight: 700; }
+.stage .cell.solved { color: var(--text); }
+.stage .cell.missed { border-color: var(--c-miss); color: var(--c-miss); }
+.stage .cell.next { color: var(--text); }
+.stage .legend { margin-top: 8px; }
+@media (max-width: 640px) { .stage .cells { grid-template-columns: repeat(10, minmax(0, 1fr)); } }
+.pzline { font-family: ui-monospace, Consolas, monospace; font-size: 13px; color: var(--muted); }
+/* the daily's result, inside the coach's (white) bubble */
+.dres { margin-top: 10px; background: #f6f5f2; border: 1px solid #e4e1dc; border-radius: 10px; padding: 10px 12px 12px; }
+.dres .dh { font-size: 12px; font-weight: 700; color: #6b665f; }
+.dres .sq { display: flex; gap: 6px; margin: 10px 0; }
+.dres .sq span { width: 30px; height: 30px; border-radius: 7px; display: flex; align-items: center; justify-content: center; font-size: 15px; box-sizing: border-box; }
+.dres .sq .ok { background: #81b64c; } .dres .sq .miss { background: #f7c631; }
+.dres .sq .hint { background: #fff4c9; border: 2px solid #f7c631; } .dres .sq .shown { background: #bcb8b1; }
+.dres .stats { display: flex; flex-wrap: wrap; gap: 6px; }
+.dres .stats span { font-size: 12px; background: #fff; border: 1px solid #e4e1dc; border-radius: 12px; padding: 2px 9px; color: #333; }
+.dres button { margin-top: 12px; width: 100%; }
 /* the puzzle build's progress, pinned to the bottom of every screen */
 .buildbar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 7; display: flex; align-items: center; gap: 14px; padding: 8px 18px calc(8px + env(safe-area-inset-bottom)); background: var(--panel); border-top: 1px solid var(--line); box-shadow: 0 -2px 10px rgba(0,0,0,.25); }
 .buildbar .bb-text { min-width: 0; flex: 0 1 auto; display: flex; flex-direction: column; font-size: 13px; }
@@ -410,7 +475,6 @@ svg.board.playable use.piece.own { cursor: grab; }
 .ginfo { text-align: center; color: var(--muted); font-size: 12px; padding: 4px 10px 0; }
 .pbtn { background: transparent; border: 0; color: var(--muted); font-size: 18px; padding: 4px 8px; border-radius: 6px; cursor: pointer; }
 .pbtn:hover { background: var(--panel2); color: var(--text); }
-.pbtn.back { font-size: 13px; font-weight: 600; color: var(--text); border: 1px solid var(--line); padding: 4px 10px 4px 8px; white-space: nowrap; text-decoration: none; }
 .coach { display: flex; gap: 10px; padding: 12px 12px 6px; align-items: flex-start; }
 .coach .avatar { width: 44px; height: 44px; border-radius: 8px; background: var(--panel2); display: flex; align-items: center; justify-content: center; font-size: 28px; flex-shrink: 0; }
 .bubble { flex: 1; background: #fff; color: #1b1b1b; border-radius: 10px; padding: 10px 12px; position: relative; min-height: 44px; }
@@ -525,8 +589,8 @@ svg.graph { width: 100%; height: 90px; display: block; cursor: pointer; backgrou
 </head>
 <body>
 <header>
-  <button id="b-back" class="back hidden" title="Back to where you were">←<span class="t"> Back</span></button>
-  <h1><a href="#/" title="Home">♞ Chess Review</a></h1>
+  <h1><a href="#/" id="b-home" title="Home"><span class="k">♞</span> <span id="home-t">Chess Review</span></a></h1>
+  <button id="b-back" class="back hidden" title="Back (Esc)">←<span class="t" id="back-t"> Back</span></button>
   <span class="crumb" id="crumb"></span>
   <div class="right">
     <button id="b-settings" class="snd" title="Pieces, board and sounds"><svg viewBox="0 0 24 24"><path fill-rule="evenodd" d="M19.14 12.94c.04-.3.06-.61.06-.94s-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.49.49 0 0 0-.59-.22l-2.39.96a7 7 0 0 0-1.62-.94l-.36-2.54a.48.48 0 0 0-.48-.41h-3.84a.47.47 0 0 0-.47.41l-.36 2.54a7.4 7.4 0 0 0-1.62.94l-2.39-.96a.48.48 0 0 0-.59.22L2.74 8.87a.47.47 0 0 0 .12.61l2.03 1.58a6 6 0 0 0 0 1.88l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54a7 7 0 0 0 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32a.47.47 0 0 0-.12-.61zM12 15.6a3.6 3.6 0 1 1 0-7.2 3.6 3.6 0 0 1 0 7.2z"/></svg></button>
@@ -552,8 +616,10 @@ svg.graph { width: 100%; height: 90px; display: block; cursor: pointer; backgrou
       <div class="cards" id="profiles"></div>
       <h2>Puzzles</h2>
       <div class="cards pztiles">
-        <div class="card pztile" id="card-library"><span class="src">Lichess</span><span class="who">Puzzle library</span><span class="desc" id="card-library-desc">Rated tactics from Lichess, picked near your level, by theme if you like.</span></div>
-        <div class="card pztile" id="card-mine"><span class="src">Your games</span><span class="who">Personal puzzles</span><span class="desc" id="card-mine-desc">The moves you missed in a player's games, from a profile or any username, back until you find them.</span></div>
+        <div class="card pztile covered" id="card-daily"><div class="cover" data-cover="daily"></div><div class="cbody"><span class="src">Every day</span><span class="who">Puzzle of the day</span><span class="desc" id="card-daily-desc">One tougher puzzle a day, the same for everyone. Share how you did.</span></div></div>
+        <div class="card pztile covered" id="card-packs"><div class="cover" data-cover="packs"></div><div class="cbody"><span class="src">Lichess</span><span class="who">Puzzle packs</span><span class="desc" id="card-packs-desc">Themes laid out as stages, 30 puzzles each, from easy to the very top.</span></div></div>
+        <div class="card pztile covered" id="card-library"><div class="cover" data-cover="library"></div><div class="cbody"><span class="src">Lichess</span><span class="who">Puzzle library</span><span class="desc" id="card-library-desc">Rated tactics from Lichess, picked near your level, by theme if you like.</span></div></div>
+        <div class="card pztile covered" id="card-mine"><div class="cover" data-cover="mine"></div><div class="cbody"><span class="src">Your games</span><span class="who">Personal puzzles</span><span class="desc" id="card-mine-desc">The moves you missed in a player's games, from a profile or any username, back until you find them.</span></div></div>
       </div>
       <h2>Review something else</h2>
       <div class="acts">
@@ -569,6 +635,9 @@ svg.graph { width: 100%; height: 90px; display: block; cursor: pointer; backgrou
       </div>
       <div class="ver hidden" id="ver"></div>
     </div>
+  </section>
+  <section id="pzpacks" class="hidden">
+    <div class="home" id="pzpacksbox"></div>
   </section>
   <section id="pzpick" class="hidden">
     <div class="home">
@@ -680,7 +749,6 @@ svg.graph { width: 100%; height: 90px; display: block; cursor: pointer; backgrou
       </div>
       <div class="panel">
         <div class="phead">
-          <a href="#/" class="pbtn back" id="a-back" title="Back (Esc)">← Games</a>
           <span class="ptitle"><svg class="ico"><use href="#ic-best"/></svg> <span id="ptitle-t">Game Review</span></span>
           <span class="pright"><button class="pbtn" id="b-flip" title="Flip (f)">⇅</button></span>
         </div>
@@ -964,14 +1032,55 @@ async function checkStale() {
   else if (lm !== pageStamp) { toast('The app was updated — click here to reload', 15000); $('toast').onclick = () => location.reload(); }
 }
 checkStale();
-// the pages visited in this app, so Back can return to the one before -- and is hidden on the first
+// the pages visited in this app (for upTo(): where a screen reachable from several places was opened from)
 const visited = [];
 function noteVisit(h) {
-  if (visited.length > 1 && visited[visited.length - 2] === h) visited.pop();   // went back (Back, browser, Alt+Left)
+  if (visited.length > 1 && visited[visited.length - 2] === h) visited.pop();   // went back (browser, Alt+Left)
   else if (visited[visited.length - 1] !== h) visited.push(h);
-  $('b-back').classList.toggle('hidden', visited.length < 2);
+  updateBack();
 }
-function goBack() { if (visited.length > 1) history.back(); else if ((location.hash || '#/') !== '#/') location.hash = '#/'; }
+// Back goes one level up, towards Home -- a puzzle to its pack, a pack to the shelf, a game to its list -- never back
+// through every puzzle opened on the way. A screen opened from more than one place (the daily, the sandbox, settings)
+// goes back to the one it was opened from. Where up is Home, Back hides: the Home button does that.
+function upTo(h = location.hash || '#/') {
+  const last = ok => visited.slice(0, -1).reverse().find(ok);
+  let m;
+  if (h === '#/') return null;
+  if (h === '#/settings' || h.startsWith('#/sandbox/')) return last(v => v !== h && v !== '#/settings') || '#/';
+  if (h === '#/daily') return last(v => v === '#/' || v === '#/packs') || '#/';
+  if ((m = h.match(/^#\/packs\/([a-z0-9-]+)\/\d+\/\d+$/))) return '#/packs/' + m[1];
+  if (h.startsWith('#/packs/')) return '#/packs';
+  if (h.startsWith('#/puzzles/mine/')) return '#/puzzles/mine';
+  if (/^#\/puzzles\/[A-Za-z0-9]+$/.test(h) && h !== '#/puzzles/mine' && ownPuzzle()) return '#/puzzles/mine';
+  if ((m = h.match(/^#\/p\/([A-Za-z0-9_.-]+)\/game\//))) return '#/p/' + m[1];
+  return '#/';
+}
+function upLabel(to) {
+  let m;
+  if (to === '#/packs') return 'Puzzle packs';
+  if ((m = to.match(/^#\/packs\/([a-z0-9-]+)$/))) return (packCache[m[1]] || {}).name || 'Pack';
+  if (to === '#/puzzles/mine') return 'Personal puzzles';
+  if (/^#\/p\/[^/]+$/.test(to)) return 'Games';
+  if (to.startsWith('#/p/')) return 'Game';
+  if (to.startsWith('#/sandbox/')) return 'Sandbox';
+  if (to === '#/daily') return 'Puzzle of the day';
+  if (to === '#/setup') return 'Set up';
+  if (to === '#/image') return 'Screenshot';
+  if (to.startsWith('#/puzzles')) return 'Puzzle';
+  return 'Back';
+}
+function updateBack() {
+  const h = location.hash || '#/', to = upTo(h), home = h === '#/';
+  $('b-back').classList.toggle('hidden', !to || to === '#/');
+  if (to) { $('back-t').textContent = ' ' + upLabel(to); $('b-back').title = `Back to ${upLabel(to).toLowerCase()} (Esc)`; }
+  $('b-home').classList.toggle('away', !home);
+  $('home-t').textContent = home ? 'Chess Review' : 'Home';
+}
+function goBack() {
+  const to = upTo() || '#/';
+  if (visited.length > 1 && visited[visited.length - 2] === to) history.back();   // the screen before was that one: keep the history tidy
+  else location.hash = to;
+}
 $('b-back').onclick = goBack;
 async function route() {
   const h = location.hash || '#/';
@@ -985,6 +1094,11 @@ async function route() {
   const em = h.match(/^#\/setup(?:\?fen=(.+))?$/);
   if (em) { if (em[1] && loadFen(decodeURIComponent(em[1]))) pendingSetup = setupSnapshot(); return showEditor(); }
   if (h === '#/image') return showImagePage();
+  if (h === '#/packs') return showShelf();
+  const km = h.match(/^#\/packs\/([a-z0-9-]+)(?:\/(\d+)\/(\d+))?$/);
+  if (km) return km[2] ? playPack(km[1], +km[2], +km[3]) : showLadder(km[1]);
+  if (h === '#/daily') return playDaily();
+  pz.ctx = null;
   if (h === '#/puzzles/mine') return showPersonal();
   const mm = h.match(/^#\/puzzles\/mine\/([A-Za-z0-9_.-]+)$/);
   if (mm) return showPuzzle(null, 'mine:' + mm[1]);
@@ -1123,7 +1237,7 @@ function renderUpdate() {
 checkUpdate();
 const fmtNodes = n => n >= 1e6 ? `${(n / 1e6).toFixed(n % 1e6 ? 1 : 0)}M nodes` : `${Math.round(n / 1e3)}k nodes`;
 const engineName = snap => (snap && snap.engine) || (state.engine && state.engine.name) || 'Engine';
-const SECTIONS = ['home', 'list', 'review', 'editor', 'imgpage', 'settings', 'pzpick'];
+const SECTIONS = ['home', 'list', 'review', 'editor', 'imgpage', 'settings', 'pzpick', 'pzpacks'];
 function showSection(id) { SECTIONS.forEach(s => $(s).classList.toggle('hidden', s !== id)); }
 async function showHome() {
   showSection('home');
@@ -1149,6 +1263,8 @@ document.querySelectorAll('.drawer').forEach(d => {
 });
 $('card-setup').onclick = () => location.hash = '#/setup';
 $('card-image').onclick = () => location.hash = '#/image';
+$('card-daily').onclick = () => location.hash = '#/daily';
+$('card-packs').onclick = () => location.hash = '#/packs';
 $('card-library').onclick = () => location.hash = '#/puzzles';
 $('card-mine').onclick = () => location.hash = '#/puzzles/mine';
 
@@ -1427,20 +1543,20 @@ async function showSandbox(fen) {
   showSection('review');
   document.body.classList.remove('puzzle'); document.body.classList.add('sandbox');
   setContext(false); $('crumb').textContent = 'Sandbox';
-  $('a-back').href = '#/'; $('a-back').textContent = '← Home'; $('ginfo').textContent = ''; $('ptitle-t').textContent = 'Sandbox';
+  $('ginfo').textContent = ''; $('ptitle-t').textContent = 'Sandbox';
   renderMoveList();
   update(false);
 }
 
 // ---------- puzzles: the review board plays a puzzle the server picks -- a Lichess one, or one from your own games ----------
 // The puzzle's moves are revealed into state.game.moves as they are played: the opponent's setup move first, then
-// each right answer and the reply to it. A wrong move is shown for a moment and taken back. Each showing reports
+// each right answer and the reply to it. A wrong move stays, with the engine's answer to it, until you take it back. Each showing reports
 // one result, the moment you go wrong, take a hint or the solution, or solve it: for a Lichess puzzle only the very
 // first try counts toward the rating; a puzzle from your games goes into its review schedule instead (1, 3, 7 days).
 // Two modes, one per home tile: the library (#/puzzles: Lichess puzzles, by theme, rated) and personal puzzles
 // (#/puzzles/mine/<profile>: from that profile's games, picked on #/puzzles/mine). Either deals a puzzle and
 // replaces its URL with the puzzle's own, #/puzzles/<id>, whose source sets the mode.
-const pz = { p: null, game: null, pending: null, token: 0, failed: false, hinted: false, reported: false, done: false, shown: false, wrong: null,
+const pz = { p: null, game: null, pending: null, token: 0, failed: false, hinted: false, reported: false, done: false, shown: false, wrong: null, refute: null, misses: 0, marks: {},
              hint: null, t0: 0, stats: null, delta: null, review: null, themes: null, theme: '', source: 'lichess', sources: null };
 try { pz.theme = localStorage.getItem('puzzleTheme') || ''; } catch (e) {}
 const PZ_STEP_MS = 450;   // the opponent's reply, and each move of a shown solution
@@ -1470,7 +1586,7 @@ async function showPuzzle(id, source = 'lichess') {
     state.flipped = pz.p.colour === 'black'; $('pieces').innerHTML = '';
     // finish what a timer was doing when you left: take back a wrong move, play the reply or the rest of the solution
     const mv = pz.game.moves, n = () => mv.length;
-    if (n() && mv[n() - 1].label === 'miss') mv.pop();
+    if (n() && mv[n() - 1].label === 'miss') { mv.pop(); pz.wrong = null; pz.refute = null; }
     if (!pz.done && pz.shown) { while (n() < pz.p.moves.length) mv.push(puzzlePly(pz.p.moves[n()], n(), n() % 2 ? 'best' : null)); finishPuzzle(); }
     else if (!pz.done && n() < pz.p.moves.length && n() % 2 === 0) mv.push(puzzlePly(pz.p.moves[n()], n()));
     state.ply = Math.min(n(), pz.p.moves.length); state.exploring = false;
@@ -1521,13 +1637,15 @@ function enterPuzzleView() {
   document.body.classList.remove('sandbox'); document.body.classList.add('puzzle');
   const own = ownPuzzle();
   setContext(false); $('crumb').textContent = own ? `Personal puzzles · ${profileName(pz.p.profile)}` : 'Puzzle library';
-  $('a-back').href = own ? '#/puzzles/mine' : '#/'; $('a-back').textContent = own ? '← Personal puzzles' : '← Home';
   $('ginfo').textContent = ''; $('ptitle-t').textContent = own ? 'Personal puzzle' : 'Puzzle';
-  renderPuzzleBox();
+  const cc = !own && ctxCrumb();
+  if (cc) { $('crumb').textContent = cc.crumb; $('ptitle-t').textContent = pz.ctx.kind === 'daily' ? 'Puzzle of the day' : `${pz.ctx.name} ${pz.ctx.stage} · ${pz.ctx.n}`; }
+  renderPuzzleBox(); updateBack();
 }
 function startPuzzle(p, stats) {
   const tok = ++pz.token;
-  Object.assign(pz, { p, stats, failed: false, hinted: false, reported: false, done: false, shown: false, wrong: null, hint: null, delta: null, review: null, t0: 0 });
+  Object.assign(pz, { p, stats, failed: false, hinted: false, reported: false, done: false, shown: false, wrong: null, refute: null, misses: 0, marks: {},
+                      hint: null, delta: null, review: null, t0: 0, ms: null });
   pz.source = p.source === 'mine' ? 'mine:' + p.profile : 'lichess';   // opened by its URL: Next carries on from the same place
   state.profile = null; state.games = null; state.game = pz.game = puzzleGame(p);
   state.ply = 0; state.flipped = p.colour === 'black'; dropVariation(); state.sel = null; state.cycle = {}; $('pieces').innerHTML = '';
@@ -1545,8 +1663,28 @@ function revealPuzzleMove(i, label = null) {
   state.game.moves.push(puzzlePly(pz.p.moves[i], i, label));
   renderMoveList(); go(state.game.moves.length);
 }
+// A wrong move stays on the board until you take it back (Retry, or ← and a new move): the engine's answer to it is
+// drawn as a red arrow and spelled out, so the miss teaches something instead of just bouncing.
+const missOnBoard = () => { const mv = state.game && state.game.moves; return !!(mv && mv.length && mv[mv.length - 1].label === 'miss'); };
+function takeBackMiss() {
+  if (!missOnBoard()) return;
+  const g = state.game, i = g.moves.length - 1;
+  g.moves.pop(); pz.wrong = null; pz.refute = null;
+  renderMoveList(); go(i); highlightCurrent(); renderBoard(); renderNow(); renderPuzzleBox();
+}
+async function refuteMiss(mv) {
+  const tok = pz.token;
+  let d; try { d = await (await fetch('api/eval?fen=' + encodeURIComponent(mv.fen))).json(); } catch (e) { return; }
+  if (!pzLive(tok) || !missOnBoard() || state.game.moves[state.game.moves.length - 1] !== mv || d.error) return;
+  pz.refute = d;
+  if (d.best_uci) mv.reply_uci = d.best_uci;
+  renderBoard(); renderNow();
+}
 function puzzleMove(uci) {
-  const g = state.game, i = g.moves.length;
+  const g = state.game;
+  if (missOnBoard() && state.ply === g.moves.length - 1) { g.moves.pop(); pz.wrong = null; pz.refute = null; renderMoveList(); }   // stepped back off the miss: try again from there
+  else if (missOnBoard()) { takeBackMiss(); }
+  const i = g.moves.length;
   if (state.ply !== i) { go(i); return; }            // stepped back through the moves: the puzzle carries on from its end
   const exp = pz.p.moves[i], last = i === pz.p.moves.length - 1;
   // auto-queening can't play the underpromotion a puzzle wants: the right squares are the right move
@@ -1554,6 +1692,7 @@ function puzzleMove(uci) {
   pz.hint = null;
   if (hit) {
     pz.wrong = null;
+    (pz.marks[i] = pz.marks[i] || []).push('ok');
     g.moves.push(puzzlePly(hit, i, 'best'));
     renderMoveList(); go(g.moves.length);
     if (last) return finishPuzzle();
@@ -1562,24 +1701,25 @@ function puzzleMove(uci) {
     setTimeout(() => { if (!pzLive(tok)) return; state.exploring = false; revealPuzzleMove(i + 1); renderPuzzleBox(); }, PZ_STEP_MS);
     return;
   }
-  // wrong: the move stands on the board for a moment with a miss badge, then goes back
+  // wrong: the move stays with a miss badge, and the engine says what it runs into (refuteMiss)
   const prov = applyMove(currentFen(), uci); if (!prov) return;
-  pz.wrong = prov.san;
+  pz.wrong = prov.san; pz.refute = null; pz.misses++;
+  (pz.marks[i] = pz.marks[i] || []).push('miss');
   if (!pz.failed) { pz.failed = true; reportPuzzle(false); }
-  g.moves.push(puzzlePly({ uci, san: prov.san, fen: prov.fen }, i, 'miss'));
-  renderMoveList(); go(g.moves.length);
-  play('illegal', 150);
-  const tok = pz.token;
-  state.exploring = true;
-  setTimeout(() => {
-    if (!pzLive(tok)) return;
-    go(i); g.moves.pop(); renderMoveList(); highlightCurrent();
-    state.exploring = false; renderBoard(); renderNow();
-  }, 700);
+  const mv = puzzlePly({ uci, san: prov.san, fen: prov.fen }, i, 'miss');
+  mv.refute = true;
+  g.moves.push(mv);
+  renderMoveList(); go(g.moves.length);     // no error sound: the engine's answer to it says enough
+  renderPuzzleBox();
+  refuteMiss(mv);
 }
 function finishPuzzle() {
   pz.done = true; state.exploring = false;
-  if (!pz.reported) reportPuzzle(true);
+  pz.ms = pz.t0 ? Date.now() - pz.t0 : null;
+  const reported = pz.reported ? null : reportPuzzle(true);
+  // solved, on a first try or not (a puzzle tried before only counts here): the packs it is in count it
+  const solved = !pz.shown && !ownPuzzle() ? fetch('api/puzzles/solved', { method: 'POST', body: JSON.stringify({ id: pz.p.id }) }) : null;
+  Promise.allSettled([reported, solved]).then(() => finishCtx(!pz.shown));
   if (!pz.shown) play('win', 250);     // solved, first try or not; a solution you were shown is not a win
   // from your games: the engine's line after the answer, to step through with ->
   const g = pz.game, f = pz.p.follow || [];
@@ -1597,15 +1737,18 @@ async function reportPuzzle(solved) {
 }
 function puzzleHint() {
   if (pz.done || state.exploring) return;
+  takeBackMiss();
   const i = state.game.moves.length;
   if (state.ply !== i) go(i);
   pz.hint = pz.p.moves[i].uci.slice(0, 2);
   pz.hinted = true;
+  (pz.marks[i] = pz.marks[i] || []).push('hint');
   if (!pz.reported) reportPuzzle(false);
   renderBoard(); renderNow();
 }
 function puzzleSolution() {
   if (pz.done || state.exploring) return;
+  takeBackMiss();
   pz.shown = true; pz.hint = null; pz.wrong = null;
   if (!pz.reported) reportPuzzle(false);
   const tok = pz.token;
@@ -1614,6 +1757,7 @@ function puzzleSolution() {
   const step = () => {
     if (!pzLive(tok)) return;
     const i = state.game.moves.length;
+    if (i % 2 === 1) (pz.marks[i] = pz.marks[i] || []).push('shown');
     revealPuzzleMove(i, i % 2 === 1 ? 'best' : null);
     if (i + 1 < pz.p.moves.length) setTimeout(step, PZ_STEP_MS * 1.5); else finishPuzzle();
   };
@@ -1633,22 +1777,45 @@ function renderPuzzleNow() {
       else el.innerHTML = top('best', 'Found it!', COLOR.best) + `<p>${was}${when}${more}</p>`;
       return;
     }
-    const delta = pz.delta == null ? '' : ` Your puzzle rating ${pz.delta >= 0 ? 'went up' : 'went down'} ${Math.abs(pz.delta)}.`;
-    if (pz.shown) el.innerHTML = top(null, 'Solution') + `<p>That's how it goes.${delta}${more}</p>`;
-    else if (pz.failed || pz.hinted) el.innerHTML = top('best', 'Solved', COLOR.best) + `<p>Got there in the end, but only the first try counts.${delta}</p>`;
-    else el.innerHTML = top('best', 'Solved!', COLOR.best) + `<p>${delta.trim() || 'Well played.'} Try other moves on the board to see why they don't work.</p>`;
+    const delta = pz.delta == null ? '' : pz.delta === 0 ? ' Your puzzle rating didn\'t move.' : ` Your puzzle rating ${pz.delta > 0 ? 'went up' : 'went down'} ${Math.abs(pz.delta)}.`;
+    const c = pz.ctx;
+    let tail = c && c.note ? `<p><b>${esc(c.note)}</b></p>` : '';
+    if (c && c.kind === 'daily') {
+      tail = c.result ? (c.replay ? '<p>Your result is from your first go today:</p>' : '') + resultCard(c.result, c.streak) : '';
+    }
+    const late = c && c.kind === 'pack' ? ' It counts toward the pack; the green squares are for first tries.' : c && c.kind === 'daily' ? '' : ' Only the first try counts toward your rating.';
+    if (pz.shown) el.innerHTML = top(null, 'Solution') + `<p>That's how it goes.${delta}${more}</p>` + tail;
+    else if (pz.failed || pz.hinted) el.innerHTML = top('best', 'Solved', COLOR.best) + `<p>Got there in the end.${late}${delta}</p>` + tail;
+    else el.innerHTML = top('best', 'Solved!', COLOR.best) + `<p>${delta.trim() || 'Well played.'} Try other moves on the board to see why they don't work.</p>` + tail;
+    if ($('pz-share')) $('pz-share').onclick = copyShare;
     return;
   }
-  if (pz.wrong) {
-    el.innerHTML = top('miss', `${esc(pz.wrong)} isn't it`, COLOR.miss) +
-      `<p>Try again. ${own ? 'This one comes back tomorrow.' : 'This puzzle no longer counts toward your rating.'}</p>`;
+  if (pz.wrong && missOnBoard()) {
+    const counts = own ? 'This one comes back tomorrow.' : pz.misses === 1 ? 'This puzzle no longer counts toward your rating.' : '';
+    if (state.ply < state.game.moves.length) {      // stepped back off it: the board is yours again
+      el.innerHTML = top(null, 'Try again') + `<p>Find a better move than ${esc(pz.wrong)}.</p>`;
+      return;
+    }
+    const r = pz.refute, opp = p.colour === 'white' ? 'Black' : 'White';
+    let why = '<p>Looking at what it runs into…</p>';
+    if (r && r.best_san) {
+      // r.eval is White's view ("+1.3", "-M2"): turned round to yours
+      const ev = r.eval || '', white = ev.startsWith('-') ? -1 : 1, yours = p.colour === 'white' ? white : -white;
+      const verdict = ev.includes('M') ? yours > 0 ? `there is still a mate, but a slower one (${ev.replace('-', '')})` : `${opp} mates in ${ev.replace(/^-?M/, '')}`
+        : `that leaves you ${yours > 0 ? '+' : '−'}${ev.replace(/^[-+]/, '')}${yours > 0 ? ', and there is better' : ''}`;
+      const line = (r.pv_san || []).slice(0, 5).join(' ');
+      why = `<p>${opp} answers <b>${esc(r.best_san)}</b> (the red arrow): ${verdict}.</p>` + (line ? `<p class="pzline">${esc(line)}</p>` : '');
+    } else if (r) why = '';
+    el.innerHTML = top('miss', `${esc(pz.wrong)} isn't it`, COLOR.miss) + why +
+      `<p>Press Retry, or ← to take it back. ${counts}</p>`;
     return;
   }
   if (pz.hint) { el.innerHTML = top(null, 'Hint') + `<p>Move the highlighted piece.</p>`; return; }
   const mine = state.game.moves.filter(m => m.is_mine).length;
   if (mine) el.innerHTML = top('best', 'Best move!', COLOR.best) + `<p>Keep going…</p>`;
   else if (own) el.innerHTML = top(null, 'Your turn') + `<p>Against ${esc(p.game.opponent || 'your opponent')} you played <b>${esc(p.game.played_san)}</b> here. Find the move for ${side} that stood out.</p>`;
-  else el.innerHTML = top(null, 'Your turn') + `<p>Find the best move for ${side}.</p>`;
+  else el.innerHTML = top(null, 'Your turn') + `<p>Find the best move for ${side}.</p>` +
+    (pz.ctx && pz.ctx.replay ? `<p>You've played today's already, so this go doesn't change your result.</p>` : '');
 }
 async function puzzleThemes() {
   if (pz.themes) return pz.themes;
@@ -1692,18 +1859,23 @@ function renderPuzzleBox() {
       const label = s.stats ? `${s.name} (${s.stats.due ? s.stats.due + ' due, ' : ''}${s.stats.new} new)` : s.name;
       return `<option value="${esc(s.id)}"${s.id === pz.source ? ' selected' : ''}>${esc(label)}</option>`;
     }).join('') + `</select>`;
+  } else if (pz.ctx) {
+    pick = `<span style="flex:1"></span>`;     // a pack's puzzles come in order, the daily is the daily
   } else {
     const opts = (pz.themes || []).map(t => `<option value="${t.id}"${t.id === pz.theme ? ' selected' : ''}>${esc(t.name)} (${t.count.toLocaleString()})</option>`).join('');
     pick = `<select id="pz-theme" title="Only puzzles with this theme"><option value="">All themes</option>${opts}</select>`;
   }
+  const retry = !pz.done && missOnBoard() ? `<button class="primary" id="pz-retry" title="Take the wrong move back and try again (←)">↺ Retry</button>` : '';
   $('pzbox').innerHTML = head +
-    `<div class="pzbtns"><button id="pz-hint" title="Highlight the piece to move. The puzzle then counts as not solved."${busy ? ' disabled' : ''}>💡 Hint</button>` +
+    `<div class="pzbtns">${retry}<button id="pz-hint" title="Highlight the piece to move. The puzzle then counts as not solved."${busy ? ' disabled' : ''}>💡 Hint</button>` +
     `<button id="pz-sol" title="Play the solution out. The puzzle counts as not solved."${busy ? ' disabled' : ''}>Solution</button>` +
-    `<button class="${pz.done ? 'primary' : ''}" id="pz-next" title="${pz.done ? 'Next puzzle (n)' : 'Skip this one: it is not counted (n)'}">${pz.done ? 'Next puzzle →' : 'Skip'}</button></div>` +
+    (pz.ctx && pz.ctx.kind === 'daily' ? `<button class="${pz.done ? 'primary' : ''}" id="pz-next" title="To the puzzle packs (n)">${pz.done ? 'Puzzle packs →' : 'Leave'}</button></div>`
+      : `<button class="${pz.done ? 'primary' : ''}" id="pz-next" title="${pz.done ? 'Next puzzle (n)' : 'Skip this one: it is not counted (n)'}">${pz.done ? (pz.ctx && pz.ctx.n >= pz.ctx.size ? 'Back to the stages →' : 'Next puzzle →') : 'Skip'}</button></div>`) +
     `<div class="pzinfo">${info}</div>` +
     `<div class="pzfoot">${pick}<button id="pz-analyse" title="Open this position in the sandbox">Analyse</button></div>`;
   $('pz-hint').onclick = puzzleHint;
   $('pz-sol').onclick = puzzleSolution;
+  if ($('pz-retry')) $('pz-retry').onclick = takeBackMiss;
   $('pz-next').onclick = nextPuzzle;
   $('pz-analyse').onclick = () => { location.hash = '#/sandbox/' + encodeURIComponent(currentFen()); };
   if ($('pz-reset')) $('pz-reset').onclick = resetRating;
@@ -1722,7 +1894,13 @@ function renderPuzzleBox() {
   if (!own && !pz.themes) puzzleThemes().then(() => { if (pz.p === p) renderPuzzleBox(); });
   if (!pz.sources) puzzleSources().then(() => { if (pz.p === p) { renderPuzzleBox(); if (own) $('crumb').textContent = `Personal puzzles · ${profileName(p.profile)}`; } });
 }
-function nextPuzzle() { if (!state.exploring || pz.done) { pz.sources = null; location.hash = dealHash(pz.source); } }
+function nextPuzzle() {
+  if (state.exploring && !pz.done) return;
+  const c = pz.ctx;
+  if (c && c.kind === 'daily') { location.hash = '#/packs'; return; }
+  if (c) { location.hash = c.n < c.size ? `#/packs/${c.pack}/${c.stage}/${c.n + 1}` : '#/packs/' + c.pack; return; }   // the end of a stage: back to the ladder
+  pz.sources = null; location.hash = dealHash(pz.source);
+}
 // The library rating starts over at 1500. The server moves the record aside (puzzle_attempts.reset-<when>.jsonl),
 // so renaming it back undoes this; the puzzles tried before stay out of the deal.
 async function resetRating() {
@@ -1736,6 +1914,14 @@ async function resetRating() {
 }
 // the home tiles: the library rating once there is one; the puzzles from your games, and the reviews due
 async function renderPuzzleCards() {
+  renderCovers($('home'));
+  fetch('api/puzzles/packs').then(r => r.json()).then(d => {
+    const dl = d.daily, r = dl.result, going = d.packs.filter(k => k.solved && !k.done);
+    $('card-daily-desc').textContent = r ? `#${dl.n} ${r.clean ? 'solved without a mistake' : r.solved ? 'solved' : 'played'}.${dl.streak ? ` 🔥 ${dl.streak}-day streak.` : ''} Open it to share your result.`
+      : `#${dl.n} is waiting: one tougher puzzle, the same for everyone today.${dl.streak ? ` 🔥 ${dl.streak}-day streak, keep it going.` : ''}`;
+    const done = d.packs.filter(k => k.done).length;
+    if (going.length || done) $('card-packs-desc').textContent = (going.length ? `${going.slice(0, 2).map(k => `${k.name}: stage ${k.current} of ${k.n_stages}`).join(' · ')}.` : '') + (done ? ` ${done} pack${done > 1 ? 's' : ''} complete.` : '');
+  }).catch(() => {});
   let st, srcs;
   try { [st, srcs] = await Promise.all([fetch('api/puzzles/themes').then(r => r.json()).then(d => d.stats), puzzleSources()]); } catch (e) { return; }
   $('card-library-desc').textContent = st && st.played ? `Puzzle rating ${st.rating}${st.provisional ? '?' : ''} · ${st.solved} of ${st.played} solved. Pick a theme, or take them as they come.`
@@ -1746,6 +1932,191 @@ async function renderPuzzleCards() {
   const names = mine.map(s => s.name).join(', ');
   $('card-mine-desc').textContent = total ? `${due ? `${due} review${due > 1 ? 's' : ''} due · ` : ''}${fresh} new · ${total} puzzle${total > 1 ? 's' : ''} from ${names}'s games.`
     : 'The moves you missed in a player\'s games, from a profile or any username, back until you find them.';
+}
+
+// ---------- puzzle packs and the puzzle of the day (packs.py) ----------
+// The shelf (#/packs) shows every pack by family with its progress; a pack (#/packs/<id>) is its ladder of stages,
+// a numbered cell per puzzle; #/packs/<id>/<stage>/<n> plays one, and Next goes on to the one after it. A stage
+// opens once STAGE_PASS of the one before is solved (the server says which are open). The puzzle of the day
+// (#/daily) is the same for everyone on a date; its first showing is kept, with a result to copy and share.
+// Both play Lichess puzzles through showPuzzle(), with pz.ctx saying where from, so the rating still counts first tries.
+const packCache = {};
+// Covers: [the big piece, up to two small ones] from your piece set, and a mark for the mates; tinted by family.
+const FAMILY_COLOR = { Intro: '#81b64c', Motifs: '#5c9fd6', Mates: '#e8604c', Endgames: '#e0a53a', Mania: '#a879e0' };
+const COVERS = {
+  'mate-in-one': [['wq', 'bk'], '#1'], 'hanging': [['wn', 'bb']], 'first-forks': [['wn', 'br']],
+  'forks': [['wn', 'bk', 'bq']], 'pins': [['wb', 'bn', 'bk']], 'skewers': [['wr', 'bk', 'bq']], 'discovered': [['wb', 'wr', 'bk']],
+  'deflection': [['wq', 'br']], 'removing-defender': [['wr', 'bn', 'bq']], 'sacrifices': [['wq', 'bp']],
+  'advanced-pawns': [['wp', 'wq']], 'quiet-moves': [['wb']], 'trapped': [['bb', 'wp', 'wp']], 'defence': [['wk', 'wr']],
+  'mate-in-two': [['wr', 'bk'], '#2'], 'mate-in-three': [['wb', 'bk'], '#3'], 'long-mates': [['wn', 'bk'], '#4+'],
+  'back-rank': [['wr', 'bk', 'bp']], 'named-mates': [['wn', 'wb', 'bk']], 'king-attack': [['wq', 'bk', 'bp']],
+  'pawn-endgames': [['wp', 'wk']], 'rook-endgames': [['wr', 'wk']], 'minor-endgames': [['wb', 'wn']], 'queen-endgames': [['wq', 'wk']],
+  'openings': [['wn', 'wp', 'bp']], 'mixed': [['wk', 'bq', 'wn']],
+  // the home tiles
+  'daily': [['wk'], null, '#e8b83a'], 'packs': [['wn', 'wb', 'wr'], null, '#5c9fd6'], 'library': [['wq', 'bk'], null, '#81b64c'], 'mine': [['wp', 'bp'], null, '#a879e0'],
+};
+function coverHtml(key, family, day) {
+  const [pcs, mark, colour] = COVERS[key] || [['wn']];
+  const fc = colour || FAMILY_COLOR[family] || 'var(--accent)';
+  const img = (c, cls) => `<img class="${cls}" src="${pieceUrl(c)}" alt="">`;
+  if (day) return `<div class="cover cal" style="--fc:${fc}"><span class="mon">${new Date().toLocaleDateString(undefined, { month: 'short' })}</span><span class="day">${day}</span></div>`;   // the daily: a calendar page
+  return `<div class="cover" style="--fc:${fc}">${img(pcs[0], 'm')}${pcs[1] ? img(pcs[1], 's1') : ''}${pcs[2] ? img(pcs[2], 's2') : ''}` +
+    (mark ? `<span class="mk">${esc(mark)}</span>` : '') + `</div>`;
+}
+function renderCovers(root = document) {
+  root.querySelectorAll('[data-cover]').forEach(el => {
+    const day = el.dataset.cover === 'daily' ? new Date().getDate() : null;
+    el.outerHTML = coverHtml(el.dataset.cover, null, day).replace('<div class="cover"', `<div class="cover" data-cover="${el.dataset.cover}"`);
+  });
+}
+// how hard, by rating: a name and a colour for the stage titles, the bars and the chips
+const DIFFS = [[1000, 'Beginner', '#81b64c'], [1400, 'Casual', '#3cbfae'], [1800, 'Intermediate', '#5c9fd6'], [2200, 'Advanced', '#a879e0'], [Infinity, 'Expert', '#e8604c']];
+const diffOf = r => DIFFS.find(d => r < d[0]);
+const diffChip = r => { const [, name, c] = diffOf(r); return `<span class="diff" style="--dc:${c}">${name}</span>`; };
+async function loadPack(id) {
+  const d = await (await fetch('api/puzzles/pack?id=' + encodeURIComponent(id))).json();
+  if (d.pack) packCache[id] = d.pack;
+  return d;
+}
+function leavePuzzleScreen(section) {
+  showSection(section);
+  document.body.classList.remove('sandbox', 'puzzle'); stopSandboxStream();
+  state.game = null; state.profile = null; state.games = null; dropVariation(); stopPlay();
+  setContext(false);
+}
+const packBadge = k => k.perfect ? '<span class="pbadge crown" title="Every puzzle solved first try">👑 Perfect</span>'
+  : k.done ? '<span class="pbadge" title="Every puzzle solved">✓ Complete</span>' : '';
+async function showShelf() {
+  leavePuzzleScreen('pzpacks'); $('crumb').textContent = 'Puzzle packs';
+  const box = $('pzpacksbox');
+  let d; try { d = await (await fetch('api/puzzles/packs')).json(); } catch (e) { box.innerHTML = '<div class="empty">Could not load the packs.</div>'; return; }
+  if (location.hash !== '#/packs') return;
+  const dl = d.daily, r = dl.result;
+  let html = `<h2>Puzzle of the day</h2><div class="cards"><div class="card pack covered" data-go="#/daily">${coverHtml('daily', null, +dl.date.slice(8))}<div class="cbody">` +
+    `<span class="who"><span class="wt">#${dl.n} · ${esc(fmtDay(dl.date))}</span>${r ? `<span class="pbadge">${r.clean ? '✓ Solved clean' : r.solved ? '✓ Solved' : 'Played'}</span>` : ''}</span>` +
+    `<span class="desc">${r ? 'Open it again, or copy your result to share.' : 'One tougher puzzle, the same for everyone today.'}</span>` +
+    `<span class="meta">${dl.streak ? `🔥 ${dl.streak}-day streak` : 'Solve it to start a streak'}${dl.best_streak > dl.streak ? ` · best ${dl.best_streak}` : ''}</span></div></div></div>`;
+  let fam = null;
+  for (const k of d.packs) {
+    if (k.family !== fam) { html += `${fam ? '</div>' : ''}<h2 style="color:${FAMILY_COLOR[k.family] || ''}">${esc(k.family)}</h2><div class="cards">`; fam = k.family; }
+    const pct = k.total ? 100 * k.solved / k.total : 0, dc = diffOf(k.current_lo)[2];
+    const where = k.done ? `${k.clean} of ${k.total} first try` : k.solved ? `Stage ${k.current} of ${k.n_stages} · ${k.solved} of ${k.total} solved` : `${k.n_stages} stages · ${k.total} puzzles`;
+    html += `<div class="card pack covered" data-go="#/packs/${k.id}">${coverHtml(k.id, k.family)}<div class="cbody"><span class="who"><span class="wt">${esc(k.name)}</span>${packBadge(k)}</span>` +
+      `<span class="desc">${esc(k.desc)}</span><div class="progress"><div style="width:${pct}%;background:${dc}"></div></div>` +
+      `<span class="meta">${where} · ${k.lo}–${k.hi}${k.solved && !k.done ? ' · now ' + diffChip(k.current_lo) : ''}</span></div></div>`;
+  }
+  box.innerHTML = html + (fam ? '</div>' : '');
+  box.querySelectorAll('[data-go]').forEach(el => el.onclick = () => { location.hash = el.dataset.go; });
+}
+const fmtDay = iso => new Date(iso + 'T12:00:00').toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+async function showLadder(id) {
+  leavePuzzleScreen('pzpacks');
+  const box = $('pzpacksbox');
+  let d; try { d = await loadPack(id); } catch (e) { d = { error: String(e) }; }
+  if (!d.pack) { toast(d.error || 'No such pack'); location.replace('#/packs'); return; }
+  if (location.hash !== '#/packs/' + id) return;
+  const k = d.pack;
+  $('crumb').textContent = `Puzzle packs · ${k.name}`;
+  let html = `<div class="ladhead">${coverHtml(k.id, k.family)}<h1 style="color:${FAMILY_COLOR[k.family] || ''}">${esc(k.name)}</h1>${packBadge(k)}<span class="meta">${k.solved} of ${k.total} solved · ${k.clean} first try</span></div>` +
+    `<p class="lead">${esc(k.desc)} Solve ${k.stages[0] ? k.stages[0].need : 24} of a stage's ${k.stages[0] ? k.stages[0].size : 30} to open the next.</p>`;
+  for (const s of k.stages) {
+    const cur = s.n === k.current, next = s.open ? s.puzzles.findIndex(c => c.state === 'new' || c.state === 'missed') : -1;
+    const status = !s.open ? '🔒 Solve more of the stage before' : s.solved === s.size ? (s.clean === s.size ? '👑 every one first try' : '✓ complete')
+      : s.solved >= s.need ? `${s.solved} of ${s.size} · the next stage is open` : `${s.solved} of ${s.size} · ${s.need - s.solved} more to open the next`;
+    html += `<div class="stage${cur ? ' current' : ''}${s.open ? '' : ' locked'}" style="--dc:${diffOf(s.lo)[2]}"><div class="sh"><b>Stage ${s.n}</b>${diffChip(s.lo)}<span class="meta">${s.lo}–${s.hi}</span><span class="meta">${status}</span></div>`;
+    if (s.open) html += `<div class="cells">` + s.puzzles.map((c, i) =>
+      `<div class="cell ${c.state === 'new' ? '' : c.state}${i === next && cur ? ' next' : ''}" data-go="#/packs/${k.id}/${s.n}/${i + 1}" title="${c.rating ? 'Rated ' + c.rating : ''}">${i + 1}</div>`).join('') + `</div>`;
+    html += `</div>`;
+  }
+  html += `<p class="meta legend" style="color:var(--muted);font-size:12px">Green: solved first try. Pale: solved after a miss or a hint. Red outline: not solved yet.</p>`;
+  box.innerHTML = html;
+  box.querySelectorAll('[data-go]').forEach(el => el.onclick = () => { location.hash = el.dataset.go; });
+  const c = box.querySelector('.stage.current'); if (c) c.scrollIntoView({ block: 'center' });
+  updateBack();
+}
+async function playPack(id, stage, n) {
+  let k = packCache[id];
+  if (!k) { try { k = (await loadPack(id)).pack; } catch (e) { k = null; } }
+  const s = k && k.stages.find(x => x.n === stage), c = s && s.puzzles[n - 1];
+  if (!c) { toast('No such puzzle'); location.replace(k ? '#/packs/' + id : '#/packs'); return; }
+  if (!s.open) { toast(`Stage ${stage} isn't open yet`); location.replace('#/packs/' + id); return; }
+  pz.ctx = { kind: 'pack', pack: id, name: k.name, stage, n, size: s.size };
+  return showPuzzle(c.id);
+}
+async function playDaily() {
+  let d; try { d = await (await fetch('api/puzzles/daily')).json(); } catch (e) { d = {}; }
+  if (!d.id) { toast('No puzzle of the day'); location.replace('#/'); return; }
+  pz.ctx = { kind: 'daily', n: d.n, date: d.date, result: d.result, streak: d.streak, best: d.best_streak, played: !!d.result, replay: !!d.result };
+  return showPuzzle(d.id);
+}
+// where a pack or daily puzzle sits, for the crumb and the Back link
+function ctxCrumb() {
+  const c = pz.ctx;
+  if (!c) return null;
+  if (c.kind === 'daily') return { crumb: `Puzzle of the day · #${c.n}`, back: '#/packs', label: '← Puzzle packs' };
+  return { crumb: `Puzzle packs · ${c.name} · stage ${c.stage} · ${c.n} of ${c.size}`, back: '#/packs/' + c.pack, label: '← ' + c.name };
+}
+// One mark per move of yours, for the share card: found first time, found after a miss or a hint, or shown.
+function shareMarks() {
+  const out = [];
+  for (let i = 1; i < pz.p.moves.length; i += 2) {
+    const m = pz.marks[i] || [];
+    out.push(m.includes('shown') ? 'shown' : m.includes('hint') ? 'hint' : m.includes('miss') ? 'miss' : 'ok');
+  }
+  return out;
+}
+// The result: drawn as a card in the coach's bubble, and copied as text with emoji squares (what chat apps show) and
+// a link to the app, so whoever it's sent to can get it and try the same puzzle.
+const SHARE_SQ = { ok: '🟩', miss: '🟨', hint: '💡', shown: '⬛' };
+const APP_URL = 'https://github.com/aris-ver/chess-review/releases/latest';
+const fmtTime = ms => ms ? `${Math.floor(ms / 60000)}:${String(Math.round(ms / 1000) % 60).padStart(2, '0')}` : '';
+function resultWords(r) {
+  if (!r.solved) return 'Not solved';
+  if (r.clean) return 'Solved without a mistake';
+  const n = k => (r.marks || []).filter(m => m === k).length, misses = n('miss'), hints = n('hint');
+  return 'Solved with ' + [misses ? `${misses} miss${misses > 1 ? 'es' : ''}` : '', hints ? `${hints} hint${hints > 1 ? 's' : ''}` : ''].filter(Boolean).join(' and ');
+}
+function shareText(r, streak) {
+  const t = fmtTime(r.ms);
+  return `Chess Review puzzle of the day #${r.n} · ${fmtDay(r.date)}\n${r.clean ? '✅' : r.solved ? '☑️' : '❌'} ${resultWords(r)}${t ? ' · ' + t : ''}\n` +
+    (r.marks || []).map(m => SHARE_SQ[m] || '⬜').join('') + (streak ? `\n🔥 ${streak}-day streak` : '') + `\nTry it yourself: ${APP_URL}`;
+}
+const SQ_TITLE = { ok: 'Found first time', miss: 'Found after a miss', hint: 'Found with a hint', shown: 'Shown the solution' };
+function resultCard(r, streak) {
+  const t = fmtTime(r.ms);
+  return `<div class="dres"><div class="dh">Puzzle of the day #${r.n} · ${esc(fmtDay(r.date))}</div>` +
+    `<div class="sq">${(r.marks || []).map((m, i) => `<span class="${m}" title="Move ${i + 1}: ${SQ_TITLE[m] || ''}">${m === 'hint' ? '💡' : ''}</span>`).join('')}</div>` +
+    `<div class="stats"><span>${resultWords(r)}</span>${t ? `<span>⏱ ${t}</span>` : ''}${streak ? `<span>🔥 ${streak}-day streak</span>` : ''}</div>` +
+    `<button id="pz-share" class="primary" title="Copies your result and a link to get the app">Copy result to share</button></div>`;
+}
+async function finishCtx(solved) {
+  const c = pz.ctx, p = pz.p;
+  if (!c || p.source === 'mine') return;
+  if (c.kind === 'daily') {
+    if (c.played) return;
+    const body = { id: p.id, solved, clean: solved && !pz.failed && !pz.hinted, ms: pz.ms, marks: shareMarks() };
+    let d; try { d = await (await fetch('api/puzzles/daily', { method: 'POST', body: JSON.stringify(body) })).json(); } catch (e) { return; }
+    if (pz.ctx !== c) return;
+    Object.assign(c, { result: d.result, streak: d.streak, best: d.best_streak, played: true });
+    renderNow(); renderPuzzleBox();
+    return;
+  }
+  const before = packCache[c.pack], st = before && before.stages.find(x => x.n === c.stage);
+  const was = st ? { solved: st.solved, open: before.stages.filter(x => x.open).length, done: before.done, perfect: before.perfect } : null;
+  let d; try { d = await loadPack(c.pack); } catch (e) { return; }
+  if (pz.ctx !== c || !d.pack || !was) return;
+  const k = d.pack, now = k.stages.find(x => x.n === c.stage);
+  if (k.perfect && !was.perfect) c.note = `👑 ${k.name}: every puzzle solved first try.`;
+  else if (k.done && !was.done) c.note = `✓ ${k.name} complete!`;
+  else if (k.stages.filter(x => x.open).length > was.open) c.note = `Stage ${c.stage + 1} is open.`;
+  else if (now && now.solved === now.size && was.solved < now.size) c.note = `Stage ${c.stage} complete.`;
+  else if (now && now.solved < now.need) c.note = `${now.need - now.solved} more in this stage to open the next.`;
+  renderNow();
+}
+function copyShare() {
+  const c = pz.ctx; if (!c || !c.result) return;
+  const text = shareText(c.result, c.streak);
+  (navigator.clipboard ? navigator.clipboard.writeText(text) : Promise.reject()).then(() => toast('Copied, with a link to the app: paste it to your friends'), () => toast('Could not copy'));
 }
 
 // ---------- personal puzzles: whose games, the state of their puzzles, and a new username to make them for ----------
@@ -2270,7 +2641,7 @@ async function showGame(id) {
   let g; try { g = await loadGame(id); } catch (e) { location.hash = state.profile ? `#/p/${state.profile}` : '#/'; return; }
   if (state.unseen && state.unseen.has(id)) { state.unseen.delete(id); fetch(`api/profiles/${state.profile}/games/${id}/seen`, { method: 'POST' }); }   // opened: no longer new
   document.body.classList.remove('sandbox', 'puzzle'); stopSandboxStream();
-  $('a-back').href = `#/p/${state.profile}`; $('a-back').textContent = '← Games'; $('a-insights2').href = `${P()}/insights.html`; $('ptitle-t').textContent = 'Game Review'; setContext(true);
+  $('a-insights2').href = `${P()}/insights.html`; $('ptitle-t').textContent = 'Game Review'; setContext(true);
   const same = state.game && state.game.id === id;
   state.game = g;
   if (!same) { stopPlay(); state.ply = 0; state.flipped = g.my_colour === 'black'; dropVariation(); state.sel = null; state.cycle = {}; $('pieces').innerHTML = ''; }
@@ -2672,7 +3043,8 @@ function takenSquare(mv) { const to = mv && mv.reply_uci ? mv.reply_uci.slice(2,
 // piece. The red arrow alone tells it -- what I'm losing -- so the green arrow stays off the board.
 function rescueMove(mv) { return !!(mv && mv.best_uci && takenSquare(mv) === mv.best_uci.slice(0, 2)); }
 // The reply to a bad move is drawn only when it is concrete: it takes something, or the move left something to take.
-function replyShown(mv) { return !!(mv && BAD.has(mv.label) && mv.reply_uci && (parseFen(currentFen())[mv.reply_uci.slice(2, 4)] || (mv.hung || []).length)); }
+// A puzzle's wrong move always gets it: the answer to it is the whole point.
+function replyShown(mv) { return !!(mv && BAD.has(mv.label) && mv.reply_uci && (mv.refute || parseFen(currentFen())[mv.reply_uci.slice(2, 4)] || (mv.hung || []).length)); }
 // Neither in the sandbox's live swarm nor at the end of a variation: there the arrows belong to the side to move.
 function sideToMoveArrows(mv) {
   const live = !!(state.game && state.game.sandbox && !state.showBest);
@@ -3325,7 +3697,7 @@ document.addEventListener('keydown', e => {
   else if (e.key === 'p') togglePlay();
   else if (e.key === 'n' && state.game.puzzle) nextPuzzle();
   else if (e.key === ' ') { nextKey(); e.preventDefault(); }
-  else if (e.key === 'Escape') { if (state.variation) { const p = Math.min(state.ply, state.variation.basePly); dropVariation(); renderMoveList(); go(p); update(false); } else location.hash = state.profile ? `#/p/${state.profile}` : '#/'; }
+  else if (e.key === 'Escape') { if (state.variation) { const p = Math.min(state.ply, state.variation.basePly); dropVariation(); renderMoveList(); go(p); update(false); } else goBack(); }
 });
 window.addEventListener('resize', () => state.game && renderEvalBar());
 
