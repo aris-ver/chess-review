@@ -1342,16 +1342,19 @@ async function showSandbox(fen) {
   update(false);
 }
 
-// ---------- puzzles: the review board plays a Lichess puzzle; the server picks it and keeps the rating ----------
+// ---------- puzzles: the review board plays a puzzle the server picks -- a Lichess one, or one from your own games ----------
 // The puzzle's moves are revealed into state.game.moves as they are played: the opponent's setup move first, then
-// each right answer and the reply to it. A wrong move is shown for a moment and taken back. The first try is what
-// counts: the result goes to the server the moment you go wrong, take a hint or the solution, or solve it.
+// each right answer and the reply to it. A wrong move is shown for a moment and taken back. Each showing reports
+// one result, the moment you go wrong, take a hint or the solution, or solve it: for a Lichess puzzle only the very
+// first try counts toward the rating; a puzzle from your games goes into its review schedule instead (1, 3, 7 days).
 const pz = { p: null, game: null, pending: null, token: 0, failed: false, hinted: false, reported: false, done: false, shown: false, wrong: null,
-             hint: null, t0: 0, stats: null, delta: null, themes: null, theme: '' };
-try { pz.theme = localStorage.getItem('puzzleTheme') || ''; } catch (e) {}
+             hint: null, t0: 0, stats: null, delta: null, review: null, themes: null, theme: '', source: 'lichess', sources: null };
+try { pz.theme = localStorage.getItem('puzzleTheme') || ''; pz.source = localStorage.getItem('puzzleSource') || 'lichess'; } catch (e) {}
 const PZ_STEP_MS = 450;   // the opponent's reply, and each move of a shown solution
+const ownPuzzle = () => !!pz.p && pz.p.source === 'mine';
 function puzzleGame(p) {
-  const side = c => ({ name: c === p.colour ? 'You' : 'Opponent', rating: null, accuracy: null, counts: {} });
+  const opp = p.game && p.game.opponent;
+  const side = c => ({ name: c === p.colour ? 'You' : opp || 'Opponent', rating: null, accuracy: null, counts: {} });
   return { id: 'puzzle-' + p.id, url: null, puzzle: true, played_at: null, time_control: null, time_class: null, termination: null,
            my_colour: p.colour, result: null, eco: null, opening_name: null, left_book_ply: 0, white: side('white'), black: side('black'),
            start_fen: p.fen, start_wp_white: null, start_eval_text: null, analysed: 1, moves: [], key_moments: [] };
@@ -1360,6 +1363,7 @@ function puzzlePly(m, i, label = null) {
   return { ply: i, san: m.san, uci: m.uci, fen: m.fen, label, is_mine: i % 2 === 1, wp_white: null, eval: null, wp_loss: null,
            best_san: null, best_uci: null, clock: null, spent: null, comment: [], hung: [], reply_uci: null, idea: [], next_best_uci: null, next_best_san: null };
 }
+const setPuzzleSource = s => { pz.source = s; try { localStorage.setItem('puzzleSource', s); } catch (e) {} };
 async function showPuzzle(id) {
   if (id && pz.p && pz.p.id === id && pz.game) {      // back to it (from the sandbox, say): where it was left
     state.profile = null; state.games = null; state.game = pz.game; dropVariation(); state.sel = null;
@@ -1367,24 +1371,29 @@ async function showPuzzle(id) {
     // finish what a timer was doing when you left: take back a wrong move, play the reply or the rest of the solution
     const mv = pz.game.moves, n = () => mv.length;
     if (n() && mv[n() - 1].label === 'miss') mv.pop();
-    if (!pz.done && pz.shown) { while (n() < pz.p.moves.length) mv.push(puzzlePly(pz.p.moves[n()], n(), n() % 2 ? 'best' : null)); pz.done = true; }
+    if (!pz.done && pz.shown) { while (n() < pz.p.moves.length) mv.push(puzzlePly(pz.p.moves[n()], n(), n() % 2 ? 'best' : null)); finishPuzzle(); }
     else if (!pz.done && n() < pz.p.moves.length && n() % 2 === 0) mv.push(puzzlePly(pz.p.moves[n()], n()));
-    state.ply = n(); state.exploring = false;
+    state.ply = Math.min(n(), pz.p.moves.length); state.exploring = false;
     enterPuzzleView(); renderMoveList(); update(false);
     return;
   }
   let d, r;
   if (id && pz.pending && pz.pending.puzzle.id === id) { d = pz.pending; r = { ok: true }; }
   else {
-    const q = id ? `get?id=${encodeURIComponent(id)}` : `next?themes=${encodeURIComponent(pz.theme)}` + (pz.p ? `&skip=${pz.p.id}` : '');
+    const skip = pz.p ? `&skip=${pz.p.id}` : '';
+    const q = id ? `get?id=${encodeURIComponent(id)}` : pz.source.startsWith('mine:') ? `next?source=${encodeURIComponent(pz.source)}${skip}`
+      : `next?themes=${encodeURIComponent(pz.theme)}${skip}`;
     try { r = await fetch('api/puzzles/' + q); d = await r.json(); } catch (e) { d = { error: String(e) }; r = { ok: false }; }
   }
   pz.pending = null;
   if (!r.ok) {
-    if (d.stats) pz.stats = d.stats;
-    toast(d.error || 'No puzzle');
-    if (!id && pz.theme) { pz.theme = ''; try { localStorage.setItem('puzzleTheme', ''); } catch (e) {} location.replace('#/puzzles'); }
-    else location.hash = '#/';
+    if (!id && pz.source !== 'lichess') {     // nothing due from your games: say when, and carry on with Lichess puzzles
+      const st = d.stats || {}, when = st.next_due ? ` The next review is due ${dueText(st.next_due)}.` : '';
+      const msg = d.error || 'No puzzle';
+      toast(`${msg[0].toUpperCase() + msg.slice(1)}.${when} Lichess puzzles meanwhile.`, 6000);
+      setPuzzleSource('lichess'); return showPuzzle();     // already at #/puzzles: setting it again would change nothing
+    } else if (!id && pz.theme) { toast(d.error || 'No puzzle'); pz.theme = ''; try { localStorage.setItem('puzzleTheme', ''); } catch (e) {} return showPuzzle(); }
+    else { toast(d.error || 'No puzzle'); location.hash = '#/'; }
     return;
   }
   if (!id) {     // the URL names the puzzle, so a reload keeps it; Back skips the bare #/puzzles that would deal a new one
@@ -1394,6 +1403,14 @@ async function showPuzzle(id) {
     return;
   }
   startPuzzle(d.puzzle, d.stats);
+}
+// "in 3 days", "tomorrow", "in 5 hours": when a review comes round, from a unix time
+function dueText(ts) {
+  const s = ts - Date.now() / 1000;
+  if (s < 3600) return 'within the hour';
+  if (s < 20 * 3600) return `in ${Math.round(s / 3600)} hours`;
+  const days = Math.round(s / 86400);
+  return days <= 1 ? 'tomorrow' : `in ${days} days`;
 }
 const pzLive = tok => tok === pz.token && !!state.game && state.game === pz.game;   // a timer still belongs to the puzzle on screen
 function enterPuzzleView() {
@@ -1406,7 +1423,8 @@ function enterPuzzleView() {
 }
 function startPuzzle(p, stats) {
   const tok = ++pz.token;
-  Object.assign(pz, { p, stats, failed: false, hinted: false, reported: false, done: false, shown: false, wrong: null, hint: null, delta: null, t0: 0 });
+  Object.assign(pz, { p, stats, failed: false, hinted: false, reported: false, done: false, shown: false, wrong: null, hint: null, delta: null, review: null, t0: 0 });
+  setPuzzleSource(p.source === 'mine' ? 'mine:' + p.profile : 'lichess');   // opened by its URL: the trainer carries on from the same place
   state.profile = null; state.games = null; state.game = pz.game = puzzleGame(p);
   state.ply = 0; state.flipped = p.colour === 'black'; dropVariation(); state.sel = null; state.cycle = {}; $('pieces').innerHTML = '';
   state.exploring = true;     // the board waits for the setup move
@@ -1459,6 +1477,9 @@ function finishPuzzle() {
   pz.done = true; state.exploring = false;
   if (!pz.reported) reportPuzzle(true);
   if (!pz.shown) play('win', 250);     // solved, first try or not; a solution you were shown is not a win
+  // from your games: the engine's line after the answer, to step through with ->
+  const g = pz.game, f = pz.p.follow || [];
+  if (f.length && g.moves.length === pz.p.moves.length) { f.forEach((m, k) => g.moves.push(puzzlePly(m, pz.p.moves.length + k))); renderMoveList(); highlightCurrent(); renderNav(); }
   renderNow(); renderPuzzleBox();
 }
 async function reportPuzzle(solved) {
@@ -1466,8 +1487,9 @@ async function reportPuzzle(solved) {
   const p = pz.p;
   let d; try { d = await (await fetch('api/puzzles/attempt', { method: 'POST', body: JSON.stringify({ id: p.id, solved, hinted: pz.hinted, ms: pz.t0 ? Date.now() - pz.t0 : null }) })).json(); } catch (e) { return; }
   if (pz.p !== p || !d.stats) return;
-  pz.stats = d.stats; pz.delta = d.counted ? d.stats.last_delta : null;
+  pz.stats = d.stats; pz.delta = d.counted ? d.stats.last_delta : null; pz.review = d.review || null;
   renderPuzzleBox(); renderNow();
+  if (p.source === 'mine') puzzleSources().then(() => { if (pz.p === p) renderPuzzleBox(); });   // the picker's due/new counts
 }
 function puzzleHint() {
   if (pz.done || state.exploring) return;
@@ -1494,20 +1516,34 @@ function puzzleSolution() {
   step();
 }
 function renderPuzzleNow() {
-  const el = $('now'), p = pz.p, side = p.colour === 'white' ? 'White' : 'Black';
+  const el = $('now'), p = pz.p, side = p.colour === 'white' ? 'White' : 'Black', own = ownPuzzle();
   const top = (ic, text, colour) => `<div class="top">${ic ? icon(ic) : ''}<span class="verdict"${colour ? ` style="color:${colour}"` : ''}>${text}</span></div>`;
   if (!state.game.moves.length) { el.innerHTML = top(null, 'Get ready…') + `<p>Watch the opponent's move.</p>`; return; }
   if (pz.done) {
+    const more = p.follow && p.follow.length ? ' Press → to see how the engine goes on.' : ' Step through the moves, or try your own on the board.';
+    if (own) {
+      const rv = pz.review, when = !rv ? '' : rv.learned ? ' Learned: it won\'t come back.' : ` It comes back ${dueText(rv.due)}.`;
+      const was = `In the game you played ${esc(p.game.played_san)}; ${esc(p.moves[1].san)} was the move.`;
+      if (pz.shown) el.innerHTML = top(null, 'Solution') + `<p>${was}${when}${more}</p>`;
+      else if (pz.failed || pz.hinted) el.innerHTML = top('best', 'Found it', COLOR.best) + `<p>Got there in the end.${when}${more}</p>`;
+      else el.innerHTML = top('best', 'Found it!', COLOR.best) + `<p>${was}${when}${more}</p>`;
+      return;
+    }
     const delta = pz.delta == null ? '' : ` Your puzzle rating ${pz.delta >= 0 ? 'went up' : 'went down'} ${Math.abs(pz.delta)}.`;
-    if (pz.shown) el.innerHTML = top(null, 'Solution') + `<p>That's how it goes.${delta} Step through the moves, or try your own on the board.</p>`;
+    if (pz.shown) el.innerHTML = top(null, 'Solution') + `<p>That's how it goes.${delta}${more}</p>`;
     else if (pz.failed || pz.hinted) el.innerHTML = top('best', 'Solved', COLOR.best) + `<p>Got there in the end, but only the first try counts.${delta}</p>`;
     else el.innerHTML = top('best', 'Solved!', COLOR.best) + `<p>${delta.trim() || 'Well played.'} Try other moves on the board to see why they don't work.</p>`;
     return;
   }
-  if (pz.wrong) { el.innerHTML = top('miss', `${esc(pz.wrong)} isn't it`, COLOR.miss) + `<p>Try again. This puzzle no longer counts toward your rating.</p>`; return; }
+  if (pz.wrong) {
+    el.innerHTML = top('miss', `${esc(pz.wrong)} isn't it`, COLOR.miss) +
+      `<p>Try again. ${own ? 'This one comes back tomorrow.' : 'This puzzle no longer counts toward your rating.'}</p>`;
+    return;
+  }
   if (pz.hint) { el.innerHTML = top(null, 'Hint') + `<p>Move the highlighted piece.</p>`; return; }
   const mine = state.game.moves.filter(m => m.is_mine).length;
   if (mine) el.innerHTML = top('best', 'Best move!', COLOR.best) + `<p>Keep going…</p>`;
+  else if (own) el.innerHTML = top(null, 'Your turn') + `<p>Against ${esc(p.game.opponent || 'your opponent')} you played <b>${esc(p.game.played_san)}</b> here. Find the move for ${side} that stood out.</p>`;
   else el.innerHTML = top(null, 'Your turn') + `<p>Find the best move for ${side}.</p>`;
 }
 async function puzzleThemes() {
@@ -1515,38 +1551,76 @@ async function puzzleThemes() {
   try { const d = await (await fetch('api/puzzles/themes')).json(); pz.themes = d.themes; if (!pz.stats) pz.stats = d.stats; } catch (e) { pz.themes = []; }
   return pz.themes;
 }
+async function puzzleSources() {
+  try { pz.sources = (await (await fetch('api/puzzles/sources')).json()).sources; } catch (e) { pz.sources = pz.sources || []; }
+  return pz.sources;
+}
 function renderPuzzleBox() {
   const st = pz.stats, p = pz.p; if (!p) return;
-  const delta = pz.delta == null ? '' : `<span class="delta ${pz.delta >= 0 ? 'up' : 'down'}">${pz.delta >= 0 ? '+' : '−'}${Math.abs(pz.delta)}</span>`;
-  const head = st ? `<div class="pzhead"><span class="r">${st.rating}${st.provisional ? '<small>?</small>' : ''}</span>${delta}` +
-    `<span class="meta">Puzzle rating<br>${st.played ? `${st.solved} of ${st.played} solved · streak ${st.streak}` : 'Solve one to start it moving'}</span></div>` : '';
+  const own = ownPuzzle();
+  let head = '';
+  if (own && st) {
+    head = `<div class="pzhead"><span class="r">Your games</span>` +
+      `<span class="meta">${esc(p.profile.replace(/^[a-z]+-/, ''))}<br>${st.due} due · ${st.new} new · ${st.learning} waiting · ${st.learned} learned</span></div>`;
+  } else if (st && st.rating != null) {
+    const delta = pz.delta == null ? '' : `<span class="delta ${pz.delta >= 0 ? 'up' : 'down'}">${pz.delta >= 0 ? '+' : '−'}${Math.abs(pz.delta)}</span>`;
+    head = `<div class="pzhead"><span class="r">${st.rating}${st.provisional ? '<small>?</small>' : ''}</span>${delta}` +
+      `<span class="meta">Puzzle rating<br>${st.played ? `${st.solved} of ${st.played} solved · streak ${st.streak}` : 'Solve one to start it moving'}</span></div>`;
+  }
   const busy = pz.done || state.exploring || !state.game.moves.length;
-  const tags = pz.done ? p.themes.filter(t => !['short', 'long', 'veryLong', 'oneMove'].includes(t.id)).map(t => `<span class="tag">${esc(t.name)}</span>`).join('') : '';
+  let info;
+  if (own) {
+    const g = p.game;
+    info = `From your ${esc(g.time_class || '')} game against ${esc(g.opponent || '?')}${g.date ? ` · ${esc(g.date)}` : ''}` +
+      (pz.done ? ` · <a href="#" id="pz-game">View in game</a>` : '');
+  } else {
+    const tags = pz.done ? p.themes.filter(t => !['short', 'long', 'veryLong', 'oneMove'].includes(t.id)).map(t => `<span class="tag">${esc(t.name)}</span>`).join('') : '';
+    info = `Puzzle ${esc(p.id)} · rated ${pz.done ? p.rating : '?'}${tags ? ' · ' + tags : ''}` +
+      (pz.done && p.game_url ? ` · <a href="${esc(p.game_url)}" target="_blank">Lichess game ↗</a>` : '');
+  }
+  const src = (pz.sources || [{ id: 'lichess', name: 'Lichess puzzles', count: 0 }]).map(s => {
+    const label = s.id === 'lichess' ? 'Lichess puzzles' : `Your games: ${s.name} (${s.stats.due ? s.stats.due + ' due, ' : ''}${s.stats.new} new)`;
+    return `<option value="${esc(s.id)}"${s.id === pz.source ? ' selected' : ''}>${esc(label)}</option>`;
+  }).join('');
   const theme = pz.theme;
   const opts = (pz.themes || []).map(t => `<option value="${t.id}"${t.id === theme ? ' selected' : ''}>${esc(t.name)} (${t.count.toLocaleString()})</option>`).join('');
   $('pzbox').innerHTML = head +
     `<div class="pzbtns"><button id="pz-hint" title="Highlight the piece to move. The puzzle then counts as not solved."${busy ? ' disabled' : ''}>💡 Hint</button>` +
     `<button id="pz-sol" title="Play the solution out. The puzzle counts as not solved."${busy ? ' disabled' : ''}>Solution</button>` +
     `<button class="${pz.done ? 'primary' : ''}" id="pz-next" title="${pz.done ? 'Next puzzle (n)' : 'Skip this one: it is not counted (n)'}">${pz.done ? 'Next puzzle →' : 'Skip'}</button></div>` +
-    `<div class="pzinfo">Puzzle ${esc(p.id)} · rated ${pz.done ? p.rating : '?'}${tags ? ' · ' + tags : ''}` +
-    (pz.done && p.game_url ? ` · <a href="${esc(p.game_url)}" target="_blank">Lichess game ↗</a>` : '') + `</div>` +
-    `<div class="pzfoot"><select id="pz-theme" title="Only puzzles with this theme"><option value="">All themes</option>${opts}</select>` +
+    `<div class="pzinfo">${info}</div>` +
+    `<div class="pzfoot"><select id="pz-source" title="Where the puzzles come from">${src}</select>` +
+    (own ? '' : `<select id="pz-theme" title="Only puzzles with this theme"><option value="">All themes</option>${opts}</select>`) +
     `<button id="pz-analyse" title="Open this position in the sandbox">Analyse</button></div>`;
   $('pz-hint').onclick = puzzleHint;
   $('pz-sol').onclick = puzzleSolution;
   $('pz-next').onclick = nextPuzzle;
   $('pz-analyse').onclick = () => { location.hash = '#/sandbox/' + encodeURIComponent(currentFen()); };
-  $('pz-theme').onchange = e => {
+  $('pz-source').onchange = e => { setPuzzleSource(e.target.value); nextPuzzle(); };
+  if ($('pz-theme')) $('pz-theme').onchange = e => {
     pz.theme = e.target.value; try { localStorage.setItem('puzzleTheme', pz.theme); } catch (err) {}
     nextPuzzle();
   };
+  if ($('pz-game')) $('pz-game').onclick = e => {       // the review of that game, on the move you played
+    e.preventDefault();
+    const g = p.game;
+    state.game = null; state.exploring = false;
+    state.resume = { id: g.slug, ply: g.ply + 1, flipped: p.colour === 'black' };
+    location.hash = `#/p/${p.profile}/game/${g.slug}`;
+  };
   if (!pz.themes) puzzleThemes().then(() => { if (pz.p === p) renderPuzzleBox(); });
+  if (!pz.sources) puzzleSources().then(() => { if (pz.p === p) renderPuzzleBox(); });
 }
-function nextPuzzle() { if (!state.exploring || pz.done) location.hash = '#/puzzles'; }
-// the home card: your puzzle rating once there is one
+function nextPuzzle() { if (!state.exploring || pz.done) { pz.sources = null; location.hash = '#/puzzles'; } }
+// the home card: your puzzle rating once there is one, and the reviews due from your games
 async function renderPuzzleCard() {
-  let st; try { st = (await (await fetch('api/puzzles/themes')).json()).stats; } catch (e) { return; }
-  if (st && st.played) $('card-puzzles-desc').textContent = `Puzzle rating ${st.rating}${st.provisional ? '?' : ''} · ${st.solved} of ${st.played} solved. Rated tactics from Lichess, picked near your level.`;
+  let st, srcs;
+  try { [st, srcs] = await Promise.all([fetch('api/puzzles/themes').then(r => r.json()).then(d => d.stats), puzzleSources()]); } catch (e) { return; }
+  const due = (srcs || []).reduce((n, s) => n + (s.stats ? s.stats.due : 0), 0);
+  const parts = [];
+  if (st && st.played) parts.push(`Puzzle rating ${st.rating}${st.provisional ? '?' : ''} · ${st.solved} of ${st.played} solved.`);
+  if (due) parts.push(`${due} review${due > 1 ? 's' : ''} due from your games.`);
+  $('card-puzzles-desc').textContent = parts.length ? parts.join(' ') : 'Rated tactics from Lichess, and the moves you missed in your own games.';
 }
 
 // ---------- board setup: a chess.com-style editor -> a FEN handed to the sandbox ----------

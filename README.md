@@ -47,6 +47,12 @@ you can keep trying. Only the first try counts (a hint or the solution counts as
 `data/puzzle_attempts.jsonl` and the rating (Glicko-1) is replayed from that file (`puzzles.py`). Once a puzzle is
 over, the board is free to explore like a review. Pick a theme (fork, mate in 2, rook endgame, …) under the
 buttons. `python scripts/build_puzzle_pack.py lichess_db_puzzle.csv.zst` rebuilds the pack from a fresh download.
+The picker next to it switches to **Your games** (one entry per profile, `own_puzzles.py`): the moves where you
+went wrong while level or better although MultiPV says one move clearly stood out, replayed from the opponent's
+move before yours. You find that one move; the engine's line after it is then there to step through with →, and
+**View in game** opens the review on the move you played. These stay out of the rating: every showing is logged
+in the profile's `puzzle_attempts.jsonl`, and a miss comes back after 1, then 3, then 7 days (a miss starts it
+over); found first time or at the 7-day review, it is learned.
 
 Pieces, boards and sounds are Lichess's free sets — 35 piece sets, 25 boards, 5 sound packs — in
 `chess_review/static/themes/` (`themes.json` lists them, `CREDITS.md` names each author and licence), synced into
