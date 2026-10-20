@@ -30,9 +30,13 @@
     GET  /api/settings                  the page's saved preferences (volume, theme, ...): {key: string}
     POST /api/settings                  {key: string | null} -> merged into DATA/settings.json (null removes the key)
     GET  /api/puzzles/next[?themes=a,b&skip=id]   a puzzle near your puzzle rating, not tried before -> {puzzle, stats}
-    GET  /api/puzzles/get?id=           one puzzle by id (a reload, or Back to it) -> {puzzle, stats}
+    GET  /api/puzzles/next?source=mine:<profile>[&skip=id]   from that profile's games: a review that is due, else a
+                                        new one -> {puzzle, stats}; 404 {error, stats} when there is neither
+    GET  /api/puzzles/get?id=           one puzzle by id, Lichess or your games (a reload, or Back to it) -> {puzzle, stats}
     GET  /api/puzzles/themes            the pack's themes with readable names and counts, and your stats
-    POST /api/puzzles/attempt           {id, solved, ms?, hinted?} -> the first try at a puzzle recorded; {stats, counted}
+    GET  /api/puzzles/sources           what the trainer can deal from: the Lichess pack, and each profile with puzzles
+    POST /api/puzzles/attempt           {id, solved, ms?, hinted?} -> a Lichess puzzle's first try recorded {stats, counted};
+                                        a puzzle from your games: every showing recorded {stats, review}
 
     /                                   the app (data/site)
     /p/<id>/...                         a profile's games.json, games/<slug>.json, insights.html
@@ -59,7 +63,7 @@ from urllib.parse import parse_qs, unquote, urlparse
 import chess
 import requests
 
-from . import aggregates, classify, ingest, normalise, profiles, puzzles, site, updater
+from . import aggregates, classify, ingest, normalise, own_puzzles, profiles, puzzles, site, updater
 from .analyse import Analyser, export_parquet, open_db, pending_keys
 from .config import DATA, DEFAULT_NODES, ENGINE_IDLE_SECONDS, MULTIPV_N, SITE_DIR, USER_AGENT
 from .db import base_views
@@ -415,14 +419,37 @@ class Handler(SimpleHTTPRequestHandler):
         pack = puzzles.PACK_INSTANCE
         if what == "themes":
             return self._json({"themes": pack.themes(), "total": len(pack.rows()), "stats": puzzles.stats(puzzles.attempts())})
+        if what == "sources":
+            out = [{"id": "lichess", "name": "Lichess puzzles", "count": len(pack.rows())}]
+            for p in profiles.list_profiles():
+                st = own_puzzles.summary(p)
+                if st["total"]:
+                    out.append({"id": f"mine:{p.id}", "name": p.username, "count": st["total"], "stats": st})
+            return self._json({"sources": out})
         if what == "next":
+            source = q.get("source", ["lichess"])[0]
+            if source.startswith("mine:"):
+                prof = profiles.load(source[5:])
+                if prof is None:
+                    return self._json({"error": "unknown profile"}, 404)
+                p, st = own_puzzles.next_puzzle(prof, q.get("skip", [None])[0])
+                if p is None:
+                    msg = "no puzzles from these games yet: analyse some games first" if not st["total"] else "all caught up with your games"
+                    return self._json({"error": msg, "stats": st}, 404)
+                return self._json({"puzzle": p, "stats": st})
             themes = {t for t in q.get("themes", [""])[0].split(",") if t}
             p, st = puzzles.next_puzzle(themes or None, q.get("skip", [None])[0])
             if p is None:
                 return self._json({"error": "no puzzles left with those themes", "stats": st}, 404)
             return self._json({"puzzle": p, "stats": st})
         if what == "get":
-            row = pack.get(q.get("id", [""])[0])
+            pid = q.get("id", [""])[0]
+            if own_puzzles.is_own_id(pid):
+                p = own_puzzles.POOL.find(pid)
+                if p is None:
+                    return self._json({"error": "unknown puzzle"}, 404)
+                return self._json({"puzzle": p, "stats": own_puzzles.summary(profiles.load(p["profile"]))})
+            row = pack.get(pid)
             if row is None:
                 return self._json({"error": "unknown puzzle"}, 404)
             return self._json({"puzzle": puzzles.line(row), "stats": puzzles.stats(puzzles.attempts())})
@@ -538,12 +565,17 @@ class Handler(SimpleHTTPRequestHandler):
             return self._json({"ok": True})
         if path == "/api/puzzles/attempt":
             b = self._body()
-            row = puzzles.PACK_INSTANCE.get(str(b.get("id", "")))
+            pid, ms = str(b.get("id", "")), b.get("ms")
+            ms = int(ms) if isinstance(ms, (int, float)) else None
+            if own_puzzles.is_own_id(pid):
+                p = own_puzzles.POOL.find(pid)
+                if p is None:
+                    return self._json({"error": "unknown puzzle"}, 404)
+                return self._json(own_puzzles.record(profiles.load(p["profile"]), pid, bool(b.get("solved")), ms, bool(b.get("hinted"))))
+            row = puzzles.PACK_INSTANCE.get(pid)
             if row is None:
                 return self._json({"error": "unknown puzzle"}, 404)
-            ms = b.get("ms")
-            st = puzzles.record(row["id"], row["rating"], bool(b.get("solved")), int(ms) if isinstance(ms, (int, float)) else None,
-                                bool(b.get("hinted")))
+            st = puzzles.record(row["id"], row["rating"], bool(b.get("solved")), ms, bool(b.get("hinted")))
             return self._json({"stats": st or puzzles.stats(puzzles.attempts()), "counted": st is not None})
         if path == "/api/update/download":
             self.updates.check()
