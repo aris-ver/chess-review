@@ -58,8 +58,23 @@ main { padding: 16px 18px; max-width: 1800px; margin: 0 auto; }
 .home h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 26px 0 10px; }
 .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; }
 .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; cursor: default; position: relative; min-height: 96px; display: flex; flex-direction: column; gap: 4px; }
-.card#card-setup, .card#card-image, .card.pztile { cursor: pointer; }
-.card#card-setup:hover, .card#card-image:hover, .card.pztile:hover { border-color: var(--accent); }
+.card.pztile { cursor: pointer; }
+.card.pztile:hover { border-color: var(--accent); }
+/* profiles first, then the two puzzle tiles, then a row of small one-off entries; the forms open on demand */
+.home .hhead { display: flex; align-items: center; gap: 10px; margin: 26px 0 10px; }
+.home .hhead h2 { margin: 0; flex: 1; }
+.home .hhead button { padding: 4px 12px; font-size: 13px; }
+.home .hhead button.open, .acts button.open { border-color: var(--accent); color: var(--accent); }
+.cards.pztiles .card { min-height: 0; }
+.cards.pztiles .card .who { font-size: 15px; }
+.acts { display: flex; flex-wrap: wrap; gap: 8px; }
+.acts button { padding: 7px 14px; font-size: 14px; }
+.card.drawer { min-height: 0; margin-bottom: 12px; }
+.acts + .card.drawer { margin: 10px 0 0; }
+#addcard form { flex-direction: row; align-items: center; flex-wrap: wrap; }
+#addcard select { width: auto; } #addcard input { flex: 1 1 180px; width: auto; }
+#addcard button { align-self: auto; }
+.card.pgn .row { gap: 8px; } .card.pgn .row .cancel { margin-left: auto; } .card.pgn .row .cancel + button { margin-left: 0; }
 /* Personal puzzles: a card per profile with its puzzles, and the form for a new username */
 .home .lead { color: var(--muted); font-size: 14px; margin: -2px 0 14px; max-width: 760px; }
 .card.pzp .stats { font-size: 13px; }
@@ -288,6 +303,10 @@ table.games button.an { padding: 3px 9px; font-size: 12px; font-weight: 600; whi
   /* home: one column, full-width form controls, 16px fields so iOS doesn't zoom in on focus */
   .home { margin-top: 6px; }
   .home h2 { margin: 18px 0 8px; }
+  .home .hhead { margin: 18px 0 8px; }
+  #addcard form { flex-direction: column; align-items: stretch; }
+  #addcard select, #addcard input { width: 100%; flex: none; }
+  .acts button { flex: 1 1 auto; padding: 10px 12px; }
   .cards { grid-template-columns: 1fr; gap: 10px; }
   .card { padding: 12px 14px; min-height: 0; }
   .card.add select, .card.add input, .card.fen input, .card.fen textarea, .imgpage input, .imgpage select, .fenbox { font-size: 16px; }
@@ -522,33 +541,32 @@ svg.graph { width: 100%; height: 90px; display: block; cursor: pointer; backgrou
   <section id="home" class="hidden">
     <div class="home">
       <div id="update" class="update hidden"></div>
-      <h2>Analyse</h2>
-      <div class="cards">
-        <div class="card add">
-          <span class="src">Profile</span><span class="who">Add a profile</span>
-          <form id="addform">
-            <select name="source"><option value="chesscom">chess.com</option><option value="lichess">lichess</option></select>
-            <input name="username" placeholder="username" autocomplete="off" spellcheck="false" required>
-            <button class="primary" type="submit">Add profile</button>
-          </form>
-        </div>
-        <div class="card" id="card-setup"><span class="src">Board</span><span class="who">Set up a position</span><span class="desc">Place the pieces, or paste a FEN, then analyse.</span></div>
-        <div class="card fen pgn">
-          <span class="src">PGN</span><span class="who">Paste a PGN</span>
-          <form id="pgnform">
-            <textarea name="pgn" rows="4" placeholder="[Event &quot;…&quot;]&#10;1. e4 e5 2. Nf3 …" spellcheck="false" required></textarea>
-            <div class="row"><button class="primary" type="submit">Review</button></div>
-          </form>
-        </div>
-        <div class="card" id="card-image"><span class="src">Image</span><span class="who">From a screenshot</span><span class="desc">Read the pieces off a picture of a board, then analyse.</span></div>
+      <div class="hhead"><h2>Profiles</h2><button id="b-addprofile" title="Add a chess.com or lichess username">+ Add profile</button></div>
+      <div class="card add drawer hidden" id="addcard">
+        <form id="addform">
+          <select name="source"><option value="chesscom">chess.com</option><option value="lichess">lichess</option></select>
+          <input name="username" placeholder="username" autocomplete="off" spellcheck="false" required>
+          <button class="primary" type="submit">Add profile</button><button type="button" class="cancel">Cancel</button>
+        </form>
       </div>
+      <div class="cards" id="profiles"></div>
       <h2>Puzzles</h2>
-      <div class="cards">
+      <div class="cards pztiles">
         <div class="card pztile" id="card-library"><span class="src">Lichess</span><span class="who">Puzzle library</span><span class="desc" id="card-library-desc">Rated tactics from Lichess, picked near your level, by theme if you like.</span></div>
         <div class="card pztile" id="card-mine"><span class="src">Your games</span><span class="who">Personal puzzles</span><span class="desc" id="card-mine-desc">The moves you missed in a player's games, from a profile or any username, back until you find them.</span></div>
       </div>
-      <h2>Profiles</h2>
-      <div class="cards" id="profiles"></div>
+      <h2>Review something else</h2>
+      <div class="acts">
+        <button id="b-pgn" title="Paste the PGN of one game or many">Paste a PGN</button>
+        <button id="card-setup" title="Place the pieces, or paste a FEN, then analyse">Set up a position</button>
+        <button id="card-image" title="Read the pieces off a picture of a board, then analyse">From a screenshot</button>
+      </div>
+      <div class="card fen pgn drawer hidden" id="pgncard">
+        <form id="pgnform">
+          <textarea name="pgn" rows="5" placeholder="[Event &quot;…&quot;]&#10;1. e4 e5 2. Nf3 …" spellcheck="false" required></textarea>
+          <div class="row"><button type="button" class="cancel">Cancel</button><button class="primary" type="submit">Review</button></div>
+        </form>
+      </div>
       <div class="ver hidden" id="ver"></div>
     </div>
   </section>
@@ -1116,6 +1134,19 @@ async function showHome() {
   renderPuzzleCards();
   pollStatus();
 }
+// the add-profile form and the PGN box stay folded away until their button is clicked
+function openDrawer(id, on, focus = true) {
+  const card = $(id), btn = $(id === 'addcard' ? 'b-addprofile' : 'b-pgn');
+  on = on ?? card.classList.contains('hidden');
+  card.classList.toggle('hidden', !on); btn.classList.toggle('open', on);
+  if (on && focus) card.querySelector('input[name=username], textarea').focus();
+}
+$('b-addprofile').onclick = () => openDrawer('addcard');
+$('b-pgn').onclick = () => openDrawer('pgncard');
+document.querySelectorAll('.drawer').forEach(d => {
+  d.querySelector('.cancel').onclick = () => openDrawer(d.id, false);
+  d.addEventListener('keydown', e => { if (e.key === 'Escape') openDrawer(d.id, false); });
+});
 $('card-setup').onclick = () => location.hash = '#/setup';
 $('card-image').onclick = () => location.hash = '#/image';
 $('card-library').onclick = () => location.hash = '#/puzzles';
@@ -1221,7 +1252,7 @@ function showImagePage() {
 }
 $('pgnform').onsubmit = async e => {
   e.preventDefault();
-  const f = e.target, btn = f.querySelector('button');
+  const f = e.target, btn = f.querySelector('button[type=submit]');
   btn.disabled = true; btn.textContent = 'Reading…';
   let r, d;
   try {
@@ -1230,7 +1261,7 @@ $('pgnform').onsubmit = async e => {
   } catch (err) { d = { error: String(err) }; r = { ok: false }; }
   btn.disabled = false; btn.textContent = 'Review';
   if (!r.ok) { toast(d.error === 'busy' ? `Busy: ${jobText(d.job)}` : d.error); return; }
-  f.pgn.value = '';
+  f.pgn.value = ''; openDrawer('pgncard', false);
   location.hash = d.games.length === 1 ? `#/p/${d.profile.id}/game/${d.games[0]}` : `#/p/${d.profile.id}`;
 };
 let profilesScanT = null;
@@ -1254,7 +1285,8 @@ async function renderProfiles() {
       <span class="meta">${p.games} games · ${p.analysed} analysed${p.unseen && p.unseen.length ? ` · <b style="color:var(--accent)">${p.unseen.length} not opened yet</b>` : ''}</span>
       <span class="pin" title="${p.pinned ? 'Unpin' : 'Pin to the top'}">${p.pinned ? '★' : '☆'}</span>
       <span class="x" title="Remove this profile (the engine cache is kept)">✕</span>
-    </div>`).join('') || `<div class="empty">No profiles yet — add a chess.com or lichess username above.</div>`;
+    </div>`).join('') || `<div class="empty">No profiles yet — add a chess.com or lichess username to review its games.</div>`;
+  if (!ps.length) openDrawer('addcard', true, false);     // nothing to show yet: the form is the first thing to use
   $('profiles').querySelectorAll('.card.profile').forEach(c => {
     const seen = () => fetch(`api/profiles/${c.dataset.id}/seen`, { method: 'POST' });   // banner shown, job done
     c.onclick = () => { if (c.querySelector('.banner')) seen(); location.hash = '#/p/' + c.dataset.id; };
@@ -1291,7 +1323,7 @@ async function renderProfiles() {
     try { r = await fetch('api/profiles', { method: 'POST', body: JSON.stringify(body) }); d = await r.json(); }
     finally { delete f.dataset.busy; }
     if (!r.ok) { toast(d.error === 'busy' ? `Busy: ${jobText(d.job)}` : d.error); return; }
-    f.username.value = '';
+    f.username.value = ''; openDrawer('addcard', false);
     if (!d.job) { location.hash = '#/p/' + d.profile.id; return; }
     toast(`Fetching ${body.username}'s games from ${SOURCE_NAME[body.source]}…`);
     await renderProfiles();
