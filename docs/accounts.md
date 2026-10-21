@@ -53,8 +53,20 @@ plain Python over `DATA`. It would need three things:
   in uploads everything already in the browser. A rating reset moves the lines into a `.reset-` archive file, and that
   move reaches the other browsers. After merging, files are sorted oldest first and the library record keeps one first
   try per puzzle, as on a single browser. Deleting a profile removes its review schedule from the account too.
-- **Log out** keeps the progress in the browser, so it becomes a guest's again. The next account to log in on that browser
-  gets it uploaded. "Log out and clear puzzle progress from this browser" is the option for a shared computer.
+- **Whose data is in the browser** is switched as a whole (`sync.switch`). Each owner, the guest or an account, has its
+  own synced set: the puzzle files and the chess.com/Lichess profile folders with their reviews. The set of the owner
+  who isn't active waits in `DATA/.accounts/<owner>/`.
+  - **Signing up** in a browser that has guest data: the dialog asks whether to add it to the new account. Yes: the
+    first sync uploads it. No: it is set aside, and the account starts empty. (The question comes whenever the
+    account still holds nothing on the server.)
+  - **Logging in** to an account that already has data: the guest's data is set aside, never added to the account.
+  - **Logging out**: the account's copy is set aside (its reviews are there at the next login) and the guest's comes
+    back. "Log out and remove my progress and profiles from this browser" deletes the account's copy instead, for a
+    shared computer.
+  - **Deleting the account**: its copy becomes the guest's, merged with what the guest had set aside, unless the box
+    to remove it is ticked.
+  - The shared eval cache and pasted-PGN games belong to nobody and stay put. A profile being fetched or analysed
+    can't be moved, so the switch waits for it.
 - **Retention**: a daily cron deletes expired sessions, sign-ins never finished (15 minutes), and accounts unused for
   `RETENTION_DAYS` (730), with all their data.
 

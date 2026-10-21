@@ -17,7 +17,15 @@ browser last got from the account (DATA/account_sync.json, the base):
     3. commit()      what the account holds, plus whatever this browser added or removed meanwhile, becomes the files
                      here, and the account's answer becomes the new base
 
-A guest has no base, so signing up (or signing in on a browser used as a guest) uploads all of it and nothing is lost.
+Whose data is in DATA right now (the owner: an account, or the guest when there is no base) is switched as a whole
+by switch(). The synced things (the puzzle files, the chess.com/Lichess profile folders with their reviews) of the one
+leaving are set aside in DATA/.accounts/<owner>/, and those of the one arriving come back from there. So:
+
+    - signing up with progress made as a guest: the page asks, and keep=True hands the guest's data to the new
+      account (no base yet, so the first sync uploads all of it); otherwise it's set aside like any other login
+    - logging in to an account that already exists: the guest's data is set aside, never added to the account
+    - logging out: the account's copy is set aside (its reviews are there next time) and the guest's comes back
+
 Reviewed games, analysis and the eval cache are not in the list and stay in the browser. The format is plain JSON
 lines with nothing browser-specific in it, so the desktop app could sync the same account.
 """
@@ -241,25 +249,133 @@ def commit(user: str, theirs: dict[str, list[str]], data: Path = DATA) -> dict:
     return {"changed": changed, "pending": any(diff(theirs, local(data))), "profiles_added": added}
 
 
-def forget(wipe: bool = False, data: Path = DATA) -> dict:
-    """Signed out: this browser stops syncing. With `wipe`, its puzzle progress goes too (a shared computer); the
-    profiles stay, since their reviewed games are only here."""
+# ---------- whose data is in DATA ----------
+
+WORKSPACES = ".accounts"
+GUEST = "guest"
+
+
+def owner(data: Path = DATA) -> Optional[str]:
+    """The account whose data is in DATA, or None for the guest."""
+    try:
+        return json.loads((data / BASE).read_text(encoding="utf-8")).get("user") or None
+    except (OSError, ValueError):
+        return None
+
+
+def _items(data: Path) -> list[Path]:
+    """What belongs to the owner, relative to DATA: the puzzle files, the synced profiles' folders (reviews and all),
+    and the base."""
+    dirs = {Path("profiles") / pid for pid in _metas(data)}
+    items = set(dirs)
+    for p in _files(data):
+        rel = p.relative_to(data)
+        if not (len(rel.parts) > 2 and Path(*rel.parts[:2]) in dirs):
+            items.add(rel)
+    if (data / BASE).exists():
+        items.add(Path(BASE))
+    return sorted(items)
+
+
+def _move(src: Path, dst: Path, merge: bool = False) -> None:
+    """src into dst; a folder already at dst gets src's contents, and what's already there stays. With `merge`, two
+    puzzle files of the same name become one with the lines of both."""
+    if dst.is_dir() and src.is_dir():
+        for child in src.iterdir():
+            _move(child, dst / child.name, merge)
+        shutil.rmtree(src, ignore_errors=True)
+    elif dst.exists():
+        if merge and src.is_file() and src.suffix == ".jsonl":
+            name = f"profiles/{dst.parent.name}/{dst.name}" if dst.parent.parent.name == "profiles" else dst.name
+            _write(dst, "".join(ln + "\n" for ln in tidy(name, _lines(dst) + _lines(src))))
+        shutil.rmtree(src, ignore_errors=True) if src.is_dir() else src.unlink()
+    else:
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        os.replace(src, dst)
+
+
+def _workspace(data: Path, who: Optional[str]) -> Path:
+    name = who or GUEST
+    if not all(c.isalnum() or c in "-_" for c in name):
+        raise ValueError(f"bad account id {name!r}")
+    return data / WORKSPACES / name
+
+
+def _busy_any(data: Path) -> bool:
+    return any(_busy(pid) for pid in _metas(data))
+
+
+def guest_data(data: Path = DATA) -> dict:
+    """What a guest has here that a new account could take: puzzle records and profiles."""
+    here = local(data)
+    return {"puzzle_records": sum(len(v) for f, v in here.items() if f != PROFILES), "profiles": len(here.get(PROFILES, []))}
+
+
+def _invalidate() -> None:
+    from chess_review import own_puzzles
+    own_puzzles.POOL.__init__()        # its cache is per profile id, and the profiles just changed hands
+
+
+def switch(user: Optional[str], keep: bool = False, wipe: bool = False, data: Path = DATA) -> dict:
+    """Make DATA hold `user`'s data (None: the guest's). The current owner's is set aside in DATA/.accounts/, or with
+    `wipe` deleted (a shared computer); `keep` hands the guest's data to `user` instead (a new account that asked for it).
+    {"busy": True} while a job is running on one of the profiles that would move: ask again in a moment."""
+    cur = owner(data)
+    if cur == user:
+        return {"switched": False}
+    if _busy_any(data):
+        return {"busy": True}
+    if cur is None and user and keep:
+        return {"switched": False, "kept": True}        # no base for `user`: the first sync uploads it all
+    away = _workspace(data, cur)
+    for rel in _items(data):
+        if wipe:
+            p = data / rel
+            shutil.rmtree(p, ignore_errors=True) if p.is_dir() else p.unlink(missing_ok=True)
+        else:
+            _move(data / rel, away / rel)
+    back = _workspace(data, user)
+    if back.exists():
+        for child in sorted(back.iterdir()):
+            _move(child, data / child.name)
+        shutil.rmtree(back, ignore_errors=True)
+    _invalidate()
+    return {"switched": True}
+
+
+def release(wipe: bool = False, data: Path = DATA) -> dict:
+    """The account was deleted: its copy here becomes the guest's (or with `wipe` goes), and what the guest had set
+    aside comes back alongside it."""
+    if _busy_any(data):
+        return {"busy": True}
+    cur = owner(data)
     (data / BASE).unlink(missing_ok=True)
-    removed = []
     if wipe:
-        for p in _files(data):
-            p.unlink()
-            removed.append(p.relative_to(data).as_posix())
-    return {"removed": removed}
+        for rel in _items(data):
+            p = data / rel
+            shutil.rmtree(p, ignore_errors=True) if p.is_dir() else p.unlink(missing_ok=True)
+    back = _workspace(data, None)
+    if back.exists():
+        for child in sorted(back.iterdir()):
+            _move(child, data / child.name, merge=True)
+        shutil.rmtree(back, ignore_errors=True)
+    if cur:
+        shutil.rmtree(_workspace(data, cur), ignore_errors=True)
+    _invalidate()
+    return {"released": True}
 
 
 def handle(path: str, body: dict) -> Optional[dict]:
     """The bridge's /api/sync/* routes, for web/account.js."""
-    user = str(body.get("user") or "")
+    user = str(body.get("user") or "") or None
+    if path == "/api/sync/state":
+        return {"owner": owner(), "guest_data": guest_data() if owner() is None else None}
     if path == "/api/sync/delta" and user:
         return delta(user)
     if path == "/api/sync/commit" and user and isinstance(body.get("files"), dict):
         return commit(user, {str(k): [str(x) for x in v] for k, v in body["files"].items() if isinstance(v, list)})
-    if path == "/api/sync/forget":
-        return forget(bool(body.get("wipe")))
+    if path == "/api/sync/switch":
+        return switch(user, keep=bool(body.get("keep")), wipe=bool(body.get("wipe")))
+    if path == "/api/sync/release":
+        return release(bool(body.get("wipe")))
     return None
