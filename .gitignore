@@ -9,3 +9,6 @@ packaging/assets/
 packaging/dist/
 packaging/build/
 web-dist/
+worker/node_modules/
+worker/.wrangler/
+worker/.dev.vars

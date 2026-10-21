@@ -3,7 +3,9 @@
     python scripts/build_web.py [--serve [--port 8200]] [--engine-wasm URL]
 
 web-dist/
-  index.html            chess_review/static/index.html as site.write_static makes it, plus the web/shim.js tag
+  index.html            chess_review/static/index.html as site.write_static makes it, plus the web/shim.js and
+                        web/account.js tags
+  privacy.html, terms.html   from web/pages/
   themes/               the page's pieces, boards and sounds
   app.zip               chess_review (minus static/) + web/py/chess_web + book_keys.txt, unpacked into Pyodide
   web/                  shim.js, py-worker.js, engines.js, config.js, the python-chess wheel, engine/ (Stockfish 19)
@@ -87,7 +89,7 @@ def page() -> str:
             raise SystemExit(f"index.html no longer has {s!r}: update RENAME in {Path(__file__).name}")
         html = html.replace(s, s.replace("Chess Review", NAME))
     i = html.index("<script")       # before the page's own scripts: the first fetch must already be redirected
-    return html[:i] + '<script src="web/shim.js"></script>\n' + html[i:]
+    return html[:i] + '<script src="web/shim.js"></script>\n<script src="web/account.js"></script>\n' + html[i:]
 
 
 def app_zip(dst: Path) -> None:
@@ -113,6 +115,10 @@ def build(engine_wasm: str | None) -> None:
     for f in themes.rglob("*"):
         if f.is_file():
             copy_if_changed(f, OUT / "themes" / f.relative_to(themes))
+    for f in (ROOT / "web" / "pages").glob("*.html"):      # privacy.html, terms.html: plain pages at the site's root
+        copy_if_changed(f, OUT / f.name)
+        if "[[" in f.read_text(encoding="utf-8"):
+            print(f"warning: {f.relative_to(ROOT)} still has [[placeholders]] to fill in before going live")
     for f in (ROOT / "web").glob("*.js"):
         copy_if_changed(f, OUT / "web" / f.name)
     whl = chess_wheel()
@@ -123,6 +129,8 @@ def build(engine_wasm: str | None) -> None:
             dst.unlink(missing_ok=True)
             continue
         copy_if_changed(src, dst)
+    # The Worker (worker/, wrangler) serves web-dist/ but refuses files over 25 MiB: the full engine goes to R2.
+    (OUT / ".assetsignore").write_text("web/engine/stockfish-19-single.wasm\n", encoding="utf-8")
     app_zip(OUT / "app.zip")
     config = {"pyodide": PYODIDE, "chessWheel": whl.name, "engineWasm": engine_wasm or "engine/stockfish-19-single.wasm"}
     (OUT / "web" / "config.js").write_text(f"self.CR_CONFIG = {json.dumps(config, indent=1)};\n", encoding="utf-8")
