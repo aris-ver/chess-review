@@ -1,0 +1,35 @@
+// Blundr on Cloudflare: one Worker serving the static site (web-dist/, built by scripts/build_web.py) and the
+// optional accounts under /account/* with their D1 database. docs/accounts.md has the set-up steps.
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "blundr",
+  "main": "src/index.js",
+  "compatibility_date": "2025-09-01",
+  "assets": {
+    "directory": "../web-dist",
+    "binding": "ASSETS",
+    // only the account API reaches the Worker's code; every other request is a static file, free and unmetered
+    "run_worker_first": ["/account/*"]
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "blundr",
+      // `wrangler d1 create blundr --location weur` prints the real id; this one only works locally
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "vars": {
+    // Lichess needs no registration: the client id is any name the sign-in page shows you
+    "LICHESS_CLIENT_ID": "blundr.gr",
+    // accounts unused this long are deleted with their data (the privacy policy says so)
+    "RETENTION_DAYS": "730"
+    // GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET are secrets: `wrangler secret put`, or .dev.vars locally.
+    // Without them the Google button is hidden.
+  },
+  // once a day: expired sessions, abandoned sign-ins, and accounts past RETENTION_DAYS
+  "triggers": { "crons": ["17 3 * * *"] },
+  // Cloudflare's request logs would hold IP addresses; the privacy policy says none are kept
+  "observability": { "enabled": false }
+}
