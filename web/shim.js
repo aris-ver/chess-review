@@ -13,7 +13,21 @@
   const bar = document.createElement('div');
   bar.id = 'web-loading';
   bar.style.cssText = 'position:fixed;left:12px;bottom:12px;z-index:9999;max-width:min(420px,calc(100vw - 24px));padding:8px 12px;' +
-    'border-radius:8px;background:rgba(20,20,20,.88);color:#eee;font:13px/1.4 system-ui,sans-serif;box-shadow:0 2px 10px rgba(0,0,0,.4)';
+    'border-radius:8px;border-left:3px solid var(--accent);background:rgba(20,20,20,.88);color:#eee;font:13px/1.4 system-ui,sans-serif;' +
+    'box-shadow:0 2px 10px rgba(0,0,0,.4)';
+  // "Download the app" in the header, lit in the notice's accent colour (no flashing) for as long as the notice is
+  // up, so the two read as one: the notice says the browser is slower, the button is where the faster app is.
+  const DOWNLOAD = 'https://github.com/aris-ver/chess-review/releases/latest';
+  const style = document.createElement('style');
+  style.textContent =
+    'header .right a#web-dl{color:var(--text);background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:6px 10px;' +
+    'white-space:nowrap;transition:border-color .6s,color .6s,box-shadow .6s}' +
+    'header .right a#web-dl:hover{background:#46423d;border-color:var(--accent)}' +
+    'header .right a#web-dl.lit{border-color:var(--accent);color:var(--accent);box-shadow:0 0 8px 1px color-mix(in srgb,var(--accent) 40%,transparent)}';
+  document.head.appendChild(style);
+  const dl = document.createElement('a');
+  Object.assign(dl, { id: 'web-dl', href: DOWNLOAD, target: '_blank', rel: 'noopener', title: 'The Windows app analyses about 2× faster' });
+  dl.innerHTML = '<span class="i">⬇</span><span class="t"> Download the app</span>';
   const state = { python: 'Loading Python', engine: '' };
   const mb = b => (b / 1048576).toFixed(0);
   let pythonReady = false, engineReady = false, analysing = false, hideT = null;
@@ -23,15 +37,18 @@
     if (state.engine && !(engineReady && analysing)) lines.push(state.engine);   // "Engine ready" is old news by then
     const loading = lines.map(t => `<div>${t}</div>`).join('');
     bar.innerHTML = loading + `<div style="opacity:.7${loading ? ';margin-top:4px' : ''}">Analysis in the browser is about 2× slower than the ` +
-      '<a style="color:#9cf" href="https://github.com/aris-ver/chess-review/releases/latest" target="_blank">Windows app</a>.</div>';
+      `<a style="color:var(--accent)" href="${DOWNLOAD}" target="_blank" rel="noopener">Windows app</a>.</div>`;
   };
   // Up while loading or analysing; gone 4 s after both are over.
   const update = () => {
     clearTimeout(hideT);
     if (!document.body) return;
+    const right = document.querySelector('header .right');
+    if (right && !dl.isConnected) right.prepend(dl);
     if (!bar.isConnected) document.body.appendChild(bar);
+    dl.classList.add('lit');
     render();
-    if (pythonReady && engineReady && !analysing) hideT = setTimeout(() => bar.remove(), 4000);
+    if (pythonReady && engineReady && !analysing) hideT = setTimeout(() => { bar.remove(); dl.classList.remove('lit'); }, 4000);
   };
   // The page polls api/status while a game is analysed (or queued): read the answer on its way back.
   // (a refresh that analyses its new games becomes an analyse_all job for that part)
