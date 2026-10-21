@@ -23,11 +23,8 @@
     'header .right a#web-dl{color:var(--text);background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:6px 10px;' +
     'white-space:nowrap;transition:border-color .6s,color .6s,box-shadow .6s}' +
     'header .right a#web-dl:hover{background:#46423d;border-color:var(--accent)}' +
-    'header .right a#web-dl.lit{border-color:var(--accent);color:var(--accent);box-shadow:0 0 8px 1px color-mix(in srgb,var(--accent) 40%,transparent)}' +
-    // not in Blundr's header: Insights, and the Auto-analyse switch (a refresh only fetches; games are analysed on demand)
-    '#a-insights,#b-auto{display:none!important}';
+    'header .right a#web-dl.lit{border-color:var(--accent);color:var(--accent);box-shadow:0 0 8px 1px color-mix(in srgb,var(--accent) 40%,transparent)}';
   document.head.appendChild(style);
-  try { localStorage.setItem('autoAnalyse', 'off'); } catch (e) {}   // the page reads it right after this script
   const dl = document.createElement('a');
   Object.assign(dl, { id: 'web-dl', href: DOWNLOAD, target: '_blank', rel: 'noopener', title: 'The Windows app analyses about 2× faster' });
   dl.innerHTML = '<span class="i">⬇</span><span class="t"> Download the app</span>';
@@ -54,7 +51,6 @@
     if (pythonReady && engineReady && !analysing) hideT = setTimeout(() => { bar.remove(); dl.classList.remove('lit'); }, 4000);
   };
   // The page polls api/status while a game is analysed (or queued): read the answer on its way back.
-  // (a refresh that analyses its new games becomes an analyse_all job for that part)
   const ANALYSING = ['analyse', 'analyse_all', 'build'];
   const watchStatus = body => {
     let s;

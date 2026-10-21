@@ -15,8 +15,8 @@
     POST /api/profiles/<id>/pin         {pinned: bool} keep it at the top of the home screen
     POST /api/p/<id>/analyse/<slug>     analyse one game (MultiPV=3, fixed nodes), streaming progress into its JSON;
                                         queued behind another foreground job, ahead of a puzzle build
-    POST /api/p/<id>/refresh            {analyse?: bool} re-fetch the latest chess.com month, normalise, rebuild the
-                                        site; with analyse=true the new games are analysed in the same job
+    POST /api/p/<id>/refresh            re-fetch the latest chess.com month, normalise, rebuild the site (games are
+                                        analysed only when asked)
     POST /api/p/<id>/analyse_all        analyse every game that isn't fully analysed yet, newest first (no UI button;
                                         `python -m chess_review analyse` does the same from the CLI)
     POST /api/stop                      stop the running job (a puzzle build: for good, see build/stop)
@@ -110,11 +110,9 @@ _job_ids = itertools.count(1)
 
 
 class Job:
-    def __init__(self, kind: str, profile: Profile, game_id: Optional[str] = None, slug: Optional[str] = None,
-                 analyse: bool = False):
+    def __init__(self, kind: str, profile: Profile, game_id: Optional[str] = None, slug: Optional[str] = None):
         self.id = next(_job_ids)
         self.kind, self.profile, self.game_id, self.slug = kind, profile, game_id, slug
-        self.analyse = analyse                 # refresh: analyse the new games afterwards
         self.status = "queued"          # queued | running | finishing | done | error | stopped
         self.done, self.total = 0, 0
         self.error: Optional[str] = None
@@ -553,9 +551,6 @@ class Runner:
         job.done = 1
         self._rebuild(job)
         profiles.add_unseen(p.id, p.game_ids() - had)     # what the refresh brought in: flagged in the list until opened
-        if job.analyse:
-            # the UI switches to the batch progress display for the rest of the job
-            self._analyse_all(job)
 
 
 def _open_db_retry(tries: int = 20):
@@ -895,7 +890,7 @@ class Handler(SimpleHTTPRequestHandler):
                 return self._start(Job("analyse", p, game_id, slug))
             if action == "analyse_all":
                 return self._start(Job("analyse_all", p))
-            return self._start(Job("refresh", p, analyse=bool(self._body().get("analyse"))))
+            return self._start(Job("refresh", p))
         if path.startswith("/api/explore"):
             b = self._body()
             try:
