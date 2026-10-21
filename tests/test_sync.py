@@ -92,7 +92,8 @@ def test_guest_progress_is_uploaded_at_sign_up_and_reaches_another_browser(a, b,
     solve(a, "0000D", 1700, solved=False, ts=200, monkeypatch=monkeypatch)
     run(a, acc)
     assert len(acc.files["puzzle_attempts.jsonl"]) == 2
-    # b was used as a guest too before signing in: both lots end up in both browsers
+    # b logs in, then solves one dated between a's two: both browsers end up with all three, in order
+    run(b, acc)
     solve(b, "000aY", 1400, ts=150, monkeypatch=monkeypatch)
     run(b, acc)
     run(a, acc)
@@ -156,25 +157,96 @@ def test_progress_made_during_a_sync_is_kept_and_sent_next(a, monkeypatch):
     assert len(acc.files["puzzle_attempts.jsonl"]) == 2
 
 
-def test_another_account_starts_from_this_browsers_progress(a, monkeypatch):
-    acc, other = Account(), Account()
-    solve(a, "00008", 1500, ts=100, monkeypatch=monkeypatch)
-    run(a, acc)
-    assert sync.delta("u-2", a)["add"] == {"puzzle_attempts.jsonl": acc.files["puzzle_attempts.jsonl"]}
-    run(a, other, user="u-2")
-    assert other.files == acc.files
+def ids(data: Path) -> list[str]:
+    return [x["id"] for x in puzzles.attempts(attempts(data))]
 
 
-def test_signing_out_forgets_the_account_and_can_wipe_progress(a, monkeypatch):
+def test_a_new_account_takes_the_guests_data_only_when_asked(a, b, monkeypatch):
+    for d, keep in ((a, True), (b, False)):
+        solve(d, "00008", 1500, ts=100, monkeypatch=monkeypatch)
+        add_profile(d, "lichess", "thibault")
+        assert sync.guest_data(d) == {"puzzle_records": 1, "profiles": 1}
+        acc = Account()
+        assert sync.switch(USER, keep=keep, data=d) == ({"switched": False, "kept": True} if keep else {"switched": True})
+        run(d, acc)
+        if keep:
+            assert ids(d) == ["00008"] and len(acc.files["profiles.jsonl"]) == 1
+        else:
+            assert acc.files == {} and ids(d) == [] and not (d / "profiles" / "lichess-thibault").exists()
+
+
+def test_an_existing_account_never_gets_the_guests_data(a, b, monkeypatch):
     acc = Account()
     solve(a, "00008", 1500, ts=100, monkeypatch=monkeypatch)
+    run(a, acc)                                          # the account, made elsewhere
+    solve(b, "0000D", 1700, ts=200, monkeypatch=monkeypatch)
+    add_profile(b, "lichess", "thibault")               # b, a guest so far
+    sync.switch(USER, data=b)
+    run(b, acc)
+    assert ids(b) == ["00008"] and not (b / "profiles" / "lichess-thibault").exists()
+    assert acc.files == {"puzzle_attempts.jsonl": [json.dumps(puzzles.attempts(attempts(a))[0])]}
+    # logging out brings the guest's back, and sets the account's copy aside for next time
+    solve(b, "000aY", 1400, ts=300, monkeypatch=monkeypatch)
+    sync.switch(None, data=b)
+    assert ids(b) == ["0000D"] and (b / "profiles" / "lichess-thibault" / "site" / "games.json").exists()
+    assert sync.owner(b) is None
+    sync.switch(USER, data=b)
+    assert ids(b) == ["00008", "000aY"] and sync.owner(b) == USER
+    run(b, acc)
+    assert len(acc.files["puzzle_attempts.jsonl"]) == 2
+
+
+def test_the_accounts_reviews_wait_for_it_in_the_browser(a, monkeypatch):
+    acc = Account()
+    sync.switch(USER, keep=True, data=a)
+    add_profile(a, "lichess", "thibault")
+    run(a, acc)
+    sync.switch(None, data=a)
+    assert not (a / "profiles" / "lichess-thibault").exists()
+    sync.switch(USER, data=a)
+    assert (a / "profiles" / "lichess-thibault" / "site" / "games.json").exists()    # reviews made while signed in
+
+
+def test_two_accounts_on_one_browser_stay_apart(a, monkeypatch):
+    acc1, acc2 = Account(), Account()
+    sync.switch("u-1", keep=True, data=a)
+    solve(a, "00008", 1500, ts=100, monkeypatch=monkeypatch)
+    run(a, acc1, user="u-1")
+    sync.switch("u-2", data=a)                           # another account logs in without logging out first
+    run(a, acc2, user="u-2")
+    assert ids(a) == [] and acc2.files == {}
+    sync.switch("u-1", data=a)
+    assert ids(a) == ["00008"]
+
+
+def test_logging_out_on_a_shared_computer_removes_the_accounts_data(a, monkeypatch):
+    acc = Account()
+    sync.switch(USER, keep=True, data=a)
+    solve(a, "00008", 1500, ts=100, monkeypatch=monkeypatch)
+    add_profile(a, "lichess", "thibault")
     (a / "evals.duckdb").write_bytes(b"\0")
     run(a, acc)
-    sync.forget(data=a)
-    assert not (a / sync.BASE).exists() and attempts(a).exists()          # a guest again, progress still here
-    run(a, acc)
-    assert sync.forget(wipe=True, data=a) == {"removed": ["puzzle_attempts.jsonl"]}
-    assert not attempts(a).exists() and (a / "evals.duckdb").exists()
+    sync.switch(None, wipe=True, data=a)
+    sync.switch(USER, data=a)
+    assert ids(a) == [] and not (a / "profiles" / "lichess-thibault").exists()   # nothing set aside
+    assert (a / "evals.duckdb").exists()                                           # the shared eval cache stays
+
+
+def test_a_deleted_accounts_copy_becomes_the_guests(a, monkeypatch):
+    solve(a, "0000D", 1700, ts=200, monkeypatch=monkeypatch)       # the guest's
+    sync.switch(USER, data=a)
+    solve(a, "00008", 1500, ts=100, monkeypatch=monkeypatch)       # the account's
+    run(a, Account())
+    sync.release(data=a)
+    assert sync.owner(a) is None and ids(a) == ["00008", "0000D"]           # both, oldest first
+    assert not (a / sync.WORKSPACES / USER).exists()
+
+
+def test_switching_waits_while_a_profile_is_busy(a, monkeypatch):
+    add_profile(a, "lichess", "thibault")
+    monkeypatch.setattr(sync, "_busy", lambda pid: True)
+    assert sync.switch(USER, data=a) == {"busy": True}
+    assert (a / "profiles" / "lichess-thibault").exists()
 
 
 def test_a_line_cut_short_is_not_uploaded(a):
@@ -186,12 +258,21 @@ def test_bridge_routes(a, monkeypatch):
     monkeypatch.setattr(sync, "DATA", a)
     monkeypatch.setattr(sync.delta, "__defaults__", (a,))
     monkeypatch.setattr(sync.commit, "__defaults__", (a,))
-    monkeypatch.setattr(sync.forget, "__defaults__", (False, a))
+    for f in (sync.owner, sync.guest_data):
+        monkeypatch.setattr(f, "__defaults__", (a,))
+    monkeypatch.setattr(sync.switch, "__defaults__", (False, False, a))
+    monkeypatch.setattr(sync.release, "__defaults__", (False, a))
     attempts(a).write_text('{"id": "00008", "ts": 1, "solved": true, "rating": 1500}\n')
+    assert sync.handle("/api/sync/state", {}) == {"owner": None, "guest_data": {"puzzle_records": 1, "profiles": 0}}
+    assert sync.handle("/api/sync/switch", {"user": USER, "keep": True}) == {"switched": False, "kept": True}
     assert sync.handle("/api/sync/delta", {"user": USER})["add"]
     assert sync.handle("/api/sync/commit", {"user": USER, "files": {}}) == {"changed": [], "pending": True, "profiles_added": []}
+    assert sync.handle("/api/sync/state", {}) == {"owner": USER, "guest_data": None}
     assert sync.handle("/api/sync/delta", {}) is None
-    assert sync.handle("/api/sync/forget", {}) == {"removed": []}
+    assert sync.handle("/api/sync/switch", {}) == {"switched": True}
+    assert sync.handle("/api/sync/release", {}) == {"released": True}
+    with pytest.raises(ValueError):
+        sync.handle("/api/sync/switch", {"user": "../x"})
 
 
 # ---------- the profile list ----------

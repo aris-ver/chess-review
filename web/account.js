@@ -18,13 +18,58 @@
 
   // ---------- sync ----------
 
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+  const redraw = () => window.dispatchEvent(new HashChangeEvent('hashchange'));
+
+  // Whose data is in the browser (web/py/chess_web/sync.py switch()): set aside one owner's, bring back another's.
+  // Python answers busy while a profile that would move is being fetched or analysed: wait for it.
+  async function handOver(body, route = 'api/sync/switch') {
+    for (let i = 0; i < 200; i++) {
+      const r = await (await post(route, body)).json();
+      if (!r.busy) { if (r.switched || r.released) redraw(); return r; }
+      await sleep(3000);
+    }
+    throw new Error('a profile stayed busy');
+  }
+
+  // Signed in: the browser must hold this account's data before anything syncs. A brand-new account on a browser
+  // with a guest's progress asks first whether to take it (attach waits for the answer); any other account never
+  // gets the guest's data: it is set aside and comes back on logging out.
+  let attached = false;
+  async function attach() {
+    const st = await (await post('api/sync/state')).json();
+    if (st.owner !== me.id) {
+      const g = st.owner == null ? st.guest_data : null;
+      if (g && (g.puzzle_records || g.profiles) && !me.progress_lines) {
+        open({ offer: g });
+        return;
+      }
+      await handOver({ user: me.id });
+    }
+    attached = true;
+    sync();
+  }
+  async function answerOffer(keep) {
+    await handOver({ user: me.id, keep });
+    view.offer = null;
+    attached = true;
+    await sync();
+    say(keep ? 'Your progress and profiles are saved to your account' : 'Starting fresh: what you did as a guest comes back when you log out');
+  }
+
   let syncing = null, again = false, syncT = null;
   async function syncOnce() {
     let changed = [];
     for (let round = 0; round < 3; round++) {        // again while this browser still has something the account lacks
       const d = await (await post('api/sync/delta', { user: me.id })).json();
       const r = await post('account/progress', d);
-      if (r.status === 401) { me = null; render(); return; }
+      if (r.status === 401) {                          // the session ended elsewhere: back to the guest's data
+        me = null;
+        attached = false;
+        render();
+        await handOver({ user: null });
+        return;
+      }
       if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || `HTTP ${r.status}`);
       const { files } = await r.json();
       const c = await (await post('api/sync/commit', { user: me.id, files })).json();
@@ -42,7 +87,7 @@
     }
   }
   function sync() {
-    if (!me) return Promise.resolve();
+    if (!me || !attached) return Promise.resolve();
     if (syncing) { again = true; return syncing; }
     syncing = syncOnce().catch(e => { syncError = String(e.message || e); console.error('account sync', e); })
       .finally(() => { syncing = null; renderDialog(); if (again) { again = false; sync(); } });
@@ -107,7 +152,7 @@ dialog#account .foot { display: flex; gap: 14px; justify-content: center; margin
   const shortName = () => (me.identities[0] || {}).name || 'Account';
 
   function open(opts = {}) {
-    view = { tab: view.tab, note: null, confirmDelete: false, ...opts };
+    view = { tab: view.tab, note: null, confirmDelete: false, offer: view.offer, ...opts };
     renderDialog();
     if (!dlg.open) dlg.showModal();
   }
@@ -130,9 +175,9 @@ dialog#account .foot { display: flex; gap: 14px; justify-content: center; margin
       (signup
         ? '<label class="consent"><input type="checkbox" id="acc-consent"> <span>I am 15 or older and agree to the <a href="terms.html" target="_blank">terms of use</a> and the <a href="privacy.html" target="_blank">privacy policy</a>.</span></label>' +
           `<div class="col">${providerButtons('signup', true)}</div>` +
-          '<p class="muted">The puzzle progress and profiles already in this browser are uploaded to the new account.</p>'
+          "<p class=\"muted\">If this browser has puzzle progress or profiles, you'll be asked whether to add them to the new account.</p>"
         : `<div class="col">${providerButtons('login', false)}</div>` +
-          '<p class="muted">Puzzle progress and profiles in this browser are added to the account you log in to.</p>') +
+          '<p class="muted">You get your account\'s progress and profiles. What you did here as a guest is set aside, not added to the account, and comes back when you log out.</p>') +
       legal;
   }
 
@@ -146,16 +191,24 @@ dialog#account .foot { display: flex; gap: 14px; justify-content: center; margin
       : lastSync ? `Synced at ${lastSync.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : 'Not synced yet (waiting for Python to load)';
     const del = view.confirmDelete
       ? '<div class="note bad"><p><b>Delete your account?</b> Your account and the puzzle progress and profile list stored with it are deleted from the server straight away. This cannot be undone.</p>' +
-        '<label class="consent"><input type="checkbox" id="acc-wipe"> <span>Also clear the puzzle progress kept in this browser</span></label>' +
+        '<label class="consent"><input type="checkbox" id="acc-wipe"> <span>Also remove this account\'s progress and profiles from this browser (otherwise they stay here as a guest\'s)</span></label>' +
         '<div class="col"><button class="danger" data-act="delete">Delete my account</button><button data-act="nodelete">Cancel</button></div></div>'
       : '<button data-act="askdelete">Delete account…</button>';
+    if (view.offer) {
+      const parts = [view.offer.puzzle_records && `${view.offer.puzzle_records} puzzle records`, view.offer.profiles && `${view.offer.profiles} profile${view.offer.profiles > 1 ? 's' : ''}`].filter(Boolean).join(' and ');
+      return note() +
+        `<div class="note"><p><b>Add this browser's progress to your new account?</b> You have ${parts} here from before you signed up.</p>` +
+        '<div class="col"><button class="primary" data-act="keep">Yes, add it to my account</button>' +
+        '<button data-act="fresh">No, start the account empty</button></div>' +
+        "<p class=\"muted\">If you start empty, what you did as a guest is set aside in this browser and comes back when you log out.</p></div>" + legal;
+    }
     return note() +
       `<p class="muted">Signed in with</p><ul class="ids">${ids}</ul>${more ? `<div class="col">${more}</div>` : ''}` +
       `<p>Puzzle progress and profiles: ${me.progress_lines || 0} records stored. <span class="muted">${status}</span></p>` +
       '<div class="col"><button data-act="sync">Sync now</button></div><hr>' +
       '<div class="col"><a class="btn" href="account/export" download="blundr-account.json">Download my data</a>' +
       '<button data-act="logout">Log out</button>' +
-      '<button data-act="logout-wipe" title="For a shared computer">Log out and clear puzzle progress from this browser</button>' +
+      '<button data-act="logout-wipe" title="For a shared computer">Log out and remove my progress and profiles from this browser</button>' +
       `${del}</div>` +
       `<p class="muted">Account created ${new Date(me.created_at * 1000).toLocaleDateString()}. Reviewed games and engine analysis never leave this browser.</p>` +
       legal;
@@ -171,26 +224,28 @@ dialog#account .foot { display: flex; gap: 14px; justify-content: center; margin
     if (name === 'close') return dlg.close();
     if (name === 'sync') { const s = sync(); renderDialog(); return s; }
     if (name === 'askdelete' || name === 'nodelete') { view.confirmDelete = name === 'askdelete'; return renderDialog(); }
+    if (name === 'keep' || name === 'fresh') { await answerOffer(name === 'keep'); return renderDialog(); }
     if (name === 'logout' || name === 'logout-wipe') {
       await post('account/logout');
-      const r = await (await post('api/sync/forget', { wipe: name === 'logout-wipe' })).json().catch(() => ({}));
       me = null;
+      attached = false;
       view.tab = 'login';
       render();
       dlg.close();
-      say(name === 'logout-wipe' ? `Logged out; ${(r.removed || []).length} progress files cleared from this browser` : 'Logged out');
-      if ((r.removed || []).length) window.dispatchEvent(new HashChangeEvent('hashchange'));
+      say('Logging out…');
+      await handOver({ user: null, wipe: name === 'logout-wipe' });     // the guest's own data comes back
+      say(name === 'logout-wipe' ? 'Logged out; your progress and profiles were removed from this browser' : 'Logged out');
       return;
     }
     if (name === 'delete') {
       const wipe = dlg.querySelector('#acc-wipe').checked;
       const res = await post('account/delete');
       if (!res.ok) { view.note = { bad: true, html: 'Deleting the account failed. Please try again.' }; return renderDialog(); }
-      await post('api/sync/forget', { wipe });
       me = null;
-      view = { tab: 'login', confirmDelete: false, note: { html: 'Your account and its data have been deleted from the server.' + (wipe ? ' Puzzle progress in this browser was cleared too.' : ' Your progress is still in this browser.') } };
+      attached = false;
+      await handOver({ wipe }, 'api/sync/release');
+      view = { tab: 'login', confirmDelete: false, note: { html: 'Your account and its data have been deleted from the server.' + (wipe ? ' Its progress and profiles were removed from this browser too.' : ' Its progress and profiles stay in this browser for you to use as a guest.') } };
       render();
-      if (wipe) window.dispatchEvent(new HashChangeEvent('hashchange'));
     }
   }
 
@@ -222,7 +277,7 @@ dialog#account .foot { display: flex; gap: 14px; justify-content: center; margin
 
   // Back from the provider: /?account=<outcome> (worker/src/index.js callback()).
   const OUTCOMES = {
-    'welcome': { html: 'Welcome to Blundr! Your puzzle progress is now saved to your account.' },
+    'welcome': { html: 'Welcome to Blundr! Your puzzle progress and profiles are now saved to your account.' },
     'linked': { html: 'Done: you can now sign in that way too.' },
     'no-account': { tab: 'signup', html: 'There is no Blundr account for that sign-in yet. Sign up below to create one.' },
     'taken': { bad: true, html: 'That sign-in already belongs to another Blundr account.' },
@@ -261,7 +316,7 @@ dialog#account .foot { display: flex; gap: 14px; justify-content: center; margin
     }
     render();
     outcome();
-    if (me) sync();
+    if (me) attach().catch(e => { syncError = String(e.message || e); console.error('account attach', e); renderDialog(); });
     // another tab or browser may have moved on: catch up when this tab comes back into view
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && me) syncSoon(); });
   }
