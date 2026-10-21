@@ -156,7 +156,8 @@ describe('signing up and in', () => {
 
 const A1 = '{"id": "00008", "ts": 1760000000, "solved": true, "ms": 4100, "hinted": false, "rating": 1520}';
 const A2 = '{"id": "0000D", "ts": 1760000100, "solved": false, "ms": 9000, "hinted": false, "rating": 1610}';
-const OWN = '{"id": "own:chesscom-me:abc:31", "ts": 1760000200, "solved": false, "ms": 5000, "hinted": false}';
+const PROFILE = '{"added": "2026-10-01T10:00:00+00:00", "pinned": null, "source": "chesscom", "username": "AlirezaFirouzja"}';
+const OWN ='{"id": "own:chesscom-me:abc:31", "ts": 1760000200, "solved": false, "ms": 5000, "hinted": false}';
 
 describe('puzzle progress', () => {
   it('needs an account', async () => {
@@ -221,7 +222,7 @@ describe('your data', () => {
     const a = new Browser(GOOGLE);
     await a.signIn('lichess', 'signup');
     await a.signIn('google', 'link');
-    await a.json('/account/progress', { method: 'POST', body: { add: { 'puzzle_attempts.jsonl': [A1, A2], 'puzzle_daily.jsonl': ['{"date": "2026-10-21", "n": 1}'] } } });
+    await a.json('/account/progress', { method: 'POST', body: { add: { 'puzzle_attempts.jsonl': [A1, A2], 'puzzle_daily.jsonl': ['{"date": "2026-10-21", "n": 1}'], 'profiles.jsonl': [PROFILE] } } });
     lichessUser = { id: 'hikaru', username: 'Hikaru' };
     const other = new Browser();
     await other.signIn('lichess', 'signup');
@@ -237,6 +238,7 @@ describe('your data', () => {
     expect(x.account.consent_version).toBe(CONSENT_VERSION);
     expect(x.sign_in_methods.map(i => i.name)).toEqual(['Magnus', 'magnus@example.com']);
     expect(x.puzzle_progress).toEqual({ 'puzzle_attempts.jsonl': [A1, A2], 'puzzle_daily.jsonl': ['{"date": "2026-10-21", "n": 1}'] });
+    expect(x.profiles).toEqual([JSON.parse(PROFILE)]);
     expect(JSON.stringify(x)).not.toContain('Hikaru');
     expect(JSON.stringify(x)).not.toContain('token_hash');
   });

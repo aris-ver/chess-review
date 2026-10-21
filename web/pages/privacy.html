@@ -33,8 +33,8 @@ th { color: var(--muted); font-weight: 600; }
 <div class="box">
 <p><b>In short.</b> Blundr runs on your own computer, in your browser. Without an account, nothing about you is
 stored on our server: your games, reviews and puzzle progress stay in your browser. If you create an account, we store
-only what is needed to sign you in and your <b>puzzle progress</b>, so it follows you to other browsers. Your reviewed games
-are never uploaded. No ads, no analytics, no tracking, and nothing is sold.</p>
+only what is needed to sign you in, your <b>puzzle progress</b> and the <b>list of profiles</b> you added, so they follow you
+to other browsers. Your reviewed games and their analysis are never uploaded. No ads, no analytics, no tracking, and nothing is sold.</p>
 </div>
 
 <h2>1. Who is responsible</h2>
@@ -66,6 +66,10 @@ software (Pyodide, the Python runtime) is loaded from the jsDelivr network, whic
 the puzzle's rating; pack progress; your daily-puzzle results; and the review schedule of the personal puzzles of each
 profile you added (stored under the profile's name, which contains the chess.com or Lichess username you added)</td>
 <td>The service you asked for: keeping your puzzle rating and progress across browsers</td></tr>
+<tr><td>Your list of profiles: for each chess.com or Lichess username you added, the site, the username, when you added
+it and whether (and since when) it is pinned. Not the games: another browser fetches them again from chess.com or Lichess.
+Games you pasted yourself are not included</td>
+<td>The service you asked for: the same profiles on every browser you sign in on</td></tr>
 </table>
 <p>We do not store passwords (you sign in with Lichess or Google), the games you review, the engine's analysis, or
 anything else from your browser. When you sign in, Lichess or Google tells us only the details above; we do not keep any
@@ -88,7 +92,8 @@ under the EU-US Data Privacy Framework and the European Commission's standard co
 
 <h2>6. How long we keep it</h2>
 <ul>
-<li>Account data and puzzle progress: until you delete your account. An account not used for <b>24 months</b> is deleted
+<li>Account data, puzzle progress and the profile list: until you delete your account (a profile you remove is
+removed from the account at the next sync). An account not used for <b>24 months</b> is deleted
 automatically, with all its data.</li>
 <li>Sessions: they end when you log out, or 90 days after you last used them.</li>
 <li>A sign-in in progress (the short-lived record and cookie while you are at Lichess or Google): at most 15 minutes.</li>

@@ -1,8 +1,28 @@
 # Blundr accounts
 
-Optional. Guests can use everything. An account keeps **puzzle progress** only, so it follows you to other browsers:
-the library puzzle rating and attempts, pack progress, the daily-puzzle record and each profile's personal-puzzle
-review schedule. Reviewed games, profiles and the engine's eval cache stay in the browser and never reach the server.
+Optional. Guests can use everything. An account keeps **puzzle progress** and the **profile list**, so they follow you to
+other browsers: the library puzzle rating and attempts, pack progress, the daily-puzzle record, each profile's
+personal-puzzle review schedule, and the chess.com/Lichess profiles you added (source, username, when added, pinned).
+Reviewed games, analysis and the engine's eval cache stay in the browser and never reach the server.
+
+## The profile list
+
+It syncs like puzzle progress, as a virtual `profiles.jsonl` that `sync.py` builds from `profiles/*/meta.json`, one line
+per profile: `{"added", "pinned", "source", "username"}`. Pasted-PGN profiles stay out of it, because their games
+can't be fetched again. A profile that arrives from the account is created empty, and `account.js` asks for it the way
+the Add profile form does, so its games are fetched fresh from chess.com or Lichess. A pin set or cleared on one browser
+reaches the others. If two browsers disagree at the same time, pinned wins. **A profile deleted on one browser is deleted
+on the others too, with the reviews made there** (they exist only in that browser), unless a job is running on it at
+that moment. Local-only state (the "new games" flags) is not synced.
+
+**The desktop app** could use the same account later. The format has nothing browser-specific in it, and `sync.py` is
+plain Python over `DATA`. It would need three things:
+1. Sign-in from a desktop app. Lichess and Google support OAuth for native apps with a loopback redirect
+   (`http://127.0.0.1:<port>/callback`, PKCE). The Worker would hand out a session token in the response body,
+   since a desktop app has no cookie jar, and accept it as a `Bearer` header.
+2. `sync.py` moved into `chess_review/`, with the delta, account, commit loop run by the desktop server after puzzle
+   results and at start-up.
+3. A Log in control in the shared page. It already exists in `account.js`; only the transport differs.
 
 ## Shape
 
