@@ -197,6 +197,31 @@ def pending_keys(con: duckdb.DuckDBPyConnection, profile: Profile, game_id: Opti
 
 # --- persistent pool ----------------------------------------------------------
 
+class LivePace:
+    """When the results of a game someone is watching get written out (and its review rebuilt, by on_progress), so
+    the board can follow the analysis: once the first of them has waited `min_s` -- the engines search the same
+    node count side by side, so results come in bursts, and a burst goes out as one write -- but no sooner than
+    COST_X times what the last write took after it, so writing never takes much of the engines' time."""
+    COST_X = 4
+
+    def __init__(self, min_s: float):
+        self.min_s, self.last, self.cost, self.first = min_s, 0.0, 0.0, None
+
+    def got(self) -> None:
+        if self.first is None:
+            self.first = time.monotonic()
+
+    def wait(self) -> Optional[float]:
+        """Seconds until the results in hand are due to be written; None if there are none."""
+        if self.first is None:
+            return None
+        return max(0.0, max(self.first + self.min_s, self.last + self.COST_X * self.cost) - time.monotonic())
+
+    def wrote(self, started: float) -> None:
+        self.last = time.monotonic()
+        self.cost, self.first = self.last - started, None
+
+
 class Analyser:
     """A worker pool that lives across jobs. Not thread-safe per job: run one job at a time."""
 
@@ -221,8 +246,8 @@ class Analyser:
             self._pool = None
 
     def run(self, keys: Iterable[str], con: duckdb.DuckDBPyConnection, on_progress: Optional[Callable[[int, int], None]] = None,
-            batch: int = 20, should_stop: Optional[Callable[[], bool]] = None) -> int:
-        """Analyse `keys`, writing to `con` every `batch` results. Returns count analysed."""
+            batch: int = 20, should_stop: Optional[Callable[[], bool]] = None, live: Optional[LivePace] = None) -> int:
+        """Analyse `keys`, writing to `con` every `batch` results (or as `live` paces it). Returns count analysed."""
         keys = list(keys)
         if not keys:
             return 0
@@ -231,17 +256,30 @@ class Analyser:
             t0 = time.time()
             self.last_used = t0
             it = self.pool().imap_unordered(_analyse_key, keys, chunksize=1)
-            for res in it:
+
+            def flush() -> None:
+                started = time.monotonic()
+                write_results(con, buf)
+                buf.clear()
+                if on_progress:
+                    on_progress(done, len(keys))
+                if live:
+                    live.wrote(started)
+                log.info("%d/%d  %.2f pos/s", done, len(keys), done / (time.time() - t0))
+
+            while done < len(keys):
+                try:
+                    res = it.next(live.wait() if live else None)
+                except mp.TimeoutError:     # live: the results in hand are due, whether or not more come
+                    flush()
+                    continue
                 buf.append(res)
                 done += 1
                 self.last_used = time.time()
-                if len(buf) >= batch or done == len(keys):
-                    write_results(con, buf)
-                    buf = []
-                    if on_progress:
-                        on_progress(done, len(keys))
-                    rate = done / (time.time() - t0)
-                    log.info("%d/%d  %.2f pos/s", done, len(keys), rate)
+                if live:
+                    live.got()
+                if len(buf) >= batch or done == len(keys) or (live and live.wait() == 0):
+                    flush()
                 if should_stop and should_stop():
                     log.warning("job stopped after %d/%d", done, len(keys))
                     if buf:     # what is in hand is kept: a stopped job resumes without searching it again
