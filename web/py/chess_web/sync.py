@@ -3,6 +3,10 @@
     DATA/puzzle_attempts.jsonl, puzzle_attempts.reset-*.jsonl     library puzzles: first tries, rating (puzzles.py)
     DATA/puzzle_solved.jsonl, puzzle_daily.jsonl                  pack progress and the daily puzzle (packs.py)
     DATA/profiles/<id>/puzzle_attempts[.reset-*].jsonl            each profile's review schedule (own_puzzles.py)
+    profiles.jsonl (no such file: made from profiles/*/meta.json)  the list of chess.com and Lichess profiles added,
+                     one line each: {"source", "username", "added", "pinned"}. Not their games: another browser that
+                     gets a profile from the account fetches its games afresh. Pasted-PGN games can't be fetched again,
+                     so that profile stays out of it.
 
 The account holds the same thing as a set of lines per file. A sync is a three-way merge against the copy this
 browser last got from the account (DATA/account_sync.json, the base):
@@ -14,17 +18,88 @@ browser last got from the account (DATA/account_sync.json, the base):
                      here, and the account's answer becomes the new base
 
 A guest has no base, so signing up (or signing in on a browser used as a guest) uploads all of it and nothing is lost.
-Reviewed games, profiles and the eval cache are not in the list and stay in the browser.
+Reviewed games, analysis and the eval cache are not in the list and stay in the browser. The format is plain JSON
+lines with nothing browser-specific in it, so the desktop app could sync the same account.
 """
 
 import json
+import logging
 import os
+import shutil
 from pathlib import Path
 from typing import Optional
 
+from chess_review import profiles
 from chess_review.config import DATA
 
+log = logging.getLogger("web.sync")
 BASE = "account_sync.json"
+PROFILES = "profiles.jsonl"
+SYNCED_SOURCES = ("chesscom", "lichess")
+
+
+def _metas(data: Path) -> dict[str, dict]:
+    """profile id -> meta.json, for the profiles that are synced."""
+    out = {}
+    for meta in sorted(data.glob("profiles/*/meta.json")):
+        try:
+            m = json.loads(meta.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if m.get("source") in SYNCED_SOURCES and m.get("username"):
+            out[meta.parent.name] = m
+    return out
+
+
+def profile_line(m: dict) -> str:
+    return json.dumps({"source": m["source"], "username": m["username"], "added": m.get("created"),
+                       "pinned": m.get("pinned")}, sort_keys=True)
+
+
+def _profile_key(line: str) -> Optional[str]:
+    v = json.loads(line)
+    try:
+        return profiles.profile_id(str(v.get("source")), str(v.get("username") or ""))
+    except ValueError:
+        return None     # not a profile this app can make: left alone
+
+
+def _busy(pid: str) -> bool:
+    """A job is running on it right now (fetching or analysing): not the moment to remove it."""
+    from chess_review import serve
+    r = getattr(serve.Handler, "runner", None)
+    return bool(r and r.busy() and r.job and r.job.profile and r.job.profile.id == pid)
+
+
+def apply_profiles(data: Path, here: list[str], merged: list[str]) -> list[dict]:
+    """Make the profiles here match the account's list: new ones are created (empty: the page then fetches their
+    games), a pin set or cleared elsewhere is copied, and one deleted elsewhere is deleted here, its reviews with it.
+    Returns the profiles created, as {source, username}."""
+    want = {k: json.loads(ln) for ln in merged if (k := _profile_key(ln))}
+    have = _metas(data)
+    added = []
+    for pid, v in want.items():
+        meta_path = data / "profiles" / pid / "meta.json"
+        m = dict(have[pid]) if pid in have else None
+        if m is None:
+            m = {"source": v["source"], "username": v["username"], "created": v.get("added")}
+            added.append({"source": v["source"], "username": v["username"]})
+        if v.get("pinned"):
+            m["pinned"] = v["pinned"]
+        else:
+            m.pop("pinned", None)
+        if pid not in have or profile_line(m) != profile_line(have[pid]):
+            _write(meta_path, json.dumps(m))
+    for pid in have.keys() - want.keys():
+        if _busy(pid):
+            log.info("not removing %s: busy", pid)     # stays here, and goes back up with the next sync
+            continue
+        from chess_review import serve
+        r = getattr(serve.Handler, "runner", None)
+        if r:
+            r.cancel_build(pid)
+        shutil.rmtree(data / "profiles" / pid, ignore_errors=True)
+    return added
 
 
 def _files(data: Path) -> list[Path]:
@@ -51,8 +126,11 @@ def _lines(path: Path) -> list[str]:
 
 
 def local(data: Path = DATA) -> dict[str, list[str]]:
-    """{file relative to DATA: [line, ...]} for every puzzle-progress file there is."""
-    return {p.relative_to(data).as_posix(): _lines(p) for p in _files(data)}
+    """{file relative to DATA: [line, ...]} for every puzzle-progress file there is, and the profile list."""
+    out = {p.relative_to(data).as_posix(): _lines(p) for p in _files(data)}
+    if metas := _metas(data):
+        out[PROFILES] = [profile_line(metas[pid]) for pid in sorted(metas)]
+    return out
 
 
 def load_base(user: str, data: Path = DATA) -> dict[str, list[str]]:
@@ -105,7 +183,15 @@ def _once_per(key: str, lines: list[str]) -> list[str]:
 def tidy(file: str, lines: list[str]) -> list[str]:
     """A merged file in the order and with the uniqueness its reader expects: oldest first (the puzzle rating is
     replayed in that order), and for library puzzles one first try per puzzle and one daily result per day, as
-    puzzles.record and packs.record_daily keep it when there is a single browser."""
+    puzzles.record and packs.record_daily keep it when there is a single browser. The profile list: one line per
+    profile, by id, and if two browsers changed its pin at once, pinned wins."""
+    if file == PROFILES:
+        best: dict[str, str] = {}
+        for ln in dict.fromkeys(lines):
+            k = _profile_key(ln) or ln
+            if k not in best or (json.loads(ln).get("pinned") or "") > (json.loads(best[k]).get("pinned") or ""):
+                best[k] = ln
+        return [best[k] for k in sorted(best)]
     out = sorted(dict.fromkeys(lines), key=_when)
     name = file.rsplit("/", 1)[-1]
     if "/" not in file and name.startswith("puzzle_attempts"):
@@ -138,9 +224,9 @@ def commit(user: str, theirs: dict[str, list[str]], data: Path = DATA) -> dict:
     """Write the merged files here and remember the account's answer as the base. Returns what changed here."""
     here = local(data)
     merged = merge(load_base(user, data), here, theirs)
-    changed = []
+    changed, added = [], []
     for f in sorted(here.keys() | merged.keys()):
-        if here.get(f) == merged.get(f):
+        if here.get(f) == merged.get(f) or f == PROFILES:
             continue
         changed.append(f)
         path = data / f
@@ -148,12 +234,16 @@ def commit(user: str, theirs: dict[str, list[str]], data: Path = DATA) -> dict:
             _write(path, "".join(ln + "\n" for ln in merged[f]))
         else:
             path.unlink(missing_ok=True)       # its lines all moved elsewhere: a reset on another browser
+    if here.get(PROFILES) != merged.get(PROFILES):     # after the files: a profile removed takes its schedule along
+        changed.append(PROFILES)
+        added = apply_profiles(data, here.get(PROFILES, []), merged.get(PROFILES, []))
     _save_base(user, theirs, data)
-    return {"changed": changed, "pending": any(diff(theirs, merged))}
+    return {"changed": changed, "pending": any(diff(theirs, local(data))), "profiles_added": added}
 
 
 def forget(wipe: bool = False, data: Path = DATA) -> dict:
-    """Signed out: this browser stops syncing. With `wipe`, its puzzle progress goes too (a shared computer)."""
+    """Signed out: this browser stops syncing. With `wipe`, its puzzle progress goes too (a shared computer); the
+    profiles stay, since their reviewed games are only here."""
     (data / BASE).unlink(missing_ok=True)
     removed = []
     if wipe:

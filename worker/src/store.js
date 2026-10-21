@@ -5,7 +5,8 @@
 export const MAX_LINES = 200000;          // per account: years of puzzles a day
 export const MAX_BATCH = 20000;           // per request
 export const MAX_LINE = 2000;             // bytes; a real line is ~100
-const FILE = /^(profiles\/[a-z0-9_.-]{1,80}\/)?puzzle_(attempts|solved|daily)(\.reset-[0-9-]{1,40})?\.jsonl$/;
+// puzzle progress, and profiles.jsonl: the list of profiles added ({source, username, added, pinned}, no games)
+const FILE = /^((profiles\/[a-z0-9_.-]{1,80}\/)?puzzle_(attempts|solved|daily)(\.reset-[0-9-]{1,40})?|profiles)\.jsonl$/;
 
 export class BadRequest extends Error {}
 
@@ -153,7 +154,9 @@ export async function exportAll(db, userId) {
   const u = await db.prepare('SELECT * FROM users WHERE id = ?').bind(userId).first();
   const ids = await db.prepare('SELECT provider, subject, name, email, created_at FROM identities WHERE user_id = ?').bind(userId).all();
   const ses = await db.prepare('SELECT created_at, expires_at FROM sessions WHERE user_id = ?').bind(userId).all();
-  return { account: u, sign_in_methods: ids.results, sessions: ses.results, puzzle_progress: await progress(db, userId) };
+  const { 'profiles.jsonl': profileLines = [], ...puzzleProgress } = await progress(db, userId);
+  return { account: u, sign_in_methods: ids.results, sessions: ses.results,
+           profiles: profileLines.map(l => JSON.parse(l)), puzzle_progress: puzzleProgress };
 }
 
 export async function deleteUser(db, userId) {

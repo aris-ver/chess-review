@@ -6,7 +6,7 @@
 // Python worker's /api/sync/* (web/py/chess_web/sync.py), which shim.js routes there like every other api/ call.
 (() => {
   const CONSENT = '2026-10-21';      // worker/src/consent.js: the terms and privacy policy agreed to
-  const PROGRESS_WRITES = /^api\/(puzzles\/(attempt|solved|daily|reset)|profiles\/[^/]+\/delete)$/;
+  const PROGRESS_WRITES = /^api\/(puzzles\/(attempt|solved|daily|reset)|profiles|profiles\/[^/]+\/(delete|pin))$/;
   const OVERVIEW = /^(|#|#\/|#\/packs(\/[a-z0-9-]+)?|#\/puzzles\/mine)$/;     // screens that show progress, safe to redraw
 
   let me = null, providers = [], lastSync = null, syncError = null;
@@ -29,6 +29,8 @@
       const { files } = await r.json();
       const c = await (await post('api/sync/commit', { user: me.id, files })).json();
       changed = changed.concat(c.changed || []);
+      // a profile added on another browser arrives without games: fetch them here, as adding it would
+      for (const p of c.profiles_added || []) await post('api/profiles', { source: p.source, username: p.username });
       me.progress_lines = Object.values(files).reduce((n, l) => n + l.length, 0);
       if (!c.pending) break;
     }
@@ -123,14 +125,14 @@ dialog#account .foot { display: flex; gap: 14px; justify-content: center; margin
     const signup = view.tab === 'signup';
     return note() +
       `<div class="tabs"><button data-tab="login" class="${signup ? '' : 'active'}">Log in</button><button data-tab="signup" class="${signup ? 'active' : ''}">Sign up</button></div>` +
-      '<p>An account keeps your <b>puzzle progress</b> (puzzle rating, packs, the daily streak and review schedules) so it follows you to other browsers. ' +
+      '<p>An account keeps your <b>puzzle progress</b> (puzzle rating, packs, the daily streak and review schedules) and your <b>list of profiles</b>, so they follow you to other browsers, where the games are fetched again. ' +
       'Your reviewed games stay in this browser and are never uploaded. Everything on Blundr works without an account.</p>' +
       (signup
         ? '<label class="consent"><input type="checkbox" id="acc-consent"> <span>I am 15 or older and agree to the <a href="terms.html" target="_blank">terms of use</a> and the <a href="privacy.html" target="_blank">privacy policy</a>.</span></label>' +
           `<div class="col">${providerButtons('signup', true)}</div>` +
-          '<p class="muted">The puzzle progress already in this browser is uploaded to the new account.</p>'
+          '<p class="muted">The puzzle progress and profiles already in this browser are uploaded to the new account.</p>'
         : `<div class="col">${providerButtons('login', false)}</div>` +
-          '<p class="muted">Puzzle progress made in this browser is added to the account you log in to.</p>') +
+          '<p class="muted">Puzzle progress and profiles in this browser are added to the account you log in to.</p>') +
       legal;
   }
 
@@ -143,13 +145,13 @@ dialog#account .foot { display: flex; gap: 14px; justify-content: center; margin
       : syncError ? `Last sync failed: ${esc(syncError)}`
       : lastSync ? `Synced at ${lastSync.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : 'Not synced yet (waiting for Python to load)';
     const del = view.confirmDelete
-      ? '<div class="note bad"><p><b>Delete your account?</b> Your account and all the puzzle progress stored with it are deleted from the server straight away. This cannot be undone.</p>' +
+      ? '<div class="note bad"><p><b>Delete your account?</b> Your account and the puzzle progress and profile list stored with it are deleted from the server straight away. This cannot be undone.</p>' +
         '<label class="consent"><input type="checkbox" id="acc-wipe"> <span>Also clear the puzzle progress kept in this browser</span></label>' +
         '<div class="col"><button class="danger" data-act="delete">Delete my account</button><button data-act="nodelete">Cancel</button></div></div>'
       : '<button data-act="askdelete">Delete account…</button>';
     return note() +
       `<p class="muted">Signed in with</p><ul class="ids">${ids}</ul>${more ? `<div class="col">${more}</div>` : ''}` +
-      `<p>Puzzle progress: ${me.progress_lines || 0} records stored. <span class="muted">${status}</span></p>` +
+      `<p>Puzzle progress and profiles: ${me.progress_lines || 0} records stored. <span class="muted">${status}</span></p>` +
       '<div class="col"><button data-act="sync">Sync now</button></div><hr>' +
       '<div class="col"><a class="btn" href="account/export" download="blundr-account.json">Download my data</a>' +
       '<button data-act="logout">Log out</button>' +

@@ -75,8 +75,14 @@ def test_only_puzzle_progress_leaves_the_browser(a):
     (prof / "meta.json").write_text('{"source": "chesscom", "username": "me"}')
     (prof / "games.parquet").write_bytes(b"PAR1")
     (prof / "puzzle_attempts.jsonl").write_text('{"id": "own:x", "ts": 5, "solved": false}\n')
+    pasted = a / "profiles" / "pgn-pasted-games"
+    pasted.mkdir()
+    (pasted / "meta.json").write_text('{"source": "pgn", "username": "Pasted games"}')
     d = sync.delta(USER, a)
-    assert sorted(d["add"]) == ["profiles/chesscom-me/puzzle_attempts.jsonl", "puzzle_attempts.jsonl", "puzzle_solved.jsonl"]
+    assert sorted(d["add"]) == ["profiles.jsonl", "profiles/chesscom-me/puzzle_attempts.jsonl", "puzzle_attempts.jsonl",
+                                "puzzle_solved.jsonl"]
+    assert [json.loads(ln) for ln in d["add"]["profiles.jsonl"]] == [
+        {"source": "chesscom", "username": "me", "added": None, "pinned": None}]     # no games, no pasted PGNs
     assert d["remove"] == {}
 
 
@@ -183,6 +189,91 @@ def test_bridge_routes(a, monkeypatch):
     monkeypatch.setattr(sync.forget, "__defaults__", (False, a))
     attempts(a).write_text('{"id": "00008", "ts": 1, "solved": true, "rating": 1500}\n')
     assert sync.handle("/api/sync/delta", {"user": USER})["add"]
-    assert sync.handle("/api/sync/commit", {"user": USER, "files": {}}) == {"changed": [], "pending": True}
+    assert sync.handle("/api/sync/commit", {"user": USER, "files": {}}) == {"changed": [], "pending": True, "profiles_added": []}
     assert sync.handle("/api/sync/delta", {}) is None
     assert sync.handle("/api/sync/forget", {}) == {"removed": []}
+
+
+# ---------- the profile list ----------
+
+def add_profile(data: Path, source: str, username: str, pinned: str = None, games: bool = True) -> Path:
+    pid = f"{source}-{username.lower()}"
+    d = data / "profiles" / pid
+    d.mkdir(parents=True, exist_ok=True)
+    meta = {"source": source, "username": username, "created": "2026-10-01T10:00:00+00:00", "unseen": ["g1"]}
+    if pinned:
+        meta["pinned"] = pinned
+    (d / "meta.json").write_text(json.dumps(meta))
+    if games:
+        (d / "site").mkdir(exist_ok=True)
+        (d / "site" / "games.json").write_text('{"games": [{"id": "g1"}]}')     # reviews: never synced
+    return d
+
+
+def meta(data: Path, pid: str) -> dict:
+    return json.loads((data / "profiles" / pid / "meta.json").read_text())
+
+
+def test_profiles_follow_the_account_without_their_games(a, b):
+    acc = Account()
+    add_profile(a, "chesscom", "Hikaru", pinned="2026-10-02T09:00:00+00:00")
+    add_profile(a, "lichess", "DrNykterstein")
+    run(a, acc)
+    add_profile(b, "chesscom", "MagnusCarlsen")          # b's own profile, from before logging in
+    out = run(b, acc)
+    assert sorted(p["username"] for p in sync.commit(USER, acc.files, b)["profiles_added"] + out["profiles_added"]) == \
+        ["DrNykterstein", "Hikaru"]
+    assert meta(b, "chesscom-hikaru") == {"source": "chesscom", "username": "Hikaru", "created": "2026-10-01T10:00:00+00:00",
+                                          "pinned": "2026-10-02T09:00:00+00:00"}
+    assert not (b / "profiles" / "chesscom-hikaru" / "site").exists()      # the page fetches the games afresh
+    run(a, acc)
+    assert sorted(p.name for p in (a / "profiles").iterdir()) == ["chesscom-hikaru", "chesscom-magnuscarlsen", "lichess-drnykterstein"]
+    assert (a / "profiles" / "chesscom-hikaru" / "site" / "games.json").exists()    # a's own reviews untouched
+    assert meta(a, "chesscom-hikaru")["unseen"] == ["g1"]                           # and its local-only state
+
+
+def test_a_pin_and_a_removal_carry_over(a, b):
+    acc = Account()
+    add_profile(a, "chesscom", "Hikaru")
+    add_profile(a, "lichess", "DrNykterstein")
+    run(a, acc)
+    run(b, acc)
+    m = meta(a, "chesscom-hikaru")
+    m["pinned"] = "2026-10-03T08:00:00+00:00"
+    (a / "profiles" / "chesscom-hikaru" / "meta.json").write_text(json.dumps(m))
+    import shutil
+    shutil.rmtree(a / "profiles" / "lichess-drnykterstein")
+    run(a, acc)
+    assert len(acc.files["profiles.jsonl"]) == 1
+    run(b, acc)
+    assert meta(b, "chesscom-hikaru")["pinned"] == "2026-10-03T08:00:00+00:00"
+    assert not (b / "profiles" / "lichess-drnykterstein").exists()
+    # unpinning on b reaches a
+    m = meta(b, "chesscom-hikaru")
+    del m["pinned"]
+    (b / "profiles" / "chesscom-hikaru" / "meta.json").write_text(json.dumps(m))
+    run(b, acc)
+    run(a, acc)
+    assert "pinned" not in meta(a, "chesscom-hikaru")
+
+
+def test_pinned_wins_when_two_browsers_disagree(a, b):
+    acc = Account()
+    add_profile(a, "chesscom", "Hikaru")
+    run(a, acc)
+    run(b, acc)
+    m = meta(b, "chesscom-hikaru")
+    m["pinned"] = "2026-10-04T08:00:00+00:00"
+    (b / "profiles" / "chesscom-hikaru" / "meta.json").write_text(json.dumps(m))
+    run(b, acc)
+    acc.files["profiles.jsonl"].insert(0, sync.profile_line(meta(a, "chesscom-hikaru")))   # a's unpinned line came back
+    run(a, acc)
+    assert meta(a, "chesscom-hikaru")["pinned"] == "2026-10-04T08:00:00+00:00"
+    assert len(acc.files["profiles.jsonl"]) == 1
+
+
+def test_a_profile_line_this_app_cant_make_is_left_alone(a):
+    acc = Account()
+    acc.files["profiles.jsonl"] = ['{"source": "fide", "username": "x"}']
+    out = run(a, acc)
+    assert out["profiles_added"] == [] and not (a / "profiles").exists()
