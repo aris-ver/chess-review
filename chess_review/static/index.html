@@ -2669,6 +2669,7 @@ async function reloadGame() {
   if (g.analysed === state.game.analysed && g.key_moments.length === state.game.key_moments.length) return;
   const body = document.querySelector('.panel .body'), scrollTop = body.scrollTop;
   state.game = g;
+  notePace();       // when each batch of analysed moves came in
   renderSummary(); renderMoments(); patchMoveList(); renderGraph(); renderAnalyseBox();
   renderBoard(); renderPlayers(); renderEvalBar(); renderNow();
   body.scrollTop = scrollTop;
@@ -2717,11 +2718,33 @@ function syncLive() {
   liveShown = key;
   if (g) { patchMoveList(); renderGraph(); renderNow(); renderNav(); }
 }
-// Play. While the game is analysed it follows the analysis: the board steps to each move the moment its label is
-// in, one slide apart (FOLLOW_MS, just over the pieces' .18 s slide) when a batch of results lands at once, and
-// once the analysis is done it runs on to the end the same way. Otherwise it is the plain autoplay, a move every
-// PLAY_MS. Navigating by hand (go() without `auto`, a click on the board) stops either.
-const PLAY_MS = 1500, FOLLOW_MS = 200, FOLLOW_WAIT_MS = 100;
+// The analysis's pace. Its engines search side by side and finish together, so moves come ready in batches (one per
+// engine) every few seconds. The board shows each batch spread over the time the next one is expected to take --
+// the time per move the last batches took -- so it moves steadily and reaches the end of one batch about when the
+// next lands. Nothing of this touches the engines: they run flat out either way.
+// The time per move is the average since the first batch (which also waited for the engines to start), so a
+// position that takes long and comes in alone doesn't set the pace. batch: the largest seen, about the engines' count.
+const pace = { gid: null, f: 0, f1: null, at1: 0, at: 0, ms: null, batch: 0 };
+function notePace() {
+  const g = state.game, f = liveFrontier(), now = performance.now();
+  if (f == null) return;
+  if (pace.gid !== g.id) return Object.assign(pace, { gid: g.id, f, f1: null, at: now, ms: null, batch: 0 });
+  if (f <= pace.f) return;
+  if (pace.f1 == null) Object.assign(pace, { f1: f, at1: now });
+  else pace.ms = (now - pace.at1) / (f - pace.f1);
+  Object.assign(pace, { batch: Math.max(pace.batch, f - pace.f), f, at: now });
+}
+// Play. While the game is analysed it follows the analysis: it steps through each batch of ready moves at the
+// analysis's pace, waits at the frontier for the next, and once the analysis is done runs on to the end at the
+// same pace. With more in hand than a batch (fallen behind, Play pressed back in the game) it goes quicker in
+// proportion, down to a slide apart (FOLLOW_MS, just over the pieces' .18 s slide). Otherwise it is the plain
+// autoplay, a move every PLAY_MS. Navigating by hand (go() without `auto`, a click on the board) stops either.
+const PLAY_MS = 1500, FOLLOW_MS = 200, FOLLOW_FIRST_MS = 600, FOLLOW_MAX_MS = 3000, FOLLOW_WAIT_MS = 100;
+function followDelay(ahead) {     // ahead: the ready moves still to show
+  const known = pace.gid === state.game.id;
+  if (!known || pace.ms == null) return ahead > Math.max(known ? pace.batch : 0, 3) ? FOLLOW_MS : FOLLOW_FIRST_MS;
+  return Math.max(FOLLOW_MS, Math.min(FOLLOW_MAX_MS, pace.ms * Math.min(1, pace.batch / ahead)));
+}
 function togglePlay() { if (state.playing) stopPlay(); else startPlay(); }
 function startPlay() {
   stopPlay();
@@ -2731,10 +2754,14 @@ function startPlay() {
   const step = () => {
     let wait = follow ? FOLLOW_WAIT_MS : PLAY_MS;
     if (!state.game) return stopPlay();
+    notePace();
     if (!state.exploring) {
       const n = line().length, f = liveFrontier();
       if (state.ply >= n) return stopPlay();
-      if (!follow || f == null || state.ply < f) { go(state.ply + 1, true); if (follow) wait = FOLLOW_MS; }
+      if (!follow || f == null || state.ply < f) {
+        go(state.ply + 1, true);
+        if (follow) wait = followDelay((f ?? n) - state.ply);
+      }
     }
     state.playing = setTimeout(step, wait);
   };
@@ -3827,10 +3854,17 @@ if (location.search.includes('selftest')) (async () => {
     await wait(() => state.ply === K, 8000); const took = Date.now() - tf; await new Promise(r => setTimeout(r, 1000));
     say(`follows the analysis: 2 moves in ${took} ms (expect < 1000), waits at the frontier: ply ${state.ply} (expect ${K}), playing=${!!state.playing}, hint="${($('now').querySelector('.livehint') || {}).textContent}"`);
     state.game = partial(K + 2); patchMoveList();
-    const caught = await wait(() => state.ply === K + 2, 1500);
+    const caught = await wait(() => state.ply === K + 2, 3000);
     say(`analysis moves on, the board follows: ply ${state.ply} (${caught ? 'ok' : 'BAD'}), pending cells ${$('movelist').querySelectorAll('.m.pending').length}`);
+    // the next batch, 4 moves 1.6 s after the last: about 400 ms a move, and the board spreads them over that
+    await new Promise(r => setTimeout(r, 1600 - (performance.now() - pace.at)));
+    state.game = partial(K + 6); notePace();
+    const steps = []; let lastPly = state.ply, lastT = performance.now();
+    await wait(() => { if (state.ply !== lastPly) { const t = performance.now(); steps.push(Math.round(t - lastT)); lastPly = state.ply; lastT = t; } return state.ply === K + 6; }, 4000);
+    say(`paced to the analysis: ${Math.round(pace.ms)} ms a move measured (expect ~400), steps ${steps.join(' ')} ms (expect ~${Math.round(pace.ms)} after the first)`);
+    const at = state.ply;
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft' }));
-    say(`← takes over: playing=${!!state.playing} (expect false), ply ${state.ply} (expect ${K + 1})`);
+    say(`← takes over: playing=${!!state.playing} (expect false), ply ${state.ply} (expect ${at - 1})`);
     $('b-play').onclick(); const resumed = !!state.playing; $('boardbox').dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
     say(`Play resumes: ${resumed}; a click on the board stops it: playing=${!!state.playing}`);
     state.game = real; jobsNow = []; syncLive();
