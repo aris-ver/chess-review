@@ -74,9 +74,18 @@ def copy_if_changed(src: Path, dst: Path) -> None:
         shutil.copy2(src, dst)
 
 
+NAME = "Blundr"     # the web app's name (blundr.gr); the desktop app stays "Chess Review"
+RENAME = ("<title>Chess Review</title>", '<span id="home-t">Chess Review</span>', "home ? 'Chess Review' : 'Home'",
+          "`Chess Review puzzle of the day")
+
+
 def page() -> str:
     html = (ROOT / "chess_review" / "static" / "index.html").read_text(encoding="utf-8")
     html = html.replace("/*__PIECES__*/", json.dumps(chess.svg.PIECES))
+    for s in RENAME:    # each must still be there, so a change to the page can't leave the old name showing
+        if s not in html:
+            raise SystemExit(f"index.html no longer has {s!r}: update RENAME in {Path(__file__).name}")
+        html = html.replace(s, s.replace("Chess Review", NAME))
     i = html.index("<script")       # before the page's own scripts: the first fetch must already be redirected
     return html[:i] + '<script src="web/shim.js"></script>\n' + html[i:]
 
@@ -109,7 +118,11 @@ def build(engine_wasm: str | None) -> None:
     whl = chess_wheel()
     copy_if_changed(whl, OUT / "web" / whl.name)
     for name, src in engine_files().items():
-        copy_if_changed(src, OUT / "web" / "engine" / name)
+        dst = OUT / "web" / "engine" / name
+        if engine_wasm and name == "stockfish-19-single.wasm":     # served from elsewhere (R2): too big for Pages
+            dst.unlink(missing_ok=True)
+            continue
+        copy_if_changed(src, dst)
     app_zip(OUT / "app.zip")
     config = {"pyodide": PYODIDE, "chessWheel": whl.name, "engineWasm": engine_wasm or "engine/stockfish-19-single.wasm"}
     (OUT / "web" / "config.js").write_text(f"self.CR_CONFIG = {json.dumps(config, indent=1)};\n", encoding="utf-8")

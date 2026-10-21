@@ -1,6 +1,8 @@
-# chess-review in the browser
+# Blundr: chess-review in the browser
 
-A free web version for friends and anyone else. The engine and the Python code run on each visitor's
+**Blundr** (blundr.gr) is the free web version of chess-review, for friends and anyone else. The web build
+shows that name in the title, the header and the shared puzzle-of-the-day result (`scripts/build_web.py`
+renames them), while the desktop app stays "Chess Review". The engine and the Python code run on each visitor's
 computer, so hosting stays near €0. The desktop app stays as it is and remains the fast option.
 
 ## Measured (i7-10750H, 6 cores, 2026-10-21)
@@ -65,14 +67,30 @@ load takes about 15 s; `book.load` takes 8 s there (3.8 s native), so the book's
 ## Hosting
 
 - Static site on **Cloudflare Pages** (free: unlimited bandwidth, 25 MB per file). The 99 MB engine goes on
-  **Cloudflare R2** (free up to 10 GB stored and with no egress charge) behind the domain, e.g.
-  `engine.<domain>/stockfish-19-single.wasm`, with long cache headers.
+  **Cloudflare R2** (free up to 10 GB stored and with no egress charge) behind the domain, as
+  `engine.blundr.gr/stockfish-19-single.wasm`, with long cache headers.
 - Pyodide itself from its CDN (jsDelivr) at first; self-host it on Pages later if the CDN is a worry.
 - `scripts/build_web.py` assembles `web-dist/`: the page with the shim tag, `web/`, a zip of `chess_review/`
   plus the book keys and puzzle packs, the python-chess wheel and the lite engine. `python scripts/build_web.py
   --serve` serves it locally.
 - The page says that the browser analyses about 2× slower than the desktop app and links the Windows
-  download (GitHub Releases).
+  download (GitHub Releases). The notice shows while Python and the engine load, and again for as long as a
+  game is being analysed or waits to be. `web/shim.js` reads the `api/status` answers the page polls.
+
+### Deploying to blundr.gr
+
+1. **Move the domain's DNS to Cloudflare (you, at the registrar).** Cloudflare Registrar doesn't sell `.gr`,
+   so blundr.gr stays at its Greek registrar. Add blundr.gr to a Cloudflare account on the free plan.
+   Cloudflare then shows two nameservers. At the registrar, replace blundr.gr's nameservers with those two.
+   Cloudflare marks the zone active once the change has spread, usually within hours and at most about 48 h.
+   Nothing else changes at the registrar, and the domain is still renewed there.
+2. Create an R2 bucket, upload `stockfish-19-single.wasm`, connect it as `engine.blundr.gr`, and give it CORS
+   `GET` from `https://blundr.gr` and a long `Cache-Control`.
+3. Create a Pages project, upload `web-dist/` built with
+   `--engine-wasm https://engine.blundr.gr/stockfish-19-single.wasm`, and leave out `web/engine/stockfish-19-single.wasm`
+   (over the 25 MB limit). Add blundr.gr and www.blundr.gr as custom domains. Cloudflare creates their DNS
+   records once the zone is active.
+4. Later, for accounts: a Worker on `blundr.gr/api/account/*` with D1.
 
 ## Accounts (later, optional)
 
