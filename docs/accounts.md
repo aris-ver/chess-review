@@ -45,6 +45,20 @@ plain Python over `DATA`. It would need three things:
   consent box ticked (15 or older, terms and privacy policy) and records the consent version and time. A log-in to an
   account that doesn't exist sends you back with `?account=no-account` and the dialog offers to sign up. A second
   sign-in method can be linked from the account dialog, and removed as long as one is left.
+- **Email and password** (`worker/src/email.js`, `migrations/0002_email_password.sql`):
+  - **Sign-up**: an address, a password of 10 or more characters, and the consent box. We email a 6-digit code, and the
+    account exists only once the code is typed in, so nobody can sign up with someone else's address.
+  - **Codes**: kept hashed, 15 minutes, 5 tries, at most one a minute per address and purpose.
+  - **Passwords**: PBKDF2-SHA256, 100,000 iterations (the Workers maximum), with a 16-byte random salt. They are never
+    exported.
+  - **Log-in**: after 10 failures for an address, it waits 15 minutes.
+  - **Forgot password**: a code, then the new password. All of that account's sessions are signed out.
+  - **No address lookup**: a taken address at sign-up gets a "you already have an account" email instead of a different
+    answer, and a wrong address or a wrong password give the same error.
+  - **Sending**: Cloudflare Email Service through the `EMAIL` binding, from `MAIL_FROM`. Under `wrangler dev` the
+    message is only printed in the console, code included.
+  - **Not yet**: a per-IP limit on asking for codes. Add a Cloudflare rate-limiting rule on `/account/email/*` if abuse
+    shows up.
 - **Session**: a random token in the `blundr_session` cookie (HttpOnly, SameSite=Lax, Secure on https, `Path=/account/`),
   stored in D1 only as its SHA-256. 90 days, extended on use. POSTs must carry the site's own `Origin`.
 - **Sync** is a three-way merge of the JSONL files, done in Python (`sync.py`, whose docstring has the details) against
@@ -106,5 +120,9 @@ authorised redirect URI. Python side: `pytest tests/test_sync.py`.
 2. Google Cloud console: create an OAuth client (web application) with the redirect URI
    `https://blundr.gr/account/callback/google`. Set the consent screen's privacy policy and terms links to the pages
    above. Then `npx wrangler secret put GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`.
-3. `python scripts/build_web.py --engine-wasm https://engine.blundr.gr/stockfish-19-single.wasm`, then in `worker/`:
+3. Email Sending: in the dashboard, Compute & AI > Email Service > Email Sending > Onboard Domain > blundr.gr (or
+   `npx wrangler email sending enable blundr.gr`). It adds the SPF and DKIM records to the Cloudflare DNS. Codes go out
+   from `login@blundr.gr` (`MAIL_FROM`). Add a DMARC record too (`_dmarc` TXT `v=DMARC1; p=none; rua=mailto:…`) so the
+   codes don't land in spam.
+4. `python scripts/build_web.py --engine-wasm https://engine.blundr.gr/stockfish-19-single.wasm`, then in `worker/`:
    `npm run deploy`, and add blundr.gr as the Worker's custom domain. This takes the place of the Pages project in docs/web.md.

@@ -69,7 +69,10 @@ export async function refreshIdentity(db, provider, who) {
 export async function removeIdentity(db, userId, provider) {
   const n = await db.prepare('SELECT COUNT(*) AS n FROM identities WHERE user_id = ?').bind(userId).first();
   if (n.n <= 1) throw new BadRequest('that is the only way to sign in: delete the account instead');
-  await db.prepare('DELETE FROM identities WHERE user_id = ? AND provider = ?').bind(userId, provider).run();
+  await db.batch([
+    db.prepare('DELETE FROM identities WHERE user_id = ? AND provider = ?').bind(userId, provider),
+    ...(provider === 'email' ? [db.prepare('DELETE FROM passwords WHERE user_id = ?').bind(userId)] : []),
+  ]);
 }
 
 export async function account(db, userId) {
@@ -155,12 +158,18 @@ export async function exportAll(db, userId) {
   const ids = await db.prepare('SELECT provider, subject, name, email, created_at FROM identities WHERE user_id = ?').bind(userId).all();
   const ses = await db.prepare('SELECT created_at, expires_at FROM sessions WHERE user_id = ?').bind(userId).all();
   const { 'profiles.jsonl': profileLines = [], ...puzzleProgress } = await progress(db, userId);
+  const pw = await db.prepare('SELECT updated_at FROM passwords WHERE user_id = ?').bind(userId).first();
   return { account: u, sign_in_methods: ids.results, sessions: ses.results,
+           password: pw ? { set: true, stored_as: 'a salted PBKDF2-SHA256 hash, not included here', updated_at: pw.updated_at } : null,
            profiles: profileLines.map(l => JSON.parse(l)), puzzle_progress: puzzleProgress };
 }
 
 export async function deleteUser(db, userId) {
+  const emails = "(SELECT subject FROM identities WHERE user_id = ? AND provider = 'email')";
   await db.batch([
+    db.prepare(`DELETE FROM email_codes WHERE user_id = ? OR email IN ${emails}`).bind(userId, userId),
+    db.prepare(`DELETE FROM login_failures WHERE email IN ${emails}`).bind(userId),
+    db.prepare('DELETE FROM passwords WHERE user_id = ?').bind(userId),
     db.prepare('DELETE FROM progress WHERE user_id = ?').bind(userId),
     db.prepare('DELETE FROM sessions WHERE user_id = ?').bind(userId),
     db.prepare('DELETE FROM identities WHERE user_id = ?').bind(userId),
@@ -174,6 +183,8 @@ export async function expire(db, now, retentionDays) {
   await db.batch([
     db.prepare('DELETE FROM sessions WHERE expires_at <= ?').bind(now),
     db.prepare('DELETE FROM logins WHERE created_at <= ?').bind(now - 900),
+    db.prepare('DELETE FROM email_codes WHERE created_at <= ?').bind(now - 900),
+    db.prepare('DELETE FROM login_failures WHERE first_at <= ?').bind(now - 900),
   ]);
   const old = await db.prepare('SELECT id FROM users WHERE last_seen_at < ?').bind(now - retentionDays * DAY).all();
   for (const u of old.results) await deleteUser(db, u.id);

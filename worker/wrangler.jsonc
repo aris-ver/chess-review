@@ -24,10 +24,15 @@
     // Lichess needs no registration: the client id is any name the sign-in page shows you
     "LICHESS_CLIENT_ID": "blundr.gr",
     // accounts unused this long are deleted with their data (the privacy policy says so)
-    "RETENTION_DAYS": "730"
+    "RETENTION_DAYS": "730",
+    // sign-up and password-reset codes come from here; blundr.gr must be onboarded to Email Sending first
+    "MAIL_FROM": "Blundr <login@blundr.gr>"
     // GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET are secrets: `wrangler secret put`, or .dev.vars locally.
     // Without them the Google button is hidden.
   },
+  // Cloudflare Email Sending, for the email-and-password codes. Under `wrangler dev` nothing is sent: the message
+  // is printed in the console.
+  "send_email": [{ "name": "EMAIL" }],
   // once a day: expired sessions, abandoned sign-ins, and accounts past RETENTION_DAYS
   "triggers": { "crons": ["17 3 * * *"] },
   // Cloudflare's request logs would hold IP addresses; the privacy policy says none are kept

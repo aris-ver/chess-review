@@ -9,7 +9,7 @@
   const PROGRESS_WRITES = /^api\/(puzzles\/(attempt|solved|daily|reset)|profiles|profiles\/[^/]+\/(delete|pin))$/;
   const OVERVIEW = /^(|#|#\/|#\/packs(\/[a-z0-9-]+)?|#\/puzzles\/mine)$/;     // screens that show progress, safe to redraw
 
-  let me = null, providers = [], lastSync = null, syncError = null;
+  let me = null, providers = [], lastSync = null, syncError = null, minPassword = 10;
   const pageFetch = window.fetch;                // shim.js's: api/ goes to Python, the rest to the network
   const post = (url, body) => pageFetch(url, { method: 'POST', body: JSON.stringify(body || {}), headers: { 'Content-Type': 'application/json' } });
   const getJSON = async url => { const r = await pageFetch(url, { cache: 'no-store' }); if (!r.ok) throw new Error(`${url}: HTTP ${r.status}`); return r.json(); };
@@ -138,6 +138,11 @@ dialog#account .ids li span { flex: 1; }
 dialog#account .ids button { padding: 2px 8px; font-size: 12px; }
 dialog#account hr { border: 0; border-top: 1px solid var(--line); margin: 14px 0; }
 dialog#account .danger { background: var(--c-blunder); border-color: var(--c-blunder); color: #fff; font-weight: 600; }
+dialog#account input[type=email], dialog#account input[type=password], dialog#account #acc-code { font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; }
+dialog#account input:focus { outline: none; border-color: var(--accent); }
+dialog#account #acc-code { letter-spacing: .3em; text-align: center; font-size: 18px; }
+dialog#account .or { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 12px; margin: 4px 0; }
+dialog#account .or::before, dialog#account .or::after { content: ""; flex: 1; border-top: 1px solid var(--line); }
 dialog#account .foot { display: flex; gap: 14px; justify-content: center; margin-top: 12px; font-size: 13px; }
 `;
   const ICON = '<svg viewBox="0 0 24 24"><path d="M12 12a4.5 4.5 0 1 0 0-9 4.5 4.5 0 0 0 0 9zm0 2c-4.4 0-8 2.2-8 5v2h16v-2c0-2.8-3.6-5-8-5z"/></svg>';
@@ -166,26 +171,129 @@ dialog#account .foot { display: flex; gap: 14px; justify-content: center; margin
   const note = () => view.note ? `<div class="note${view.note.bad ? ' bad' : ''}">${view.note.html}</div>` : '';
   const legal = '<div class="foot"><a href="privacy.html" target="_blank">Privacy policy</a><a href="terms.html" target="_blank">Terms of use</a></div>';
 
+  // ---- email and password (worker/src/email.js): forms, and the step where the emailed code is typed in ----
+  const PROVIDER_NAMES = { lichess: 'Lichess', google: 'Google', email: 'Email' };
+  const emailInput = (auto = 'email') => `<input id="acc-email" type="email" placeholder="Email address" autocomplete="${auto}" value="${esc(view.email || '')}" required>`;
+  const passwordInput = (auto, placeholder = 'Password') => `<input id="acc-pw" type="password" placeholder="${placeholder}" autocomplete="${auto}" minlength="${minPassword}" required>`;
+  const or = () => (providers.length ? '<div class="or"><span>or</span></div>' : '');
+  const codeInput = '<input id="acc-code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="6-digit code" required>';
+
+  function stepBody() {
+    const s = view.step;
+    if (s.kind === 'code') {
+      return `<p>We sent a 6-digit code to <b>${esc(s.email)}</b>. It works for 15 minutes.</p>` +
+        `<form data-form="verify" class="col">${codeInput}<button class="primary">${s.purpose === 'link' ? 'Add this address' : 'Create my account'}</button></form>` +
+        '<p class="muted">Nothing came? Check the spam folder, or <a href="#" data-act="resend">send a new code</a>. <a href="#" data-act="back">Back</a></p>';
+    }
+    if (s.kind === 'forgot') {
+      return '<p>Type your email address and we will send you a code to set a new password.</p>' +
+        `<form data-form="forgot" class="col">${emailInput()}<button class="primary">Send the code</button></form>` +
+        '<p class="muted"><a href="#" data-act="back">Back to log in</a></p>';
+    }
+    if (s.kind === 'reset') {
+      return `<p>If <b>${esc(s.email)}</b> has a Blundr account, a code is on its way.</p>` +
+        `<form data-form="reset" class="col">${codeInput}${passwordInput('new-password', `New password (at least ${minPassword} characters)`)}<button class="primary">Set the new password</button></form>` +
+        '<p class="muted">Setting a new password logs you out everywhere else. <a href="#" data-act="resend">Send a new code</a> · <a href="#" data-act="back">Back</a></p>';
+    }
+    if (s.kind === 'link') {
+      return '<p>Add an email address and password, to log in with them as well.</p>' +
+        `<form data-form="link" class="col">${emailInput()}${passwordInput('new-password', `Password (at least ${minPassword} characters)`)}<button class="primary">Send me a code</button></form>` +
+        '<p class="muted"><a href="#" data-act="back">Back</a></p>';
+    }
+    return '';
+  }
+
   function guestBody() {
     const signup = view.tab === 'signup';
+    if (view.step) return note() + stepBody() + legal;
     return note() +
       `<div class="tabs"><button data-tab="login" class="${signup ? '' : 'active'}">Log in</button><button data-tab="signup" class="${signup ? 'active' : ''}">Sign up</button></div>` +
       '<p>An account keeps your <b>puzzle progress</b> (puzzle rating, packs, the daily streak and review schedules) and your <b>list of profiles</b>, so they follow you to other browsers, where the games are fetched again. ' +
       'Your reviewed games stay in this browser and are never uploaded. Everything on Blundr works without an account.</p>' +
       (signup
         ? '<label class="consent"><input type="checkbox" id="acc-consent"> <span>I am 15 or older and agree to the <a href="terms.html" target="_blank">terms of use</a> and the <a href="privacy.html" target="_blank">privacy policy</a>.</span></label>' +
-          `<div class="col">${providerButtons('signup', true)}</div>` +
+          `<form data-form="signup" class="col">${emailInput()}${passwordInput('new-password', `Password (at least ${minPassword} characters)`)}` +
+          '<button class="primary" data-mode="signup" disabled>Sign up with email</button></form>' +
+          `${or()}<div class="col">${providerButtons('signup', true)}</div>` +
           "<p class=\"muted\">If this browser has puzzle progress or profiles, you'll be asked whether to add them to the new account.</p>"
-        : `<div class="col">${providerButtons('login', false)}</div>` +
+        : `<form data-form="login" class="col">${emailInput()}${passwordInput('current-password')}<button class="primary">Log in</button></form>` +
+          '<p class="muted"><a href="#" data-act="toforgot">Forgot password?</a></p>' +
+          `${or()}<div class="col">${providerButtons('login', false)}</div>` +
           '<p class="muted">You get your account\'s progress and profiles. What you did here as a guest is set aside, not added to the account, and comes back when you log out.</p>') +
       legal;
   }
 
+  async function emailCall(step, body) {
+    const r = await post(`account/email/${step}`, body);
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
+    return d;
+  }
+
+  // signed in by email: the session cookie came with the answer
+  function signedIn(user, html) {
+    me = user;
+    view = { tab: 'login', confirmDelete: false, offer: null, step: null, note: html ? { html } : null };
+    render();
+    if (!html) dlg.close();
+    attach().catch(e => { syncError = String(e.message || e); renderDialog(); });
+  }
+
+  async function submitForm(name) {
+    const val = id => (dlg.querySelector('#' + id) || {}).value || '';
+    const s = view.step || {};
+    if (name === 'signup') {
+      view.email = val('acc-email').trim();
+      const password = val('acc-pw');
+      await emailCall('signup', { email: view.email, password, consent: CONSENT });
+      view.step = { kind: 'code', purpose: 'signup', email: view.email, password };
+      view.note = null;
+    } else if (name === 'verify') {
+      const d = await emailCall('verify', { email: s.email, code: val('acc-code'), purpose: s.purpose });
+      if (s.purpose === 'link') {
+        me = { ...me, ...d.user };
+        view.step = null;
+        view.note = { html: `Done: you can now log in with ${esc(s.email)} too.` };
+      } else {
+        return signedIn(d.user, OUTCOMES.welcome.html);
+      }
+    } else if (name === 'login') {
+      view.email = val('acc-email').trim();
+      const d = await emailCall('login', { email: view.email, password: val('acc-pw') });
+      return signedIn(d.user, null);
+    } else if (name === 'forgot') {
+      view.email = val('acc-email').trim();
+      await emailCall('forgot', { email: view.email });
+      view.step = { kind: 'reset', email: view.email };
+      view.note = null;
+    } else if (name === 'reset') {
+      const d = await emailCall('reset', { email: s.email, code: val('acc-code'), password: val('acc-pw') });
+      return signedIn(d.user, 'Your new password is set, and every other device has been logged out.');
+    } else if (name === 'link') {
+      view.email = val('acc-email').trim();
+      const password = val('acc-pw');
+      await emailCall('link', { email: view.email, password });
+      view.step = { kind: 'code', purpose: 'link', email: view.email, password };
+      view.note = null;
+    }
+    renderDialog();
+  }
+
+  async function resend() {
+    const s = view.step;
+    if (s.kind === 'reset') await emailCall('forgot', { email: s.email });
+    else await emailCall(s.purpose === 'link' ? 'link' : 'signup', { email: s.email, password: s.password, consent: CONSENT });
+    view.note = { html: 'A new code is on its way.' };
+    renderDialog();
+  }
+
   function accountBody() {
-    const ids = me.identities.map(i => `<li><span>${esc(i.name)} <span class="muted">(${i.provider === 'google' ? 'Google' : 'Lichess'})</span></span>` +
+    if (view.step) return note() + stepBody() + legal;
+    const ids = me.identities.map(i => `<li><span>${esc(i.name)} <span class="muted">(${PROVIDER_NAMES[i.provider] || esc(i.provider)})</span></span>` +
       (me.identities.length > 1 ? `<button data-unlink="${i.provider}">Remove</button>` : '') + '</li>').join('');
     const more = providers.filter(p => !me.identities.some(i => i.provider === p.id))
-      .map(p => `<button data-go="${p.id}" data-mode="link">Also sign in with ${esc(p.name)}</button>`).join('');
+      .map(p => `<button data-go="${p.id}" data-mode="link">Also sign in with ${esc(p.name)}</button>`).join('') +
+      (me.identities.some(i => i.provider === 'email') ? '' : '<button data-act="tolink">Also log in with an email and password</button>');
     const status = syncing ? 'Syncing…'
       : syncError ? `Last sync failed: ${esc(syncError)}`
       : lastSync ? `Synced at ${lastSync.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : 'Not synced yet (waiting for Python to load)';
@@ -195,7 +303,7 @@ dialog#account .foot { display: flex; gap: 14px; justify-content: center; margin
         '<div class="col"><button class="danger" data-act="delete">Delete my account</button><button data-act="nodelete">Cancel</button></div></div>'
       : '<button data-act="askdelete">Delete account…</button>';
     if (view.offer) {
-      const parts = [view.offer.puzzle_records && `${view.offer.puzzle_records} puzzle records`, view.offer.profiles && `${view.offer.profiles} profile${view.offer.profiles > 1 ? 's' : ''}`].filter(Boolean).join(' and ');
+      const parts = [view.offer.puzzle_records && `${view.offer.puzzle_records} puzzle record${view.offer.puzzle_records > 1 ? 's' : ''}`, view.offer.profiles && `${view.offer.profiles} profile${view.offer.profiles > 1 ? 's' : ''}`].filter(Boolean).join(' and ');
       return note() +
         `<div class="note"><p><b>Add this browser's progress to your new account?</b> You have ${parts} here from before you signed up.</p>` +
         '<div class="col"><button class="primary" data-act="keep">Yes, add it to my account</button>' +
@@ -225,6 +333,10 @@ dialog#account .foot { display: flex; gap: 14px; justify-content: center; margin
     if (name === 'sync') { const s = sync(); renderDialog(); return s; }
     if (name === 'askdelete' || name === 'nodelete') { view.confirmDelete = name === 'askdelete'; return renderDialog(); }
     if (name === 'keep' || name === 'fresh') { await answerOffer(name === 'keep'); return renderDialog(); }
+    if (name === 'toforgot') { view.step = { kind: 'forgot' }; view.note = null; return renderDialog(); }
+    if (name === 'tolink') { view.step = { kind: 'link' }; view.note = null; return renderDialog(); }
+    if (name === 'back') { view.step = null; view.note = null; return renderDialog(); }
+    if (name === 'resend') return resend();
     if (name === 'logout' || name === 'logout-wipe') {
       await post('account/logout');
       me = null;
@@ -266,8 +378,16 @@ dialog#account .foot { display: flex; gap: 14px; justify-content: center; margin
         if (r.ok) me = { ...me, ...d.user }; else view.note = { bad: true, html: esc(d.error) };
         return render();
       }
+      e.preventDefault();          // the links in the email steps
       el.disabled = true;
-      try { await act(el.dataset.act); } finally { el.disabled = false; }
+      try { await act(el.dataset.act); } catch (err) { view.note = { bad: true, html: esc(err.message) }; renderDialog(); } finally { el.disabled = false; }
+    });
+    dlg.addEventListener('submit', async e => {
+      e.preventDefault();
+      const form = e.target.closest('form[data-form]');
+      const b = form.querySelector('button');
+      b.disabled = true;
+      try { await submitForm(form.dataset.form); } catch (err) { view.note = { bad: true, html: esc(err.message) }; renderDialog(); } finally { b.disabled = false; }
     });
     dlg.addEventListener('change', e => {
       if (e.target.id === 'acc-consent') dlg.querySelectorAll('[data-mode="signup"]').forEach(b => { b.disabled = !e.target.checked; });
@@ -310,6 +430,7 @@ dialog#account .foot { display: flex; gap: 14px; justify-content: center; margin
       const d = await getJSON('account/me');
       me = d.user;
       providers = d.providers || [];
+      minPassword = d.min_password || minPassword;
     } catch (e) {
       btn.classList.add('hidden');      // no account service (the plain static site): nothing to offer
       return;
