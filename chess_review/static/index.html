@@ -2689,7 +2689,7 @@ function renderNav() {
   $('b-key').disabled = !state.game.key_moments.length;
   $('b-play').disabled = n === 0;
   $('b-play').classList.toggle('playing', !!state.playing);
-  $('b-play').title = state.playing ? 'Stop autoplay (p)' : liveFrontier() != null ? 'Play along with the analysis (p)' : 'Autoplay (p)';
+  $('b-play').title = state.playing ? 'Stop (p)' : liveFrontier() != null ? 'Follow the analysis (p)' : 'Autoplay (p)';
 }
 
 // ---------- live review: the board plays the game as the analysis reaches each move ----------
@@ -2717,30 +2717,28 @@ function syncLive() {
   liveShown = key;
   if (g) { patchMoveList(); renderGraph(); renderNow(); renderNav(); }
 }
-// Autoplay: a move every PLAY_MS, a longer look at the moments that matter, a quicker pace to catch up with an
-// analysis far ahead. While the game is analysed it waits at the frontier for the next move's label, and at the end
-// for the analysis to finish. Navigating by hand (go() without `auto`, a click on the board) stops it.
-const PLAY_MS = 1200, PLAY_KEY_MS = 2400, PLAY_CATCHUP_MS = 700, PLAY_WAIT_MS = 250;
-const PLAY_PAUSE_ON = new Set(['blunder', 'mistake', 'miss', 'brilliant', 'great']);
+// Play. While the game is analysed it follows the analysis: the board steps to each move the moment its label is
+// in, one slide apart (FOLLOW_MS, just over the pieces' .18 s slide) when a batch of results lands at once, and
+// once the analysis is done it runs on to the end the same way. Otherwise it is the plain autoplay, a move every
+// PLAY_MS. Navigating by hand (go() without `auto`, a click on the board) stops either.
+const PLAY_MS = 1500, FOLLOW_MS = 200, FOLLOW_WAIT_MS = 100;
 function togglePlay() { if (state.playing) stopPlay(); else startPlay(); }
-function startPlay(delay = PLAY_MS / 2) {
+function startPlay() {
   stopPlay();
-  if (state.ply >= line().length && liveFrontier() == null) go(0, true);
+  const follow = liveFrontier() != null && !state.variation;
+  if (!follow && state.ply >= line().length) go(0, true);
+  if (follow && state.ply > liveFrontier()) go(liveFrontier(), true);   // ahead of the analysis: back to where it is
   const step = () => {
-    let wait = PLAY_WAIT_MS;
+    let wait = follow ? FOLLOW_WAIT_MS : PLAY_MS;
     if (!state.game) return stopPlay();
     if (!state.exploring) {
-      const n = line().length;
-      if (state.ply >= n) { if (liveFrontier() == null) return stopPlay(); }
-      else if (inVariation() || !movePending(state.ply)) {
-        go(state.ply + 1, true);
-        const m = currentMove(), f = liveFrontier();
-        wait = m && PLAY_PAUSE_ON.has(m.label) ? PLAY_KEY_MS : f != null && f - state.ply > 6 ? PLAY_CATCHUP_MS : PLAY_MS;
-      }
+      const n = line().length, f = liveFrontier();
+      if (state.ply >= n) return stopPlay();
+      if (!follow || f == null || state.ply < f) { go(state.ply + 1, true); if (follow) wait = FOLLOW_MS; }
     }
     state.playing = setTimeout(step, wait);
   };
-  state.playing = setTimeout(step, delay);
+  state.playing = setTimeout(step, follow ? 0 : PLAY_MS / 2);
   if (state.game) { renderNav(); renderNow(); }
 }
 function stopPlay() {
@@ -2893,7 +2891,8 @@ async function pollStatus() {
       if (!state.game) showList(); else reloadGame();
     }
     lastJobStatus = j ? j.status : null;
-    if ((active || gameWatch || listIds.size) && gen === pollGen) state.poll = setTimeout(tick, 700);
+    // following a game's analysis: look often, so the board moves as soon as results land
+    if ((active || gameWatch || listIds.size) && gen === pollGen) state.poll = setTimeout(tick, gameWatch ? 250 : 700);
   };
   tick();
 }
@@ -3480,11 +3479,11 @@ function renderNow() {
   }
   const live = liveFrontier() != null;
   // while the game is analysed: how to take over from autoplay, or get it back
-  const hint = !live || g.puzzle ? '' : state.playing ? '<p class="livehint">Playing along with the analysis. <a href="#" data-live="stop">Stop</a>, or use ← → to take over.</p>'
-    : '<p class="livehint">The analysis carries on in the background. <a href="#" data-live="play">Play along</a> from here.</p>';
+  const hint = !live || g.puzzle ? '' : state.playing ? '<p class="livehint">Following the analysis. <a href="#" data-live="stop">Stop</a>, or use ← → to take over.</p>'
+    : '<p class="livehint">The analysis carries on in the background. <a href="#" data-live="play">Follow it</a> again.</p>';
   const withHint = html => {
     el.innerHTML = html + hint;
-    el.querySelectorAll('[data-live]').forEach(a => a.onclick = e => { e.preventDefault(); if (a.dataset.live === 'stop') stopPlay(); else startPlay(0); });
+    el.querySelectorAll('[data-live]').forEach(a => a.onclick = e => { e.preventDefault(); if (a.dataset.live === 'stop') stopPlay(); else startPlay(); });
   };
   if (state.ply === 0) {
     withHint(`<div class="top"><span class="verdict">${g.opening_name ? esc(g.opening_name) : 'Start of the game'}</span><span class="evbox">0.00</span></div>` +
@@ -3824,12 +3823,12 @@ if (location.search.includes('selftest')) (async () => {
     state.game = partial(K); jobsNow = [{ id: -1, kind: 'analyse', profile: state.profile, game: real.id, status: 'running', done: 1, total: 2 }];
     syncLive(); go(K - 2);
     say(`live: frontier ${liveFrontier()} (expect ${K}), pending cells ${$('movelist').querySelectorAll('.m.pending').length} (expect ${real.moves.length - K})`);
-    startPlay(0);
-    await wait(() => state.ply === K, 8000); await new Promise(r => setTimeout(r, 1500));
-    say(`autoplay waits at the frontier: ply ${state.ply} (expect ${K}), playing=${!!state.playing}, hint="${($('now').querySelector('.livehint') || {}).textContent}"`);
+    const tf = Date.now(); startPlay();
+    await wait(() => state.ply === K, 8000); const took = Date.now() - tf; await new Promise(r => setTimeout(r, 1000));
+    say(`follows the analysis: 2 moves in ${took} ms (expect < 1000), waits at the frontier: ply ${state.ply} (expect ${K}), playing=${!!state.playing}, hint="${($('now').querySelector('.livehint') || {}).textContent}"`);
     state.game = partial(K + 2); patchMoveList();
-    const caught = await wait(() => state.ply === K + 2, 6000);
-    say(`analysis moves on, autoplay follows: ply ${state.ply} (${caught ? 'ok' : 'BAD'}), pending cells ${$('movelist').querySelectorAll('.m.pending').length}`);
+    const caught = await wait(() => state.ply === K + 2, 1500);
+    say(`analysis moves on, the board follows: ply ${state.ply} (${caught ? 'ok' : 'BAD'}), pending cells ${$('movelist').querySelectorAll('.m.pending').length}`);
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft' }));
     say(`← takes over: playing=${!!state.playing} (expect false), ply ${state.ply} (expect ${K + 1})`);
     $('b-play').onclick(); const resumed = !!state.playing; $('boardbox').dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
