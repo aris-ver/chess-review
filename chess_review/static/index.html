@@ -44,10 +44,6 @@ button.snd.off { color: var(--muted); }
 .vol button.snd { background: transparent; border: 0; }
 .vol input { width: 0; min-width: 0; margin: 0; opacity: 0; pointer-events: none; accent-color: var(--accent); cursor: pointer; outline: none; transition: width .2s ease, margin .2s ease, opacity .15s; }
 .vol.open input { width: 110px; margin: 0 10px 0 0; opacity: 1; pointer-events: auto; }
-.switch { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; user-select: none; }
-.switch .lbl { font-size: 13px; color: var(--muted); }
-.switch .track { position: relative; width: 40px; height: 22px; border-radius: 11px; background: #55524c; transition: background .15s; flex-shrink: 0; }
-.switch .track::after { content: ""; position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.4); transition: transform .15s; }
 .switch.on .track { background: var(--accent); }
 .switch.on .track::after { transform: translateX(18px); }
 .switch.on .lbl { color: var(--text); }
@@ -340,7 +336,7 @@ table.games button.an { padding: 3px 9px; font-size: 12px; font-weight: 600; whi
   header .crumb { display: none; }
   header .right { gap: 6px; }
   header .right button { padding: 5px 8px; font-size: 14px; }
-  header .t, header #jobstat, header .switch .lbl { display: none; }
+  header .t, header #jobstat { display: none; }
   header h1 { white-space: nowrap; }
   .evalbar .lbl { display: none; }
   main { padding: 8px 8px 84px; }
@@ -596,9 +592,7 @@ svg.graph { width: 100%; height: 90px; display: block; cursor: pointer; backgrou
     <button id="b-settings" class="snd" title="Pieces, board and sounds"><svg viewBox="0 0 24 24"><path fill-rule="evenodd" d="M19.14 12.94c.04-.3.06-.61.06-.94s-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.49.49 0 0 0-.59-.22l-2.39.96a7 7 0 0 0-1.62-.94l-.36-2.54a.48.48 0 0 0-.48-.41h-3.84a.47.47 0 0 0-.47.41l-.36 2.54a7.4 7.4 0 0 0-1.62.94l-2.39-.96a.48.48 0 0 0-.59.22L2.74 8.87a.47.47 0 0 0 .12.61l2.03 1.58a6 6 0 0 0 0 1.88l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54a7 7 0 0 0 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32a.47.47 0 0 0-.12-.61zM12 15.6a3.6 3.6 0 1 1 0-7.2 3.6 3.6 0 0 1 0 7.2z"/></svg></button>
     <span class="vol"><button id="b-sound" class="snd" title="Volume"></button><input type="range" min="0" max="100" step="1" aria-label="Volume"></span>
     <button id="b-refresh" class="pctx" title="Fetch new games"><span class="i">⟳</span><span class="t"> Refresh games</span></button>
-    <span id="b-auto" class="switch pctx" title="Analyse newly fetched games automatically after a refresh (off: analyse each game on demand)"><span class="lbl">Auto-analyse</span><span class="track"></span></span>
     <span id="jobstat" style="color:var(--muted);font-size:12px"></span>
-    <a id="a-insights" class="pctx" href="#" title="Insights"><span class="i">📊</span><span class="t"> Insights →</span></a>
   </div>
 </header>
 <main>
@@ -906,7 +900,6 @@ const state = { profile: null, games: null, username: '', filters: { result:'', 
 try { state.sound = localStorage.getItem('sound') !== 'off'; } catch (e) {}
 state.volume = 90;   // 0-100, the slider under the speaker button
 try { const v = parseInt(localStorage.getItem('volume'), 10); if (v >= 0 && v <= 100) state.volume = v; } catch (e) {}
-state.autoAnalyse = false; try { state.autoAnalyse = localStorage.getItem('autoAnalyse') === 'on'; } catch (e) {}
 const P = () => `p/${state.profile}`;   // URL prefix of the current profile's files and API
 
 // The line being viewed: main-line moves up to the branch point, then the variation.
@@ -1124,7 +1117,6 @@ async function siteJSON(url, tries = 4) {
 }
 function setContext(on) {   // profile-scoped header controls only make sense inside a profile
   document.querySelectorAll('header .pctx').forEach(el => el.classList.toggle('hidden', !on));
-  if (on) $('a-insights').href = `${P()}/insights.html`;
 }
 
 // ---------- home ----------
@@ -2733,23 +2725,13 @@ $('b-analyse').onclick = async () => {
   pollStatus();
 };
 $('b-refresh').onclick = async () => {
-  const r = await fetch(`api/${P()}/refresh`, { method: 'POST', body: JSON.stringify({ analyse: state.autoAnalyse }) });
+  const r = await fetch(`api/${P()}/refresh`, { method: 'POST' });
   const d = await r.json();
   if (!r.ok) { toast(d.error === 'busy' ? `Busy: ${jobText(d.job)}` : d.error); return; }
   const from = sourceName(state.profile);
-  toast(state.autoAnalyse ? `Fetching new games from ${from} — new ones are analysed automatically…` : `Fetching new games from ${from}…`);
+  toast(`Fetching new games from ${from}…`);
   pollStatus();
 };
-function renderAuto() {
-  $('b-auto').classList.toggle('on', state.autoAnalyse);
-}
-$('b-auto').onclick = () => {
-  state.autoAnalyse = !state.autoAnalyse;
-  try { localStorage.setItem('autoAnalyse', state.autoAnalyse ? 'on' : 'off'); } catch (e) {}
-  renderAuto();
-  toast(state.autoAnalyse ? 'New games will be analysed after each refresh' : 'Games are analysed on demand only');
-};
-renderAuto();
 function jobText(j) {
   if (j.kind === 'analyse_all') return `analysing all games: ${j.done}/${j.total} done, current ${j.game} ${j.game_done}/${j.game_total}`;
   if (j.kind === 'ingest') return `fetching ${j.username || j.profile}'s games (${j.done}/${j.total})`;
