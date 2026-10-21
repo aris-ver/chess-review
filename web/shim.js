@@ -8,21 +8,41 @@
   let seq = 0;
   const realFetch = window.fetch.bind(window);
 
-  // The loading bar: Python first (the page waits for it), then the 99 MB engine in the background.
+  // The notice bar: Python loading first (the page waits for it), then the 99 MB engine in the background, and
+  // the note that the desktop app analyses faster. The note stays up while a game is being analysed or waits to be.
   const bar = document.createElement('div');
   bar.id = 'web-loading';
   bar.style.cssText = 'position:fixed;left:12px;bottom:12px;z-index:9999;max-width:min(420px,calc(100vw - 24px));padding:8px 12px;' +
     'border-radius:8px;background:rgba(20,20,20,.88);color:#eee;font:13px/1.4 system-ui,sans-serif;box-shadow:0 2px 10px rgba(0,0,0,.4)';
   const state = { python: 'Loading Python', engine: '' };
   const mb = b => (b / 1048576).toFixed(0);
+  let pythonReady = false, engineReady = false, analysing = false, hideT = null;
   const render = () => {
-    bar.innerHTML = `<div>${state.python}</div>${state.engine ? `<div>${state.engine}</div>` : ''}` +
-      '<div style="opacity:.7;margin-top:4px">Analysis in the browser is about 2× slower than the ' +
+    const lines = [];
+    if (!pythonReady) lines.push(state.python);
+    if (state.engine && !(engineReady && analysing)) lines.push(state.engine);   // "Engine ready" is old news by then
+    const loading = lines.map(t => `<div>${t}</div>`).join('');
+    bar.innerHTML = loading + `<div style="opacity:.7${loading ? ';margin-top:4px' : ''}">Analysis in the browser is about 2× slower than the ` +
       '<a style="color:#9cf" href="https://github.com/aris-ver/chess-review/releases/latest" target="_blank">Windows app</a>.</div>';
   };
-  const show = () => { if (!bar.isConnected) (document.body || document.documentElement).appendChild(bar); render(); };
-  let pythonReady = false, engineReady = false;
-  const maybeHide = () => { if (pythonReady && engineReady) setTimeout(() => bar.remove(), 4000); };
+  // Up while loading or analysing; gone 4 s after both are over.
+  const update = () => {
+    clearTimeout(hideT);
+    if (!document.body) return;
+    if (!bar.isConnected) document.body.appendChild(bar);
+    render();
+    if (pythonReady && engineReady && !analysing) hideT = setTimeout(() => bar.remove(), 4000);
+  };
+  // The page polls api/status while a game is analysed (or queued): read the answer on its way back.
+  // (a refresh that analyses its new games becomes an analyse_all job for that part)
+  const ANALYSING = ['analyse', 'analyse_all', 'build'];
+  const watchStatus = body => {
+    let s;
+    try { s = JSON.parse(new TextDecoder().decode(body)); } catch (e) { return; }
+    const busy = j => j && ANALYSING.includes(j.kind) && ['queued', 'running', 'finishing'].includes(j.status);
+    const now = busy(s.job) || (s.queue || []).some(busy);
+    if (now !== analysing) { analysing = now; update(); }
+  };
 
   worker.onmessage = e => {
     const m = e.data;
@@ -30,6 +50,7 @@
       const p = pending.get(m.id);
       if (!p) return;
       pending.delete(m.id);
+      if (p.path === '/api/status' && m.status === 200) watchStatus(m.body);
       const empty = m.status === 204 || m.status === 304;
       p.resolve(new Response(empty ? null : m.body, { status: m.status, headers: m.headers }));
     } else if (m.type === 'progress') {
@@ -40,8 +61,7 @@
         engineReady = m.total > 0 && m.done >= m.total;
         state.engine = engineReady ? 'Engine ready' : `Downloading the engine: ${mb(m.done)}${m.total ? ' / ' + mb(m.total) : ''} MB`;
       }
-      show();
-      maybeHide();
+      update();
     }
   };
 
@@ -56,11 +76,11 @@
     if (init.signal && init.signal.aborted) throw new DOMException('Aborted', 'AbortError');
     const id = ++seq;
     return new Promise((resolve, reject) => {
-      pending.set(id, { resolve, reject });
+      const path = '/' + rel + url.search;     // the desktop server's paths are absolute (/api/..., /p/...)
+      pending.set(id, { resolve, reject, path: '/' + rel });
       if (init.signal) init.signal.addEventListener('abort', () => { pending.delete(id); reject(new DOMException('Aborted', 'AbortError')); });
-      // the desktop server's paths are absolute (/api/..., /p/...)
-      worker.postMessage({ id, method, path: '/' + rel + url.search, body, contentType: 'application/json' }, body ? [body.buffer] : []);
+      worker.postMessage({ id, method, path, body, contentType: 'application/json' }, body ? [body.buffer] : []);
     });
   };
-  document.addEventListener('DOMContentLoaded', show);
+  document.addEventListener('DOMContentLoaded', update);
 })();
