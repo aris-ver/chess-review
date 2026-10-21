@@ -59,7 +59,8 @@ software (Pyodide, the Python runtime) is loaded from the jsDelivr network, whic
 <table>
 <tr><th>Data</th><th>Why</th></tr>
 <tr><td>A random account id; when the account was created and last used</td><td>To run the account, and to delete it after long inactivity (section 6)</td></tr>
-<tr><td>Your sign-in method: for <b>Lichess</b>, your Lichess user id and username; for <b>Google</b>, Google's id for your account and your email address</td><td>To recognise you when you sign in, and to show you which account you are signed in with</td></tr>
+<tr><td>Your sign-in method: for <b>Lichess</b>, your Lichess user id and username; for <b>Google</b>, Google's id for your account and your email address; for <b>email and password</b>, your email address and your password, stored only as a salted, one-way hash (PBKDF2-SHA256) that cannot be turned back into the password</td><td>To recognise you when you sign in, and to show you which account you are signed in with</td></tr>
+<tr><td>For email sign-in: a 6-digit code we email you (kept hashed, for 15 minutes) to confirm a sign-up, a new address or a password reset; and a count of failed log-ins for your address (kept 15 minutes)</td><td>To make sure the address is yours, and to slow down anyone guessing passwords</td></tr>
 <tr><td>The version of the terms and this policy you agreed to, and when</td><td>To show that you agreed at sign-up</td></tr>
 <tr><td>Sessions: a scrambled (hashed) copy of your session cookie, with its start and end dates</td><td>To keep you signed in</td></tr>
 <tr><td>Puzzle progress: which puzzles you tried, when, whether you solved them, whether you used a hint, how long you took and
@@ -71,9 +72,11 @@ it and whether (and since when) it is pinned. Not the games: another browser fet
 Games you pasted yourself are not included</td>
 <td>The service you asked for: the same profiles on every browser you sign in on</td></tr>
 </table>
-<p>We do not store passwords (you sign in with Lichess or Google), the games you review, the engine's analysis, or
-anything else from your browser. When you sign in, Lichess or Google tells us only the details above; we do not keep any
-access to your Lichess or Google account (the Lichess access token is revoked straight away).</p>
+<p>We do not store the games you review, the engine's analysis, or anything else from your browser. We never store a
+password itself, only its hash, and "Download my data" doesn't include the hash. When you sign in with Lichess or Google,
+they tell us only the details above. We keep no access to your Lichess or Google account (the Lichess access token is
+revoked straight away). The emails we send are only the codes for signing up and resetting your password; there are no
+newsletters or marketing emails.</p>
 
 <h2>4. Legal basis</h2>
 <p>We process account data because it is necessary to provide the account you asked for (Article 6(1)(b) GDPR). Delivering
@@ -85,7 +88,8 @@ necessary for the service you request, so they need no consent (section 8).</p>
 <li><b>Cloudflare</b> (Cloudflare, Inc. and its EU entities) hosts the site and the account database as our processor, under
 its data processing agreement. The account database is located in <span class="fill">[[the EU (Western Europe) - check the
 D1 location after creating it]]</span>. Cloudflare may process technical data in other countries, including the USA,
-under the EU-US Data Privacy Framework and the European Commission's standard contractual clauses.</li>
+under the EU-US Data Privacy Framework and the European Commission's standard contractual clauses. Cloudflare's Email
+Service also sends the sign-in codes; to do that it handles your email address and the message.</li>
 <li><b>Lichess</b> or <b>Google</b> handle your sign-in on their own sites, under their own privacy policies.</li>
 </ul>
 <p>We do not sell or share your data with anyone else, and we do not use it for advertising or profiling.</p>
@@ -96,7 +100,8 @@ under the EU-US Data Privacy Framework and the European Commission's standard co
 removed from the account at the next sync). An account not used for <b>24 months</b> is deleted
 automatically, with all its data.</li>
 <li>Sessions: they end when you log out, or 90 days after you last used them.</li>
-<li>A sign-in in progress (the short-lived record and cookie while you are at Lichess or Google): at most 15 minutes.</li>
+<li>A sign-in in progress (the short-lived record and cookie while you are at Lichess or Google), an emailed code, and
+the count of failed log-ins: at most 15 minutes.</li>
 <li>Deleted data may remain in Cloudflare's database backups for up to <span class="fill">[[30]]</span> days before it is
 overwritten.</li>
 </ul>

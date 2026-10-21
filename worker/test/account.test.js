@@ -17,7 +17,8 @@ function b64url(s) {
 }
 
 beforeEach(async () => {
-  for (const t of ['progress', 'sessions', 'identities', 'logins', 'users']) await env.DB.prepare(`DELETE FROM ${t}`).run();
+  for (const t of ['progress', 'sessions', 'identities', 'logins', 'passwords', 'email_codes', 'login_failures', 'users']) await env.DB.prepare(`DELETE FROM ${t}`).run();
+  outbox.length = 0;
   lichessUser = { id: 'magnus', username: 'Magnus' };
   googleClaims = { sub: 'g-1', email: 'magnus@example.com', email_verified: true };
   vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init = {}) => {
@@ -34,9 +35,14 @@ beforeEach(async () => {
 });
 afterEach(() => vi.restoreAllMocks());
 
+// The email binding: what was sent, so a test can read the code out of it.
+const outbox = [];
+const EMAIL = { send: async m => { outbox.push(m); return { messageId: String(outbox.length) }; } };
+const lastCode = to => outbox.filter(m => m.to === to).at(-1)?.text.match(/\b(\d{6})\b/)?.[1];
+
 // A browser: keeps its cookies between requests, as one would for /account/.
 class Browser {
-  constructor(extraEnv = {}) { this.jar = {}; this.env = { ...env, LICHESS_URL: '', ...extraEnv }; }   // not .dev.vars' fake
+  constructor(extraEnv = {}) { this.jar = {}; this.env = { ...env, LICHESS_URL: '', EMAIL, ...extraEnv }; }   // not .dev.vars' fake
   async req(path, { method = 'GET', body, origin = ORIGIN } = {}) {
     const headers = new Headers();
     const c = Object.entries(this.jar).map(([k, v]) => `${k}=${v}`).join('; ');
@@ -274,5 +280,119 @@ describe('your data', () => {
     expect(await store.expire(env.DB, Math.floor(Date.now() / 1000), 730)).toBe(1);
     expect(await count('users')).toBe(1);
     expect(await count('progress', `user_id = '${id}'`)).toBe(0);
+  });
+});
+
+describe('email and password', () => {
+  const PW = 'correct horse battery';
+  const post = (b, step, body) => b.json(`/account/email/${step}`, { method: 'POST', body });
+  async function emailSignup(b, address = 'Ana@Example.com', password = PW) {
+    const r = await post(b, 'signup', { email: address, password, consent: CONSENT_VERSION });
+    if (r.status !== 200) return r;
+    return post(b, 'verify', { email: address, code: lastCode(address.toLowerCase()), purpose: 'signup' });
+  }
+
+  it('signs up only once the emailed code is typed in', async () => {
+    const b = new Browser();
+    await post(b, 'signup', { email: 'ana@example.com', password: PW, consent: CONSENT_VERSION });
+    expect(await count('users')).toBe(0);                          // nothing yet: anyone could type any address
+    expect(outbox[0]).toMatchObject({ to: 'ana@example.com', from: { email: 'login@blundr.gr', name: 'Blundr' } });
+    expect((await post(b, 'verify', { email: 'ana@example.com', code: '000000', purpose: 'signup' })).status).toBe(400);
+    const r = await post(b, 'verify', { email: 'ana@example.com', code: lastCode('ana@example.com'), purpose: 'signup' });
+    expect(r.body).toMatchObject({ ok: true, created: true });
+    expect(r.body.user.identities).toEqual([expect.objectContaining({ provider: 'email', name: 'ana@example.com' })]);
+    expect((await b.json('/account/me')).body.user.consent_version).toBe(CONSENT_VERSION);
+    const pw = await env.DB.prepare('SELECT hash FROM passwords').first();
+    expect(pw.hash).toMatch(/^pbkdf2-sha256\$100000\$/);
+    expect(pw.hash).not.toContain(PW);
+  });
+
+  it('needs consent, a real-looking address and a long enough password', async () => {
+    const b = new Browser();
+    for (const body of [
+      { email: 'ana@example.com', password: PW },
+      { email: 'not an email', password: PW, consent: CONSENT_VERSION },
+      { email: 'ana@example.com', password: 'short', consent: CONSENT_VERSION },
+    ]) expect((await post(b, 'signup', body)).status).toBe(400);
+    expect(outbox).toEqual([]);
+  });
+
+  it('a code works once, for 5 tries at most', async () => {
+    const b = new Browser();
+    await post(b, 'signup', { email: 'ana@example.com', password: PW, consent: CONSENT_VERSION });
+    const code = lastCode('ana@example.com');
+    for (let i = 0; i < 5; i++) await post(b, 'verify', { email: 'ana@example.com', code: '999999', purpose: 'signup' });
+    expect((await post(b, 'verify', { email: 'ana@example.com', code, purpose: 'signup' })).status).toBe(400);
+    expect(await count('users')).toBe(0);
+  });
+
+  it('signing up with a taken address answers the same, and mails the owner instead', async () => {
+    await emailSignup(new Browser());
+    outbox.length = 0;
+    const r = await post(new Browser(), 'signup', { email: 'ana@example.com', password: 'another password', consent: CONSENT_VERSION });
+    expect(r).toEqual({ status: 200, body: { ok: true } });
+    expect(outbox[0].subject).toContain('already have');
+    expect(await count('users')).toBe(1);
+  });
+
+  it('logs in with the right password only, and slows down guessing', async () => {
+    await emailSignup(new Browser());
+    const b = new Browser();
+    const bad = await post(b, 'login', { email: 'ana@example.com', password: 'wrong password' });
+    const nobody = await post(b, 'login', { email: 'bob@example.com', password: PW });
+    expect([bad.status, nobody.status]).toEqual([401, 401]);
+    expect(bad.body).toEqual(nobody.body);                          // no telling which addresses have accounts
+    const ok = await post(b, 'login', { email: ' ANA@example.com ', password: PW });
+    expect(ok.body.created).toBe(false);
+    expect((await b.json('/account/me')).body.user.identities[0].provider).toBe('email');
+    for (let i = 0; i < 10; i++) await post(b, 'login', { email: 'ana@example.com', password: 'x'.repeat(12) });
+    expect((await post(b, 'login', { email: 'ana@example.com', password: PW })).status).toBe(429);
+  });
+
+  it('a password reset needs the emailed code and signs out every other session', async () => {
+    const a = new Browser();
+    await emailSignup(a);
+    const b = new Browser();
+    expect((await post(b, 'forgot', { email: 'nobody@example.com' })).body).toEqual({ ok: true });
+    await post(b, 'forgot', { email: 'ana@example.com' });
+    expect(outbox.at(-1).subject).toContain('reset');
+    expect((await post(b, 'reset', { email: 'ana@example.com', code: '123456', password: 'a new password!' })).status).toBe(400);
+    const r = await post(b, 'reset', { email: 'ana@example.com', code: lastCode('ana@example.com'), password: 'a new password!' });
+    expect(r.status).toBe(200);
+    expect((await a.json('/account/me')).body.user).toBeNull();     // the old session is gone
+    expect((await b.json('/account/me')).body.user).not.toBeNull();
+    expect((await post(new Browser(), 'login', { email: 'ana@example.com', password: PW })).status).toBe(401);
+  });
+
+  it('an email and password can be added to a Lichess account, and removed again', async () => {
+    const b = new Browser();
+    await b.signIn('lichess', 'signup');
+    expect((await post(new Browser(), 'link', { email: 'm@example.com', password: PW })).status).toBe(401);
+    await post(b, 'link', { email: 'm@example.com', password: PW });
+    const r = await post(b, 'verify', { email: 'm@example.com', code: lastCode('m@example.com'), purpose: 'link' });
+    expect(r.body.user.identities.map(i => i.provider)).toEqual(['lichess', 'email']);
+    const c = new Browser();
+    await post(c, 'login', { email: 'm@example.com', password: PW });
+    expect((await c.json('/account/me')).body.user.id).toBe(r.body.user.id);
+    await b.json('/account/unlink/email', { method: 'POST' });
+    expect(await count('passwords')).toBe(0);
+  });
+
+  it('deleting the account removes the password and any codes too', async () => {
+    const b = new Browser();
+    await emailSignup(b);
+    await post(b, 'forgot', { email: 'ana@example.com' });
+    const x = await (await b.req('/account/export')).json();
+    expect(x.password).toMatchObject({ set: true });
+    expect(JSON.stringify(x)).not.toContain('pbkdf2');
+    await b.json('/account/delete', { method: 'POST' });
+    for (const t of ['users', 'identities', 'passwords', 'email_codes', 'sessions']) expect(await count(t)).toBe(0);
+  });
+
+  it('asking for codes is limited to one a minute', async () => {
+    const b = new Browser();
+    await post(b, 'signup', { email: 'ana@example.com', password: PW, consent: CONSENT_VERSION });
+    expect((await post(b, 'signup', { email: 'ana@example.com', password: PW, consent: CONSENT_VERSION })).status).toBe(429);
+    expect(outbox.length).toBe(1);
   });
 });

@@ -8,11 +8,13 @@
 //   POST /account/logout
 //   GET  /account/progress               {files: {file: [line, ...]}}
 //   POST /account/progress               {add: {file: [lines]}, remove: {file: [lines]}} -> {files}
+//   POST /account/email/<step>           email and password: signup, verify, login, forgot, reset, link (email.js)
 //   POST /account/unlink/<provider>      drop a sign-in method (not the last one)
 //   GET  /account/export                 everything kept about you, as a JSON download
 //   POST /account/delete                 the account and all its data, at once
 
 import { CONSENT_VERSION } from './consent.js';
+import * as email from './email.js';
 import { providers, SignInError } from './providers.js';
 import * as store from './store.js';
 const SESSION = 'blundr_session';
@@ -131,9 +133,41 @@ async function callback(req, env, url, id) {
   } else {
     return done('no-account');     // logging in to an account that doesn't exist: the page offers to sign up
   }
+  return done(outcome, [await startSession(env, url, userId, t)]);
+}
+
+// A new session for userId: its Set-Cookie header.
+async function startSession(env, url, userId, t) {
   const token = randomToken();
   await store.createSession(env.DB, await sha256(token), userId, t, SESSION_DAYS);
-  return done(outcome, [cookie(url, SESSION, token, SESSION_DAYS * 86400)]);
+  return cookie(url, SESSION, token, SESSION_DAYS * 86400);
+}
+
+const EMAIL_STEPS = ['signup', 'verify', 'login', 'forgot', 'reset', 'link'];
+
+async function emailStep(req, env, url, step) {
+  let b;
+  try { b = await req.json(); } catch { throw new HttpError(400, 'JSON expected'); }
+  if (!b || typeof b !== 'object') throw new HttpError(400, 'JSON expected');
+  const t = now();
+  const signedIn = await currentUser(req, env);
+  if (step === 'link' && !signedIn) throw new HttpError(401, 'not signed in');
+  let out;
+  try {
+    out = await email[step](env, b, {
+      now: t, signedIn, consentVersion: CONSENT_VERSION,
+      createUser: (id, provider, who) => store.createUser(env.DB, { id, now: t, consentVersion: CONSENT_VERSION }, provider, who),
+      addIdentity: (id, provider, who) => store.addIdentity(env.DB, id, provider, who, t),
+    });
+  } catch (e) {
+    if (e instanceof email.EmailError) throw new HttpError(e.status, e.message);
+    throw e;
+  }
+  if (!out.userId || out.linked) {
+    return json({ ok: true, user: out.linked ? await store.account(env.DB, out.userId) : undefined });
+  }
+  const sc = await startSession(env, url, out.userId, t);
+  return json({ ok: true, created: Boolean(out.created), user: await store.account(env.DB, out.userId) }, 200, { 'Set-Cookie': sc });
 }
 
 async function route(req, env, url) {
@@ -145,8 +179,11 @@ async function route(req, env, url) {
   }
   if (req.method === 'GET' && path === '/account/me') {
     const u = await currentUser(req, env);
-    return json({ user: u && await store.account(env.DB, u), providers: available(env), consent_version: CONSENT_VERSION });
+    return json({ user: u && await store.account(env.DB, u), providers: available(env), consent_version: CONSENT_VERSION,
+                  min_password: email.MIN_PASSWORD });
   }
+  const em = path.match(/^\/account\/email\/([a-z]+)$/);
+  if (req.method === 'POST' && em && EMAIL_STEPS.includes(em[1])) return emailStep(req, env, url, em[1]);
   if (req.method === 'GET' && m && m[1] === 'login') return login(req, env, url, m[2]);
   if (req.method === 'GET' && m && m[1] === 'callback') return callback(req, env, url, m[2]);
   if (req.method === 'POST' && path === '/account/logout') {
