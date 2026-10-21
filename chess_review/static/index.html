@@ -553,6 +553,11 @@ svg.graph { width: 100%; height: 90px; display: block; cursor: pointer; backgrou
 .m.best .san { color: var(--c-best); } .m.excellent .san { color: var(--c-excellent); }
 .m.inaccuracy .san { color: var(--c-inaccuracy); } .m.mistake .san { color: var(--c-mistake); } .m.miss .san { color: var(--c-miss); }
 .m.blunder .san { color: var(--c-blunder); font-weight: 700; } .m.book .san { color: var(--c-book); } .m.forced .san { color: var(--c-forced); }
+/* a move the running analysis hasn't reached yet: no label until both its positions have evals */
+.m.pending .san { color: var(--muted); opacity: .7; }
+.m.pending .pend { width: 10px; height: 10px; margin: 0 2px; border-radius: 50%; border: 1.5px dashed #6a6764; flex: none; }
+.bubble .livehint { color: #777; font-size: 12px; }
+.bubble .livehint a { color: #5d8a2e; font-weight: 600; }
 .empty { padding: 30px; text-align: center; color: var(--muted); }
 
 /* settings: pieces, board and sounds, previewed on a board before Apply */
@@ -902,7 +907,8 @@ const $ = id => document.getElementById(id);
 const state = { profile: null, games: null, username: '', filters: { result:'', colour:'', analysed:'', brilliant:'' }, game: null, ply: 0, flipped: false,
                 sound: true, poll: null,
                 variation: null,      // { basePly, moves: [...] } - a "what if" line branching after basePly main-line moves
-                sel: null, legal: null, exploring: false, cycle: {}, playing: null, explain: false, showBest: false };
+                sel: null, legal: null, exploring: false, cycle: {}, playing: null, explain: false, showBest: false,
+                livePlayed: new Set() };   // games whose analysis autoplay has followed on its own once
 try { state.sound = localStorage.getItem('sound') !== 'off'; } catch (e) {}
 state.volume = 90;   // 0-100, the slider under the speaker button
 try { const v = parseInt(localStorage.getItem('volume'), 10); if (v >= 0 && v <= 100) state.volume = v; } catch (e) {}
@@ -2683,20 +2689,66 @@ function renderNav() {
   $('b-key').disabled = !state.game.key_moments.length;
   $('b-play').disabled = n === 0;
   $('b-play').classList.toggle('playing', !!state.playing);
+  $('b-play').title = state.playing ? 'Stop autoplay (p)' : liveFrontier() != null ? 'Play along with the analysis (p)' : 'Autoplay (p)';
 }
-// Autoplay: one move every 1.5 s; stepping manually keeps it running, the end (or a click to pause) stops it.
-const PLAY_MS = 1500;
-function togglePlay() {
-  if (state.playing) return stopPlay();
-  if (state.ply >= line().length) go(0);
-  state.playing = setInterval(() => {
-    if (!state.game || state.exploring) return;
-    if (state.ply >= line().length) return stopPlay();
-    go(state.ply + 1);
-  }, PLAY_MS);
-  renderNav();
+
+// ---------- live review: the board plays the game as the analysis reaches each move ----------
+// The runner analyses a game's positions in game order and rewrites its JSON as they come in. A move's label is
+// final once the positions before and after it both have their evals (book and forced moves get theirs without,
+// so the evals are what counts); until then, while the analysis runs, the move is pending.
+function moveReady(g, i) {
+  const before = i === 0 ? g.start_wp_white : g.moves[i - 1].wp_white;
+  return g.analysed >= 0.999 || (before != null && g.moves[i].wp_white != null);
 }
-function stopPlay() { if (state.playing) clearInterval(state.playing); state.playing = null; if (state.game) renderNav(); }
+// How many moves from the start are ready while the game on screen is being analysed (or waits to be); null if it isn't.
+function liveFrontier() {
+  const g = state.game;
+  if (!g || g.puzzle || g.sandbox || !state.profile || !gameJob(g.id)) return null;
+  let i = 0;
+  while (i < g.moves.length && moveReady(g, i)) i++;
+  return i;
+}
+const movePending = i => liveFrontier() != null && !moveReady(state.game, i);
+// The pending marks, the graph's shading and the coach's hint follow the analysis starting and ending.
+let liveShown = null;
+function syncLive() {
+  const g = state.game, key = g && liveFrontier() != null ? g.id : null;
+  if (key === liveShown) return;
+  liveShown = key;
+  if (g) { patchMoveList(); renderGraph(); renderNow(); renderNav(); }
+}
+// Autoplay: a move every PLAY_MS, a longer look at the moments that matter, a quicker pace to catch up with an
+// analysis far ahead. While the game is analysed it waits at the frontier for the next move's label, and at the end
+// for the analysis to finish. Navigating by hand (go() without `auto`, a click on the board) stops it.
+const PLAY_MS = 1200, PLAY_KEY_MS = 2400, PLAY_CATCHUP_MS = 700, PLAY_WAIT_MS = 250;
+const PLAY_PAUSE_ON = new Set(['blunder', 'mistake', 'miss', 'brilliant', 'great']);
+function togglePlay() { if (state.playing) stopPlay(); else startPlay(); }
+function startPlay(delay = PLAY_MS / 2) {
+  stopPlay();
+  if (state.ply >= line().length && liveFrontier() == null) go(0, true);
+  const step = () => {
+    let wait = PLAY_WAIT_MS;
+    if (!state.game) return stopPlay();
+    if (!state.exploring) {
+      const n = line().length;
+      if (state.ply >= n) { if (liveFrontier() == null) return stopPlay(); }
+      else if (inVariation() || !movePending(state.ply)) {
+        go(state.ply + 1, true);
+        const m = currentMove(), f = liveFrontier();
+        wait = m && PLAY_PAUSE_ON.has(m.label) ? PLAY_KEY_MS : f != null && f - state.ply > 6 ? PLAY_CATCHUP_MS : PLAY_MS;
+      }
+    }
+    state.playing = setTimeout(step, wait);
+  };
+  state.playing = setTimeout(step, delay);
+  if (state.game) { renderNav(); renderNow(); }
+}
+function stopPlay() {
+  const was = state.playing;
+  if (was) clearTimeout(was);
+  state.playing = null;
+  if (state.game) { renderNav(); if (was) renderNow(); }
+}
 
 // ---------- analyse / refresh ----------
 function renderAnalyseBox(job) {
@@ -2730,6 +2782,11 @@ $('b-analyse').onclick = async () => {
   if (!r.ok) { toast(d.error === 'busy' ? `Busy: ${jobText(d.job)}` : d.error); return; }
   jobsNow = [d.job, ...jobsNow];
   renderAnalyseBox(d.job);
+  // the board plays the game along with the analysis, from the start unless the user is somewhere in it
+  state.livePlayed.add(state.game.id);
+  syncLive();
+  if (state.ply >= line().length) go(0, true);
+  startPlay();
   pollStatus();
 };
 $('b-refresh').onclick = async () => {
@@ -2807,6 +2864,8 @@ async function pollStatus() {
       const gj = gameJob(g.id);
       if (gj) {
         if (!gameWatch || gameWatch.id !== gj.id || gameWatch.slug !== g.id) gameWatch = { id: gj.id, slug: g.id, at: -1 };
+        // a game opened at its start while its analysis runs (started from the list, say): play along, once
+        if (!state.livePlayed.has(g.id) && state.ply === 0 && !state.variation) { state.livePlayed.add(g.id); startPlay(); }
         const [done] = jobProgress(gj);
         if (gj.status !== 'queued' && done !== gameWatch.at) { gameWatch.at = done; await reloadGame(); }
         renderAnalyseBox(gj);
@@ -2816,6 +2875,7 @@ async function pollStatus() {
         await reloadGame(); renderAnalyseBox(null);
         if (ended && ended.kind === 'analyse') { if (ended.status === 'error') toast('Analysis failed: ' + ended.error); else if (ended.status === 'done') play('notify'); }
       }
+      syncLive();
     } else if (state.profile && !$('list').classList.contains('hidden')) {
       // the game list: rows being analysed show how far, and lose the button once done
       const on = jobsNow.filter(x => x.profile === state.profile && x.game && ACTIVE(x.status) && x.kind !== 'analyse_all' && !(x.kind === 'build' && x.phase !== 'analysing'));
@@ -3219,6 +3279,7 @@ async function commitMove(uci, instant) {
 function deselect() { state.sel = null; state.legal = null; renderOverlays(parseFen(currentFen()), currentMove()); }
 
 $('boardbox').addEventListener('dragstart', e => e.preventDefault());
+$('boardbox').addEventListener('pointerdown', () => stopPlay(), true);   // a hand on the board ends autoplay
 $('boardbox').addEventListener('pointerdown', async e => {
   if (!state.game) return;
   if (e.button === 2) {
@@ -3417,20 +3478,33 @@ function renderNow() {
       `<p>${top ? `${esc(engineName(sandboxEval[currentFen()]))} likes <b style="color:var(--text)">${esc(top.san)}</b> here (depth ${top.depth ?? '?'}, still searching). ` : `${esc(engineName())} is evaluating… `}Drag a piece to explore — nothing here is saved.</p>`;
     return;
   }
+  const live = liveFrontier() != null;
+  // while the game is analysed: how to take over from autoplay, or get it back
+  const hint = !live || g.puzzle ? '' : state.playing ? '<p class="livehint">Playing along with the analysis. <a href="#" data-live="stop">Stop</a>, or use ← → to take over.</p>'
+    : '<p class="livehint">The analysis carries on in the background. <a href="#" data-live="play">Play along</a> from here.</p>';
+  const withHint = html => {
+    el.innerHTML = html + hint;
+    el.querySelectorAll('[data-live]').forEach(a => a.onclick = e => { e.preventDefault(); if (a.dataset.live === 'stop') stopPlay(); else startPlay(0); });
+  };
   if (state.ply === 0) {
-    el.innerHTML = `<div class="top"><span class="verdict">${g.opening_name ? esc(g.opening_name) : 'Start of the game'}</span><span class="evbox">0.00</span></div>` +
-      (g.analysed >= 0.999 ? `<p>${g.key_moments.length ? `${g.key_moments.length} key moment${g.key_moments.length > 1 ? 's' : ''} — press space to jump to the first.` : 'No decisive mistakes in this game.'}</p>` : `<p>Not analysed yet — press Analyse game.</p>`);
+    withHint(`<div class="top"><span class="verdict">${g.opening_name ? esc(g.opening_name) : 'Start of the game'}</span><span class="evbox">0.00</span></div>` +
+      (g.analysed >= 0.999 ? `<p>${g.key_moments.length ? `${g.key_moments.length} key moment${g.key_moments.length > 1 ? 's' : ''} — press space to jump to the first.` : 'No decisive mistakes in this game.'}</p>`
+        : live ? '' : `<p>Not analysed yet — press Analyse game.</p>`));
     return;
   }
   const m = currentMove();
   const vtag = inVariation() ? ` <span class="var">variation</span>` : '';
+  if (!inVariation() && movePending(state.ply - 1)) {
+    withHint(`<div class="top"><span class="verdict">${moveLabel(m.ply, m.san)}</span><span class="unanalysed">being analysed…</span></div>`);
+    return;
+  }
   el.classList.toggle('loading', !!m.pending);
   if (m.pending) {
     el.innerHTML = `<div class="top"><span class="skel dot"></span><span class="skel w1"></span><span class="skel w2"></span></div>` +
       `<div class="skel line"></div><div class="skel short"></div>`;
     return;
   }
-  if (!m.label) { el.innerHTML = `<div class="top"><span class="verdict">${moveLabel(m.ply, m.san)}${vtag}</span><span class="unanalysed">not analysed</span></div>`; return; }
+  if (!m.label) { withHint(`<div class="top"><span class="verdict">${moveLabel(m.ply, m.san)}${vtag}</span><span class="unanalysed">not analysed</span></div>`); return; }
   let html = `<div class="top">${icon(m.label)}<span class="verdict" style="color:${COLOR[m.label]}">${verdict(m)}</span>${vtag}<span class="evbox">${esc(fmtEvalBox(m.eval))}</span></div>`;
   const lines = m.comment || [];
   const detail = state.explain ? lines : lines.filter(t => !t.startsWith(m.san + ' is') && !t.startsWith(m.san + ' was'));
@@ -3438,7 +3512,7 @@ function renderNow() {
   else if (m.best_san && m.best_uci !== m.uci && !['book', 'forced'].includes(m.label)) html += `<p>${esc(m.best_san)} was the engine's choice.</p>`;
   if (m.spent != null && state.explain) html += `<p style="color:#777">Thought for ${m.spent}s.</p>`;
   if (inVariation() && state.ply === line().length && m.next_best_san) html += `<p>${currentFen().split(' ')[1] === 'w' ? 'White' : 'Black'} to move — the engine plays <b>${esc(m.next_best_san)}</b> here. Press Best to play it, or try your own.</p>`;
-  el.innerHTML = html;
+  withHint(html);
 }
 // fen -> {engine, nodes, lines: [{rank, uci, san, eval, depth}, ...]}, the sandbox's current (unplayed) position,
 // filled in live as streamSandboxEval() reads the engine's search — see below.
@@ -3530,6 +3604,7 @@ function renderLines() {
 }
 $('b-explain').onclick = () => { state.explain = !state.explain; $('b-explain').classList.toggle('active', state.explain); renderNow(); };
 $('b-best').onclick = async () => {
+  stopPlay();
   if (state.game && state.game.sandbox && !bestMoveHere()) await streamSandboxEval(currentFen());
   const b = bestMoveHere();
   if (!b) { toast('No engine move for this position'); return; }
@@ -3615,12 +3690,14 @@ function patchMoveList() {
   const cells = $('movelist').querySelectorAll('.m');
   if (cells.length !== state.game.moves.length) return renderMoveList();
   state.game.moves.forEach((m, i) => {
-    const el = cells[i], cls = `m ${m.label || ''}` + (el.classList.contains('cur') ? ' cur' : '');
-    if (el.className !== cls) { el.className = cls; el.innerHTML = `${icon(m.label, 'ico sm')}<span class="san">${m.san}</span>`; }
+    const el = cells[i], cls = `m ${moveClass(m)}` + (el.classList.contains('cur') ? ' cur' : '');
+    if (el.className !== cls) { el.className = cls; el.innerHTML = moveInner(m); }
   });
 }
+const moveClass = m => movePending(m.ply) ? 'pending' : m.label || '';
+const moveInner = m => `${movePending(m.ply) ? '<span class="pend" title="Being analysed"></span>' : icon(m.label, 'ico sm')}<span class="san">${m.san}</span>`;
 function moveCell(m) {
-  return `<div class="m ${m.label || ''}" data-ply="${m.ply}">${icon(m.label, 'ico sm')}<span class="san">${m.san}</span></div>`;
+  return `<div class="m ${moveClass(m)}" data-ply="${m.ply}">${moveInner(m)}</div>`;
 }
 // Keep `el` visible inside the scrolling panel body without scrolling the page itself.
 function revealInBody(el) {
@@ -3652,7 +3729,7 @@ function renderGraph() {
   for (const m of g.moves) if (['mistake', 'miss', 'blunder', 'brilliant', 'great'].includes(m.label))
     marks += `<circle cx="${x(m.ply + 1)}" cy="${y(m.wp_white)}" r="2.6" fill="${COLOR[m.label]}"/>`;
   const cx = x(state.variation ? Math.min(state.ply, state.variation.basePly) : state.ply);
-  const done = Math.round(g.analysed * n);
+  const done = liveFrontier() ?? Math.round(g.analysed * n);
   const unan = g.analysed < 0.999 ? `<rect x="${x(done)}" y="0" width="${W - x(done)}" height="${H}" fill="rgba(0,0,0,.35)"/>` : '';
   svg.setAttribute('viewBox', `0 0 ${W} ${H}`); svg.setAttribute('preserveAspectRatio', 'none');
   svg.innerHTML = `<rect width="${W}" height="${H}" fill="#3a3733"/><path d="${path}" fill="#e6e3de"/>` +
@@ -3662,7 +3739,8 @@ function renderGraph() {
 }
 
 // ---------- navigation ----------
-function go(ply) {
+function go(ply, auto = false) {
+  if (!auto) stopPlay();       // the user takes over from autoplay
   const target = Math.max(0, Math.min(line().length, ply));
   if (target === state.ply) { renderNav(); return; }        // nothing to do: no re-render, no sound
   state.ply = target;
@@ -3738,6 +3816,26 @@ if (location.search.includes('selftest')) (async () => {
     say(`variation off move one: base ${state.variation.basePly}, ply ${state.ply}, inVariation=${inVariation()}`);
     go(0); say(`back to the start: variation=${state.variation} (expect null), ply ${state.ply} -- there is no ply behind 0 to escape through`);
     cycleLabel('white', 'best'); const a = state.ply; cycleLabel('white', 'best'); say(`cycle best white: ${a} -> ${state.ply}`);
+    // live review: an analysis that has reached move K, faked on a copy of the game (the evals after it taken out)
+    const wait = async (ok, ms) => { const t = Date.now(); while (!ok() && Date.now() - t < ms) await new Promise(r => setTimeout(r, 50)); return ok(); };
+    const real = state.game, K = Math.min(8, real.moves.length - 4);
+    const partial = upTo => ({ ...real, analysed: 0.5, moves: real.moves.map((m, i) => i < upTo ? m : { ...m, wp_white: null, label: m.label === 'book' ? 'book' : null }) });
+    stopPolling(); dropVariation(); renderMoveList();
+    state.game = partial(K); jobsNow = [{ id: -1, kind: 'analyse', profile: state.profile, game: real.id, status: 'running', done: 1, total: 2 }];
+    syncLive(); go(K - 2);
+    say(`live: frontier ${liveFrontier()} (expect ${K}), pending cells ${$('movelist').querySelectorAll('.m.pending').length} (expect ${real.moves.length - K})`);
+    startPlay(0);
+    await wait(() => state.ply === K, 8000); await new Promise(r => setTimeout(r, 1500));
+    say(`autoplay waits at the frontier: ply ${state.ply} (expect ${K}), playing=${!!state.playing}, hint="${($('now').querySelector('.livehint') || {}).textContent}"`);
+    state.game = partial(K + 2); patchMoveList();
+    const caught = await wait(() => state.ply === K + 2, 6000);
+    say(`analysis moves on, autoplay follows: ply ${state.ply} (${caught ? 'ok' : 'BAD'}), pending cells ${$('movelist').querySelectorAll('.m.pending').length}`);
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft' }));
+    say(`← takes over: playing=${!!state.playing} (expect false), ply ${state.ply} (expect ${K + 1})`);
+    $('b-play').onclick(); const resumed = !!state.playing; $('boardbox').dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+    say(`Play resumes: ${resumed}; a click on the board stops it: playing=${!!state.playing}`);
+    state.game = real; jobsNow = []; syncLive();
+    say(`analysis done: frontier ${liveFrontier()} (expect null), pending cells ${$('movelist').querySelectorAll('.m.pending').length} (expect 0)`);
     say('DONE');
   } catch (e) { say('ERROR ' + e.stack); }
 })();
