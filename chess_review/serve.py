@@ -217,9 +217,14 @@ class Runner:
             else:
                 return None
         self.job = job
-        self.thread = threading.Thread(target=self._run, args=(job, before), daemon=True)
-        self.thread.start()
+        self.thread = self._spawn(job, before)
         return job
+
+    def _spawn(self, job: Job, before):
+        """Run the job off the request thread, once `before` (the job giving way to it) has ended."""
+        t = threading.Thread(target=self._run, args=(job, before), daemon=True)
+        t.start()
+        return t
 
     def _kick(self) -> None:
         """Start what waits once the way is clear: a queued analysis first, then the next puzzle build (which also
@@ -329,11 +334,14 @@ class Runner:
         try:
             self._do(job)
         finally:
-            self.recent.append(job.to_dict())
-            if job.kind == "build":
-                self._build_ended(job)
-            if self.job is job:
-                self._kick()
+            self._ended(job)
+
+    def _ended(self, job: Job) -> None:
+        self.recent.append(job.to_dict())
+        if job.kind == "build":
+            self._build_ended(job)
+        if self.job is job:
+            self._kick()
 
     def _build_ended(self, job: Job) -> None:
         pid = job.profile.id
@@ -351,27 +359,33 @@ class Runner:
     def _do(self, job: Job) -> None:
         try:
             job.status = "running"
-            if job.kind == "puzzles":
-                self._puzzles(job)
-            elif job.kind == "build":
-                self._build(job)
-            elif job.kind == "analyse":
-                self._analyse(job)
-            elif job.kind == "analyse_all":
-                self._analyse_all(job)
-            elif job.kind == "ingest":
-                self._ingest(job)
-            else:
-                self._refresh(job)
+            self._work(job)
             job.status = "stopped" if job.stop_requested else "done"
         except Exception as e:  # noqa: BLE001 - surfaced to the UI
-            log.error("job failed: %s", traceback.format_exc())
-            job.status, job.error = "error", str(e)
-            if job.kind == "ingest" and not (job.profile.site_dir / "games.json").exists():
-                # a profile that never got its games (typo, unknown user) shouldn't linger on the home screen
-                if "404" in job.error:
-                    job.error = f"chess.com has no user called {job.profile.username}"
-                profiles.delete(job.profile.id)
+            self._failed(job, e)
+
+    def _work(self, job: Job) -> None:
+        if job.kind == "puzzles":
+            self._puzzles(job)
+        elif job.kind == "build":
+            self._build(job)
+        elif job.kind == "analyse":
+            self._analyse(job)
+        elif job.kind == "analyse_all":
+            self._analyse_all(job)
+        elif job.kind == "ingest":
+            self._ingest(job)
+        else:
+            self._refresh(job)
+
+    def _failed(self, job: Job, e: Exception) -> None:
+        log.error("job failed: %s", traceback.format_exc())
+        job.status, job.error = "error", str(e)
+        if job.kind == "ingest" and not (job.profile.site_dir / "games.json").exists():
+            # a profile that never got its games (typo, unknown user) shouldn't linger on the home screen
+            if "404" in job.error:
+                job.error = f"chess.com has no user called {job.profile.username}"
+            profiles.delete(job.profile.id)
 
     def _analyse(self, job: Job) -> None:
         p = job.profile
