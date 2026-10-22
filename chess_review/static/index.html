@@ -82,7 +82,7 @@ main { padding: 16px 18px; max-width: 1800px; margin: 0 auto; }
 .card.pzp .btns a { color: var(--muted); font-size: 12px; cursor: pointer; margin-left: auto; text-decoration: underline; }
 .card.pzp .btns a:hover { color: var(--text); }
 .card.pzp .bstate { color: var(--accent); font-size: 12px; }
-/* puzzle packs: the shelf (a card per pack, by family) and a pack's ladder (its stages, a numbered cell per puzzle) */
+/* puzzle packs: the shelf (a card per pack, by family) and a pack's ladder (its stages on a carousel, a numbered tile per puzzle) */
 /* a cover: a tinted square with a piece or two from your piece set, coloured by family, so the cards tell apart */
 .card.covered { flex-direction: row; align-items: center; gap: 14px; }
 .card.covered .cbody { display: flex; flex-direction: column; gap: 4px; min-width: 0; flex: 1; }
@@ -109,31 +109,65 @@ main { padding: 16px 18px; max-width: 1800px; margin: 0 auto; }
 .pbadge.crown { color: var(--c-inaccuracy); background: color-mix(in srgb, var(--c-inaccuracy) 16%, transparent); border-color: color-mix(in srgb, var(--c-inaccuracy) 45%, transparent); }
 .card.pack .who { padding-right: 0; align-items: center; }
 .card.pack .who .wt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
-.card.pack .meta, .stage .meta { color: var(--muted); font-size: 12px; }
+.card.pack .meta { color: var(--muted); font-size: 12px; }
 .card.pack .desc { color: var(--muted); font-size: 13px; }
 .ladhead { display: flex; align-items: center; gap: 14px; margin: 22px 0 4px; }
 .ladhead h1 { font-size: 22px; margin: 0; }
 .ladhead .pbadge { margin-left: 0; }
 .ladhead .meta { margin-left: auto; color: var(--muted); font-size: 13px; }
-.stage { --dc: var(--accent); background: var(--panel); border: 1px solid var(--line); border-left: 4px solid var(--dc); border-radius: 10px; padding: 10px 14px 12px; margin-top: 10px; }
-.stage .sh b { color: var(--dc); }
-.stage.current { border-color: var(--dc); box-shadow: 0 0 0 1px var(--dc); }
-.stage .cell.clean { background: var(--dc); }
-.stage .cell.solved { background: color-mix(in srgb, var(--dc) 30%, transparent); }
-.stage .cell.next { border-color: var(--dc); }
-.stage.locked { opacity: .5; }
-.stage .sh { display: flex; align-items: baseline; gap: 10px; }
-.stage .sh b { font-size: 14px; }
-.stage .sh .meta { margin-left: auto; }
-.stage .cells { display: grid; grid-template-columns: repeat(15, minmax(0, 1fr)); gap: 4px; margin-top: 8px; }
-.stage .cell { font-size: 12px; text-align: center; line-height: 26px; border-radius: 4px; background: var(--panel2); color: var(--muted); cursor: pointer; font-variant-numeric: tabular-nums; border: 1px solid transparent; }
-.stage .cell:hover { border-color: var(--text); }
-.stage .cell.clean { color: #1b1b1b; font-weight: 700; }
-.stage .cell.solved { color: var(--text); }
-.stage .cell.missed { border-color: var(--c-miss); color: var(--c-miss); }
-.stage .cell.next { color: var(--text); }
-.stage .legend { margin-top: 8px; }
-@media (max-width: 640px) { .stage .cells { grid-template-columns: repeat(10, minmax(0, 1fr)); } }
+.ladhead .lh { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.ladhead .lt { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.ladhead .lh .meta { margin-left: 0; }
+/* a pack's stages: one at a time on a carousel (swipe, the arrows, the dots or the arrow keys), its neighbours peeking in */
+.lock { display: inline-block; width: 1em; height: 1em; vertical-align: -.12em; color: #fff; }
+.stcar { position: relative; margin: 6px -18px 0; }
+.sttrack { display: flex; gap: 14px; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; padding: 8px calc(50% - min(260px, 44vw)) 16px; }
+.sttrack::-webkit-scrollbar { display: none; }
+.scard { --dc: var(--accent); flex: 0 0 min(520px, 88vw); scroll-snap-align: center; background: var(--panel); border: 1px solid var(--line); border-top: 5px solid var(--dc);
+  border-radius: 16px; padding: 16px; opacity: .45; transform: scale(.94); transition: transform .3s, opacity .3s, box-shadow .3s; display: flex; flex-direction: column; }
+.scard.sel { opacity: 1; transform: none; box-shadow: 0 8px 30px rgba(0,0,0,.35); }
+.scard:not(.sel) { cursor: pointer; }
+.scard .sh { display: flex; align-items: center; gap: 8px; }
+.scard .sh h2 { margin: 0; font-size: 20px; color: var(--dc); text-transform: none; letter-spacing: 0; }
+.scard .sh .r { margin-left: auto; color: var(--muted); font-size: 12px; }
+.scard .tiles { display: grid; grid-template-columns: repeat(var(--cols, 6), minmax(0, 1fr)); gap: 8px; margin: 14px 0; }
+.tile { aspect-ratio: 1; border-radius: 10px; background: var(--panel2); color: var(--muted); display: grid; place-items: center; font-weight: 700; font-variant-numeric: tabular-nums;
+  cursor: pointer; border: 2px solid transparent; position: relative; user-select: none; -webkit-user-select: none; }
+.tile:hover { border-color: var(--text); }
+.tile.clean { background: var(--dc); color: #1b1b1b; }
+.tile.solved { background: color-mix(in srgb, var(--dc) 35%, transparent); color: var(--text); }
+.tile.missed { border-color: var(--c-miss); color: var(--c-miss); }
+.scard.sel .tile.next { border-color: var(--dc); color: var(--text); animation: tpulse 1.6s infinite; }
+.tile .lock { position: absolute; right: -5px; top: -7px; font-size: 13px; filter: drop-shadow(0 1px 1px rgba(0,0,0,.6)); }
+@keyframes tpulse { 0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--dc) 60%, transparent); } 50% { box-shadow: 0 0 0 6px transparent; } }
+.tile.pop { animation: tpop .6s; }
+@keyframes tpop { 40% { transform: scale(1.25); } }
+.scard .prog { display: flex; align-items: center; gap: 12px; margin-top: auto; }
+.scard .prog .goal { flex: 1; min-width: 0; }
+.scard .prog .primary { padding: 9px 16px; font-size: 15px; white-space: nowrap; }
+.goal { font-size: 13px; color: var(--muted); }
+.goal b { color: var(--text); }
+.ring { --p: 0; width: 54px; height: 54px; border-radius: 50%; flex-shrink: 0; display: grid; place-items: center; background: conic-gradient(var(--dc) calc(var(--p) * 1%), var(--panel2) 0); }
+.ring span { width: 42px; height: 42px; border-radius: 50%; background: var(--panel); display: grid; place-items: center; font-size: 12px; font-weight: 700; }
+.scard .lockbody { flex: 1; display: grid; justify-items: center; align-content: center; text-align: center; gap: 8px; padding: 22px 0; }
+.scard .lockbody > .lock { font-size: 44px; }
+.scard .ghost { display: grid; grid-template-columns: repeat(10, 10px); gap: 4px; opacity: .3; margin: 4px 0; }
+.scard .ghost i { width: 10px; height: 10px; border-radius: 3px; background: var(--dc); }
+.scard.unlocking { animation: unlock .9s; }
+@keyframes unlock { 30% { transform: scale(1.04); box-shadow: 0 0 0 4px var(--dc), 0 8px 30px rgba(0,0,0,.35); } }
+.stcar .arrow { position: absolute; top: 45%; z-index: 2; width: 40px; height: 40px; border-radius: 50%; font-size: 22px; line-height: 1; padding: 0 0 3px; }
+.stcar .arrow.l { left: 14px; } .stcar .arrow.r { right: 14px; }
+.stdots { display: flex; justify-content: center; gap: 6px; flex-wrap: wrap; padding: 0 10px; }
+.stdots i { width: 10px; height: 10px; border-radius: 50%; background: var(--dc); opacity: .25; cursor: pointer; }
+.stdots i.open { opacity: .75; } .stdots i.sel { opacity: 1; outline: 2px solid var(--text); outline-offset: 2px; }
+.ladder .legend { color: var(--muted); font-size: 12px; text-align: center; margin-top: 14px; }
+/* a stage just opened, or the pack finished: a short burst of confetti */
+.burst { position: fixed; inset: 0; pointer-events: none; z-index: 20; overflow: hidden; }
+.burst i { position: absolute; left: 50%; top: 40%; width: 8px; height: 12px; border-radius: 2px; animation: burst 1.4s ease-out forwards; }
+@keyframes burst { to { transform: translate(var(--dx), var(--dy)) rotate(540deg); opacity: 0; } }
+@media (max-width: 900px) { .stcar { margin: 6px -8px 0; } }     /* main's padding there */
+@media (max-width: 640px) { .stcar .arrow { display: none; } .scard .tiles { gap: 6px; } .scard { padding: 14px 12px; } }
+@media (prefers-reduced-motion: reduce) { .scard, .tile { animation: none !important; transition: none; } }
 .pzline { font-family: ui-monospace, Consolas, monospace; font-size: 13px; color: var(--muted); }
 /* the daily's result, inside the coach's (white) bubble */
 .dres { margin-top: 10px; background: #f6f5f2; border: 1px solid #e4e1dc; border-radius: 10px; padding: 10px 12px 12px; }
@@ -1968,7 +2002,7 @@ async function renderPuzzleCards() {
 
 // ---------- puzzle packs and the puzzle of the day (packs.py) ----------
 // The shelf (#/packs) shows every pack by family with its progress; a pack (#/packs/<id>) is its ladder of stages,
-// a numbered cell per puzzle; #/packs/<id>/<stage>/<n> plays one, and Next goes on to the one after it. A stage
+// one stage at a time on a carousel, a numbered tile per puzzle;#/packs/<id>/<stage>/<n> plays one, and Next goes on to the one after it. A stage
 // opens once STAGE_PASS of the one before is solved (the server says which are open). The puzzle of the day
 // (#/daily) is the same for everyone on a date; its first showing is kept, with a result to copy and share.
 // Both play Lichess puzzles through showPuzzle(), with pz.ctx saying where from, so the rating still counts first tries.
@@ -2047,24 +2081,100 @@ async function showLadder(id) {
   let d; try { d = await loadPack(id); } catch (e) { d = { error: String(e) }; }
   if (!d.pack) { toast(d.error || 'No such pack'); location.replace('#/packs'); return; }
   if (location.hash !== '#/packs/' + id) return;
-  const k = d.pack;
+  const k = d.pack, fx = packFx && packFx.pack === id ? packFx : null;
+  packFx = null;
   $('crumb').textContent = `Puzzle packs · ${k.name}`;
-  let html = `<div class="ladhead">${coverHtml(k.id, k.family)}<h1 style="color:${FAMILY_COLOR[k.family] || ''}">${esc(k.name)}</h1>${packBadge(k)}<span class="meta">${k.solved} of ${k.total} solved · ${k.clean} first try</span></div>` +
-    `<p class="lead">${esc(k.desc)} Solve ${k.stages[0] ? k.stages[0].need : 24} of a stage's ${k.stages[0] ? k.stages[0].size : 30} to open the next.</p>`;
-  for (const s of k.stages) {
-    const cur = s.n === k.current, next = s.open ? s.puzzles.findIndex(c => c.state === 'new' || c.state === 'missed') : -1;
-    const status = !s.open ? '🔒 Solve more of the stage before' : s.solved === s.size ? (s.clean === s.size ? '👑 every one first try' : '✓ complete')
-      : s.solved >= s.need ? `${s.solved} of ${s.size} · the next stage is open` : `${s.solved} of ${s.size} · ${s.need - s.solved} more to open the next`;
-    html += `<div class="stage${cur ? ' current' : ''}${s.open ? '' : ' locked'}" style="--dc:${diffOf(s.lo)[2]}"><div class="sh"><b>Stage ${s.n}</b>${diffChip(s.lo)}<span class="meta">${s.lo}–${s.hi}</span><span class="meta">${status}</span></div>`;
-    if (s.open) html += `<div class="cells">` + s.puzzles.map((c, i) =>
-      `<div class="cell ${c.state === 'new' ? '' : c.state}${i === next && cur ? ' next' : ''}" data-go="#/packs/${k.id}/${s.n}/${i + 1}" title="${c.rating ? 'Rated ' + c.rating : ''}">${i + 1}</div>`).join('') + `</div>`;
-    html += `</div>`;
-  }
-  html += `<p class="meta legend" style="color:var(--muted);font-size:12px">Green: solved first try. Pale: solved after a miss or a hint. Red outline: not solved yet.</p>`;
+  // which stage to show: one just opened, else the one last played or looked at, else the furthest one open and unfinished
+  // that play got to (opened by the stage before, or started); stages open by rating alone count only before any play
+  const unfinished = [...k.stages].reverse().filter(s => s.open && s.solved < s.size);
+  const tried = s => s.puzzles.some(c => c.state !== 'new');
+  const reached = (s, i) => !i || tried(s) || k.stages[i - 1].solved >= k.stages[i - 1].need;
+  const furthest = k.stages.filter((s, i) => s.open && s.solved < s.size && reached(s, i)).pop();
+  const frontier = (k.stages.some(tried) && furthest) || unfinished[0] || k.stages[k.stages.length - 1];
+  let sel = (fx && fx.opened) || packStage[id] || frontier.n;
+  if (!k.stages.some(s => s.n === sel)) sel = frontier.n;
+  const cur = k.stages.find(s => s.n === sel);
+  const done = k.stages.filter(s => s.open && s.solved < s.size).length ? '' : ' · every stage done';
+  let html = `<div class="ladhead">${coverHtml(k.id, k.family)}<div class="lh"><div class="lt"><h1 style="color:${FAMILY_COLOR[k.family] || ''}">${esc(k.name)}</h1>${packBadge(k)}</div>` +
+    `<span class="meta">${k.solved} of ${k.total} solved · ${k.clean} first try · stage ${frontier.n} of ${k.stages.length}${done}</span>` +
+    `<div class="progress"><div style="width:${k.total ? 100 * k.solved / k.total : 0}%;background:${diffOf(frontier.lo)[2]}"></div></div></div></div>` +
+    `<p class="lead">${esc(k.desc)} Solve ${cur.need} of a stage's ${cur.size} to open the next.</p>` +
+    `<div class="ladder"><div class="stcar"><button class="arrow l" data-d="-1" title="The stage before (←)">‹</button><button class="arrow r" data-d="1" title="The next stage (→)">›</button><div class="sttrack">`;
+  for (const s of k.stages) html += stageCard(k, s);
+  html += `</div></div><div class="stdots">${k.stages.map(s => `<i class="${s.open ? 'open' : ''}" data-n="${s.n}" style="--dc:${diffOf(s.lo)[2]}" title="Stage ${s.n}${s.open ? '' : ' (locked)'}"></i>`).join('')}</div>` +
+    `<p class="legend">Green: solved first try. Pale: solved after a miss or a hint. Red outline: not solved yet. ${LOCK_OPEN_SVG} is the one that opens the next stage.</p></div>`;
   box.innerHTML = html;
-  box.querySelectorAll('[data-go]').forEach(el => el.onclick = () => { location.hash = el.dataset.go; });
-  const c = box.querySelector('.stage.current'); if (c) c.scrollIntoView({ block: 'center' });
+  box.querySelectorAll('[data-go]').forEach(el => el.onclick = e => { e.stopPropagation(); location.hash = el.dataset.go; });
+  const tr = box.querySelector('.sttrack'), cards = [...tr.children];
+  const mark = n => {
+    sel = n; packStage[id] = n;
+    cards.forEach(c => c.classList.toggle('sel', +c.dataset.n === n));
+    box.querySelectorAll('.stdots i').forEach(d => d.classList.toggle('sel', +d.dataset.n === n));
+    box.querySelector('.arrow.l').disabled = n === k.stages[0].n; box.querySelector('.arrow.r').disabled = n === k.stages[k.stages.length - 1].n;
+  };
+  const go = (n, smooth = true) => {
+    const c = cards.find(x => +x.dataset.n === n); if (!c) return;
+    tr.scrollTo({ left: c.offsetLeft - (tr.clientWidth - c.offsetWidth) / 2, behavior: smooth && !reducedMotion() ? 'smooth' : 'instant' });
+    mark(n);
+  };
+  // swiping: whichever card settles in the middle is the stage
+  let t; tr.onscroll = () => { clearTimeout(t); t = setTimeout(() => {
+    const mid = tr.scrollLeft + tr.clientWidth / 2;
+    const c = cards.reduce((a, b) => Math.abs(b.offsetLeft + b.offsetWidth / 2 - mid) < Math.abs(a.offsetLeft + a.offsetWidth / 2 - mid) ? b : a);
+    if (+c.dataset.n !== sel) mark(+c.dataset.n);
+  }, 90); };
+  cards.forEach(c => c.onclick = () => { if (+c.dataset.n !== sel) go(+c.dataset.n); });
+  box.querySelectorAll('.stcar .arrow').forEach(b => b.onclick = () => go(sel + +b.dataset.d));
+  box.querySelectorAll('.stdots i').forEach(d => d.onclick = () => go(+d.dataset.n));
+  ladderKeys = e => { if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') { go(sel + (e.key === 'ArrowLeft' ? -1 : 1)); e.preventDefault(); } };
+  go(sel, false);
   updateBack();
+  // what just happened: the puzzle solved pops, a stage opened (or the pack finished) gets a burst
+  if (!fx) return;
+  const card = cards.find(x => +x.dataset.n === sel), tile = fx.n && cards.find(x => +x.dataset.n === fx.stage);
+  const el = tile && tile.querySelector(`[data-i="${fx.n}"]`);
+  if (el && /clean|solved/.test(el.className)) el.classList.add('pop');
+  if (fx.opened || fx.done) { card.classList.add('unlocking'); confetti(diffOf(cur.lo)[2]); toast(fx.done ? `✓ ${k.name} complete!` : `Stage ${fx.opened} is open!`); }
+}
+let packFx = null, ladderKeys = null;       // set by finishCtx for the next showLadder; the arrow keys while a pack is open
+const packStage = {};                        // the stage last played or looked at, per pack
+document.addEventListener('keydown', e => {
+  if (ladderKeys && /^#\/packs\/[a-z0-9-]+$/.test(location.hash) && !(e.target.closest && e.target.closest('input, textarea, select'))) ladderKeys(e);
+});
+const reducedMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+const LOCK_SVG = '<svg class="lock" viewBox="0 0 24 24" aria-hidden="true"><path d="M7.5 10.5V7.5a4.5 4.5 0 0 1 9 0v3" fill="none" stroke="currentColor" stroke-width="2.4"/><rect x="4" y="10.5" width="16" height="11" rx="2.5" fill="currentColor"/></svg>';
+const LOCK_OPEN_SVG = '<svg class="lock" viewBox="0 0 24 24" aria-hidden="true"><path d="M7.5 10.5V7.5a4.5 4.5 0 0 1 8.7-1.6" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/><rect x="4" y="10.5" width="16" height="11" rx="2.5" fill="currentColor"/></svg>';
+// One stage on the carousel: open, its puzzles as tiles and how far to the next stage; locked, what it holds and what opens it.
+function stageCard(k, s) {
+  const dc = diffOf(s.lo)[2], head = `<div class="sh"><h2>Stage ${s.n}</h2>${diffChip(s.lo)}<span class="r">${s.lo}–${s.hi}</span></div>`;
+  if (!s.open) {
+    const prev = k.stages.find(x => x.n === s.n - 1), left = prev && prev.open ? prev.need - prev.solved : 0;
+    return `<div class="scard" data-n="${s.n}" style="--dc:${dc}">${head}<div class="lockbody">${LOCK_SVG}<div class="ghost">${'<i></i>'.repeat(Math.min(s.size, 30))}</div>` +
+      `<b>${s.size} ${diffOf(s.lo)[1].toLowerCase()} puzzles</b><div class="goal">${prev ? `Solve <b>${prev.need}</b> in stage ${prev.n} to unlock${left > 0 ? ` · ${left} to go` : ''}` : 'Not open yet'}</div></div></div>`;
+  }
+  const after = k.stages.find(x => x.n === s.n + 1), toGate = after && !after.open && s.solved < s.need;   // (open already: by rating)
+  const next = s.puzzles.findIndex(c => c.state === 'new' || c.state === 'missed'), gate = toGate ? s.need - 1 : -1;
+  const tiles = s.puzzles.map((c, i) => `<div class="tile ${c.state === 'new' ? '' : c.state}${i === next ? ' next' : ''}" data-i="${i + 1}" data-go="#/packs/${k.id}/${s.n}/${i + 1}"` +
+    ` title="${c.rating ? 'Rated ' + c.rating : ''}${i === gate ? ' · solving this many opens the next stage' : ''}">${i + 1}${i === gate ? LOCK_OPEN_SVG : ''}</div>`).join('');
+  // the ring counts to the stage that opens next, then on to the end of this one
+  const of = toGate ? s.need : s.size;
+  const goal = s.solved === s.size ? (s.clean === s.size ? '👑 Every one first try' : '✓ Stage complete')
+    : toGate ? `<b>${s.need - s.solved}</b> more to unlock stage ${after.n}`
+    : after ? `Stage ${after.n} is open · <b>${s.size - s.solved}</b> left in this one` : `<b>${s.size - s.solved}</b> left in the last stage`;
+  return `<div class="scard" data-n="${s.n}" style="--dc:${dc}">${head}<div class="tiles" style="--cols:${s.size > 36 ? 8 : 6}">${tiles}</div>` +
+    `<div class="prog"><div class="ring" style="--p:${Math.round(100 * Math.min(s.solved, of) / of)}"><span>${s.solved}/${of}</span></div><div class="goal">${goal}</div>` +
+    (next >= 0 ? `<button class="primary" data-go="#/packs/${k.id}/${s.n}/${next + 1}">${s.solved || s.puzzles[next].state === 'missed' ? 'Continue' : 'Start'} · #${next + 1}</button>` : '') + `</div></div>`;
+}
+function confetti(colour) {
+  if (reducedMotion()) return;
+  const b = document.createElement('div'), cols = [colour, '#e8b83a', '#e6e3de', '#81b64c'];
+  b.className = 'burst';
+  for (let i = 0; i < 70; i++) {
+    const e = document.createElement('i');
+    e.style.cssText = `background:${cols[i % 4]};--dx:${(Math.random() - .5) * 700}px;--dy:${(Math.random() - .2) * 500}px;animation-delay:${Math.random() * .15}s`;
+    b.appendChild(e);
+  }
+  document.body.appendChild(b); setTimeout(() => b.remove(), 1700);
 }
 async function playPack(id, stage, n) {
   let k = packCache[id];
@@ -2073,6 +2183,7 @@ async function playPack(id, stage, n) {
   if (!c) { toast('No such puzzle'); location.replace(k ? '#/packs/' + id : '#/packs'); return; }
   if (!s.open) { toast(`Stage ${stage} isn't open yet`); location.replace('#/packs/' + id); return; }
   pz.ctx = { kind: 'pack', pack: id, name: k.name, stage, n, size: s.size };
+  packStage[id] = stage;
   return showPuzzle(c.id);
 }
 async function playDaily() {
@@ -2160,6 +2271,10 @@ async function finishCtx(solved) {
   let d; try { d = await loadPack(c.pack); } catch (e) { return; }
   if (pz.ctx !== c || !d.pack || !was) return;
   const k = d.pack, now = k.stages.find(x => x.n === c.stage);
+  // for the ladder, when it is next shown: the puzzle to pop, and a stage opened or the pack finished since it was last seen
+  const opened = k.stages.find(x => x.open && !before.stages.find(y => y.n === x.n).open);
+  const prev = packFx && packFx.pack === c.pack ? packFx : {};
+  packFx = { pack: c.pack, stage: c.stage, n: c.n, opened: (opened && opened.n) || prev.opened || null, done: (k.done && !was.done) || prev.done };
   if (k.perfect && !was.perfect) c.note = `👑 ${k.name}: every puzzle solved first try.`;
   else if (k.done && !was.done) c.note = `✓ ${k.name} complete!`;
   else if (k.stages.filter(x => x.open).length > was.open) c.note = `Stage ${c.stage + 1} is open.`;
