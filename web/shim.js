@@ -8,46 +8,67 @@
   let seq = 0;
   const realFetch = window.fetch.bind(window);
 
-  // The notice bar: Python loading first (the page waits for it), then the 99 MB engine in the background, and
-  // the note that the desktop app analyses faster. The note stays up while a game is being analysed or waits to be.
+  // The notice bar: Python loading first (the page waits for it), then the 99 MB engine with a progress bar, and the
+  // note that the desktop app analyses faster. The note stays up while a game is being analysed or waits to be.
+  // Its × closes the bar for this visit and drops the note (and the lit button) for good: later visits still show
+  // the loading lines, as those say why the page isn't answering yet.
   const bar = document.createElement('div');
   bar.id = 'web-loading';
-  bar.style.cssText = 'position:fixed;left:12px;bottom:12px;z-index:9999;max-width:min(420px,calc(100vw - 24px));padding:8px 12px;' +
+  bar.style.cssText = 'position:fixed;left:12px;bottom:12px;z-index:9999;max-width:min(420px,calc(100vw - 24px));padding:8px 30px 8px 12px;' +
     'border-radius:8px;border-left:3px solid var(--accent);background:rgba(20,20,20,.88);color:#eee;font:13px/1.4 system-ui,sans-serif;' +
     'box-shadow:0 2px 10px rgba(0,0,0,.4)';
-  // "Download the app" in the header, lit in the notice's accent colour (no flashing) for as long as the notice is
-  // up, so the two read as one: the notice says the browser is slower, the button is where the faster app is.
+  // "Download the app" in the header, lit in the notice's accent colour (no flashing) for as long as the note is
+  // up, so the two read as one: the note says the browser is slower, the button is where the faster app is.
   const DOWNLOAD = 'https://github.com/aris-ver/chess-review/releases/latest';
   const style = document.createElement('style');
   style.textContent =
     'header .right a#web-dl{color:var(--text);background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:6px 10px;' +
     'white-space:nowrap;transition:border-color .6s,color .6s,box-shadow .6s}' +
     'header .right a#web-dl:hover{background:#46423d;border-color:var(--accent)}' +
-    'header .right a#web-dl.lit{border-color:var(--accent);color:var(--accent);box-shadow:0 0 8px 1px color-mix(in srgb,var(--accent) 40%,transparent)}';
+    'header .right a#web-dl.lit{border-color:var(--accent);color:var(--accent);box-shadow:0 0 8px 1px color-mix(in srgb,var(--accent) 40%,transparent)}' +
+    '#web-loading .x{position:absolute;top:4px;right:4px;width:22px;height:22px;padding:0;border:0;border-radius:4px;background:none;' +
+    'color:#aaa;font:16px/22px system-ui,sans-serif;cursor:pointer}#web-loading .x:hover{background:rgba(255,255,255,.1);color:#fff}' +
+    '#web-loading .pb{height:4px;margin:4px 0 2px;border-radius:2px;background:rgba(255,255,255,.15);overflow:hidden}' +
+    '#web-loading .pb>i{display:block;height:100%;background:var(--accent);transition:width .3s}';
   document.head.appendChild(style);
   const dl = document.createElement('a');
   Object.assign(dl, { id: 'web-dl', href: DOWNLOAD, target: '_blank', rel: 'noopener', title: 'The Windows app analyses about 2× faster' });
   dl.innerHTML = '<span class="i">⬇</span><span class="t"> Download the app</span>';
-  const state = { python: 'Loading Python', engine: '' };
+  const NOTE_OFF = 'webSpeedNoteDismissed';
+  let noteOff = false, closed = false;
+  try { noteOff = localStorage.getItem(NOTE_OFF) === '1'; } catch (e) {}
+  const state = { python: 'Loading Python', engine: null };    // engine: { done, total } once it starts
   const mb = b => (b / 1048576).toFixed(0);
   let pythonReady = false, engineReady = false, analysing = false, hideT = null;
   const render = () => {
-    const lines = [];
-    if (!pythonReady) lines.push(state.python);
-    if (state.engine && !(engineReady && analysing)) lines.push(state.engine);   // "Engine ready" is old news by then
-    const loading = lines.map(t => `<div>${t}</div>`).join('');
-    bar.innerHTML = loading + `<div style="opacity:.7${loading ? ';margin-top:4px' : ''}">Analysis in the browser is about 2× slower than the ` +
+    let loading = pythonReady ? '' : `<div>${state.python}</div>`;
+    if (engineReady) { if (!analysing) loading += '<div>Engine ready</div>'; }   // "Engine ready" is old news by then
+    else if (state.engine) {
+      const { done, total } = state.engine;
+      loading += `<div>Downloading the engine: ${mb(done)}${total ? ' / ' + mb(total) : ''} MB</div>` +
+        (total ? `<div class="pb"><i style="width:${Math.min(100, done / total * 100).toFixed(1)}%"></i></div>` : '');
+    }
+    const note = noteOff ? '' : `<div style="opacity:.7${loading ? ';margin-top:4px' : ''}">Analysis in the browser is about 2× slower than the ` +
       `<a style="color:var(--accent)" href="${DOWNLOAD}" target="_blank" rel="noopener">Windows app</a>.</div>`;
+    bar.innerHTML = '<button class="x" title="Dismiss" aria-label="Dismiss">×</button>' + loading + note;
+    bar.querySelector('.x').onclick = () => {
+      closed = noteOff = true;
+      try { localStorage.setItem(NOTE_OFF, '1'); } catch (e) {}
+      clearTimeout(hideT);
+      bar.remove();
+      dl.classList.remove('lit');
+    };
+    return loading || note;
   };
-  // Up while loading or analysing; gone 4 s after both are over.
+  // Up while loading or analysing; gone 4 s after both are over. Nothing left to say (the note dismissed): gone now.
   const update = () => {
     clearTimeout(hideT);
     if (!document.body) return;
     const right = document.querySelector('header .right');
     if (right && !dl.isConnected) right.prepend(dl);
+    dl.classList.toggle('lit', !noteOff);
+    if (closed || !render()) { bar.remove(); return; }
     if (!bar.isConnected) document.body.appendChild(bar);
-    dl.classList.add('lit');
-    render();
     if (pythonReady && engineReady && !analysing) hideT = setTimeout(() => { bar.remove(); dl.classList.remove('lit'); }, 4000);
   };
   // The page polls api/status while a game is analysed (or queued): read the answer on its way back.
@@ -75,7 +96,7 @@
         pythonReady = m.total > 0 && m.done === m.total;
       } else {
         engineReady = m.total > 0 && m.done >= m.total;
-        state.engine = engineReady ? 'Engine ready' : `Downloading the engine: ${mb(m.done)}${m.total ? ' / ' + mb(m.total) : ''} MB`;
+        state.engine = { done: m.done, total: m.total };
       }
       update();
     }
