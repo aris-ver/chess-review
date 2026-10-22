@@ -207,11 +207,34 @@ def test_the_build_counts_games_refreshes_puzzles_and_skips_the_bookkeeping_when
     assert job.done == 2 and refreshed == [] and lines == []         # it comes back and does that then
 
 
+def _result(k):
+    return k, {"nodes": 1, "eval_cp": 10, "mate_in": None, "best_move": "e2e4", "pv": ["e2e4"]}, \
+        [{"rank": 1, "move": "e2e4", "eval_cp": 10, "mate_in": None, "pv": ["e2e4"]}]
+
+
+class FakeResults:
+    """multiprocessing's IMapIterator: next() takes a timeout. Result i comes in `at[i]` s after the start."""
+
+    def __init__(self, keys, at=None):
+        self.keys, self.at, self.t0, self.i = list(keys), at, time.monotonic(), 0
+
+    def next(self, timeout=None):
+        if self.i >= len(self.keys):
+            raise StopIteration
+        wait = (self.at[self.i] if self.at else 0) - (time.monotonic() - self.t0)
+        if timeout is not None and wait > timeout:
+            time.sleep(timeout)
+            raise analyse.mp.TimeoutError
+        time.sleep(max(0, wait))
+        self.i += 1
+        return _result(self.keys[self.i - 1])
+
+
 class FakePool:
+    at = None
+
     def imap_unordered(self, fn, keys, chunksize=1):
-        for k in keys:
-            yield k, {"nodes": 1, "eval_cp": 10, "mate_in": None, "best_move": "e2e4", "pv": ["e2e4"]}, \
-                [{"rank": 1, "move": "e2e4", "eval_cp": 10, "mate_in": None, "pv": ["e2e4"]}]
+        return FakeResults(keys, self.at)
 
     def terminate(self):
         pass
@@ -225,6 +248,46 @@ def test_a_stopped_analysis_keeps_the_results_in_hand():
     n = []
     a.run([f"k{i}" for i in range(7)], con, batch=100, should_stop=lambda: True, on_progress=lambda d, t: n.append(d))
     assert con.execute("SELECT count(*) FROM evals").fetchone()[0] == 1 and n == [1]
+
+
+# The engines finish side by side: three results at once, a fourth a while later. A game on screen gets the burst
+# in one write as soon as it is in, without waiting for the next result or a full batch.
+BURST = [0.0, 0.01, 0.02, 0.6]
+
+
+def test_a_live_analysis_writes_each_burst_of_results_as_it_comes_in():
+    con = duckdb.connect()
+    con.execute(analyse.SCHEMA)
+    a = analyse.Analyser(workers=4, nodes=1)
+    a._pool = FakePool()
+    a._pool.at = BURST
+    n, t0 = [], time.monotonic()
+    a.run([f"k{i}" for i in range(4)], con, batch=100, on_progress=lambda d, t: n.append((d, time.monotonic() - t0)),
+          live=analyse.LivePace(0.1))
+    assert [d for d, _ in n] == [3, 4] and n[0][1] < 0.5      # the burst well before the fourth result
+
+
+def test_the_browser_runner_writes_each_burst_of_results_as_it_comes_in():
+    import asyncio
+    import sys
+    from types import SimpleNamespace
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "web" / "py"))
+    from chess_web import runner
+
+    con = duckdb.connect()
+    con.execute(analyse.SCHEMA)
+    b = runner.BrowserAnalyser(SimpleNamespace(size=4, name="fake"))
+    t0 = time.monotonic()
+    keys = [f"k{i}" for i in range(4)]
+
+    async def evaluate(key):
+        await asyncio.sleep(BURST[keys.index(key)])
+        return _result(key)
+    b.evaluate = evaluate
+    n = []
+    asyncio.run(b.run(keys, con, batch=100, on_progress=lambda d, t: n.append((d, time.monotonic() - t0)),
+                      live=analyse.LivePace(0.1)))
+    assert [d for d, _ in n] == [3, 4] and n[0][1] < 0.5
 
 
 def test_resetting_the_rating_archives_the_record_and_keeps_tried_puzzles_out(tmp_path):
