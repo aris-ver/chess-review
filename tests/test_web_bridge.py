@@ -92,3 +92,72 @@ def test_bridge_reviews_a_pasted_game(tmp_path):
     assert status == 200 and ctype == "application/json"
     labels = [m.get("label") for m in game["moves"]]
     assert labels and all(labels), game["moves"]
+
+
+LATER = r"""
+import json, sys
+sys.path[:0] = [ROOT, ROOT + "/web/py"]
+from chess_web import later
+later.stand_in()        # as the worker does: DuckDB still loading
+from chess_web import bridge
+
+class Pool:
+    size, name = 1, "Stockfish (test)"
+
+def call(method, path, body=None):
+    try:
+        status, _, payload = bridge.handle(method, path, json.dumps(body).encode() if body is not None else b"")
+    except later.NotLoaded as e:
+        return [type(e).__name__, str(e)]
+    return [status, json.loads(payload) if payload[:1] in (b"{", b"[") else None]
+
+open(APP + "/book_keys.txt", "w").write("")
+bridge.setup(APP, Pool(), pack_later=True)
+out = {}
+# the puzzle pack still downloading: the puzzles wait for it (PackNotLoaded), the profiles don't
+out["pack before"] = call("GET", "/api/puzzles/themes")[0]
+out["profiles before pack"] = call("GET", "/api/profiles")[0]
+import shutil; shutil.copy(PACK, APP + "/puzzles.json")       # as the worker writes it once downloaded
+for path in ("/api/status", "/api/profiles", "/api/settings", "/api/puzzles/themes", "/api/puzzles/packs",
+             "/api/puzzles/daily", "/api/puzzles/next", "/api/legal?fen=8/8/8/8/8/8/8/K1k5%20w%20-%20-%200%201"):
+    out[path] = call("GET", path)[0]
+pid = call("GET", "/api/puzzles/next")[1]["puzzle"]["id"]
+out["attempt"] = call("POST", "/api/puzzles/attempt", {"id": pid, "solved": True, "ms": 5000})[0]
+out["solved"] = call("POST", "/api/puzzles/solved", {"id": pid})[0]
+out["post settings"] = call("POST", "/api/settings", {"theme": "x"})[0]
+pgn = '[White "a"]\n[Black "b"]\n[Result "1-0"]\n\n1. e4 e5 2. Bc4 Nc6 3. Qh5 Nf6 4. Qxf7# 1-0\n'
+out["pgn before"] = call("POST", "/api/pgn", {"pgn": pgn})
+out["duckdb imported"] = "duckdb.duckdb" in sys.modules
+out["pyarrow imported"] = "pyarrow" in sys.modules
+later.swap_in()
+status, d = call("POST", "/api/pgn", {"pgn": pgn})
+out["pgn after"] = [status, len(d["games"])]
+from chess_review import analyse
+out["swapped"] = type(analyse.duckdb).__name__
+print("RESULT" + json.dumps(out))
+"""
+
+
+def test_light_routes_answer_before_duckdb(tmp_path):
+    """The worker starts Python with a placeholder for DuckDB (web/py/chess_web/later.py): the home screen, the
+    puzzles and the settings answer from the pack's JSON, and a request that needs DuckDB raises NotLoaded until
+    it is swapped in, then works. Nothing imports pyarrow at all."""
+    from chess_review import puzzles
+    app = tmp_path / "app"
+    app.mkdir()
+    pack = tmp_path / "puzzles.json"        # arrives after start-up: the worker downloads it alongside Python
+    pack.write_text(json.dumps(puzzles.PACK_INSTANCE._read()[:300]), encoding="utf-8")
+    env = {**os.environ, "CHESS_REVIEW_DATA": str(tmp_path / "data")}
+    script = f"ROOT, APP, PACK = {str(ROOT)!r}, {str(app)!r}, {str(pack)!r}\n" + LATER
+    run = subprocess.run([sys.executable, "-c", script], env=env, capture_output=True, text=True, timeout=120)
+    line = next((x for x in run.stdout.splitlines() if x.startswith("RESULT")), None)
+    assert line, run.stdout + run.stderr
+    out = json.loads(line[6:])
+    assert {k: v for k, v in out.items() if k.startswith("/api/")} == {k: 200 for k in out if k.startswith("/api/")}
+    assert out["attempt"] == out["solved"] == out["post settings"] == 200
+    assert out["pack before"] == "PackNotLoaded" and out["profiles before pack"] == 200
+    assert out["pgn before"][0] == "NotLoaded"
+    assert out["duckdb imported"] is False
+    assert out["pgn after"] == [200, 1]
+    assert out["swapped"] == "module"
+    assert out["pyarrow imported"] is False

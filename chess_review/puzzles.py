@@ -27,9 +27,9 @@ from pathlib import Path
 from typing import Optional
 
 import chess
-import pyarrow.parquet as pq
 
 from .config import DATA
+from .db import read_parquet
 
 log = logging.getLogger("puzzles")
 PACK = Path(__file__).parent / "puzzle_packs" / "lichess.parquet"
@@ -74,12 +74,17 @@ class Pack:
     def rows(self) -> list[dict]:
         with self._lock:
             if self._rows is None:
-                rows = pq.read_table(self.path).to_pylist() if self.path.exists() else []
+                rows = self._read()
                 for r in rows:
                     r["themes"] = r["themes"].split()
                 self._rows, self._by_id = rows, {r["id"]: r for r in rows}
                 log.info("puzzle pack: %d puzzles from %s", len(rows), self.path)
             return self._rows
+
+    def _read(self) -> list[dict]:
+        """The pack's rows as stored. The browser version reads them from JSON instead (web/py/chess_web/bridge.py),
+        so the puzzles answer before DuckDB has loaded."""
+        return read_parquet(self.path) if self.path.exists() else []
 
     def get(self, pid: str) -> Optional[dict]:
         self.rows()

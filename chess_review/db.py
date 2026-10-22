@@ -1,6 +1,13 @@
 """Read-side DuckDB connection with views over the on-disk parquet/duckdb files."""
 
+from __future__ import annotations
+
+import json
 import logging
+import os
+import tempfile
+from datetime import datetime
+from pathlib import Path
 from typing import Optional
 
 import duckdb
@@ -42,6 +49,34 @@ def evals_views(con: duckdb.DuckDBPyConnection) -> None:
         else:   # nothing analysed yet (fresh install): every position simply has no eval
             con.execute("CREATE OR REPLACE VIEW evals AS SELECT NULL::TEXT fen_key, NULL::INT nodes, NULL::INT eval_cp, NULL::INT mate_in, NULL::TEXT best_move, NULL::TEXT[] pv WHERE false")
         con.execute('CREATE OR REPLACE VIEW evals_multipv AS SELECT NULL::TEXT fen_key, NULL::INT rank, NULL::TEXT "move", NULL::INT eval_cp, NULL::INT mate_in, NULL::TEXT[] pv WHERE false')
+
+
+def dicts(cur) -> list[dict]:
+    """A query's rows as dicts, column name -> value: con.execute(...) in, what the rest of the code works on out."""
+    names = [d[0] for d in cur.description]
+    return [dict(zip(names, row)) for row in cur.fetchall()]
+
+
+def read_parquet(path: Path) -> list[dict]:
+    return dicts(duckdb.connect().execute(f"SELECT * FROM read_parquet({sql_path(path)})"))
+
+
+def write_parquet(rows: list[dict], schema: tuple[tuple[str, str], ...], path: Path) -> None:
+    """rows as a parquet file with schema's columns, (name, SQL type) in order; a key a row lacks is NULL, one the
+    schema lacks is dropped. The rows go to DuckDB as one JSON array in a file next to path: binding them as
+    parameters, row by row or as lists, takes minutes for a profile's positions, the JSON a second."""
+    columns = "{" + ", ".join(f"'{name}': '{sql_type}'" for name, sql_type in schema) + "}"
+    encoder = json.JSONEncoder(default=datetime.isoformat, ensure_ascii=False, check_circular=False)
+    fd, tmp = tempfile.mkstemp(suffix=".json", dir=path.parent)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(encoder.encode(rows))
+        duckdb.connect().execute(f"""
+            COPY (SELECT * FROM read_json({sql_path(tmp)}, format = 'array', columns = {columns}))
+            TO {sql_path(path)} (FORMAT parquet)
+        """)
+    finally:
+        os.unlink(tmp)
 
 
 def connect(profile: Optional[Profile] = None) -> duckdb.DuckDBPyConnection:

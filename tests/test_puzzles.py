@@ -1,9 +1,8 @@
 import random
 
-import pyarrow as pa
-import pyarrow.parquet as pq
 
 from chess_review import puzzles as P
+from chess_review.db import write_parquet
 
 # a Lichess-format puzzle: the FEN is before the opponent's move, which is the first UCI move
 SCHOLAR = {"fen": "r1bqkbnr/pppp1ppp/2n5/4p2Q/2B1P3/8/PPPP1PPP/RNB1K1NR b KQkq - 3 3", "moves": "g8f6 h5f7"}
@@ -66,8 +65,9 @@ def test_pick_stays_near_the_rating_and_widens():
 
 def test_pack_reads_parquet(tmp_path):
     path = tmp_path / "p.parquet"
-    pq.write_table(pa.Table.from_pylist([{"id": "a", "fen": SCHOLAR["fen"], "moves": SCHOLAR["moves"], "rating": 1500,
-                                          "themes": "fork middlegame", "game_url": None}]), path)
+    write_parquet([{"id": "a", "fen": SCHOLAR["fen"], "moves": SCHOLAR["moves"], "rating": 1500, "themes": "fork middlegame"}],
+                  (("id", "VARCHAR"), ("fen", "VARCHAR"), ("moves", "VARCHAR"), ("rating", "SMALLINT"), ("themes", "VARCHAR"),
+                   ("game_url", "VARCHAR")), path)
     pack = P.Pack(path)
     assert pack.get("a")["themes"] == ["fork", "middlegame"]
     assert {t["id"]: t["count"] for t in pack.themes()} == {"fork": 1, "middlegame": 1}

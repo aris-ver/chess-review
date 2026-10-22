@@ -628,7 +628,7 @@ svg.graph { width: 100%; height: 90px; display: block; cursor: pointer; backgrou
           <button class="primary" type="submit">Add profile</button><button type="button" class="cancel">Cancel</button>
         </form>
       </div>
-      <div class="cards" id="profiles"></div>
+      <div class="cards" id="profiles"><div class="empty">Loading your profiles…</div></div>
       <h2>Puzzles</h2>
       <div class="cards pztiles">
         <div class="card pztile covered" id="card-daily"><div class="cover" data-cover="daily"></div><div class="cbody"><span class="src">Every day</span><span class="who">Puzzle of the day</span><span class="desc" id="card-daily-desc">One tougher puzzle a day, the same for everyone. Share how you did.</span></div></div>
@@ -826,6 +826,7 @@ svg.graph { width: 100%; height: 90px; display: block; cursor: pointer; backgrou
   <symbol id="ic-equal" viewBox="0 0 20 20"><rect x=".5" y=".5" width="19" height="19" rx="5.5" fill="#9a958d"/><text x="10" y="14.6" text-anchor="middle" font-size="13" font-weight="800" fill="#fff" font-family="Arial">½</text></symbol>
 </defs></svg>
 
+<script src="account.js"></script>
 <script>
 // ---------- settings: localStorage, backed by the server's DATA/settings.json ----------
 // localStorage belongs to the origin, and the desktop app's port changes whenever 8123 is taken, so on its own
@@ -1042,8 +1043,10 @@ paintSound();
 window.addEventListener('hashchange', () => { assetsReady.then(route); checkStale(); });
 let pageStamp = null;
 async function checkStale() {
-  let lm; try { lm = (await fetch('index.html', { method: 'HEAD' })).headers.get('Last-Modified'); } catch (e) { return; }
-  if (!lm) return;
+  // the page by its directory ('.'): blundr.gr redirects index.html there. A server that sends neither header isn't
+  // asked again on every route change.
+  let lm; try { const h = (await fetch('.', { method: 'HEAD' })).headers; lm = h.get('Last-Modified') || h.get('ETag'); } catch (e) { return; }
+  if (!lm) { checkStale = () => {}; return; }
   if (pageStamp === null) pageStamp = lm;
   else if (lm !== pageStamp) { toast('The app was updated — click here to reload', 15000); $('toast').onclick = () => location.reload(); }
 }
@@ -2088,7 +2091,7 @@ function replayDaily() {
   Object.assign(pz.ctx, { review: false, replay: true });
   startPuzzle(pz.p, pz.stats);
 }
-// Progress merged in from another browser (the web build's account sync, web/account.js, fires this): forget what
+// Progress merged in from another browser (the Blundr account's sync, account.js, fires this): forget what
 // was kept from the puzzle files, and if the daily open here unplayed was played there, show it played. With
 // detail.redrawn the screen is being drawn again anyway (another account's data came in).
 window.addEventListener('progresssynced', e => {
