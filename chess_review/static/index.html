@@ -1647,6 +1647,12 @@ function startPuzzle(p, stats) {
   pz.source = p.source === 'mine' ? 'mine:' + p.profile : 'lichess';   // opened by its URL: Next carries on from the same place
   state.profile = null; state.games = null; state.game = pz.game = puzzleGame(p);
   state.ply = 0; state.flipped = p.colour === 'black'; dropVariation(); state.sel = null; state.cycle = {}; $('pieces').innerHTML = '';
+  if (pz.ctx && pz.ctx.review) {     // the daily, played already (here or on another browser): solved on the board, with your result
+    p.moves.forEach((m, i) => pz.game.moves.push(puzzlePly(m, i, i % 2 ? 'best' : null)));
+    pz.done = true; state.exploring = false; state.ply = p.moves.length;
+    enterPuzzleView(); renderMoveList(); update(false);
+    return;
+  }
   state.exploring = true;     // the board waits for the setup move
   enterPuzzleView();
   renderMoveList(); update(false);
@@ -1779,7 +1785,16 @@ function renderPuzzleNow() {
     const c = pz.ctx;
     let tail = c && c.note ? `<p><b>${esc(c.note)}</b></p>` : '';
     if (c && c.kind === 'daily') {
-      tail = c.result ? (c.replay ? '<p>Your result is from your first go today:</p>' : '') + resultCard(c.result, c.streak) : '';
+      tail = c.result ? (c.replay ? '<p>Your result is from your first go today:</p>' : '') + resultCard(c.result, c.streak) +
+        `<p>Come back tomorrow for #${c.n + 1}.</p>` : '';
+      if (c.review && c.result) {
+        const r = c.result;
+        el.innerHTML = top(r.solved ? 'best' : null, r.solved ? 'Solved today' : 'Played today', r.solved ? COLOR.best : null) +
+          `<p>You've played today's puzzle; this is the solution. Step through the moves, or <a href="#" id="pz-again">play it again</a> (it won't change your result).</p>` + tail;
+        $('pz-share').onclick = copyShare;
+        $('pz-again').onclick = e => { e.preventDefault(); replayDaily(); };
+        return;
+      }
     }
     const late = c && c.kind === 'pack' ? ' It counts toward the pack; the green squares are for first tries.' : c && c.kind === 'daily' ? '' : ' Only the first try counts toward your rating.';
     if (pz.shown) el.innerHTML = top(null, 'Solution') + `<p>That's how it goes.${delta}${more}</p>` + tail;
@@ -2044,9 +2059,31 @@ async function playPack(id, stage, n) {
 async function playDaily() {
   let d; try { d = await (await fetch('api/puzzles/daily')).json(); } catch (e) { d = {}; }
   if (!d.id) { toast('No puzzle of the day'); location.replace('#/'); return; }
-  pz.ctx = { kind: 'daily', n: d.n, date: d.date, result: d.result, streak: d.streak, best: d.best_streak, played: !!d.result, replay: !!d.result };
+  const was = pz.ctx, same = was && was.kind === 'daily' && was.date === d.date && pz.p && pz.p.id === d.id && pz.game;
+  if (!(same && was.played)) {     // (a go played here, back from the sandbox, say, stays where it was left)
+    pz.ctx = { kind: 'daily', n: d.n, date: d.date, result: d.result, streak: d.streak, best: d.best_streak, played: !!d.result, replay: false, review: !!d.result };
+    if (d.result) pz.game = null;    // played on another browser meanwhile: not the fresh go on screen
+  }
   return showPuzzle(d.id);
 }
+// "play it again" from the played daily: a fresh go that doesn't change the day's result
+function replayDaily() {
+  Object.assign(pz.ctx, { review: false, replay: true });
+  startPuzzle(pz.p, pz.stats);
+}
+// Progress merged in from another browser (the web build's account sync, web/account.js, fires this): forget what
+// was kept from the puzzle files, and if the daily open here unplayed was played there, show it played. With
+// detail.redrawn the screen is being drawn again anyway (another account's data came in).
+window.addEventListener('progresssynced', e => {
+  for (const k in packCache) delete packCache[k];
+  pz.sources = null;
+  if (e.detail && e.detail.redrawn) return;
+  const c = pz.ctx, p = pz.p;
+  if (location.hash === '#/daily' && c && c.kind === 'daily' && !c.played)
+    fetch('api/puzzles/daily').then(r => r.json()).then(d => { if (d.result && pz.ctx === c && !c.played && location.hash === '#/daily') playDaily(); }).catch(() => {});
+  if (p && !ownPuzzle() && document.body.classList.contains('puzzle'))       // the library rating in the box
+    fetch('api/puzzles/themes').then(r => r.json()).then(d => { if (pz.p === p && d.stats) { pz.stats = d.stats; renderPuzzleBox(); } }).catch(() => {});
+});
 // where a pack or daily puzzle sits, for the crumb and the Back link
 function ctxCrumb() {
   const c = pz.ctx;
@@ -3798,8 +3835,39 @@ function moveLabel(ply, san) { return `${moveNo(ply)} ${san}`; }
 assetsReady.then(route);
 pollStatus();
 
+// The daily played on another browser: index.html?selftest=daily#/daily opens today's unplayed, then a sync brings a
+// result (faked: nothing is written) and the screen must turn to the played view, with "play it again" from there.
+if (location.search.includes('selftest=daily')) (async () => {
+  const log = [], el = document.createElement('pre'); el.id = 'selftest'; document.body.appendChild(el);
+  const say = m => { log.push(m); el.textContent = log.join(String.fromCharCode(10)); };
+  const wait = async (ok, ms) => { const t = Date.now(); while (!ok() && Date.now() - t < ms) await new Promise(r => setTimeout(r, 50)); return ok(); };
+  const real = window.fetch;
+  try {
+    if (!await wait(() => pz.ctx && pz.ctx.kind === 'daily' && pz.p && state.game && state.game.moves.length, 90000)) throw new Error('the daily did not open');
+    say(`opened #${pz.ctx.n}: review=${!!pz.ctx.review} played=${pz.ctx.played} done=${pz.done}${pz.ctx.played ? ' (played already: the fresh go is faked below)' : ''}`);
+    const today = await (await real('api/puzzles/daily')).json(), id = pz.p.id;
+    const res = { date: today.date, n: today.n, id, solved: true, clean: false, ms: 83000, marks: ['ok', 'miss', 'ok'] };
+    window.fetch = (input, init = {}) => {      // the account's result for today; no write gets through
+      const url = String(input);
+      if (/api\/puzzles\/daily$/.test(url) && !init.method) return Promise.resolve(new Response(JSON.stringify({ ...today, result: res, streak: 3, best_streak: 5 })));
+      if ((init.method || 'GET') !== 'GET' && url.includes('api/')) return Promise.resolve(new Response('{}'));
+      return real(input, init);
+    };
+    if (pz.ctx.played) { Object.assign(pz.ctx, { played: false, review: false, result: null }); pz.game = null; startPuzzle(pz.p, pz.stats); }
+    window.dispatchEvent(new CustomEvent('progresssynced', { detail: { redrawn: false } }));
+    const turned = await wait(() => pz.ctx && pz.ctx.review && pz.done, 10000);
+    const now = $('now').textContent;
+    say(`after the sync: review=${turned} (expect true), ply ${state.ply} of ${pz.p.moves.length}, "Solved today"=${now.includes('Solved today')}, ` +
+        `share=${!!$('pz-share')}, tomorrow=${now.includes(`#${today.n + 1}`)}, hint disabled=${$('pz-hint').disabled} ${turned && state.ply === pz.p.moves.length && $('pz-share') ? 'ok' : 'BAD'}`);
+    $('pz-again').onclick({ preventDefault() {} });
+    await wait(() => state.game.moves.length && !state.exploring, 3000);
+    say(`play it again: done=${pz.done} (expect false), replay=${pz.ctx.replay}, played=${pz.ctx.played}, note=${$('now').textContent.includes("You've played today's already")} ${!pz.done && pz.ctx.replay && pz.ctx.played ? 'ok' : 'BAD'}`);
+    say('DONE');
+  } catch (e) { say('ERROR ' + e.stack); }
+  window.fetch = real;
+})();
 // Developer smoke test: index.html?selftest=1#/p/<profile>/game/<id> drives navigation + exploration and writes results to #selftest.
-if (location.search.includes('selftest')) (async () => {
+else if (location.search.includes('selftest')) (async () => {
   const log = [], el = document.createElement('pre'); el.id = 'selftest'; document.body.appendChild(el);
   const say = m => { log.push(m); el.textContent = log.join(String.fromCharCode(10)); };
   try {
