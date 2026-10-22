@@ -6,6 +6,7 @@ web-dist/
   index.html            chess_review/static/index.html as site.write_static makes it, plus the web/shim.js tag
   account.js            the Blundr account, from chess_review/static/ (the desktop app has the same one)
   privacy.html, terms.html   from web/pages/
+  manifest.json, icons/ what "Add to Home Screen" installs (icons from web/icons/, rendered from its icon.svg)
   themes/               the page's pieces, boards and sounds
   app.zip               chess_review (minus static/, sound_packs/ and the puzzle pack's parquet) + web/py/chess_web
                         + book_keys.txt, unpacked into Pyodide (240 KB)
@@ -85,6 +86,22 @@ def copy_if_changed(src: Path, dst: Path) -> None:
 NAME = "Blundr"     # the web app's name (blundr.gr); the desktop app stays "Chess Review"
 RENAME = ("<title>Chess Review</title>", '<span id="home-t">Chess Review</span>', "home ? 'Chess Review' : 'Home'",
           "`Chess Review puzzle of the day")
+BG = "#302e2b"      # the page's --bg: the status bar and the splash while it loads
+# Added to the home screen (iPhone: Share > Add to Home Screen; Android: Install app) the site opens full screen with
+# its own icon. iOS reads the apple-* tags, everything else the manifest. No service worker: it stays an online site.
+HEAD = f"""<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="theme-color" content="{BG}">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="{NAME}">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+"""
+MANIFEST = {"name": NAME, "short_name": NAME, "description": "Chess game review and puzzles",
+            "start_url": "/", "scope": "/", "display": "standalone", "background_color": BG, "theme_color": BG,
+            "icons": [{"src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png"},
+                      {"src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png"}]}
 
 
 def page() -> str:
@@ -94,6 +111,8 @@ def page() -> str:
         if s not in html:
             raise SystemExit(f"index.html no longer has {s!r}: update RENAME in {Path(__file__).name}")
         html = html.replace(s, s.replace("Chess Review", NAME))
+    t = html.index("</title>") + len("</title>\n")
+    html = html[:t] + HEAD + html[t:]
     i = html.index("<script")       # before the page's own scripts (account.js first): the first fetch must already be redirected
     return html[:i] + '<script src="web/shim.js"></script>\n' + html[i:]
 
@@ -132,6 +151,9 @@ def build(engine_wasm: str | None) -> None:
         copy_if_changed(f, OUT / f.name)
         if '<span class="fill">' in f.read_text(encoding="utf-8"):
             print(f"warning: {f.relative_to(ROOT)} still has placeholders (class=fill) to fill in before going live")
+    for f in (ROOT / "web" / "icons").iterdir():
+        copy_if_changed(f, OUT / "icons" / f.name)
+    (OUT / "manifest.json").write_text(json.dumps(MANIFEST, indent=1), encoding="utf-8")
     for f in (ROOT / "web").glob("*.js"):
         copy_if_changed(f, OUT / "web" / f.name)
     whl = chess_wheel()
