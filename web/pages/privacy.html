@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Privacy policy · Blundr</title>
+<!--
+  DRAFT written with Claude Code, not by a lawyer, and not legal advice. Have it checked before blundr.gr goes live.
+  Placeholders are marked class="fill" (scripts/build_web.py warns while any are left). When the wording changes, bump the date
+  below together with CONSENT_VERSION in worker/src/consent.js and web/account.js, so new sign-ups agree to the new text.
+-->
+<style>
+:root { --bg: #302e2b; --panel: #262522; --line: #45423d; --text: #e6e3de; --muted: #9a958d; --accent: #81b64c; }
+html, body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.6 -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+header { padding: 10px 18px; background: var(--panel); border-bottom: 1px solid var(--line); }
+header a { color: var(--text); text-decoration: none; font-weight: 700; font-size: 18px; }
+main { max-width: 760px; margin: 0 auto; padding: 8px 16px 48px; }
+h1 { font-size: 24px; margin: 24px 0 4px; } h2 { font-size: 17px; margin: 28px 0 6px; }
+a { color: var(--accent); } .muted { color: var(--muted); }
+table { border-collapse: collapse; width: 100%; font-size: 14px; margin: 8px 0; }
+th, td { text-align: left; vertical-align: top; border-bottom: 1px solid var(--line); padding: 6px 8px; }
+th { color: var(--muted); font-weight: 600; }
+.fill { background: #6b5a1e; color: #fff3c4; padding: 0 3px; border-radius: 3px; }
+.box { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 14px; }
+</style>
+</head>
+<body>
+<header><a href="./"><span>♞</span> Blundr</a></header>
+<main>
+<h1>Privacy policy</h1>
+<p class="muted">Version of 21 October 2026</p>
+
+<div class="box">
+<p><b>In short.</b> Blundr runs on your own computer, in your browser. Without an account, nothing about you is
+stored on our server: your games, reviews and puzzle progress stay in your browser. If you create an account, we store
+only what is needed to sign you in, your <b>puzzle progress</b> and the <b>list of profiles</b> you added, so they follow you
+to other browsers. Your reviewed games and their analysis are never uploaded. No ads, no analytics, no tracking, and nothing is sold.</p>
+</div>
+
+<h2>1. Who is responsible</h2>
+<p>The controller of your personal data is Aris Verikokkos,
+Chora Naxou, 84300 Naxos, Greece. Contact for anything about your data:
+<a href="mailto:blundr.gr@gmail.com">blundr.gr@gmail.com</a>.
+Blundr is a free, non-commercial project.</p>
+
+<h2>2. Using Blundr without an account</h2>
+<ul>
+<li><b>In your browser only.</b> The profiles you add, your games and their reviews, the engine's analysis, your settings and
+your puzzle progress are kept in your browser's storage (IndexedDB and localStorage) on your device. We cannot see them.
+Clearing the site's data in your browser deletes them.</li>
+<li><b>Fetching games.</b> When you add a chess.com or Lichess username, your browser asks chess.com or Lichess for that
+player's public games directly. Their own privacy policies apply to those requests.</li>
+<li><b>Delivering the site.</b> The site is hosted by Cloudflare. To deliver pages and protect the service from attacks,
+Cloudflare necessarily processes your IP address and technical request data. We do not keep access logs. Part of the
+software (Pyodide, the Python runtime) is loaded from the jsDelivr network, which also sees your IP address when it serves it.</li>
+</ul>
+
+<h2>3. What we store if you create an account</h2>
+<table>
+<tr><th>Data</th><th>Why</th></tr>
+<tr><td>A random account id; when the account was created and last used</td><td>To run the account, and to delete it after long inactivity (section 6)</td></tr>
+<tr><td>Your sign-in method: for <b>Lichess</b>, your Lichess user id and username; for <b>Google</b>, Google's id for your account and your email address; for <b>email and password</b>, your email address and your password, stored only as a salted, one-way hash (PBKDF2-SHA256) that cannot be turned back into the password</td><td>To recognise you when you sign in, and to show you which account you are signed in with</td></tr>
+<tr><td>For email sign-in: a 6-digit code we email you (kept hashed, for 15 minutes) to confirm a sign-up, a new address or a password reset; and a count of failed log-ins for your address (kept 15 minutes)</td><td>To make sure the address is yours, and to slow down anyone guessing passwords</td></tr>
+<tr><td>The version of the terms and this policy you agreed to, and when</td><td>To show that you agreed at sign-up</td></tr>
+<tr><td>Sessions: a scrambled (hashed) copy of your session cookie, with its start and end dates</td><td>To keep you signed in</td></tr>
+<tr><td>Puzzle progress: which puzzles you tried, when, whether you solved them, whether you used a hint, how long you took and
+the puzzle's rating; pack progress; your daily-puzzle results; and the review schedule of the personal puzzles of each
+profile you added (stored under the profile's name, which contains the chess.com or Lichess username you added)</td>
+<td>The service you asked for: keeping your puzzle rating and progress across browsers</td></tr>
+<tr><td>Your list of profiles: for each chess.com or Lichess username you added, the site, the username, when you added
+it and whether (and since when) it is pinned. Not the games: another browser fetches them again from chess.com or Lichess.
+Games you pasted yourself are not included</td>
+<td>The service you asked for: the same profiles on every browser you sign in on</td></tr>
+</table>
+<p>We do not store the games you review, the engine's analysis, or anything else from your browser. We never store a
+password itself, only its hash, and "Download my data" doesn't include the hash. When you sign in with Lichess or Google,
+they tell us only the details above. We keep no access to your Lichess or Google account (the Lichess access token is
+revoked straight away). The emails we send are only the codes for signing up and resetting your password; there are no
+newsletters or marketing emails.</p>
+
+<h2>4. Legal basis</h2>
+<p>We process account data because it is necessary to provide the account you asked for (Article 6(1)(b) GDPR). Delivering
+the site and keeping it secure is our legitimate interest (Article 6(1)(f) GDPR). The cookies we use are strictly
+necessary for the service you request, so they need no consent (section 8).</p>
+
+<h2>5. Where your data is kept, and who else handles it</h2>
+<ul>
+<li><b>Cloudflare</b> (Cloudflare, Inc. and its EU entities) hosts the site and the account database as our processor, under
+its data processing agreement. The account database is kept and run only inside the European Union. Cloudflare may process technical data in other countries, including the USA,
+under the EU-US Data Privacy Framework and the European Commission's standard contractual clauses. Cloudflare's Email
+Service also sends the sign-in codes; to do that it handles your email address and the message.</li>
+<li><b>Lichess</b> or <b>Google</b> handle your sign-in on their own sites, under their own privacy policies.</li>
+</ul>
+<p>We do not sell or share your data with anyone else, and we do not use it for advertising or profiling.</p>
+
+<h2>6. How long we keep it</h2>
+<ul>
+<li>Account data, puzzle progress and the profile list: until you delete your account (a profile you remove is
+removed from the account at the next sync). An account not used for <b>24 months</b> is deleted
+automatically, with all its data.</li>
+<li>Sessions: they end when you log out, or 90 days after you last used them.</li>
+<li>A sign-in in progress (the short-lived record and cookie while you are at Lichess or Google), an emailed code, and
+the count of failed log-ins: at most 15 minutes.</li>
+<li>Deleted data may remain in Cloudflare's database backups for up to 30 days before it is
+overwritten.</li>
+</ul>
+
+<h2>7. Your rights</h2>
+<p>Under the GDPR you have the right to access your data, to have it corrected, to have it deleted, to restrict or object to
+its processing, and to receive it in a portable format. In the account dialog (the person icon at the top right) you can:</p>
+<ul>
+<li><b>Download my data</b>: everything we store about you, as a JSON file;</li>
+<li><b>Delete account</b>: your account and all its data are deleted from our database at once;</li>
+<li>log out, and optionally clear the puzzle progress from the browser you are using.</li>
+</ul>
+<p>For anything else, write to <a href="mailto:blundr.gr@gmail.com">blundr.gr@gmail.com</a>; we answer within one month. You also have the
+right to lodge a complaint with a supervisory authority, in Greece the Hellenic Data Protection Authority
+(<a href="https://www.dpa.gr" target="_blank" rel="noopener">www.dpa.gr</a>, Kifisias 1-3, 115 23 Athens), or the one where
+you live or work.</p>
+
+<h2>8. Cookies and browser storage</h2>
+<table>
+<tr><th>Name</th><th>What for</th><th>How long</th></tr>
+<tr><td><code>blundr_session</code> (cookie)</td><td>Keeps you signed in, if you have an account</td><td>90 days after last use, or until you log out</td></tr>
+<tr><td><code>blundr_login</code> (cookie)</td><td>Protects a sign-in while you are at Lichess or Google</td><td>15 minutes</td></tr>
+<tr><td>IndexedDB and localStorage</td><td>Your profiles, games, reviews, settings and puzzle progress, so the app works</td><td>Until you clear the site's data</td></tr>
+</table>
+<p>All of these are strictly necessary for the service you use, so we do not ask for consent and show no cookie banner. We
+use no analytics, advertising or third-party tracking cookies.</p>
+
+<h2>9. Age</h2>
+<p>You must be at least 15 years old to create an account (the age of digital consent in Greece, Law 4624/2019, Article 21).
+Anyone can use Blundr without an account.</p>
+
+<h2>10. Security</h2>
+<p>Connections are encrypted (HTTPS). Session cookies cannot be read by scripts and are stored on our side only in
+scrambled form. Access to the database is limited to the operator.</p>
+
+<h2>11. Changes</h2>
+<p>If this policy changes, the new version appears here with its date. If a change affects what we store about account holders,
+we will tell you in the app before it applies.</p>
+</main>
+</body>
+</html>
