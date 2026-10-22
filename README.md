@@ -97,8 +97,9 @@ the class colour with the annotation glyph. The arrow geometry is an independent
 
 The web build: `python scripts/build_web.py` turns the same page and Python package into a static site in
 `web-dist/` (Pyodide runs `chess_review` in a worker; `web/` holds the browser-side glue), served by a Cloudflare
-Worker (`worker/`) that also runs the optional accounts on an EU D1 database. **Every push to `main` deploys
-blundr.gr** (`.github/workflows/deploy-web.yml`), so work on a branch and merge when it's ready. Details:
+Worker (`worker/`) that also runs the optional accounts on an EU D1 database. **A push to `main` that touches the
+site** (`chess_review/`, `web/`, `worker/`, `scripts/build_web.py`, `requirements.txt`) **deploys blundr.gr**
+(`.github/workflows/deploy-web.yml`; D1 migrations only by hand), so work on a branch and merge when it's ready. Details:
 `docs/web.md` (how it works, measurements, hosting) and `docs/accounts.md` (accounts, sync, deploy steps).
 
 ## Windows app
