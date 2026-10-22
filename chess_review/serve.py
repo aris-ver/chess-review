@@ -224,6 +224,8 @@ class Runner:
             if cur.kind in BACKGROUND and (job.kind not in BACKGROUND or (job.kind == "build" and cur.kind == "puzzles")):
                 cur.stop_requested = cur.preempted = True
                 before = self.thread
+            elif job.kind in ("ingest", "refresh") and cur.kind == job.kind and cur.profile.id == job.profile.id:
+                return cur      # asked again (the page redrawn by an account sync, say): the fetch under way
             elif job.kind == "analyse":
                 same = next((j for j in [cur, *self.queue] if j.kind == "analyse" and j.profile.id == job.profile.id
                              and j.game_id == job.game_id), None)
@@ -398,10 +400,9 @@ class Runner:
     def _failed(self, job: Job, e: Exception) -> None:
         log.error("job failed: %s", traceback.format_exc())
         job.status, job.error = "error", str(e)
-        if job.kind == "ingest" and not (job.profile.site_dir / "games.json").exists():
-            # a profile that never got its games (typo, unknown user) shouldn't linger on the home screen
-            if "404" in job.error:
-                job.error = f"chess.com has no user called {job.profile.username}"
+        if job.kind == "ingest" and isinstance(e, ingest.NoSuchPlayer) and not (job.profile.site_dir / "games.json").exists():
+            # a typo shouldn't linger on the home screen. Any other failure (offline, a timeout) keeps the profile:
+            # opening it fetches again, and deleting it would take it off the account too (sync.py)
             profiles.delete(job.profile.id)
 
     def _analyse(self, job: Job) -> None:
@@ -547,12 +548,16 @@ class Runner:
     def _ingest(self, job: Job) -> None:
         """New profile: fetch every game, then build its site. done/total count months (chess.com) or games
         (lichess) while fetching."""
-        p = job.profile
+        self._ingested(job, ingest.fetch(job.profile, on_progress=self._fetching(job)))
 
+    @staticmethod
+    def _fetching(job: Job):
         def progress(done: int, total: int) -> None:
             job.done, job.total = done, total + 3
+        return progress
 
-        stats = ingest.fetch(p, on_progress=progress)
+    def _ingested(self, job: Job, stats: dict) -> None:
+        p = job.profile
         log.info("ingest %s: %s", p.id, stats)
         Handler.new_games.clear(p.id)
         job.total = max(job.total, 3)
@@ -560,10 +565,12 @@ class Runner:
         self._rebuild(job)
 
     def _refresh(self, job: Job) -> None:
-        p = job.profile
         job.total = 4
-        had = p.game_ids()
-        stats = ingest.fetch(p, refresh=True)
+        had = job.profile.game_ids()
+        self._refreshed(job, had, ingest.fetch(job.profile, refresh=True))
+
+    def _refreshed(self, job: Job, had: set, stats: dict) -> None:
+        p = job.profile
         log.info("refresh %s: %s", p.id, stats)
         Handler.new_games.clear(p.id)
         job.done = 1

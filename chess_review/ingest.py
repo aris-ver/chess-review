@@ -7,15 +7,20 @@ the API and are stored under data/pgn keyed by content hash.
 Lichess profiles stream the game export API instead (one request, NDJSON) into
 raw/YYYY-MM.ndjson by the month each game started; a refresh asks only for games
 started since the newest one on disk.
+
+The fetches are generators of the requests they want made (Get): run()
+makes them here, the browser without blocking the page's own requests.
 """
 
 import argparse
 import hashlib
+import itertools
 import json
 import logging
 import re
 import sys
 import time
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -33,26 +38,81 @@ LICHESS_GAMES = "https://lichess.org/api/games/user/{username}"
 LICHESS_PERFS = "ultraBullet,bullet,blitz,rapid,classical,correspondence"
 
 
-def _get(session: requests.Session, url: str, max_retries: int = 6) -> requests.Response:
+class NoSuchPlayer(ValueError):
+    """The site has no player by that name (a typo, a closed account)."""
+
+
+@dataclass
+class Get:
+    """A request a fetch wants made. The fetches below are generators of these steps (Get, Read, Sleep) and leave
+    making them to a driver: run() here with requests, and in the browser one that awaits each step
+    (web/py/chess_web/runner.py), so the page's own requests are answered while games come in."""
+    url: str
+    params: dict = field(default_factory=dict)
+    headers: dict = field(default_factory=dict)
+    stream: bool = False        # the body is read with Read steps instead of all at once
+    timeout: float = 60
+
+
+@dataclass
+class Read:
+    """The next lines of a streamed reply: a list (maybe empty), None once it has ended."""
+    response: object
+
+
+@dataclass
+class Sleep:
+    seconds: float
+
+
+def run(steps):
+    """A fetch's return value, its requests made with requests."""
+    session = requests.Session()
+    session.headers["User-Agent"] = USER_AGENT
+    lines, out = {}, None
+    try:
+        while True:
+            step = steps.send(out)
+            if isinstance(step, Sleep):
+                time.sleep(step.seconds)
+                out = None
+            elif isinstance(step, Read):
+                out = list(itertools.islice(lines[id(step.response)], 200)) or None
+            else:
+                out = session.get(step.url, params=step.params or None, headers=step.headers or None,
+                                  stream=step.stream, timeout=step.timeout)
+                if step.stream:
+                    lines[id(out)] = out.iter_lines()
+    except StopIteration as e:
+        return e.value
+    finally:
+        steps.close()
+
+
+def _get(url: str, max_retries: int = 6, missing: str | None = None):
     for attempt in range(max_retries):
-        r = session.get(url, timeout=60)
+        r = yield Get(url)
+        if r.status_code == 404 and missing:
+            raise NoSuchPlayer(missing)
         if r.status_code == 429:
             wait = int(r.headers.get("Retry-After", 0)) or 30 * (attempt + 1)
             log.warning("429 on %s, sleeping %ss", url, wait)
-            time.sleep(wait)
+            yield Sleep(wait)
             continue
         r.raise_for_status()
         return r
     raise RuntimeError(f"gave up on {url} after {max_retries} attempts")
 
 
-def fetch_archives(profile: Profile, force: bool = False, only: str | None = None, delay: float = 1.0,
-                   refresh_latest: bool = False, on_progress=None) -> dict:
-    profile.raw_dir.mkdir(parents=True, exist_ok=True)
-    session = requests.Session()
-    session.headers["User-Agent"] = USER_AGENT
+def _archive_list(profile: Profile):
+    # a 404 here is the player; one for a month is chess.com's own trouble (it has had whole days of those)
+    return (yield from _get(API.format(username=profile.username), missing=f"chess.com has no user called {profile.username}"))
 
-    archive_urls = _get(session, API.format(username=profile.username)).json()["archives"]
+
+def _archives(profile: Profile, force: bool = False, only: str | None = None, delay: float = 1.0,
+              refresh_latest: bool = False, on_progress=None):
+    profile.raw_dir.mkdir(parents=True, exist_ok=True)
+    archive_urls = (yield from _archive_list(profile)).json()["archives"]
     log.info("%d archives listed for %s", len(archive_urls), profile.username)
 
     stats = {"listed": len(archive_urls), "fetched": 0, "skipped": 0}
@@ -69,8 +129,9 @@ def fetch_archives(profile: Profile, force: bool = False, only: str | None = Non
         if out.exists() and not force and not (refresh_latest and is_latest):
             stats["skipped"] += 1
             continue
-        time.sleep(delay)       # between requests only: a refresh asks for one month and passes delay=0
-        body = _get(session, url).text
+        if delay:
+            yield Sleep(delay)      # between requests only: a refresh asks for one month and passes delay=0
+        body = (yield from _get(url)).text
         n = len(json.loads(body).get("games", []))
         out.write_text(body, encoding="utf-8")
         stats["fetched"] += 1
@@ -78,21 +139,20 @@ def fetch_archives(profile: Profile, force: bool = False, only: str | None = Non
     return stats
 
 
-def count_new_games(profile: Profile, delay: float = 1.0, max_months: int = 3) -> int:
-    """How many games chess.com has for this profile that aren't in its raw archives yet: the latest month's
-    games minus those already in the same month's file on disk, plus whole months newer than anything on disk.
-    Read-only: nothing is written, a refresh does that. Looks at most max_months back."""
-    session = requests.Session()
-    session.headers["User-Agent"] = USER_AGENT
-    archive_urls = _get(session, API.format(username=profile.username)).json()["archives"]
+def fetch_archives(profile: Profile, **kw) -> dict:
+    return run(_archives(profile, **kw))
+
+
+def _count_archives(profile: Profile, delay: float = 1.0, max_months: int = 3):
+    archive_urls = (yield from _archive_list(profile)).json()["archives"]
     new = 0
     for i, url in enumerate(reversed(archive_urls[-max_months:])):
         year, month = url.rstrip("/").split("/")[-2:]
         local = profile.raw_dir / f"{year}-{month}.json"
         if local.exists() and i > 0:
             break               # everything older than the latest month is fetched once and never changes
-        time.sleep(delay)
-        remote = _get(session, url).json().get("games", [])
+        yield Sleep(delay)
+        remote = (yield from _get(url)).json().get("games", [])
         have = set()
         if local.exists():
             try:
@@ -103,26 +163,35 @@ def count_new_games(profile: Profile, delay: float = 1.0, max_months: int = 3) -
     return new
 
 
-def _lichess_session() -> requests.Session:
-    session = requests.Session()
-    session.headers.update({"User-Agent": USER_AGENT, "Accept": "application/x-ndjson"})
-    return session
+def count_new_games(profile: Profile, **kw) -> int:
+    """How many games chess.com has for this profile that aren't in its raw archives yet: the latest month's
+    games minus those already in the same month's file on disk, plus whole months newer than anything on disk.
+    Read-only: nothing is written, a refresh does that. Looks at most max_months back."""
+    return run(_count_archives(profile, **kw))
 
 
-def _lichess_stream(session: requests.Session, username: str, params: dict, max_retries: int = 4):
-    """Each game of the export, as a dict. Lichess asks for a full minute's pause after a 429."""
+NDJSON = {"Accept": "application/x-ndjson"}
+
+
+def _lichess_stream(username: str, params: dict, on_game, max_retries: int = 4):
+    """on_game(each game of the export, as a dict). Lichess asks for a full minute's pause after a 429."""
     for attempt in range(max_retries):
-        with session.get(LICHESS_GAMES.format(username=username), params={"perfType": LICHESS_PERFS, **params},
-                         stream=True, timeout=60) as r:
-            if r.status_code == 429:
-                log.warning("429 from lichess, sleeping 60s")
-                time.sleep(60)
-                continue
+        r = yield Get(LICHESS_GAMES.format(username=username), params={"perfType": LICHESS_PERFS, **params},
+                      headers=NDJSON, stream=True)
+        if r.status_code == 429:
+            r.close()
+            log.warning("429 from lichess, sleeping 60s")
+            yield Sleep(60)
+            continue
+        try:
             r.raise_for_status()
-            for line in r.iter_lines():
-                if line:
-                    yield json.loads(line)
+            while (lines := (yield Read(r))) is not None:
+                for line in lines:
+                    if line:
+                        on_game(json.loads(line))
             return
+        finally:
+            r.close()
     raise RuntimeError(f"gave up on lichess games for {username} after {max_retries} attempts")
 
 
@@ -136,20 +205,15 @@ def _lichess_on_disk(profile: Profile) -> tuple[int, int]:
     return newest, n
 
 
-def fetch_lichess(profile: Profile, on_progress=None) -> dict:
-    """Every standard game the player has on lichess, with clocks and the opening, appended to
-    raw/YYYY-MM.ndjson. Only games started at or after the newest one on disk are asked for, and ids already
-    there are skipped. (A correspondence game still running at the last fetch, older than the newest game on
-    disk by the time it ends, is missed until a fresh profile.)"""
+def _lichess(profile: Profile, on_progress=None):
     profile.raw_dir.mkdir(parents=True, exist_ok=True)
-    session = _lichess_session()
-    r = session.get(LICHESS_USER.format(username=profile.username), headers={"Accept": "application/json"}, timeout=30)
+    r = yield Get(LICHESS_USER.format(username=profile.username), headers={"Accept": "application/json"}, timeout=30)
     if r.status_code == 404:
-        raise ValueError(f"no lichess player called {profile.username}")
+        raise NoSuchPlayer(f"no lichess player called {profile.username}")
     r.raise_for_status()
     user = r.json()
     if user.get("disabled"):
-        raise ValueError(f"lichess account {profile.username} is closed")
+        raise NoSuchPlayer(f"lichess account {profile.username} is closed")
     newest, had = _lichess_on_disk(profile)
     # the total is every game, variants included, so a rough bar: it stops short and jumps at the end
     total = max(user.get("count", {}).get("all", 0) - had, 1)
@@ -159,7 +223,9 @@ def fetch_lichess(profile: Profile, on_progress=None) -> dict:
 
     seen: dict[str, set] = {}       # month -> ids already in that file
     stats = {"fetched": 0, "skipped": 0}
-    for i, g in enumerate(_lichess_stream(session, profile.username, params)):
+
+    def take(g: dict) -> None:
+        i = stats["fetched"] + stats["skipped"]
         if on_progress and i % 20 == 0:
             on_progress(min(i, total), total)
         month = datetime.fromtimestamp(g["createdAt"] / 1000, tz=timezone.utc).strftime("%Y-%m")
@@ -169,33 +235,54 @@ def fetch_lichess(profile: Profile, on_progress=None) -> dict:
                 if out.exists() else set()
         if g["id"] in seen[month]:
             stats["skipped"] += 1
-            continue
+            return
         with out.open("a", encoding="utf-8", newline="\n") as fh:
             fh.write(json.dumps(g, separators=(",", ":")) + "\n")
         seen[month].add(g["id"])
         stats["fetched"] += 1
+
+    yield from _lichess_stream(profile.username, params, take)
     log.info("lichess %s: %s", profile.username, stats)
     return stats
 
 
-def count_new_lichess(profile: Profile) -> int:
-    """How many games lichess has for this profile that aren't on disk yet. Read-only, ids only."""
+def fetch_lichess(profile: Profile, on_progress=None) -> dict:
+    """Every standard game the player has on lichess, with clocks and the opening, appended to
+    raw/YYYY-MM.ndjson. Only games started at or after the newest one on disk are asked for, and ids already
+    there are skipped. (A correspondence game still running at the last fetch, older than the newest game on
+    disk by the time it ends, is missed until a fresh profile.)"""
+    return run(_lichess(profile, on_progress=on_progress))
+
+
+def _count_lichess(profile: Profile):
     newest, _ = _lichess_on_disk(profile)
     ids_on_disk = set()
     for f in profile.raw_dir.glob("*.ndjson"):
         ids_on_disk |= {json.loads(l)["id"] for l in f.read_text(encoding="utf-8").splitlines() if l.strip()}
     params = {"moves": "false", "tags": "false", "since": newest} if newest else {"moves": "false", "tags": "false"}
-    return sum(1 for g in _lichess_stream(_lichess_session(), profile.username, params) if g["id"] not in ids_on_disk)
+    new = []
+    yield from _lichess_stream(profile.username, params, lambda g: new.append(g["id"] not in ids_on_disk))
+    return sum(new)
+
+
+def count_new_lichess(profile: Profile) -> int:
+    """How many games lichess has for this profile that aren't on disk yet. Read-only, ids only."""
+    return run(_count_lichess(profile))
+
+
+def fetch_steps(profile: Profile, refresh: bool = False, on_progress=None):
+    """fetch() as steps, for a driver other than run()."""
+    if profile.source == "chesscom":
+        # chess.com only rate-limits parallel requests; the pause is politeness for a whole history, not a refresh
+        return (yield from _archives(profile, refresh_latest=refresh, delay=0 if refresh else 1.0, on_progress=on_progress))
+    if profile.source == "lichess":
+        return (yield from _lichess(profile, on_progress=on_progress))
+    raise ValueError(f"{profile.source} profiles can't be fetched")
 
 
 def fetch(profile: Profile, refresh: bool = False, on_progress=None) -> dict:
     """The profile's games from wherever it lives: everything for a new profile, what's new on a refresh."""
-    if profile.source == "chesscom":
-        # chess.com only rate-limits parallel requests; the pause is politeness for a whole history, not a refresh
-        return fetch_archives(profile, refresh_latest=refresh, delay=0 if refresh else 1.0, on_progress=on_progress)
-    if profile.source == "lichess":
-        return fetch_lichess(profile, on_progress=on_progress)
-    raise ValueError(f"{profile.source} profiles can't be fetched")
+    return run(fetch_steps(profile, refresh, on_progress))
 
 
 def count_new(profile: Profile) -> int:

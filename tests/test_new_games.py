@@ -20,8 +20,9 @@ def _api(monkeypatch, months: dict):
     base = "https://api.chess.com/pub/player/me/games/"
     calls = []
 
-    def get(_session, url):
+    def get(url, **_):
         calls.append(url)
+        yield from ()           # a generator of request steps, as _get is: none here
         if url.endswith("/archives"):
             return SimpleNamespace(json=lambda: {"archives": [base + k.replace("-", "/") for k in sorted(months)]})
         key = "-".join(url.rstrip("/").split("/")[-2:])
