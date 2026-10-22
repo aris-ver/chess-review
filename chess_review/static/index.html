@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Chess Review</title>
+<title>Blundr</title>
 <style>
 :root {
   --bg: #302e2b; --panel: #262522; --panel2: #3a3733; --line: #45423d; --text: #e6e3de; --muted: #9a958d;
@@ -26,7 +26,7 @@ button.primary { background: var(--accent); color: #1b1b1b; border-color: var(--
 @media (hover: hover) { button.primary:hover { background: #8fc55a; } }
 header { display: flex; align-items: center; gap: 16px; padding: 10px 18px; background: var(--panel); border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 5; }
 header h1 { font-size: 18px; margin: 0; }
-/* the title: "Chess Review" on the home screen, everywhere else a Home button that looks like one */
+/* the title: "Blundr" on the home screen, everywhere else a Home button that looks like one */
 header h1 a { display: inline-block; padding: 4px 10px; margin: 0 -10px; border: 1px solid transparent; border-radius: 6px; cursor: default; transition: background .12s, border-color .12s; }
 header h1 a.away { margin: 0; font-size: 15px; background: var(--panel2); border-color: var(--line); cursor: pointer; }
 @media (hover: hover) { header h1 a.away:hover { border-color: var(--accent); } }
@@ -715,7 +715,7 @@ svg.graph { width: 100%; height: 52px; display: block; cursor: pointer; backgrou
 </head>
 <body>
 <header>
-  <h1><a href="#/" id="b-home" title="Home"><span class="k">♞</span> <span id="home-t">Chess Review</span></a></h1>
+  <h1><a href="#/" id="b-home" title="Home"><span class="k">♞</span> <span id="home-t">Blundr</span></a></h1>
   <button id="b-back" class="back hidden" title="Back (Esc)">←<span class="t" id="back-t"> Back</span></button>
   <span class="crumb" id="crumb"></span>
   <div class="right">
@@ -1199,7 +1199,7 @@ function updateBack() {
   $('b-back').classList.toggle('hidden', !to || to === '#/');
   if (to) { $('back-t').textContent = ' ' + upLabel(to); $('b-back').title = `Back to ${upLabel(to).toLowerCase()} (Esc)`; }
   $('b-home').classList.toggle('away', !home);
-  $('home-t').textContent = home ? 'Chess Review' : 'Home';
+  $('home-t').textContent = home ? 'Blundr' : 'Home';
 }
 function goBack() {
   const to = upTo() || '#/';
@@ -1335,7 +1335,7 @@ function renderUpdate() {
   const u = state.update, box = $('update'), ver = $('ver');
   if (!u || !u.enabled) { box.classList.add('hidden'); ver.classList.add('hidden'); return; }
   ver.classList.remove('hidden');
-  ver.innerHTML = `Chess Review ${u.installed} · <a id="ver-check">Check for updates</a>`;
+  ver.innerHTML = `Blundr ${u.installed} · <a id="ver-check">Check for updates</a>`;
   $('ver-check').onclick = () => checkUpdate(true);
   box.classList.toggle('hidden', !u.newer);
   if (!u.newer) return;
@@ -2367,7 +2367,7 @@ function resultWords(r) {
 }
 function shareText(r, streak) {
   const t = fmtTime(r.ms);
-  return `Chess Review puzzle of the day #${r.n} · ${fmtDay(r.date)}\n${r.clean ? '✅' : r.solved ? '☑️' : '❌'} ${resultWords(r)}${t ? ' · ' + t : ''}\n` +
+  return `Blundr puzzle of the day #${r.n} · ${fmtDay(r.date)}\n${r.clean ? '✅' : r.solved ? '☑️' : '❌'} ${resultWords(r)}${t ? ' · ' + t : ''}\n` +
     (r.marks || []).map(m => SHARE_SQ[m] || '⬜').join('') + (streak ? `\n🔥 ${streak}-day streak` : '') + `\nTry it yourself: ${APP_URL}`;
 }
 const SQ_TITLE = { ok: 'Found first time', miss: 'Found after a miss', hint: 'Found with a hint', shown: 'Shown the solution' };

@@ -154,7 +154,8 @@ def _pack(app: Path, out: Path, version: str) -> tuple[Path, Path, str]:
     """pack.main() equivalent without argparse."""
     runtime = pack.runtime_fingerprint(app / "_internal")
     (app / "_internal" / pack.STAMP).write_text(json.dumps({"version": version, "runtime": runtime}))
-    shutil.copy2(app / pack.EXE, app / pack.LEGACY_EXE)     # what pack.main() does: the transitional copy
+    for name in pack.LEGACY_EXES:                           # what pack.main() does: the transitional copies
+        shutil.copy2(app / pack.EXE, app / name)
     out.mkdir()
     full, small = out / "chess-review-windows.zip", out / f"chess-review-update-{runtime}.zip"
     pack.write_zip(full, app, (f for f in app.rglob("*") if f.is_file()))
@@ -166,7 +167,7 @@ def test_update_zip_holds_only_the_app_layer(tmp_path):
     app = _fake_app(tmp_path / "build")
     full, small, runtime = _pack(app, tmp_path / "out", "v0.2.0")
     names = set(zipfile.ZipFile(small).namelist())
-    assert names == {"chess-review/Chess Review.exe", "chess-review/chess-review.exe",
+    assert names == {"chess-review/Blundr.exe", "chess-review/Chess Review.exe", "chess-review/chess-review.exe",
                      "chess-review/_internal/build.json", "chess-review/_internal/base_library.zip",
                      "chess-review/_internal/chess_review/static/index.html", "chess-review/_internal/assets/book/a.tsv"}
     assert "chess-review/_internal/python312.dll" in zipfile.ZipFile(full).namelist()
@@ -178,20 +179,21 @@ def test_unpack_update(tmp_path):
     _, small, runtime = _pack(app, tmp_path / "out", "v0.2.0")
     staged = updater.unpack(small, tmp_path / "stage", "update")
     assert staged == tmp_path / "stage" / "chess-review"
-    assert (staged / "Chess Review.exe").read_bytes() == b"exe v0.2.0"
+    assert (staged / "Blundr.exe").read_bytes() == b"exe v0.2.0"
     assert json.loads((staged / "_internal" / "build.json").read_text())["version"] == "v0.2.0"
 
 
 def test_both_exe_names_ship_so_an_older_updater_still_takes_the_zip(tmp_path):
-    """Up to v0.1.11 the exe was chess-review.exe, and that install's updater -- the one that reads the
-    zip -- rejects a build without it. Both names ship until those installs are gone."""
+    """Up to v0.1.11 the exe was chess-review.exe, up to v0.5.6 "Chess Review.exe", and such an install's updater
+    -- the one that reads the zip -- rejects a build without its name. All three ship until those installs are gone."""
     app = _fake_app(tmp_path / "build")
     full, small, _ = _pack(app, tmp_path / "out", "v0.2.0")
     for z in (full, small):
         names = set(zipfile.ZipFile(z).namelist())
-        assert {"chess-review/Chess Review.exe", "chess-review/chess-review.exe"} <= names
+        assert {"chess-review/Blundr.exe", "chess-review/Chess Review.exe", "chess-review/chess-review.exe"} <= names
     staged = updater.unpack(small, tmp_path / "stage", "update")
-    assert (staged / "chess-review.exe").read_bytes() == (staged / "Chess Review.exe").read_bytes()
+    for old in ("Chess Review.exe", "chess-review.exe"):
+        assert (staged / old).read_bytes() == (staged / "Blundr.exe").read_bytes()
 
 
 def test_unpack_full_wants_a_python_runtime(tmp_path):

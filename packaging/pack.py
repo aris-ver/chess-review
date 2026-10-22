@@ -25,10 +25,11 @@ import zipfile
 from pathlib import Path
 
 ZIP_ROOT = "chess-review"
-EXE = "Chess Review.exe"
-LEGACY_EXE = "chess-review.exe"          # what the exe was called up to v0.1.11; an updater from such an
-                                         # install looks for that name and refuses a zip without it, so the
-                                         # builds ship a byte-identical copy under both until those are gone
+EXE = "Blundr.exe"
+# What the exe was called before: chess-review.exe up to v0.1.11, "Chess Review.exe" up to v0.5.6. An updater from
+# such an install looks for its own name (refusing a zip without it, and starting that exe again once updated), and
+# shortcuts point at it, so the builds ship a byte-identical copy under each until those installs are gone.
+LEGACY_EXES = ("Chess Review.exe", "chess-review.exe")
 APP_DIRS = ("chess_review", "assets")     # app-owned data under _internal: in the update zip, not the fingerprint
 GENERATED = ("base_library.zip",)         # PyInstaller output under _internal: same treatment
 EXCLUDED = ("bin",)                       # in neither
@@ -48,8 +49,7 @@ def runtime_fingerprint(internal: Path) -> str:
 
 def update_files(app: Path):
     yield app / EXE
-    if (app / LEGACY_EXE).is_file():
-        yield app / LEGACY_EXE
+    yield from (app / n for n in LEGACY_EXES if (app / n).is_file())
     yield app / "_internal" / STAMP
     yield from (app / "_internal" / g for g in GENERATED if (app / "_internal" / g).is_file())
     for d in APP_DIRS:
@@ -71,7 +71,8 @@ def main() -> None:
     app, internal = args.app, args.app / "_internal"
     if not (app / EXE).is_file() or not internal.is_dir():
         raise SystemExit(f"{app} is not a chess-review build")
-    shutil.copy2(app / EXE, app / LEGACY_EXE)   # the transitional duplicate; not part of the fingerprint
+    for name in LEGACY_EXES:                     # the transitional duplicates; not part of the fingerprint
+        shutil.copy2(app / EXE, app / name)
 
     runtime = runtime_fingerprint(internal)
     (internal / STAMP).write_text(json.dumps({"version": args.version, "runtime": runtime}), encoding="ascii")

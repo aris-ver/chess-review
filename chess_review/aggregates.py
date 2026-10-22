@@ -264,7 +264,7 @@ table.heat td.num {{ text-align:center; }} .note {{ color:var(--muted); font-siz
 .legend {{ color:var(--muted); font-size:12px; margin-top:6px; }} .sw {{ display:inline-block; width:10px; height:10px; margin:0 4px 0 10px; vertical-align:-1px; }}
 .empty {{ color:var(--muted); padding:16px; }}
 </style></head><body>
-<header><h1><a href="../../">♞ Chess Review</a></h1><span class="nav"><a href="../../#/p/{profile_id}">Games</a><a href="insights.html" style="color:var(--text)">Insights</a></span></header>
+<header><h1><a href="../../">♞ Blundr</a></h1><span class="nav"><a href="../../#/p/{profile_id}">Games</a><a href="insights.html" style="color:var(--text)">Insights</a></span></header>
 <main>
 <div class="tiles">{tiles}</div>
 

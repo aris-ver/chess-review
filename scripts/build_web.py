@@ -83,9 +83,7 @@ def copy_if_changed(src: Path, dst: Path) -> None:
         shutil.copy2(src, dst)
 
 
-NAME = "Blundr"     # the web app's name (blundr.gr); the desktop app stays "Chess Review"
-RENAME = ("<title>Chess Review</title>", '<span id="home-t">Chess Review</span>', "home ? 'Chess Review' : 'Home'",
-          "`Chess Review puzzle of the day")
+NAME = "Blundr"     # the app's name, on blundr.gr and on Windows
 BG = "#302e2b"      # the page's --bg: the status bar and the splash while it loads
 # Added to the home screen (iPhone: Share > Add to Home Screen; Android: Install app) the site opens full screen with
 # its own icon. iOS reads the apple-* tags, everything else the manifest. No service worker: it stays an online site.
@@ -107,10 +105,6 @@ MANIFEST = {"name": NAME, "short_name": NAME, "description": "Chess game review 
 def page() -> str:
     html = (ROOT / "chess_review" / "static" / "index.html").read_text(encoding="utf-8")
     html = html.replace("/*__PIECES__*/", json.dumps(chess.svg.PIECES))
-    for s in RENAME:    # each must still be there, so a change to the page can't leave the old name showing
-        if s not in html:
-            raise SystemExit(f"index.html no longer has {s!r}: update RENAME in {Path(__file__).name}")
-        html = html.replace(s, s.replace("Chess Review", NAME))
     t = html.index("</title>") + len("</title>\n")
     html = html[:t] + HEAD + html[t:]
     i = html.index("<script")       # before the page's own scripts (account.js first): the first fetch must already be redirected

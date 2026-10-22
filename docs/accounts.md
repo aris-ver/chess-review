@@ -17,7 +17,7 @@ that moment. Local-only state (the "new games" flags) is not synced.
 
 ## The desktop app
 
-Chess Review (the Windows app) has the same Log in button and dialog, and syncs the same account with blundr.gr. The
+The Windows app has the same Log in button and dialog, and syncs the same account with blundr.gr. The
 page code is one file, `chess_review/static/account.js`, in both apps, and so is the merge, `chess_review/sync.py`:
 the page runs the delta, account, commit loop in both, after each puzzle result, at start-up, on log-in and when the
 window comes back into view. Only the transport differs:

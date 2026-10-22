@@ -33,8 +33,9 @@ from .config import BUNDLE_ROOT, DATA, GITHUB_REPO, USER_AGENT
 
 log = logging.getLogger("updater")
 
-EXE_NAME = "Chess Review.exe"
-LEGACY_EXE_NAME = "chess-review.exe"    # up to v0.1.11; builds still ship both, so either may be the one here
+EXE_NAME = "Blundr.exe"
+# up to v0.5.6 and v0.1.11; builds still ship all three (packaging/pack.py), so any may be the one here
+LEGACY_EXE_NAMES = ("Chess Review.exe", "chess-review.exe")
 FULL_ASSET = "chess-review-windows.zip"
 UPDATE_ASSET = "chess-review-update-{runtime}.zip"
 ZIP_ROOT = "chess-review"       # both zips wrap the app folder
@@ -228,7 +229,7 @@ def unpack(zip_path: Path, dest: Path, kind: str) -> Path:
             with z.open(info) as src, open(target, "wb") as dst:
                 shutil.copyfileobj(src, dst)
     app = dest / ZIP_ROOT
-    if not any((app / n).is_file() for n in (EXE_NAME, LEGACY_EXE_NAME)) or not (app / "_internal" / "chess_review").is_dir():
+    if not any((app / n).is_file() for n in (EXE_NAME, *LEGACY_EXE_NAMES)) or not (app / "_internal" / "chess_review").is_dir():
         raise ValueError("the downloaded zip does not look like a chess-review build")
     if kind == "update":
         if not (app / "_internal" / "build.json").is_file():
@@ -251,7 +252,7 @@ def write_apply_script(path: Path, pid: int, stage: Path, install: Path, kind: s
         f"$log = {q(logfile)}",
         f"$stage = {q(stage)}",
         f"$install = {q(install)}",
-        f"$exeNames = @({q(EXE_NAME)}, {q(LEGACY_EXE_NAME)})",
+        f"$exeNames = @({', '.join(q(n) for n in (EXE_NAME, *LEGACY_EXE_NAMES))})",
         "function Find-Exe { foreach ($n in $exeNames) { $p = Join-Path $install $n; if (Test-Path -LiteralPath $p) { return $p } }; return (Join-Path $install $exeNames[0]) }",
         "function Log($m) { Add-Content -Path $log -Value ((Get-Date -Format s) + ' ' + $m) }",
         f"Log 'waiting for pid {pid}'",

@@ -102,7 +102,7 @@
   };
   if (lite) dl.onclick = addToHome;
   // A download leaves the page as it is, so say what just happened and what to do with the zip
-  const downloading = () => { if (window.toast) toast('Downloading Chess Review for Windows… unzip it and run Chess Review.exe', 8000); };
+  const downloading = () => { if (window.toast) toast('Downloading Blundr for Windows… unzip it and run Blundr.exe', 8000); };
   if (!lite) dl.onclick = downloading;
   // The note under the loading lines: on a computer that the Windows app is faster, until its × is clicked; on a
   // phone, once, that the site goes on the home screen

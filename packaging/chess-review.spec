@@ -39,7 +39,7 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name="Chess Review",
+    name="Blundr",
     debug=False,
     strip=False,
     upx=False,

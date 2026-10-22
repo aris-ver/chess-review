@@ -45,7 +45,7 @@ jobs:
             prev=$(git describe --tags --abbrev=0 "$GITHUB_REF_NAME^" 2>/dev/null || true)
             {
               printf '## Download\n\n'
-              printf '**[chess-review-windows.zip](https://github.com/%s/releases/download/%s/chess-review-windows.zip)** - this is the app. Unzip it anywhere and run **Chess Review.exe**.\n\n' "$GITHUB_REPOSITORY" "$GITHUB_REF_NAME"
+              printf '**[chess-review-windows.zip](https://github.com/%s/releases/download/%s/chess-review-windows.zip)** - this is the app. Unzip it anywhere and run **Blundr.exe**.\n\n' "$GITHUB_REPOSITORY" "$GITHUB_REF_NAME"
               printf '> If the app does not open, Windows has marked the zip as downloaded: right-click it, Properties, tick **Unblock**, then extract it again.\n\n'
               printf 'The `chess-review-update-*.zip` is not meant to be downloaded by hand - the app fetches it itself when it updates.\n\n'
               printf "## What's new\n\n"

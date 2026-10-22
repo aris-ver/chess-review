@@ -114,11 +114,11 @@ def main() -> None:
     threading.Thread(target=serve.main, args=([f"--host={HOST}", f"--port={port}"],), daemon=True, name="server").start()
 
     if _wait_for_port(HOST, port):
-        window = webview.create_window("Chess Review", f"http://{HOST}:{port}/", width=1400, height=900, min_size=(900, 600))
+        window = webview.create_window("Blundr", f"http://{HOST}:{port}/", width=1400, height=900, min_size=(900, 600))
         updater.exit_app = window.destroy   # "Restart to update": the apply script waits for this process to exit
     else:
         log.error("server did not come up on %s:%d", HOST, port)
-        webview.create_window("Chess Review", html=f"<h2>The app failed to start.</h2><p>See <code>{DATA / 'app.log'}</code>.</p>")
+        webview.create_window("Blundr", html=f"<h2>The app failed to start.</h2><p>See <code>{DATA / 'app.log'}</code>.</p>")
     try:
         # private_mode=False keeps localStorage (pinned profiles, the auto-analyse switch) between runs
         webview.start(private_mode=False, storage_path=str(DATA / "webview"))
@@ -127,8 +127,8 @@ def main() -> None:
         # start() is where pywebview picks its backend and loads .NET, so this is where a blocked or
         # broken install shows up - with no window of our own to report it in.
         log.exception("the app window failed to open")
-        _message_box("Chess Review",
-                     "Chess Review could not open its window.\n\n"
+        _message_box("Blundr",
+                     "Blundr could not open its window.\n\n"
                      "The usual cause is Windows blocking the files it downloaded. Unblock the zip "
                      "(right-click it, Properties, tick Unblock) and extract it again.\n\n"
                      f"Details are in {DATA / 'app.log'}.")

@@ -1,8 +1,8 @@
 # Blundr: chess-review in the browser
 
-**Blundr** (blundr.gr) is the free web version of chess-review, for friends and anyone else. The web build
-shows that name in the title, the header and the shared puzzle-of-the-day result (`scripts/build_web.py`
-renames them), while the desktop app stays "Chess Review". The engine and the Python code run on each visitor's
+**Blundr** (blundr.gr) is the free web version of chess-review, for friends and anyone else. Since v0.6.0 the
+Windows app is called Blundr too (`Blundr.exe`; its folder, zips and data folder keep the chess-review name, so
+installed copies update and keep their data). The engine and the Python code run on each visitor's
 computer, so hosting stays near €0. The desktop app stays as it is and remains the fast option.
 
 ## Measured (i7-10750H, 6 cores, 2026-10-21)

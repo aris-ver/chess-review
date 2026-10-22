@@ -13,7 +13,7 @@ WebAssembly; reviews and the engine cache stay in the browser. An optional accou
 profile list across browsers and the desktop app. See *Blundr* below.
 
 **Windows app:** [latest release](https://github.com/aris-ver/chess-review/releases/latest) → `chess-review-windows.zip`,
-unzip anywhere, run `Chess Review.exe` (details under *Windows app* below). From a checkout, the same server runs as
+unzip anywhere, run `Blundr.exe` (details under *Windows app* below). From a checkout, the same server runs as
 
 ```
 bash scripts/restart_server.sh          # http://127.0.0.1:8123/  (log: data/serve.log)

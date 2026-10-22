@@ -124,7 +124,7 @@ def handle(method: str, path: str, query: str, body: Optional[bytes], port: int)
         with _lock:
             p = _pending
             if not p or q.get("state") != p["state"]:
-                return _page("This isn't the sign-in Chess Review is waiting for. Start again from the app.")
+                return _page("This isn't the sign-in Blundr is waiting for. Start again from the app.")
             _pending = None
         outcome = q.get("account") or "error"
         if q.get("code"):
@@ -167,19 +167,19 @@ def handle(method: str, path: str, query: str, body: Optional[bytes], port: int)
 
 # What the browser tab says once it's back, by outcome (the page in the app says the rest).
 DONE = {
-    "signed-in": "You're logged in. Go back to Chess Review: your puzzle progress and profiles sync from there.",
-    "welcome": "Welcome to Blundr! Go back to Chess Review: your puzzle progress and profiles are saved to your account.",
-    "linked": "Done: you can sign in that way too. Go back to Chess Review.",
-    "no-account": "There is no Blundr account for that sign-in yet. Go back to Chess Review to sign up.",
-    "taken": "That sign-in already belongs to another Blundr account. Go back to Chess Review.",
-    "cancelled": "Sign-in cancelled. Go back to Chess Review to try again.",
-    "error": "Signing in didn't work. Go back to Chess Review and try again.",
+    "signed-in": "You're logged in. Go back to the Blundr app: your puzzle progress and profiles sync from there.",
+    "welcome": "Welcome to Blundr! Go back to the app: your puzzle progress and profiles are saved to your account.",
+    "linked": "Done: you can sign in that way too. Go back to the Blundr app.",
+    "no-account": "There is no Blundr account for that sign-in yet. Go back to the Blundr app to sign up.",
+    "taken": "That sign-in already belongs to another Blundr account. Go back to the Blundr app.",
+    "cancelled": "Sign-in cancelled. Go back to the Blundr app to try again.",
+    "error": "Signing in didn't work. Go back to the Blundr app and try again.",
 }
 
 
 def _page(text: str) -> tuple[int, str, bytes]:
-    html = ("<!doctype html><meta charset=utf-8><title>Chess Review</title>"
+    html = ("<!doctype html><meta charset=utf-8><title>Blundr</title>"
             "<body style=\"font:16px system-ui,sans-serif;background:#302e2b;color:#e8e6e3;display:grid;place-items:center;"
-            "height:90vh;margin:0\"><div style=\"max-width:420px;text-align:center\"><h2>Chess Review</h2>"
+            "height:90vh;margin:0\"><div style=\"max-width:420px;text-align:center\"><h2>Blundr</h2>"
             f"<p>{text}</p><p style=\"color:#9c9893\">You can close this tab.</p></div>")
     return 200, "text/html; charset=utf-8", html.encode()
