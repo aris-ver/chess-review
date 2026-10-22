@@ -152,7 +152,13 @@ dialog#account input:focus { outline: none; border-color: var(--accent); }
 dialog#account #acc-code { letter-spacing: .3em; text-align: center; font-size: 18px; }
 dialog#account .or { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 12px; margin: 4px 0; }
 dialog#account .or::before, dialog#account .or::after { content: ""; flex: 1; border-top: 1px solid var(--line); }
-dialog#account .foot { display: flex; gap: 14px; justify-content: center; margin-top: 12px; font-size: 13px; }
+dialog#account .foot { display: flex; flex-wrap: wrap; gap: 6px 14px; justify-content: center; margin-top: 12px; font-size: 13px; }
+dialog#account .who { display: flex; align-items: center; gap: 12px; margin: 2px 0 14px; }
+dialog#account .who > svg { width: 40px; height: 40px; flex: none; padding: 8px; box-sizing: border-box; border-radius: 50%; background: var(--panel2); fill: var(--muted); }
+dialog#account .who b { font-size: 16px; overflow-wrap: anywhere; }
+dialog#account .syncrow { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 0; margin-bottom: 4px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+dialog#account .syncrow span { font-size: 13px; } dialog#account .syncrow .bad { color: var(--c-blunder); }
+dialog#account .syncrow button { flex: none; padding: 4px 10px; }
 /* phones: 16px fields so iOS doesn't zoom in on focus, and the height that is visible (dvh) with Safari's toolbars up */
 @media (max-width: 900px) {
   dialog#account { max-height: 85dvh; } dialog#account .body { max-height: calc(85dvh - 52px); }
@@ -160,6 +166,7 @@ dialog#account .foot { display: flex; gap: 14px; justify-content: center; margin
   dialog#account .head button { padding: 8px 12px; }
   dialog#account .col button, dialog#account a.btn { padding: 11px 12px; }
   dialog#account .tabs button { padding: 10px; }
+  dialog#account .syncrow button { padding: 8px 12px; } dialog#account .foot a { padding: 6px 0; }
 }
 `;
   const ICON = '<svg viewBox="0 0 24 24"><path d="M12 12a4.5 4.5 0 1 0 0-9 4.5 4.5 0 0 0 0 9zm0 2c-4.4 0-8 2.2-8 5v2h16v-2c0-2.8-3.6-5-8-5z"/></svg>';
@@ -192,7 +199,6 @@ dialog#account .foot { display: flex; gap: 14px; justify-content: center; margin
   const PROVIDER_NAMES = { lichess: 'Lichess', google: 'Google', email: 'Email' };
   const emailInput = (auto = 'email') => `<input id="acc-email" type="email" placeholder="Email address" autocomplete="${auto}" value="${esc(view.email || '')}" required>`;
   const passwordInput = (auto, placeholder = 'Password') => `<input id="acc-pw" type="password" placeholder="${placeholder}" autocomplete="${auto}" minlength="${minPassword}" required>`;
-  const or = () => (providers.length ? '<div class="or"><span>or</span></div>' : '');
   const codeInput = '<input id="acc-code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="6-digit code" required>';
 
   function stepBody() {
@@ -220,23 +226,22 @@ dialog#account .foot { display: flex; gap: 14px; justify-content: center; margin
     return '';
   }
 
+  // Logged out: a line on what an account is for, then the sign-ins, the one-tap ones first
   function guestBody() {
     const signup = view.tab === 'signup';
     if (view.step) return note() + stepBody() + legal();
+    const or = providers.length ? '<div class="or"><span>or with email</span></div>' : '';
     return note() +
       `<div class="tabs"><button data-tab="login" class="${signup ? '' : 'active'}">Log in</button><button data-tab="signup" class="${signup ? 'active' : ''}">Sign up</button></div>` +
-      `<p>An account keeps your <b>puzzle progress</b> (packs, the daily streak, review schedules) and your <b>list of profiles</b>, so they follow you to ${app ? 'blundr.gr and other computers' : 'other browsers'}, where the games are fetched again. ` +
-      `Your reviewed games stay in ${here()} and are never uploaded. Everything ${app ? 'here' : 'on Blundr'} works without an account.</p>` +
+      `<p class="muted">Optional: keeps your puzzle progress and profiles on ${app ? 'blundr.gr and your computers' : 'all your devices'}.</p>` +
       (signup
         ? `<label class="consent"><input type="checkbox" id="acc-consent"> <span>I am 15 or older and agree to the <a href="${sitePage('terms.html')}" target="_blank">terms of use</a> and the <a href="${sitePage('privacy.html')}" target="_blank">privacy policy</a>.</span></label>` +
+          `<div class="col">${providerButtons('signup', true)}</div>${or}` +
           `<form data-form="signup" class="col">${emailInput()}${passwordInput('new-password', `Password (at least ${minPassword} characters)`)}` +
-          '<button class="primary" data-mode="signup" disabled>Sign up with email</button></form>' +
-          `${or()}<div class="col">${providerButtons('signup', true)}</div>` +
-          `<p class="muted">If ${here()} has puzzle progress or profiles, you'll be asked whether to add them to the new account.</p>`
-        : `<form data-form="login" class="col">${emailInput()}${passwordInput('current-password')}<button class="primary">Log in</button></form>` +
-          '<p class="muted"><a href="#" data-act="toforgot">Forgot password?</a></p>' +
-          `${or()}<div class="col">${providerButtons('login', false)}</div>` +
-          '<p class="muted">You get your account\'s progress and profiles. What you did here as a guest is set aside, not added to the account, and comes back when you log out.</p>') +
+          '<button class="primary" data-mode="signup" disabled>Sign up with email</button></form>'
+        : `<div class="col">${providerButtons('login', false)}</div>${or}` +
+          `<form data-form="login" class="col">${emailInput()}${passwordInput('current-password')}<button class="primary">Log in</button></form>` +
+          '<p class="muted"><a href="#" data-act="toforgot">Forgot password?</a></p>') +
       legal();
   }
 
@@ -304,21 +309,10 @@ dialog#account .foot { display: flex; gap: 14px; justify-content: center; margin
     renderDialog();
   }
 
+  // Signed in, what is wanted most of the time: who, the sync, Log out. Other sign-ins and the rest (download,
+  // delete) sit behind the small links at the bottom, so one sign-in method is all anyone is shown.
   function accountBody() {
     if (view.step) return note() + stepBody() + legal();
-    const ids = me.identities.map(i => `<li><span>${esc(i.name)} <span class="muted">(${PROVIDER_NAMES[i.provider] || esc(i.provider)})</span></span>` +
-      (me.identities.length > 1 ? `<button data-unlink="${i.provider}">Remove</button>` : '') + '</li>').join('');
-    const more = providers.filter(p => !me.identities.some(i => i.provider === p.id))
-      .map(p => `<button data-go="${p.id}" data-mode="link">Also sign in with ${esc(p.name)}</button>`).join('') +
-      (me.identities.some(i => i.provider === 'email') ? '' : '<button data-act="tolink">Also log in with an email and password</button>');
-    const status = syncing ? 'Syncing…'
-      : syncError ? `Last sync failed: ${esc(syncError)}`
-      : lastSync ? `Synced at ${lastSync.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : app ? 'Not synced yet' : 'Not synced yet (waiting for Python to load)';
-    const del = view.confirmDelete
-      ? '<div class="note bad"><p><b>Delete your account?</b> Your account and the puzzle progress and profile list stored with it are deleted from the server straight away. This cannot be undone.</p>' +
-        `<label class="consent"><input type="checkbox" id="acc-wipe"> <span>Also remove this account's progress and profiles from ${here()} (otherwise they stay here as a guest's)</span></label>` +
-        '<div class="col"><button class="danger" data-act="delete">Delete my account</button><button data-act="nodelete">Cancel</button></div></div>'
-      : '<button data-act="askdelete">Delete account…</button>';
     if (view.offer) {
       const parts = [view.offer.puzzle_records && `${view.offer.puzzle_records} puzzle record${view.offer.puzzle_records > 1 ? 's' : ''}`, view.offer.profiles && `${view.offer.profiles} profile${view.offer.profiles > 1 ? 's' : ''}`].filter(Boolean).join(' and ');
       return note() +
@@ -327,22 +321,47 @@ dialog#account .foot { display: flex; gap: 14px; justify-content: center; margin
         '<button data-act="fresh">No, start the account empty</button></div>' +
         `<p class="muted">If you start empty, what you did as a guest is set aside in ${here()} and comes back when you log out.</p></div>` + legal();
     }
+    const via = i => PROVIDER_NAMES[i.provider] || esc(i.provider);
+    const back = '<div class="foot"><a href="#" data-act="main">Back</a></div>';
+    if (view.more === 'signin') {
+      const ids = me.identities.map(i => `<li><span>${esc(i.name)} <span class="muted">(${via(i)})</span></span>` +
+        (me.identities.length > 1 ? `<button data-unlink="${i.provider}">Remove</button>` : '') + '</li>').join('');
+      const more = otherSignIns().map(p => `<button data-go="${p.id}" data-mode="link">Also sign in with ${esc(p.name)}</button>`).join('') +
+        (me.identities.some(i => i.provider === 'email') ? '' : '<button data-act="tolink">Also log in with an email and password</button>');
+      return note() + '<p class="muted">You can sign in to this account with</p>' + `<ul class="ids">${ids}</ul>` +
+        (more ? `<p class="muted">Add another way, for a device where that one isn't handy:</p><div class="col">${more}</div>` : '') + back;
+    }
+    if (view.more === 'manage') {
+      const del = view.confirmDelete
+        ? '<div class="note bad"><p><b>Delete your account?</b> Your account and the puzzle progress and profile list stored with it are deleted from the server straight away. This cannot be undone.</p>' +
+          `<label class="consent"><input type="checkbox" id="acc-wipe"> <span>Also remove this account's progress and profiles from ${here()} (otherwise they stay here as a guest's)</span></label>` +
+          '<div class="col"><button class="danger" data-act="delete">Delete my account</button><button data-act="nodelete">Cancel</button></div></div>'
+        : '<button data-act="askdelete">Delete account…</button>';
+      return note() +
+        // the app's window can't download: the local server saves the file instead
+        `<div class="col">${app ? '<button data-act="export">Download my data</button>' : '<a class="btn" href="account/export" download="blundr-account.json">Download my data</a>'}` +
+        `<button data-act="logout-wipe" title="For a shared computer">Log out and remove my progress and profiles from ${here()}</button>${del}</div>` +
+        `<p class="muted">Account created ${new Date(me.created_at * 1000).toLocaleDateString()}, ${me.progress_lines || 0} records stored. Reviewed games and engine analysis never leave ${here()}.</p>` +
+        legal() + back;
+    }
+    const status = syncing ? 'Syncing…'
+      : syncError ? `Last sync failed: ${esc(syncError)}`
+      : lastSync ? `Synced at ${lastSync.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : app ? 'Not synced yet' : 'Not synced yet (waiting for Python to load)';
+    const first = me.identities[0] || {};
     return note() +
-      `<p class="muted">Signed in with</p><ul class="ids">${ids}</ul>${more ? `<div class="col">${more}</div>` : ''}` +
-      `<p>Puzzle progress and profiles: ${me.progress_lines || 0} records stored. <span class="muted">${status}</span></p>` +
-      '<div class="col"><button data-act="sync">Sync now</button></div><hr>' +
-      // the app's window can't download: the local server saves the file instead
-      `<div class="col">${app ? '<button data-act="export">Download my data</button>' : '<a class="btn" href="account/export" download="blundr-account.json">Download my data</a>'}` +
-      '<button data-act="logout">Log out</button>' +
-      `<button data-act="logout-wipe" title="For a shared computer">Log out and remove my progress and profiles from ${here()}</button>` +
-      `${del}</div>` +
-      `<p class="muted">Account created ${new Date(me.created_at * 1000).toLocaleDateString()}. Reviewed games and engine analysis never leave ${here()}.</p>` +
-      legal();
+      `<div class="who">${ICON}<div><b>${esc(first.name || 'Your account')}</b>` +
+      (me.identities.length ? `<div class="muted">Signed in with ${me.identities.map(via).join(', ')}</div>` : '') + '</div></div>' +
+      `<div class="syncrow"><span class="${syncError ? 'bad' : 'muted'}">${status}</span><button data-act="sync"${syncing ? ' disabled' : ''}>Sync now</button></div>` +
+      '<div class="col"><button data-act="logout">Log out</button></div>' +
+      '<div class="foot"><a href="#" data-act="tosignin">Other ways to sign in</a><a href="#" data-act="tomanage">Delete or download</a></div>';
   }
+  const otherSignIns = () => providers.filter(p => !me.identities.some(i => i.provider === p.id));
 
   function renderDialog() {
     if (!dlg) return;
-    dlg.innerHTML = `<div class="head"><b>${me ? 'Your account' : view.tab === 'signup' ? 'Sign up' : 'Log in'}</b><button data-act="close" title="Close">✕</button></div>` +
+    const title = !me ? (view.tab === 'signup' ? 'Sign up' : 'Log in')
+      : view.step || view.offer ? 'Your account' : { signin: 'Ways to sign in', manage: 'Your data' }[view.more] || 'Your account';
+    dlg.innerHTML = `<div class="head"><b>${title}</b><button data-act="close" title="Close">✕</button></div>` +
       `<div class="body">${view.waiting ? waitingBody() : me ? accountBody() : guestBody()}</div>`;
   }
 
@@ -357,6 +376,12 @@ dialog#account .foot { display: flex; gap: 14px; justify-content: center; margin
       return renderDialog();
     }
     if (name === 'sync') { const s = sync(); renderDialog(); return s; }
+    if (name === 'tosignin' || name === 'tomanage' || name === 'main') {
+      view.more = name === 'main' ? null : name.slice(2);
+      view.note = null;
+      view.confirmDelete = false;
+      return renderDialog();
+    }
     if (name === 'askdelete' || name === 'nodelete') { view.confirmDelete = name === 'askdelete'; return renderDialog(); }
     if (name === 'keep' || name === 'fresh') { await answerOffer(name === 'keep'); return renderDialog(); }
     if (name === 'toforgot') { view.step = { kind: 'forgot' }; view.note = null; return renderDialog(); }

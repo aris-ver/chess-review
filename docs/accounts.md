@@ -70,7 +70,9 @@ window comes back into view. Only the transport differs:
   (scope `openid email`; email kept and shown). Sign-up and log-in are separate buttons. A sign-up needs the
   consent box ticked (15 or older, terms and privacy policy) and records the consent version and time. A log-in to an
   account that doesn't exist sends you back with `?account=no-account` and the dialog offers to sign up. A second
-  sign-in method can be linked from the account dialog, and removed as long as one is left.
+  sign-in method can be linked from the account dialog, and removed as long as one is left. Signed in, the dialog
+  shows who, the sync and Log out; linking another method ("Other ways to sign in") and Download my data / Delete
+  account ("Delete or download") sit behind two small links, so no one is pushed towards a second method.
 - **Email and password** (`worker/src/email.js`, `migrations/0002_email_password.sql`):
   - **Sign-up**: an address, a password of 10 or more characters, and the consent box. We email a 6-digit code, and the
     account exists only once the code is typed in, so nobody can sign up with someone else's address.
