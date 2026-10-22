@@ -335,9 +335,10 @@ body.puzzle .evalbar { visibility: hidden; }
 .pzinfo a { color: var(--accent); text-decoration: none; }
 .pzfoot { display: flex; gap: 8px; align-items: center; padding-top: 12px; }
 .pzfoot select { flex: 1; font: inherit; color: var(--text); background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; min-width: 0; }
-/* the end of a puzzle, or a miss: the board greys out under a card with what's next; its × puts it away to study the board */
-.pzover { position: absolute; inset: 0; z-index: 6; display: grid; place-items: center; border-radius: 4px; background: rgba(30, 29, 27, .4);
-  -webkit-backdrop-filter: grayscale(1) brightness(.7); backdrop-filter: grayscale(1) brightness(.7); animation: pzfade .2s ease-out; }
+/* the end of a puzzle, or a miss: the board greys out under a card with what's next; its × puts it away to study the board.
+   A light grey, so the position still reads round the card on light and dark boards alike */
+.pzover { position: absolute; inset: 0; z-index: 6; display: grid; place-items: center; border-radius: 4px; background: rgba(30, 29, 27, .12);
+  -webkit-backdrop-filter: grayscale(.85) brightness(.92); backdrop-filter: grayscale(.85) brightness(.92); animation: pzfade .2s ease-out; }
 body:not(.puzzle) .pzover { display: none; }
 @keyframes pzfade { from { opacity: 0; } }
 .pzcard { position: relative; width: min(300px, 84%); background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 18px 18px 16px; text-align: center; box-shadow: 0 10px 30px rgba(0,0,0,.5); }
