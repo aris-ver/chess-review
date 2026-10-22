@@ -117,7 +117,7 @@ def build(engine_wasm: str | None) -> None:
             copy_if_changed(f, OUT / "themes" / f.relative_to(themes))
     for f in (ROOT / "web" / "pages").glob("*.html"):      # privacy.html, terms.html: plain pages at the site's root
         copy_if_changed(f, OUT / f.name)
-        if 'class="fill"' in f.read_text(encoding="utf-8"):
+        if '<span class="fill">' in f.read_text(encoding="utf-8"):
             print(f"warning: {f.relative_to(ROOT)} still has placeholders (class=fill) to fill in before going live")
     for f in (ROOT / "web").glob("*.js"):
         copy_if_changed(f, OUT / "web" / f.name)
