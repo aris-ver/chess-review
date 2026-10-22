@@ -19,7 +19,9 @@
   // ---------- sync ----------
 
   const sleep = ms => new Promise(r => setTimeout(r, ms));
-  const redraw = () => window.dispatchEvent(new HashChangeEvent('hashchange'));
+  // the page forgets what it kept from the puzzle files (index.html listens), then the screen is drawn again
+  const synced = (redrawn = false) => window.dispatchEvent(new CustomEvent('progresssynced', { detail: { redrawn } }));
+  const redraw = () => { synced(true); window.dispatchEvent(new HashChangeEvent('hashchange')); };
 
   // Whose data is in the browser (web/py/chess_web/sync.py switch()): set aside one owner's, bring back another's.
   // Python answers busy while a profile that would move is being fetched or analysed: wait for it.
@@ -82,6 +84,7 @@
     lastSync = new Date();
     syncError = null;
     if (changed.length) {
+      synced();
       if (OVERVIEW.test(location.hash)) window.dispatchEvent(new HashChangeEvent('hashchange'));    // redraw it with the merged progress
       else say('Puzzle progress updated from your account');
     }
