@@ -1026,8 +1026,10 @@ paintSound();
 window.addEventListener('hashchange', () => { assetsReady.then(route); checkStale(); });
 let pageStamp = null;
 async function checkStale() {
-  let lm; try { lm = (await fetch('index.html', { method: 'HEAD' })).headers.get('Last-Modified'); } catch (e) { return; }
-  if (!lm) return;
+  // the page by its directory ('.'): blundr.gr redirects index.html there. A server that sends neither header isn't
+  // asked again on every route change.
+  let lm; try { const h = (await fetch('.', { method: 'HEAD' })).headers; lm = h.get('Last-Modified') || h.get('ETag'); } catch (e) { return; }
+  if (!lm) { checkStale = () => {}; return; }
   if (pageStamp === null) pageStamp = lm;
   else if (lm !== pageStamp) { toast('The app was updated — click here to reload', 15000); $('toast').onclick = () => location.reload(); }
 }
