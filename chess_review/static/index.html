@@ -282,12 +282,12 @@ dialog#whatsnew .rel h3 span { font-size: 12px; font-weight: 400; color: var(--m
 .lines .depth { margin-left: auto; color: var(--muted); font-size: 11px; flex-shrink: 0; }
 body.sandbox .lines { display: block; }
 /* sandbox review: hide the game-specific chrome that doesn't apply to a free position */
-body.sandbox .sections, body.sandbox svg.graph, body.sandbox .pfoot, body.sandbox #b-explain, body.sandbox #b-nextm, body.sandbox #b-key { display: none !important; }
+body.sandbox .ptabs, body.sandbox .overview, body.sandbox .stepchip, body.sandbox svg.graph, body.sandbox .pfoot, body.sandbox #b-explain, body.sandbox #b-nextm, body.sandbox #b-key { display: none !important; }
 body.sandbox .actions { padding-bottom: 10px; }
 /* puzzles: the review board with the puzzle box in place of the game's panels */
 .pzbox { display: none; padding: 4px 12px 12px; }
 body.puzzle .pzbox { display: block; }
-body.puzzle .sections, body.puzzle svg.graph, body.puzzle .pfoot, body.puzzle .actions, body.puzzle .lines, body.puzzle #aprog { display: none !important; }
+body.puzzle .ptabs, body.puzzle .overview, body.puzzle .stepchip, body.puzzle svg.graph, body.puzzle .pfoot, body.puzzle .actions, body.puzzle .lines, body.puzzle #aprog { display: none !important; }
 body.puzzle .evalbar { visibility: hidden; }
 .pzhead { display: flex; align-items: baseline; gap: 10px; padding: 6px 2px 10px; }
 .pzhead .r { font-size: 26px; font-weight: 800; font-variant-numeric: tabular-nums; }
@@ -491,12 +491,26 @@ svg.board.playable use.piece.own { cursor: grab; }
 .actions { display: flex; gap: 8px; padding: 6px 12px 10px; }
 .actions button { flex: 1; padding: 9px 6px; font-weight: 600; background: var(--panel2); }
 .actions button.active { background: var(--accent); color: #1b1b1b; }
-.sections details { border-top: 1px solid var(--line); }
-.sections summary { padding: 10px 14px; cursor: pointer; font-weight: 600; list-style: none; display: flex; align-items: center; }
-.sections summary::after { content: "▾"; margin-left: auto; color: var(--muted); }
-.sections details:not([open]) summary::after { content: "▸"; }
-.sections summary::-webkit-details-marker { display: none; }
-.opening-info { padding: 4px 14px 12px; color: var(--muted); }
+/* panel tabs: the game's overview, or its moves. No tab chosen (sandbox, puzzles) shows the moves. */
+.ptabs { display: flex; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.ptabs button { flex: 1; background: none; border: 0; border-bottom: 2px solid transparent; border-radius: 0; padding: 8px 6px; color: var(--muted); font-weight: 600; }
+.ptabs button.on { color: var(--text); border-bottom-color: var(--accent); }
+.ptabs .tprog { margin-left: 6px; color: var(--accent); font-size: 12px; font-weight: 400; font-variant-numeric: tabular-nums; }
+.panel[data-tab="overview"] #movelist, .panel[data-tab="overview"] .stepchip, .panel:not([data-tab="overview"]) .overview { display: none; }
+body.sandbox #movelist, body.puzzle #movelist { display: grid !important; }
+.overview { padding-bottom: 10px; }
+.ovh { display: flex; align-items: center; padding: 12px 14px 4px; color: var(--muted); font-size: 12px; font-weight: 600; }
+.ovh .more { margin-left: auto; font-weight: 400; cursor: pointer; } .ovh .more:hover { color: var(--text); }
+.ovlive { padding: 10px 14px 0; color: var(--muted); font-size: 12px; }
+.ovlive .bar { height: 4px; margin-top: 5px; border-radius: 2px; background: var(--panel2); overflow: hidden; }
+.ovlive .bar > div { height: 100%; background: var(--accent); transition: width .4s; }
+.ovopen { padding: 10px 14px 0; color: var(--muted); } .ovopen b { color: var(--text); } .ovopen a { color: var(--accent); }
+.ovnote { padding: 4px 14px; color: var(--muted); }
+.ovstart { display: block; width: calc(100% - 28px); margin: 14px 14px 2px; padding: 10px; font-weight: 700; }
+/* stepping through one label's moves (a count clicked in the overview), pinned over the move list */
+.stepchip { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; gap: 6px; padding: 6px 10px; background: var(--panel2); border-bottom: 1px solid var(--line); }
+.stepchip .pos { margin-left: auto; color: var(--muted); font-variant-numeric: tabular-nums; }
+.stepchip button { padding: 2px 9px; }
 .pfoot { display: flex; gap: 8px; align-items: center; padding: 8px 12px; border-top: 1px solid var(--line); }
 .pfoot #astatus { flex: 1; color: var(--muted); font-size: 12px; }
 .panel .nav { padding: 8px 10px 4px; }
@@ -528,15 +542,17 @@ svg.graph { width: 100%; height: 90px; display: block; cursor: pointer; backgrou
 .summary .i .ico { width: 22px; height: 22px; }
 .summary .sep { border-top: 1px solid var(--line); margin: 8px 0; }
 .summary .click { cursor: pointer; } .summary .click:hover { text-decoration: underline; text-underline-offset: 3px; }
+.summary .accbox.prov { color: var(--muted); font-style: italic; }    /* the moves analysed so far: still moving */
+.summary .num { font-weight: 700; font-size: 15px; }
+.summary .sub { color: var(--muted); font-size: 12px; font-weight: 400; }
 .ico { display: inline-block; width: 18px; height: 18px; vertical-align: -4px; }
 .ico.sm { width: 14px; height: 14px; vertical-align: -3px; }
-.moments { padding: 8px 14px; display: flex; flex-direction: column; gap: 8px; }
-.moment { background: var(--panel2); border-radius: 6px; padding: 8px 10px; cursor: pointer; border-left: 4px solid var(--line); }
+.moments { padding: 4px 14px; display: flex; flex-direction: column; gap: 6px; }
+.moment { display: flex; align-items: center; gap: 6px; background: var(--panel2); padding: 7px 10px; cursor: pointer; border-left: 4px solid var(--line); }
 .moment.blunder { border-left-color: var(--c-blunder); } .moment.mistake { border-left-color: var(--c-mistake); }
 .moment.miss { border-left-color: var(--c-miss); } .moment.inaccuracy { border-left-color: var(--c-inaccuracy); }
 .moment.current { outline: 2px solid var(--accent); }
-.moment .mv { font-weight: 700; } .moment .hd { color: var(--muted); font-size: 12px; margin-left: 6px; }
-.moment p { margin: 4px 0 0; }
+.moment .mv { font-weight: 700; } .moment .hd { color: var(--muted); font-size: 12px; margin-left: auto; font-variant-numeric: tabular-nums; }
 .movelist { display: grid; grid-template-columns: 40px 1fr 1fr; font-variant-numeric: tabular-nums; }
 .movelist .n { color: var(--muted); padding: 3px 8px; background: #222120; }
 .movelist .m { padding: 3px 8px; cursor: pointer; display: flex; gap: 6px; align-items: center; }
@@ -759,14 +775,15 @@ svg.graph { width: 100%; height: 90px; display: block; cursor: pointer; backgrou
           <button id="b-best" title="Show the best move here; press again to play it">★ Best</button>
           <button id="b-nextm" title="Next move">→ Next</button>
         </div>
+        <div class="ptabs" id="ptabs">
+          <button data-tab="overview">Overview</button>
+          <button data-tab="moves">Moves<span class="tprog" id="tprog"></span></button>
+        </div>
         <div class="body">
           <div class="lines hidden" id="englines"></div>
+          <div class="overview" id="overview"></div>
+          <div class="stepchip hidden" id="stepchip"></div>
           <div class="movelist" id="movelist"></div>
-          <div class="sections">
-            <details open><summary>Summary</summary><div class="summary" id="summary"></div></details>
-            <details open><summary>Key moments</summary><div class="moments" id="moments"></div></details>
-            <details><summary>Opening</summary><div class="opening-info" id="opening"></div></details>
-          </div>
         </div>
         <svg class="graph" id="graph"></svg>
         <div class="nav">
@@ -901,7 +918,7 @@ const $ = id => document.getElementById(id);
 const state = { profile: null, games: null, username: '', filters: { result:'', colour:'', analysed:'', brilliant:'' }, game: null, ply: 0, flipped: false,
                 sound: true, poll: null,
                 variation: null,      // { basePly, moves: [...] } - a "what if" line branching after basePly main-line moves
-                sel: null, legal: null, exploring: false, cycle: {}, playing: null, explain: false, showBest: false,
+                sel: null, legal: null, exploring: false, step: null, tab: null, playing: null, explain: false, showBest: false,
                 livePlayed: new Set() };   // games whose analysis autoplay has followed on its own once
 try { state.sound = localStorage.getItem('sound') !== 'off'; } catch (e) {}
 state.volume = 90;   // 0-100, the slider under the speaker button
@@ -1537,7 +1554,7 @@ async function showSandbox(fen) {
   sandboxEval = {}; stopSandboxStream();
   stopPolling(); stopPlay();
   state.profile = null; state.games = null; state.game = sandboxGame(fen);
-  state.ply = 0; state.flipped = false; dropVariation(); state.sel = null; state.cycle = {}; $('pieces').innerHTML = '';
+  state.ply = 0; state.flipped = false; dropVariation(); state.sel = null; state.step = null; $('pieces').innerHTML = '';
   showSection('review');
   document.body.classList.remove('puzzle'); document.body.classList.add('sandbox');
   setContext(false); $('crumb').textContent = 'Sandbox';
@@ -1646,7 +1663,7 @@ function startPuzzle(p, stats) {
                       hint: null, delta: null, review: null, t0: 0, ms: null });
   pz.source = p.source === 'mine' ? 'mine:' + p.profile : 'lichess';   // opened by its URL: Next carries on from the same place
   state.profile = null; state.games = null; state.game = pz.game = puzzleGame(p);
-  state.ply = 0; state.flipped = p.colour === 'black'; dropVariation(); state.sel = null; state.cycle = {}; $('pieces').innerHTML = '';
+  state.ply = 0; state.flipped = p.colour === 'black'; dropVariation(); state.sel = null; state.step = null; $('pieces').innerHTML = '';
   if (pz.ctx && pz.ctx.review) {     // the daily, played already (here or on another browser): solved on the board, with your result
     p.moves.forEach((m, i) => pz.game.moves.push(puzzlePly(m, i, i % 2 ? 'best' : null)));
     pz.done = true; state.exploring = false; state.ply = p.moves.length;
@@ -2679,7 +2696,7 @@ async function showGame(id) {
   $('a-insights2').href = `${P()}/insights.html`; $('ptitle-t').textContent = 'Game Review'; setContext(true);
   const same = state.game && state.game.id === id;
   state.game = g;
-  if (!same) { stopPlay(); state.ply = 0; state.flipped = g.my_colour === 'black'; dropVariation(); state.sel = null; state.cycle = {}; $('pieces').innerHTML = ''; }
+  if (!same) { stopPlay(); state.ply = 0; state.flipped = g.my_colour === 'black'; dropVariation(); state.sel = null; state.step = null; $('pieces').innerHTML = ''; }
   const back = state.resume && state.resume.id === id ? state.resume : null;   // coming back to this review
   if (back) { state.ply = back.ply; state.flipped = back.flipped; }
   state.resume = null;
@@ -2687,7 +2704,9 @@ async function showGame(id) {
   $('crumb').textContent = `${g.white.name} vs ${g.black.name}`;
   $('ginfo').innerHTML = `${fmtDate(g.played_at)} · ${g.time_class} ${g.time_control || ''} · ${esc(g.termination || '')}` +
     (g.url.startsWith('http') ? ` · <a href="${g.url}" target="_blank" style="color:var(--accent)">${new URL(g.url).hostname.replace(/^www\./, '')} ↗</a>` : '');
-  renderSummary(); renderMoments(); renderMoveList(); renderGraph(); renderAnalyseBox(); renderOpening();
+  renderOverview(); renderMoveList(); renderGraph(); renderAnalyseBox();
+  if (!same && !back) setTab(g.analysed >= 0.999 || gameJob(g.id) ? 'overview' : 'moves');   // an unanalysed game has only its moves to show
+  else if (!state.tab) setTab('overview');
   update(false);
   if (!same && !back) play('start');
   pollStatus();
@@ -2699,7 +2718,7 @@ async function reloadGame() {
   const body = document.querySelector('.panel .body'), scrollTop = body.scrollTop;
   state.game = g;
   notePace();       // when each batch of analysed moves came in
-  renderSummary(); renderMoments(); patchMoveList(); renderGraph(); renderAnalyseBox();
+  renderOverview(); patchMoveList(); renderGraph(); renderAnalyseBox();
   renderBoard(); renderPlayers(); renderEvalBar(); renderNow();
   body.scrollTop = scrollTop;
 }
@@ -2745,7 +2764,8 @@ function syncLive() {
   const g = state.game, key = g && liveFrontier() != null ? g.id : null;
   if (key === liveShown) return;
   liveShown = key;
-  if (g) { patchMoveList(); renderGraph(); renderNow(); renderNav(); }
+  if (g && key) setTab('overview');      // the analysis starts: the overview fills in while the moves come
+  if (g) { patchMoveList(); renderOverview(); renderGraph(); renderNow(); renderNav(); }
 }
 // The analysis's pace. Its engines search side by side and finish together, so moves come ready in batches (one per
 // engine) every few seconds. The board shows each batch spread over the time the next one is expected to take --
@@ -3658,55 +3678,200 @@ $('b-best').onclick = async () => {
 };
 $('b-nextm').onclick = () => go(state.ply + 1);
 
-// ---------- panel ----------
-function renderSummary() {
-  const g = state.game, w = g.white, b = g.black;
-  const full = g.analysed >= 0.999;
-  const acc = a => full && a != null ? a.toFixed(1) : '–';
-  // a pawn of each colour above the name, like chess.com's avatar tiles; names wrap rather than truncate
-  const pawn = c => `<span class="avatar${c === g.my_colour ? ' me' : ''}"><img src="${pieceUrl(c[0] + 'p')}" alt=""></span>`;
-  let html = `<div class="row"><div class="lbl">Players</div>` +
-    `<div class="w name">${pawn('white')}${esc(w.name)}</div><div></div>` +
-    `<div class="b name">${pawn('black')}${esc(b.name)}</div></div>`;
-  html += `<div class="row"><div class="lbl">Accuracy</div><div class="w"><span class="accbox">${acc(w.accuracy)}</span></div><div></div>` +
-    `<div class="b"><span class="accbox">${acc(b.accuracy)}</span></div></div><div class="sep"></div>`;
-  for (const lb of LABEL_ORDER) {
-    const cw = w.counts[lb] || 0, cb = b.counts[lb] || 0;
-    if (lb === 'forced' && !cw && !cb) continue;   // every other class is listed even at 0, like chess.com
-    const cell = (side, n) => `<div class="${side} cnt ${n ? 'click' : ''}" style="color:${COLOR[lb]}" data-side="${side === 'w' ? 'white' : 'black'}" data-label="${lb}" title="click to step through">${n}</div>`;
-    html += `<div class="row"><div class="lbl">${LABEL_NAME[lb]}</div>${cell('w', cw)}<div class="i">${icon(lb)}</div>${cell('b', cb)}</div>`;
-  }
-  $('summary').innerHTML = html;
-  $('summary').querySelectorAll('.click').forEach(el => el.onclick = () => cycleLabel(el.dataset.side, el.dataset.label));
+// ---------- panel: overview ----------
+// The panel leads with the game's overview: during a live analysis it fills in calmly, where the move list would
+// scroll and recolour under you as the labels came in. The moves are a tab away; a click on a count, a key moment or
+// "Start review" opens them there.
+function setTab(t) {
+  state.tab = t;
+  $('ptabs').closest('.panel').dataset.tab = t;
+  $('ptabs').querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.tab === t));
+  document.querySelector('.panel .body').scrollTop = 0;
+  if (t === 'moves') highlightCurrent();
 }
-// Click a count in the summary: jump to that side's first such move, then the next on each click.
-function cycleLabel(side, label) {
-  const plies = state.game.moves.filter(m => m.label === label && (m.ply % 2 === 0 ? 'white' : 'black') === side).map(m => m.ply);
+$('ptabs').querySelectorAll('button').forEach(b => b.onclick = () => setTab(b.dataset.tab));
+function openMove(ply) { setTab('moves'); dropVariation(); renderMoveList(); go(ply + 1); }
+const sideOf = m => m.ply % 2 === 0 ? 'white' : 'black';
+// The moves whose labels are final: all of them once the game is analysed; while it is being analysed, those before the frontier.
+function readyMoves(g) {
+  if (g.analysed >= 0.999) return g.moves;
+  const f = liveFrontier();
+  return g.moves.filter((m, i) => (f == null || i < f) && moveReady(g, i));
+}
+// accuracy.py's game accuracy over the moves `keep` lets through; the volatility weights still come from the whole game.
+// The JSON's win% is rounded, so this lands within 0.1 of Python's figure: that one is shown once the game is analysed,
+// this one for the moves analysed so far and for each phase.
+function accuracyOf(g, side, keep) {
+  const wps = [g.start_wp_white ?? 50, ...g.moves.map(m => m.wp_white)], n = wps.length, half = Math.floor(Math.max(2, Math.min(8, Math.floor(n / 10))) / 2);
+  const vols = wps.map((_, i) => {
+    const w = wps.slice(Math.max(0, i - half), Math.min(n, i + half + 1)).filter(x => x != null);
+    if (w.length < 2) return 0.5;
+    const mu = w.reduce((a, x) => a + x, 0) / w.length;
+    return Math.max(0.5, Math.min(12, Math.sqrt(w.reduce((a, x) => a + (x - mu) ** 2, 0) / w.length)));
+  });
+  const accs = [], weights = [];
+  for (const m of g.moves) {
+    if (sideOf(m) !== side || m.wp_loss == null || m.label === 'book' || !keep(m)) continue;
+    accs.push(Math.max(0, Math.min(100, 103.1668 * Math.exp(-0.04354 * m.wp_loss) - 3.1669)));
+    weights.push(vols[m.ply]);
+  }
+  if (!accs.length) return null;
+  const weighted = accs.reduce((a, x, i) => a + x * weights[i], 0) / weights.reduce((a, x) => a + x, 0);
+  const harmonic = accs.length / accs.reduce((a, x) => a + 1 / Math.max(x, 1e-9), 0);
+  return (weighted + harmonic) / 2;
+}
+// Where the middlegame and the endgame begin, as position indexes (0 is the start), after lichess's Divider: the
+// middlegame once 10 or fewer queens, rooks, bishops and knights are left, a back rank is down to 3 pieces or the two
+// sides' pieces have mixed; the endgame once 6 or fewer are left.
+function phaseStarts(g) {
+  const fens = [g.start_fen, ...g.moves.map(m => m.fen)];
+  let mid = null, end = null;
+  fens.forEach((fen, i) => {
+    const board = fen.split(' ')[0], rows = board.split('/').map(r => r.replace(/\d/g, d => '.'.repeat(+d)));   // rows[0]: rank 8
+    const pieces = (board.match(/[qrbnQRBN]/g) || []).length;
+    if (end == null && pieces <= 6) end = i;
+    if (mid != null) return;
+    let mix = 0;
+    for (let y = 1; y <= 7; y++) for (let x = 0; x < 7; x++) {     // every 2x2 block, y its lower rank
+      let w = 0, b = 0;
+      for (const [dx, dy] of [[0, 0], [1, 0], [0, 1], [1, 1]]) { const c = rows[8 - y - dy][x + dx]; if (/[A-Z]/.test(c)) w++; else if (/[a-z]/.test(c)) b++; }
+      mix += mixScore(w, b, y);
+    }
+    const backrank = (r, re) => [...rows[r]].filter(c => re.test(c)).length;
+    if (pieces <= 10 || backrank(7, /[A-Z]/) < 4 || backrank(0, /[a-z]/) < 4 || mix > 150) mid = i;
+  });
+  end = end ?? fens.length;
+  return { mid: Math.min(mid ?? fens.length, end), end };
+}
+function mixScore(w, b, y) {
+  switch (`${w}${b}`) {
+    case '10': return 1 + (8 - y);
+    case '20': return y > 2 ? 2 + (y - 2) : 0;
+    case '30': case '40': return y > 1 ? 3 + (y - 1) : 0;
+    case '01': return 1 + y;
+    case '11': return 5 + Math.abs(3 - y);
+    case '21': return 4 + y;
+    case '31': return 5 + y;
+    case '02': return y < 6 ? 2 + (6 - y) : 0;
+    case '12': return 4 + (6 - y);
+    case '22': return 7;
+    case '03': case '04': return y < 7 ? 3 + (7 - y) : 0;
+    case '13': return 5 + (6 - y);
+    default: return 0;
+  }
+}
+// Clock figures for one side: none for daily games, or games without clock times.
+function timeStats(g, side, ready) {
+  const base = +((/^\d+/.exec(g.time_control || '') || [0])[0]);
+  const ms = g.moves.filter(m => sideOf(m) === side && m.spent != null);
+  if (!ms.length || !base || g.time_class === 'daily') return null;
+  const errs = ready.filter(m => sideOf(m) === side && ['mistake', 'miss', 'blunder'].includes(m.label));
+  return { avg: ms.reduce((a, m) => a + m.spent, 0) / ms.length, long: ms.reduce((a, m) => m.spent > a.spent ? m : a),
+           errs: errs.length, low: errs.filter(m => m.clock != null && m.clock < base / 10).length };
+}
+const fmtSecs = s => s < 60 ? `${Math.round(s)}s` : fmtClock(Math.round(s));
+const PLURAL = { inaccuracy: 'Inaccuracies', mistake: 'Mistakes', miss: 'Misses', blunder: 'Blunders' };
+let allLabels = false;
+try { allLabels = localStorage.getItem('overview.labels') === 'all'; } catch (e) {}
+function renderOverview() {
+  const g = state.game;
+  if (!g || g.sandbox || g.puzzle) return;
+  const full = g.analysed >= 0.999, f = liveFrontier(), n = g.moves.length, job = gameJob(g.id);
+  const ready = readyMoves(g), plies = new Set(ready.map(m => m.ply)), any = ready.some(m => m.label && m.label !== 'book');
+  $('tprog').textContent = f != null ? `${f}/${n}` : '';
+  let html = '';
+  if (f != null) html += `<div class="ovlive">${job && job.status === 'queued' ? 'Waiting its turn…' : f >= n ? 'Finishing…' : f ? `Analysed ${f} of ${n} moves` : 'Starting the engines…'}` +
+    `<div class="bar"><div style="width:${n ? Math.round(100 * f / n) : 0}%"></div></div></div>`;
+  const left = g.left_book_ply, who = left % 2 === 0 ? g.white.name : g.black.name;
+  const book = left != null && left < n ? `left the book with <a href="#" data-ply="${left}">${moveLabel(left, g.moves[left].san)}</a> (${esc(who)})` : 'all of it in the book';
+  html += `<div class="ovopen">${g.opening_name ? `<b>${g.eco || ''} ${esc(g.opening_name)}</b> · ${book}` : book[0].toUpperCase() + book.slice(1)}</div>`;
+
+  // players and accuracy: Python's figure once analysed; until then, greyed, the moves analysed so far
+  const pawn = c => `<span class="avatar${c === g.my_colour ? ' me' : ''}"><img src="${pieceUrl(c[0] + 'p')}" alt=""></span>`;
+  const acc = side => {
+    if (full && g[side].accuracy != null) return `<span class="accbox">${g[side].accuracy.toFixed(1)}</span>`;
+    const a = any ? accuracyOf(g, side, m => plies.has(m.ply)) : null;
+    return `<span class="accbox prov" title="${f != null ? 'The moves analysed so far' : 'Not analysed yet'}">${a == null ? '–' : a.toFixed(1) + '…'}</span>`;
+  };
+  const row = (lbl, w, mid, b, cls = '') => `<div class="row"><div class="lbl">${lbl}</div><div class="w ${cls}">${w}</div><div class="i">${mid}</div><div class="b ${cls}">${b}</div></div>`;
+  let s = row('Players', `${pawn('white')}${esc(g.white.name)}`, '', `${pawn('black')}${esc(g.black.name)}`, 'name');
+  s += row('Accuracy', acc('white'), '', acc('black'));
+  if (any) {
+    const ph = phaseStarts(g), phase = m => m.ply < ph.mid ? 0 : m.ply < ph.end ? 1 : 2;
+    ['Opening', 'Middlegame', 'Endgame'].forEach((name, k) => {
+      const v = ['white', 'black'].map(side => accuracyOf(g, side, m => plies.has(m.ply) && phase(m) === k));
+      if (v.some(x => x != null)) s += row(name, v[0] == null ? '–' : Math.round(v[0]), '', v[1] == null ? '–' : Math.round(v[1]), 'num' + (full ? '' : ' sub'));
+    });
+  }
+  html += `<div class="summary">${s}</div>`;
+  if (!any && f == null) { $('overview').innerHTML = html + `<div class="ovnote">Analyse the game to see its accuracy, how each move rates and its key moments.</div>`; bindOverview(); return; }
+
+  // the labels: the four bad ones and the rest as "good moves", or all eleven
+  const counts = { white: {}, black: {} };
+  ready.forEach(m => { if (m.label) counts[sideOf(m)][m.label] = (counts[sideOf(m)][m.label] || 0) + 1; });
+  const cell = (side, lb) => { const k = counts[side][lb] || 0;
+    return `<span class="cnt ${k ? 'click' : ''}" style="color:${COLOR[lb]}" data-side="${side}" data-label="${lb}" title="Step through these moves">${k}</span>`; };
+  s = '';
+  if (allLabels) for (const lb of LABEL_ORDER) {
+    if (lb === 'forced' && !counts.white.forced && !counts.black.forced) continue;   // every other class is listed even at 0, like chess.com
+    s += row(LABEL_NAME[lb], cell('white', lb), icon(lb), cell('black', lb));
+  } else {
+    const good = side => LABEL_ORDER.filter(lb => !BAD.has(lb)).reduce((a, lb) => a + (counts[side][lb] || 0), 0);
+    s += row('Good moves', `<span class="cnt" style="color:${COLOR.best}">${good('white')}</span>`, '', `<span class="cnt" style="color:${COLOR.best}">${good('black')}</span>`);
+    for (const lb of BAD) s += row(PLURAL[lb], cell('white', lb), icon(lb), cell('black', lb));
+  }
+  html += `<div class="ovh">Moves<span class="more" id="ov-labels">${allLabels ? 'Fewer ▴' : 'All labels ▾'}</span></div><div class="summary">${s}</div>`;
+
+  const kms = g.key_moments.filter(k => full || plies.has(k.ply)).sort((a, b) => a.ply - b.ply);
+  html += `<div class="ovh">Key moments</div><div class="moments" id="moments">` + (kms.length ? kms.map(k => {
+    const swing = (k.headline.split(' — ')[1] || k.headline).replace(/^win chance /, '');
+    return `<div class="moment ${k.label || ''}" data-ply="${k.ply}" title="${esc(k.text.join(' '))}">${icon(k.label, 'ico sm')} <span class="mv">${k.move}</span><span class="hd">${esc(swing)}</span></div>`;
+  }).join('') : `<div class="ovnote">${full ? 'No decisive mistakes in this game.' : 'None yet.'}</div>`) + '</div>';
+
+  const ts = { white: timeStats(g, 'white', ready), black: timeStats(g, 'black', ready) };
+  if (ts.white || ts.black) {
+    const t = (side, fn) => ts[side] ? fn(ts[side]) : '–';
+    s = row('Per move', t('white', x => fmtSecs(x.avg)), '', t('black', x => fmtSecs(x.avg)), 'num');
+    s += row('Longest think', t('white', x => `<span class="click" data-ply="${x.long.ply}" title="${moveLabel(x.long.ply, x.long.san)}">${fmtSecs(x.long.spent)}</span>`), '',
+                              t('black', x => `<span class="click" data-ply="${x.long.ply}" title="${moveLabel(x.long.ply, x.long.san)}">${fmtSecs(x.long.spent)}</span>`), 'num');
+    if (any) s += row('<span title="Mistakes, misses and blunders played with under a tenth of the clock left, of all of them">Time trouble</span>',
+                      t('white', x => `${x.low}<span class="sub"> of ${x.errs}</span>`), '', t('black', x => `${x.low}<span class="sub"> of ${x.errs}</span>`), 'num');
+    html += `<div class="ovh">Time</div><div class="summary">${s}</div>`;
+  }
+  if (full) html += `<button class="primary ovstart" id="ov-start">Start review</button>`;
+  $('overview').innerHTML = html;
+  bindOverview();
+}
+function bindOverview() {
+  const ov = $('overview');
+  ov.querySelectorAll('.cnt.click').forEach(el => el.onclick = () => { setTab('moves'); cycleLabel(el.dataset.side, el.dataset.label); });
+  ov.querySelectorAll('[data-ply]:not(.cnt)').forEach(el => el.onclick = e => { e.preventDefault(); openMove(+el.dataset.ply); });
+  const more = $('ov-labels');
+  if (more) more.onclick = () => { allLabels = !allLabels; try { localStorage.setItem('overview.labels', allLabels ? 'all' : 'some'); } catch (e) {} renderOverview(); };
+  const start = $('ov-start');
+  if (start) start.onclick = () => { setTab('moves'); dropVariation(); renderMoveList(); go(0); };
+  highlightCurrent();
+}
+// A count clicked in the overview: that side's first such move, then the next on each click or with the chip's arrows.
+function labelPlies(side, label) { return readyMoves(state.game).filter(m => m.label === label && sideOf(m) === side).map(m => m.ply); }
+function cycleLabel(side, label, dir = 1) {
+  const plies = labelPlies(side, label);
   if (!plies.length) return;
-  const key = side + ':' + label;
-  const cur = state.cycle[key];
-  const idx = cur == null || plies[cur] !== state.ply - 1 ? 0 : (cur + 1) % plies.length;
-  state.cycle[key] = idx;
+  state.step = { side, label };
+  const i = plies.indexOf(state.ply - 1);
+  const idx = i < 0 ? (dir > 0 ? 0 : plies.length - 1) : (i + dir + plies.length) % plies.length;
   dropVariation(); renderMoveList();
   go(plies[idx] + 1);
+  renderStepChip();
 }
-function renderOpening() {
-  const g = state.game;
-  const left = g.left_book_ply, who = left % 2 === 0 ? g.white.name : g.black.name;
-  $('opening').innerHTML = (g.opening_name ? `<div><b style="color:var(--text)">${g.eco || ''} ${esc(g.opening_name)}</b></div>` : '<div>Unknown opening</div>') +
-    (left < g.moves.length ? `<div>Left the book on <a href="#" data-ply="${left}" style="color:var(--accent)">${moveLabel(left, g.moves[left].san)}</a> (${esc(who)}).</div>` : '<div>The whole game was in the book.</div>');
-  const a = $('opening').querySelector('a'); if (a) a.onclick = e => { e.preventDefault(); dropVariation(); renderMoveList(); go(+a.dataset.ply + 1); };
-}
-function renderMoments() {
-  const g = state.game;
-  if (g.analysed < 0.999 && !g.key_moments.length) { $('moments').innerHTML = `<div class="empty">Analyse the game to find its key moments.</div>`; return; }
-  if (!g.key_moments.length) { $('moments').innerHTML = `<div class="empty">No decisive mistakes found in this game.</div>`; return; }
-  $('moments').innerHTML = g.key_moments.map(k => `
-    <div class="moment ${k.label || ''}" data-ply="${k.ply}">
-      ${icon(k.label, 'ico sm')} <span class="mv">${k.move}</span><span class="hd">${esc(k.headline)}</span>
-      ${k.text.map(t => `<p>${esc(t)}</p>`).join('')}
-    </div>`).join('');
-  $('moments').querySelectorAll('.moment').forEach(el => el.onclick = () => { dropVariation(); renderMoveList(); go(+el.dataset.ply + 1); });
+function renderStepChip() {
+  const el = $('stepchip'), st = state.step;
+  if (!st || !state.game || state.game.sandbox || state.game.puzzle) { el.classList.add('hidden'); return; }
+  const plies = labelPlies(st.side, st.label), i = inVariation() ? -1 : plies.indexOf(state.ply - 1);
+  el.classList.remove('hidden');
+  el.innerHTML = `${icon(st.label, 'ico sm')} <span>${esc(state.game[st.side].name)} · ${LABEL_NAME[st.label]}</span>` +
+    `<span class="pos">${i < 0 ? '–' : i + 1} of ${plies.length}</span><button data-d="-1" title="Previous">‹</button><button data-d="1" title="Next">›</button><button data-d="0" title="Stop stepping">✕</button>`;
+  el.querySelectorAll('button').forEach(b => b.onclick = () => { if (+b.dataset.d) cycleLabel(st.side, st.label, +b.dataset.d); else { state.step = null; renderStepChip(); } });
 }
 function renderMoveList() {
   const g = state.game, v = state.variation;
@@ -3746,18 +3911,20 @@ function moveCell(m) {
 }
 // Keep `el` visible inside the scrolling panel body without scrolling the page itself.
 function revealInBody(el) {
-  const body = el.closest('.body'); if (!body) return;
+  const body = el.closest('.body'); if (!body || !el.offsetParent) return;     // not on a hidden tab
   const top = el.getBoundingClientRect().top - body.getBoundingClientRect().top + body.scrollTop;
-  if (top < body.scrollTop + 8) body.scrollTop = top - 8;
+  const chip = body.querySelector('.stepchip:not(.hidden)'), pad = 8 + (chip ? chip.offsetHeight : 0);     // clear of the pinned chip
+  if (top < body.scrollTop + pad) body.scrollTop = top - pad;
   else if (top + el.offsetHeight > body.scrollTop + body.clientHeight - 8) body.scrollTop = top + el.offsetHeight - body.clientHeight + 8;
 }
 function highlightCurrent() {
   const inVar = inVariation();
   $('movelist').querySelectorAll('.m').forEach(el => el.classList.toggle('cur', !inVar && +el.dataset.ply === state.ply - 1));
   $('movelist').querySelectorAll('.varrow .v').forEach(el => el.classList.toggle('cur', inVar && +el.dataset.ply === state.ply - 1));
+  renderStepChip();
   const cur = $('movelist').querySelector('.cur');
   if (cur) revealInBody(cur);
-  $('moments').querySelectorAll('.moment').forEach(el => el.classList.toggle('current', !inVar && +el.dataset.ply === state.ply - 1));
+  document.querySelectorAll('#moments .moment').forEach(el => el.classList.toggle('current', !inVar && +el.dataset.ply === state.ply - 1));
   renderGraph();
 }
 
@@ -3892,6 +4059,10 @@ else if (location.search.includes('selftest')) (async () => {
     say(`variation off move one: base ${state.variation.basePly}, ply ${state.ply}, inVariation=${inVariation()}`);
     go(0); say(`back to the start: variation=${state.variation} (expect null), ply ${state.ply} -- there is no ply behind 0 to escape through`);
     cycleLabel('white', 'best'); const a = state.ply; cycleLabel('white', 'best'); say(`cycle best white: ${a} -> ${state.ply}`);
+    const chip = $('stepchip');
+    const chipPos = chip.querySelector('.pos').textContent;
+    say(`step chip: "${chipPos}" (expect 2 of N) ${!chip.classList.contains('hidden') && /^2 of \d+$/.test(chipPos) ? 'ok' : 'BAD'}`);
+    chip.querySelector('[data-d="0"]').onclick(); say(`✕ hides it: ${chip.classList.contains('hidden') ? 'ok' : 'BAD'}`);
     // live review: an analysis that has reached move K, faked on a copy of the game (the evals after it taken out)
     const wait = async (ok, ms) => { const t = Date.now(); while (!ok() && Date.now() - t < ms) await new Promise(r => setTimeout(r, 50)); return ok(); };
     const real = state.game, K = Math.min(8, real.moves.length - 4);
@@ -3900,6 +4071,9 @@ else if (location.search.includes('selftest')) (async () => {
     state.game = partial(K); jobsNow = [{ id: -1, kind: 'analyse', profile: state.profile, game: real.id, status: 'running', done: 1, total: 2 }];
     syncLive(); go(K - 2);
     say(`live: frontier ${liveFrontier()} (expect ${K}), pending cells ${$('movelist').querySelectorAll('.m.pending').length} (expect ${real.moves.length - K})`);
+    const ovLive = state.tab === 'overview' && $('tprog').textContent === `${K}/${real.moves.length}` && $('overview').textContent.includes(`Analysed ${K} of`) &&
+                   !!$('overview').querySelector('.accbox.prov') && !$('ov-start');
+    say(`live overview: tab ${state.tab}, moves tab "${$('tprog').textContent}", provisional accuracy ${!!$('overview').querySelector('.accbox.prov')}, start button ${!!$('ov-start')} ${ovLive ? 'ok' : 'BAD'}`);
     const tf = Date.now(); startPlay();
     await wait(() => state.ply === K, 8000); const took = Date.now() - tf; await new Promise(r => setTimeout(r, 1000));
     say(`follows the analysis: 2 moves in ${took} ms (expect < 1000), waits at the frontier: ply ${state.ply} (expect ${K}), playing=${!!state.playing}, hint="${($('now').querySelector('.livehint') || {}).textContent}"`);
@@ -3919,6 +4093,9 @@ else if (location.search.includes('selftest')) (async () => {
     say(`Play resumes: ${resumed}; a click on the board stops it: playing=${!!state.playing}`);
     state.game = real; jobsNow = []; syncLive();
     say(`analysis done: frontier ${liveFrontier()} (expect null), pending cells ${$('movelist').querySelectorAll('.m.pending').length} (expect 0)`);
+    const ovDone = state.tab === 'overview' && !!$('ov-start') && !$('overview').querySelector('.accbox.prov') && $('tprog').textContent === '';
+    say(`done overview: stays on ${state.tab}, start button ${!!$('ov-start')}, accuracy firm ${!$('overview').querySelector('.accbox.prov')} ${ovDone ? 'ok' : 'BAD'}`);
+    $('ov-start').onclick(); say(`Start review: tab ${state.tab}, ply ${state.ply} ${state.tab === 'moves' && state.ply === 0 ? 'ok' : 'BAD'}`);
     say('DONE');
   } catch (e) { say('ERROR ' + e.stack); }
 })();
