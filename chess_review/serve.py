@@ -96,7 +96,7 @@ import chess
 import duckdb
 import requests
 
-from . import account, aggregates, classify, ingest, normalise, own_puzzles, packs, profiles, puzzles, site, sync, updater
+from . import account, aggregates, book, classify, ingest, normalise, own_puzzles, packs, profiles, puzzles, site, sync, updater
 from .analyse import Analyser, LivePace, export_parquet, open_db, pending_keys
 from .config import DATA, DEFAULT_NODES, ENGINE_IDLE_SECONDS, MULTIPV_N, SITE_DIR, USER_AGENT
 from .db import base_views
@@ -138,6 +138,21 @@ class Job:
 BACKGROUND = ("puzzles", "build")    # jobs that give way to anything the user asks for
 LIVE_WRITE_S = 0.3                   # a game analysed on demand: its review is rewritten at most this often
 PUZZLE_REFRESH_S = 20                # a build reclassifies the profile (its puzzles) at most this often, after a game
+
+
+def live_order(con, game_id: str, keys: list[str]) -> list[str]:
+    """A game's pending positions in the order its review on screen wants them: game order, so it fills in from the
+    first move, but with the positions book moves are played from last. A book move is labelled book whatever the
+    engine says and the page shows it at once, so the engines start where the game leaves the book (on the position
+    the first move out of it is played from) and the book's evals, wanted only for the graph, come in at the end."""
+    plies = [r[0] for r in con.execute("SELECT fen_key FROM positions WHERE game_id = ? ORDER BY ply", [game_id]).fetchall()]
+    order: dict[str, int] = {}
+    for i, k in enumerate(plies):
+        if k not in order:
+            order[k] = i
+    # position i is played from by move i, a book move when the position after it is in book
+    later = {k for i, k in enumerate(plies[:-1]) if book.is_book(plies[i + 1])}
+    return sorted(keys, key=lambda k: (k in later, order.get(k, 1 << 30)))
 
 
 class Runner:
@@ -397,10 +412,7 @@ class Runner:
             keys, stats = pending_keys(con, p, job.game_id)
             job.total = len(keys)
             log.info("analyse %s/%s: %s", p.id, job.slug, stats)
-            # positions in game order so the review fills in from move 1
-            order = {r[0]: i for i, r in enumerate(con.execute(
-                "SELECT fen_key, min(ply) FROM positions WHERE game_id = ? GROUP BY 1 ORDER BY 2", [job.game_id]).fetchall())}
-            keys.sort(key=lambda k: order.get(k, 1 << 30))
+            keys = live_order(con, job.game_id, keys)
 
             def progress(done: int, _total: int) -> None:
                 job.done = done
@@ -1094,6 +1106,8 @@ def main(argv=None) -> None:
             except Exception:  # noqa: BLE001
                 log.debug("reaper: %s", traceback.format_exc())
     threading.Thread(target=reaper, daemon=True).start()
+    # the opening book takes seconds to read, and a review wants it before its engines start (live_order)
+    threading.Thread(target=book.load, daemon=True).start()
     handler = functools.partial(Handler, directory=str(SITE_DIR))
     srv = ThreadingHTTPServer((args.host, args.port), handler)
     log.info("serving %s (%d profiles) at http://%s:%d/", SITE_DIR, len(profiles.list_profiles()), args.host, args.port)
