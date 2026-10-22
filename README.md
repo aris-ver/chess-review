@@ -1,10 +1,16 @@
 # chess-review
 
-Local, offline chess.com game review: Stockfish evals cached per position in DuckDB/Parquet,
-deterministic plain-English explanations, a static chess.com-style review UI. No LLM anywhere.
-Design: `chess-review-spec.md`.
+Chess.com and lichess game review: Stockfish evals cached per position in DuckDB/Parquet,
+deterministic plain-English explanations, a chess.com-style review UI, and puzzles. No LLM anywhere.
+It ships two ways from the one `main` branch, with the same page (`chess_review/static/index.html`) in both:
+the Windows app, and **Blundr** at [blundr.gr](https://blundr.gr), the same app running in the browser.
+The original build spec is kept in `docs/original-spec.md`.
 
 ## Using it
+
+**Blundr (web):** open [blundr.gr](https://blundr.gr). Python runs in the browser (Pyodide) and Stockfish as
+WebAssembly; reviews and the engine cache stay in the browser. An optional account syncs puzzle progress and the
+profile list across browsers and the desktop app. See *Blundr* below.
 
 **Windows app:** [latest release](https://github.com/aris-ver/chess-review/releases/latest) → `chess-review-windows.zip`,
 unzip anywhere, run `Chess Review.exe` (details under *Windows app* below). From a checkout, the same server runs as
@@ -46,12 +52,15 @@ variation under the move it branches from; stepping back before the branch disca
 shipped in `chess_review/puzzle_packs/lichess.parquet` and picked within ±150 of your puzzle rating, never one
 you've tried. The opponent's move plays first, then you find the answer. A wrong move is shown and taken back, and
 you can keep trying. Only the first try counts (a hint or the solution counts as not solved): it lands in
-`data/puzzle_attempts.jsonl` and the rating (Glicko-1) is replayed from that file (`puzzles.py`). Once a puzzle is
-over, the board is free to explore like a review. Pick a theme (fork, mate in 2, rook endgame, …) under the
-buttons. `python scripts/build_puzzle_pack.py lichess_db_puzzle.csv.zst` rebuilds the pack from a fresh download.
-**Reset rating** (under the rating) starts it over at 1500. Nothing is deleted: the record is renamed to
-`data/puzzle_attempts.reset-<date>-<time>.jsonl`, so renaming it back undoes the reset. The puzzles tried before
-the reset are still never dealt again, so the new rating isn't propped up by answers you remember.
+`data/puzzle_attempts.jsonl` and the rating (Glicko-1) is replayed from that file (`puzzles.py`). The rating is
+not shown anywhere; it only picks puzzles near your level. Once a puzzle is over, an end card offers the next one
+(or Retry / Show the solution after a miss), and closing it leaves the board free to explore like a review. Pick a
+theme (fork, mate in 2, rook endgame, …) under the buttons. `python scripts/build_puzzle_pack.py
+lichess_db_puzzle.csv.zst` rebuilds the library from a fresh download.
+
+**Puzzle packs** (`chess_review/puzzle_packs/packs.json`, built by `scripts/build_puzzle_packs.py`): themed packs
+in stages of 20 puzzles, each a step harder than the last; solving 16 opens the next stage. No puzzle appears in two
+packs. There is also a **puzzle of the day**.
 
 **Personal puzzles** (`#/puzzles/mine`, `own_puzzles.py`): pick one of your profiles, or type any chess.com or
 lichess username (a new profile, fetched the way **Add a profile** does it). The puzzles are the moves where the
@@ -84,6 +93,14 @@ skips everything lila's COPYING.md marks non-free (that includes Lichess's stand
 The classification badges are the app's own drawings (`ic-*` symbols in `static/index.html`): a rounded square in
 the class colour with the annotation glyph. The arrow geometry is an independent reimplementation.
 
+## Blundr
+
+The web build: `python scripts/build_web.py` turns the same page and Python package into a static site in
+`web-dist/` (Pyodide runs `chess_review` in a worker; `web/` holds the browser-side glue), served by a Cloudflare
+Worker (`worker/`) that also runs the optional accounts on an EU D1 database. **Every push to `main` deploys
+blundr.gr** (`.github/workflows/deploy-web.yml`), so work on a branch and merge when it's ready. Details:
+`docs/web.md` (how it works, measurements, hosting) and `docs/accounts.md` (accounts, sync, deploy steps).
+
 ## Windows app
 
 No Python, no install: the server plus a native window (pywebview over WebView2) and a bundled Stockfish. The first
@@ -94,7 +111,11 @@ land, the window has no console.
 Building it: `powershell -ExecutionPolicy Bypass -File packaging\build_windows.ps1` from a Windows terminal
 (`launcher.py` is the entry point, `packaging/chess-review.spec` the PyInstaller recipe; the script fetches Stockfish
 and the opening book itself). `.github/workflows/windows-release.yml` does the same on a clean runner: push a tag
-(`git tag v0.1.0 && git push origin v0.1.0`) and the zips land on that tag's GitHub Release.
+(`git tag -a v0.1.0 -m v0.1.0 && git push origin v0.1.0`) and the zips land on that tag's GitHub Release. Push a
+release tag on its own: when more than three tags arrive in one push, GitHub starts no workflow. The release notes
+are the commit subjects since the last tag, and the app shows them as "What's new"; when web-only commits would
+crowd them, create the release as a draft with desktop-only notes right after pushing the tag (the workflow then
+only uploads the zips) and publish it once both zips are attached.
 
 **Updates** happen inside the app: the home screen checks the latest release once per launch (and on *Check for
 updates* at the bottom) and offers a *Download update* → *Restart to update* banner. A release carries two zips:
@@ -116,13 +137,13 @@ python -m chess_review normalise                       # 2  -> games.parquet, po
 python -m chess_review analyse   [--workers 6] [--nodes 1000000] [--limit N]   # 3  batch: every pending position -> data/evals.duckdb (shared)
 python -m chess_review review                          # 4  classify -> site -> aggregates
 python -m chess_review serve   [--port 8123] [--nodes N]                       #    server + on-demand analysis API
-python -m pytest                                       #    33 tests, some use the real engine
+python -m pytest                                       #    some tests need the real engine or the opening book, and skip without them
 ```
 
 Every stage takes `--profile <id>`; with exactly one profile it is the default. Individual stage 4 steps:
 `classify`, `site`, `aggregates`. `export` dumps step-1 CSVs.
 Server API: `GET /api/profiles`, `POST /api/profiles`, `POST /api/profiles/<id>/delete`, `POST /api/profiles/<id>/pin`, `GET /api/status`,
-`POST /api/p/<id>/analyse/<game>`, `POST /api/p/<id>/refresh` (`{"analyse": true}` to analyse the new games),
+`POST /api/p/<id>/analyse/<game>`, `POST /api/p/<id>/refresh` (fetches only; nothing is analysed unless asked),
 `POST /api/stop`; profile files are served under `/p/<id>/`. Position tools (no profile): `GET /api/legal?fen=`,
 `POST /api/explore`, `GET /api/eval?fen=`, `GET /api/engine`, `POST /api/pgn`, `GET /api/fetch_image?url=`, and `GET /api/eval_stream?fen=&multipv=3` — NDJSON snapshots of the
 engine's top lines as it searches, which is what the sandbox draws its live arrows and lines from.
@@ -158,7 +179,8 @@ opening already seen in another game is already evaluated (the Analyse button's 
 - Thresholds live in `config.py` (`BLUNDER`/`MISTAKE`/`INACCURACY` win%, `ONLY_MOVE_GAP`, `OPENING_SKIP_PLIES`, `CRITICAL_MAX`).
 - Accuracy is lichess's game formula (`accuracy.py`): half harmonic mean, half volatility-weighted mean of per-move accuracies, book moves excluded. It lands within ~5-10 points of chess.com's unpublished CAPS2, usually above it.
 - Material floor (`CP_MISTAKE`/`CP_BLUNDER`): a move that hangs material per SEE and drops the eval that much is at least a mistake/blunder even in a won position, where win% alone would call it "good".
-- Stockfish 18 segfaults on a few rare positions (e.g. `3k4/4r3/8/8/8/8/3Q4/3K4 w`); engines are restarted and the position retried with fewer nodes (`CRASH_RETRY_NODES`), then stored without an eval.
+- Both apps run Stockfish 19.0.1 (`bin/` for the desktop, `STOCKFISH_VERSION` in `scripts/build_web.py` for the web): change them together, or reviews stop matching.
+- Stockfish 18 segfaulted on a few rare positions (e.g. `3k4/4r3/8/8/8/8/3Q4/3K4 w`); engines are restarted and the position retried with fewer nodes (`CRASH_RETRY_NODES`), then stored without an eval.
 - Golden file: `tests/golden/clocks.json`; regenerate with `UPDATE_GOLDEN=1 pytest tests/test_golden.py` after intentional changes.
 
 ## Operational notes
