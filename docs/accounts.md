@@ -39,7 +39,7 @@ plain Python over `DATA`. It would need three things:
 - **One Worker** (`worker/wrangler.jsonc`) serves `web-dist/` as static assets and runs code only for `/account/*`
   (`run_worker_first`). Static requests are free and unmetered; the account API is a few requests a day per user.
   The full engine (95 MB) is over the 25 MiB asset limit, so `build_web.py` writes a `.assetsignore` for it and
-  deployments point `--engine-wasm` at R2 as before.
+  the deployed build fetches it from unpkg instead (`--engine-wasm cdn`, [web.md](web.md#hosting)).
 - **Sign-in**: OAuth 2 with PKCE, with Lichess (no registration needed, no scope: id and username only) and Google
   (scope `openid email`; email kept and shown). Sign-up and log-in are separate buttons. A sign-up needs the
   consent box ticked (15 or older, terms and privacy policy) and records the consent version and time. A log-in to an
@@ -55,8 +55,10 @@ plain Python over `DATA`. It would need three things:
   - **Forgot password**: a code, then the new password. All of that account's sessions are signed out.
   - **No address lookup**: a taken address at sign-up gets a "you already have an account" email instead of a different
     answer, and a wrong address or a wrong password give the same error.
-  - **Sending**: Cloudflare Email Service through the `EMAIL` binding, from `MAIL_FROM`. Under `wrangler dev` the
-    message is only printed in the console, code included.
+  - **Sending**: Brevo's transactional API (free tier, 300 a day) with the `BREVO_API_KEY` secret, from `MAIL_FROM`.
+    Cloudflare's own Email Sending (a `send_email` binding named `EMAIL`) also works, with no code change, but it reaches
+    arbitrary addresses only on the Workers Paid plan. With neither, as under `wrangler dev`, the message is only
+    printed in the console, code included.
   - **Not yet**: a per-IP limit on asking for codes. Add a Cloudflare rate-limiting rule on `/account/email/*` if abuse
     shows up.
 - **Session**: a random token in the `blundr_session` cookie (HttpOnly, SameSite=Lax, Secure on https, `Path=/account/`),
@@ -115,15 +117,38 @@ Without `LICHESS_URL` the real lichess.org is used, which also works from localh
 `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` to `.dev.vars` with `http://localhost:8787/account/callback/google` as an
 authorised redirect URI. Python side: `pytest tests/test_sync.py`.
 
-## Deploy (when you're ready)
+## Deploy
 
-1. `npx wrangler d1 create blundr --jurisdiction eu`, put the printed id in `wrangler.jsonc`.
-2. Google Cloud console: create an OAuth client (web application) with the redirect URI
-   `https://blundr.gr/account/callback/google`. Set the consent screen's privacy policy and terms links to the pages
-   above. Then `npx wrangler secret put GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`.
-3. Email Sending: in the dashboard, Compute & AI > Email Service > Email Sending > Onboard Domain > blundr.gr (or
-   `npx wrangler email sending enable blundr.gr`). It adds the SPF and DKIM records to the Cloudflare DNS. Codes go out
-   from `login@blundr.gr` (`MAIL_FROM`). Add a DMARC record too (`_dmarc` TXT `v=DMARC1; p=none; rua=mailto:…`) so the
-   codes don't land in spam.
-4. `python scripts/build_web.py --engine-wasm https://engine.blundr.gr/stockfish-19-single.wasm`, then in `worker/`:
-   `npm run deploy`, and add blundr.gr as the Worker's custom domain. This takes the place of the Pages project in docs/web.md.
+How blundr.gr was set up on 2026-10-22 (Cloudflare free plan, Brevo free plan). Run wrangler from WSL, in `worker/`,
+after `npx wrangler login`. The domain's nameservers must already be Cloudflare's ([web.md](web.md#deploying-to-blundrgr)).
+
+1. **Database**: `npx wrangler d1 create blundr --jurisdiction eu`, and the printed id goes in `wrangler.jsonc` (done:
+   `63f34fde-…`). `npm run deploy` applies the migrations each time; `npx wrangler d1 migrations apply blundr --remote`
+   does it alone.
+2. **Google** (Cloud console, project `blundr-512406`, Google Auth Platform):
+   - Clients: a web application client with the redirect URI `https://blundr.gr/account/callback/google` (and
+     `http://localhost:8787/account/callback/google` for local runs).
+   - Branding: home page `https://blundr.gr`, privacy `https://blundr.gr/privacy`, terms `https://blundr.gr/terms`
+     (the `.html` addresses answer with a redirect), authorised domain `blundr.gr`. **No logo**: in production a logo
+     needs Google's brand verification.
+   - Audience: In production. `openid email` are non-sensitive scopes, so no verification and no user cap.
+   - `npx wrangler secret put GOOGLE_CLIENT_ID`, then `GOOGLE_CLIENT_SECRET`.
+3. **Email** (Brevo):
+   - Senders, Domains & Dedicated IPs > Domains > add `blundr.gr`. Skip the branded subdomain (the codes have no links).
+     The automatic Cloudflare setup adds the `brevo-code` TXT, the `brevo1`/`brevo2._domainkey` CNAMEs and `_dmarc`.
+     Then Authenticate.
+   - Senders: `Blundr <login@blundr.gr>` (`MAIL_FROM`).
+   - SMTP & API > API keys: a key with no expiry, and Security > Authorised IPs off, because a Worker's IP varies.
+   - `npx wrangler secret put BREVO_API_KEY`. The codes reach Gmail's inbox (the Updates tab).
+4. **Build**: `python scripts/build_web.py --engine-wasm cdn`. It needs the opening book in `data/book`
+   (`scripts/fetch_book.sh`). In a worktree, link the main checkout's `data/book`.
+5. **Worker**: `npm run deploy`. `wrangler.jsonc` attaches blundr.gr and www.blundr.gr as custom domains (their DNS
+   records and certificates are made automatically), sets the daily cron, and turns the `workers.dev` address off. The
+   first deploy on an account stops at the cron with error 10063 until the account has a workers.dev subdomain: open
+   Workers & Pages in the dashboard once, then deploy again.
+6. **www**: blundr.gr > Rules > Templates > "Redirect from WWW to root" (`https://www.*` to `https://${1}`, 301,
+   query string kept). There must be one origin only: Google's redirect URI names it, and a browser keeps the reviews
+   and puzzles per origin.
+
+Updating: build as in step 4, then `npm run deploy`. A new Stockfish is `STOCKFISH_VERSION` in `build_web.py`, together
+with the desktop's `bin/`, or reviews stop matching between the two.
