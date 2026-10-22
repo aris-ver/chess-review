@@ -26,7 +26,7 @@ const engines = new EnginePool({
   script: 'engine/stockfish-19-single.js',
   wasmUrl: CR_CONFIG.engineWasm,
   wasmBytes: CR_CONFIG.engineBytes,
-  onProgress: (done, total) => progress('engine', done, total),
+  onProgress: (done, total) => progress('engine', done, total, CR_CONFIG.engineName || 'Stockfish'),
 });
 
 const ready = (async () => {
