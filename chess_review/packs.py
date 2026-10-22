@@ -1,14 +1,24 @@
-"""Puzzle packs and the puzzle of the day, both cut from the Lichess pack (puzzles.PACK).
+"""Puzzle packs and the puzzle of the day.
 
 A pack is a theme (or a few related ones) laid out as stages that go uphill: each stage is STAGE_SIZE puzzles from
-one 100-point rating band (bands too thin to fill a stage are merged with the next), numbered from the easiest.
-Solving STAGE_PASS of a stage opens the next one; stages at or below your puzzle rating are open from the start
-once that rating has something behind it (OPEN_BY_RATING_AFTER puzzles).
+one STEP-wide rating band, filled evenly from its SLICES slices so it climbs inside too, and numbered from the easiest.
+A pack runs to MAX_STAGES at most and has fewer where good material is thin. Solving STAGE_PASS of a stage opens the
+next one; stages at or below your puzzle rating are open from the start once that rating has something behind it
+(OPEN_BY_RATING_AFTER puzzles), and so is a stage once you've solved enough of the pack's themes at the level of the
+stage below it, wherever you solved them (credit) -- which also keeps progress made in an earlier layout of the packs.
 
-The packs are frozen into puzzle_packs/packs.json by scripts/build_puzzle_packs.py, so "Forks 3 · 17" is the same
-puzzle on every machine and after the parquet is rebuilt (rebuilding packs.json is what changes them). The same
-file holds the daily list: the puzzle of day n is daily[(n - 1) % len], day 1 being DAILY_EPOCH, so everyone on the
-same version gets the same puzzle on the same date -- what makes it something to talk about.
+The packs are picked by build() and frozen into puzzle_packs/packs.json by scripts/build_puzzle_packs.py, so
+"Forks 3 · 17" is the same puzzle on every machine. They are picked from the whole Lichess puzzle database, not just
+the library's sample; the script adds the puzzles it picks to the library (puzzles.PACK). What makes the cut:
+    a puzzle is in one pack at most, and the more specific packs choose first (CLAIM);
+    one puzzle per game, one per position;
+    within a slice the best-liked, most-played ones first, with a bonus for a quiet first move or a sacrifice and a
+    penalty for one-movers and free pieces where the pack isn't about them (score);
+    in a stage, limits on how much may repeat: the same first or last move, a second motif, the piece that moves
+    first, the phase, the opening, one-movers (the shares below).
+The same file holds the daily list: the puzzle of day n is daily[(n - 1) % len], day 1 being DAILY_EPOCH, so everyone
+on the same version gets the same puzzle on the same date -- what makes it something to talk about. Rebuilding the
+packs keeps it, and no pack takes a puzzle from it.
 
 What you've done with a puzzle comes from two records:
     DATA/puzzle_attempts.jsonl  (puzzles.py) the first try at each puzzle: solved clean or not
@@ -26,7 +36,7 @@ import random
 import threading
 import time
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional
 
 from . import puzzles
 from .config import DATA
@@ -35,83 +45,240 @@ PACKS = Path(__file__).parent / "puzzle_packs" / "packs.json"
 SOLVED = DATA / "puzzle_solved.jsonl"
 DAILY = DATA / "puzzle_daily.jsonl"
 
-STAGE_SIZE = 30
-STAGE_PASS = 0.8                # 24 of 30 opens the next stage
-MIN_LAST_STAGE = 10             # a thinner top band than this is left out rather than make a stub stage
-BAND = 100
+STAGE_SIZE = 20
+STAGE_PASS = 0.8                # 16 of 20 opens the next stage
+MAX_STAGES = 10
+STEP = 200                      # each stage this many rating points above the one before
+SLICES = 4                      # ... filled evenly from its four 50-point slices
+SPAN = (600, 2600)              # a pack's span unless it says otherwise
+SLICE_DEPTH = 3                 # a stage is only made where each slice has this many times what it needs
 OPEN_BY_RATING_AFTER = 20       # puzzles behind your rating before it opens the stages below it
+
+# how much of a stage may share something
+SAME_MOVE = 2                   # the same first or last move, e.g. Qxf2#
+SAME_OPENING = 3
+ONE_MOVE = 1 / 3                # one-move puzzles, where the pack isn't about them
+MOTIF = 0.4                     # a second motif
+PIECE = 0.5                     # the kind of piece that moves first
+PHASE = 0.7                     # the phase, in packs that aren't about one
+# tags that say how long, which phase, how big or whose game, not what to look for
+GENERIC = {"short", "long", "veryLong", "oneMove", "opening", "middlegame", "endgame", "crushing", "advantage",
+           "equality", "mate", "master", "masterVsMaster", "superGM"}
+ONE_MOVE_THEMES = {"mateIn1", "hangingPiece"}   # packs where one move is the point
+
 DAILY_EPOCH = dt.date(2026, 10, 20)
 DAILY_MIN, DAILY_MAX = 1900, 2400
 DAILY_MIN_PLIES = 6             # the setup and at least three moves of yours, the last of them answered
 DAILY_POPULARITY = 90
 DAILY_SEED = "chess-review daily"
 
-# (id, family, name, description, themes, highest rating)
+# (id, family, name, description, themes, (lowest, highest) rating or None for SPAN, themes it leaves out)
 DEFS = [
-    ("mate-in-one", "Intro", "Mate in one", "The finishing blow, one move deep.", ["mateIn1"], 1500),
-    ("hanging", "Intro", "Hanging pieces", "Something is left undefended. Take it.", ["hangingPiece"], 1600),
-    ("first-forks", "Intro", "First forks", "One piece, two targets.", ["fork"], 1200),
-    ("forks", "Motifs", "Forks", "One piece hits two at once.", ["fork"], None),
-    ("pins", "Motifs", "Pins", "The piece in front can't move without losing the one behind.", ["pin"], None),
-    ("skewers", "Motifs", "Skewers", "The big piece in front has to move and gives up the one behind.", ["skewer", "xRayAttack"], None),
-    ("discovered", "Motifs", "Discovered attacks", "Move one piece, unleash another.", ["discoveredAttack", "discoveredCheck", "doubleCheck"], None),
-    ("deflection", "Motifs", "Deflection and decoys", "Drag a defender away, or lure a piece onto the wrong square.", ["deflection", "attraction"], None),
-    ("removing-defender", "Motifs", "Removing the defender", "Take away what holds it together.", ["capturingDefender", "clearance", "interference"], None),
-    ("sacrifices", "Motifs", "Sacrifices", "Give something to get more.", ["sacrifice"], None),
-    ("advanced-pawns", "Motifs", "Advanced pawns", "A pawn near the end of the board, and what it's worth.", ["advancedPawn", "promotion", "underPromotion"], None),
-    ("quiet-moves", "Motifs", "Quiet moves", "No check, no capture, and still the strongest.", ["quietMove", "intermezzo"], None),
-    ("trapped", "Motifs", "Trapped pieces", "A piece with nowhere to go.", ["trappedPiece"], None),
-    ("defence", "Motifs", "Defence", "Find the move that holds.", ["defensiveMove"], None),
-    ("mate-in-two", "Mates", "Mate in two", "Two moves to the end.", ["mateIn2"], None),
-    ("mate-in-three", "Mates", "Mate in three", "Three moves to the end.", ["mateIn3"], None),
-    ("long-mates", "Mates", "Long mates", "Four moves or more.", ["mateIn4", "mateIn5"], None),
-    ("back-rank", "Mates", "Back rank", "The king boxed in by its own pawns.", ["backRankMate"], None),
+    ("mate-in-one", "Intro", "Mate in one", "The finishing blow, one move deep.", ["mateIn1"], (500, 1500), []),
+    ("hanging", "Intro", "Hanging pieces", "Something is left undefended. Take it.", ["hangingPiece"], (500, 1500), []),
+    ("forks", "Motifs", "Forks", "One piece hits two at once.", ["fork"], None, []),
+    ("pins", "Motifs", "Pins", "The piece in front can't move without losing the one behind.", ["pin"], None, []),
+    ("skewers", "Motifs", "Skewers", "The big piece in front has to move and gives up the one behind.", ["skewer", "xRayAttack"], None, []),
+    ("discovered", "Motifs", "Discovered attacks", "Move one piece, unleash another.", ["discoveredAttack", "discoveredCheck", "doubleCheck"], None, []),
+    ("deflection", "Motifs", "Deflection and decoys", "Drag a defender away, or lure a piece onto the wrong square.", ["deflection", "attraction"], None, []),
+    ("removing-defender", "Motifs", "Removing the defender", "Take away what holds it together.", ["capturingDefender", "clearance", "interference"], None, []),
+    ("sacrifices", "Motifs", "Sacrifices", "Give something to get more.", ["sacrifice"], None, []),
+    ("advanced-pawns", "Motifs", "Advanced pawns", "A pawn near the end of the board, and what it's worth.", ["advancedPawn", "promotion", "underPromotion"], None, []),
+    ("quiet-moves", "Motifs", "Quiet moves", "No check, no capture, and still the strongest.", ["quietMove", "intermezzo"], None, []),
+    ("trapped", "Motifs", "Trapped pieces", "A piece with nowhere to go.", ["trappedPiece"], None, []),
+    ("defence", "Motifs", "Defence", "Find the move that holds.", ["defensiveMove"], None, []),
+    ("mate-in-two", "Mates", "Mate in two", "Two moves to the end.", ["mateIn2"], None, []),
+    ("mate-in-three", "Mates", "Mate in three", "Three moves to the end.", ["mateIn3"], None, []),
+    ("long-mates", "Mates", "Long mates", "Four moves or more.", ["mateIn4", "mateIn5"], None, []),
+    ("back-rank", "Mates", "Back rank", "The king boxed in by its own pawns.", ["backRankMate"], None, []),
     ("named-mates", "Mates", "Classic mating patterns", "Smothered, Anastasia, Boden, Arabian and the rest.",
      ["smotheredMate", "anastasiaMate", "arabianMate", "bodenMate", "doubleBishopMate", "dovetailMate", "epauletteMate",
       "hookMate", "operaMate", "pillsburysMate", "swallowstailMate", "triangleMate", "vukovicMate", "morphysMate",
-      "cornerMate", "killBoxMate", "blindSwineMate", "balestraMate"], None),
-    ("king-attack", "Mates", "King hunts", "The king is out in the open.", ["kingsideAttack", "queensideAttack", "exposedKing", "attackingF2F7"], None),
-    ("pawn-endgames", "Endgames", "Pawn endgames", "Only kings and pawns, and every tempo counts.", ["pawnEndgame", "zugzwang"], None),
-    ("rook-endgames", "Endgames", "Rook endgames", "The endgame you'll meet most.", ["rookEndgame"], None),
-    ("minor-endgames", "Endgames", "Bishop and knight endgames", "The minor pieces at the end.", ["bishopEndgame", "knightEndgame"], None),
-    ("queen-endgames", "Endgames", "Queen endgames", "Queens left on.", ["queenEndgame", "queenRookEndgame"], None),
-    ("openings", "Mania", "Opening traps", "Punish it before move fifteen.", ["opening"], None),
-    ("mixed", "Mania", "Everything", "Any theme, from 500 to the very top.", [], None),
+      "cornerMate", "killBoxMate", "blindSwineMate", "balestraMate"], None, []),
+    ("king-attack", "Mates", "King hunts", "The king is out in the open, and it's a hunt, not a quick mate.",
+     ["kingsideAttack", "queensideAttack", "exposedKing", "attackingF2F7"], None, ["mateIn1", "mateIn2"]),
+    ("pawn-endgames", "Endgames", "Pawn endgames", "Only kings and pawns, and every tempo counts.", ["pawnEndgame", "zugzwang"], None, []),
+    ("rook-endgames", "Endgames", "Rook endgames", "The endgame you'll meet most.", ["rookEndgame"], None, []),
+    ("minor-endgames", "Endgames", "Bishop and knight endgames", "The minor pieces at the end.", ["bishopEndgame", "knightEndgame"], None, []),
+    ("queen-endgames", "Endgames", "Queen endgames", "Queens left on.", ["queenEndgame", "queenRookEndgame"], None, []),
+    ("openings", "Mania", "Opening traps", "Punish it before move fifteen.", ["opening"], None, []),
 ]
 
+# who chooses first: the packs whose theme is narrowest, so the broad ones (sacrifices, short mates, king hunts)
+# don't take the puzzles that only fit somewhere narrow
+CLAIM = ["named-mates", "back-rank", "trapped", "long-mates", "queen-endgames", "minor-endgames", "pawn-endgames",
+         "rook-endgames", "skewers", "removing-defender", "quiet-moves", "defence", "discovered", "pins", "forks",
+         "advanced-pawns", "deflection", "mate-in-one", "hanging", "mate-in-three", "mate-in-two", "openings",
+         "king-attack", "sacrifices"]
 
-def build(rows: list[dict], defs: list = DEFS, stage_size: int = STAGE_SIZE) -> dict:
-    """packs.json from the pack's rows ({id, rating, popularity, plays, themes: [..], moves}). Deterministic: the same
-    rows always give the same packs. In each band the most popular puzzles go first."""
-    packs, used = [], set()
-    for pid, family, name, desc, themes, top in defs:
-        want = set(themes)
-        pool = [r for r in rows if (not want or want.intersection(r["themes"])) and (top is None or r["rating"] <= top)]
-        bands: dict[int, list[dict]] = {}
-        for r in pool:
-            bands.setdefault(r["rating"] // BAND, []).append(r)
-        stages, cur = [], []
-        for b in sorted(bands):
-            ranked = sorted(bands[b], key=lambda r: (-r["popularity"], -r["plays"], r["id"]))
-            cur += ranked[:stage_size - len(cur)]
-            if len(cur) == stage_size:
-                stages.append(cur)
-                cur = []
-        if len(cur) >= MIN_LAST_STAGE:
-            stages.append(cur)
+
+def game_of(r: dict) -> str:
+    """The Lichess game a puzzle comes from: https://lichess.org/AbCdEfGh/black#34 -> AbCdEfGh."""
+    return r.get("game_url", "").split("lichess.org/")[-1].split("/")[0].split("#")[0][:8] or r["id"]
+
+
+def features(r: dict) -> dict:
+    """What build() compares puzzles by, from the position and the moves."""
+    import chess        # only building the packs needs it here
+    b = chess.Board(r["fen"])
+    mv = r["moves"].split()
+    b.push_uci(mv[0])
+    pos = " ".join(b.fen().split()[:4])
+    key = chess.Move.from_uci(mv[1])
+    piece = b.piece_at(key.from_square).symbol().upper()
+    quiet = not b.is_capture(key) and not b.gives_check(key)
+    sans = []
+    for u in mv[1:]:
+        m = chess.Move.from_uci(u)
+        sans.append(b.san(m))
+        b.push(m)
+    phase = next((t for t in ("opening", "middlegame", "endgame") if t in r["themes"]), "")
+    opening = (r.get("opening") or "").split(" ")[0]
+    return {"pos": pos, "piece": piece, "quiet": quiet, "first": sans[0], "last": sans[-1], "phase": phase,
+            "opening": opening, "one": len(mv) == 2}
+
+
+def base_score(r: dict) -> float:
+    return r["popularity"] + 3 * math.log10(max(r["plays"], 1))
+
+
+def score(r: dict, f: dict, want: set) -> float:
+    """How much we want a puzzle in a pack: liked and played, then an "aha" over a grab."""
+    s = base_score(r)
+    if f["quiet"]:
+        s += 4
+    if "sacrifice" in r["themes"]:
+        s += 3
+    if not want & ONE_MOVE_THEMES:
+        if f["one"]:
+            s -= 6
+        if "hangingPiece" in r["themes"]:
+            s -= 5
+    return s
+
+
+class _Stage:
+    """A stage being filled, and what it already has too much of."""
+
+    def __init__(self, want: set, family: str):
+        self.want, self.rows, self.counts = want, [], {}
+        self.one_ok = bool(want & ONE_MOVE_THEMES)
+        self.phase_free = family in ("Endgames",) or "opening" in want
+
+    def _n(self, k) -> int:
+        return self.counts.get(k, 0)
+
+    def keys(self, r: dict, f: dict) -> list:
+        ks = [("first", f["first"]), ("last", f["last"]), ("piece", f["piece"])]
+        ks += [("motif", t) for t in r["themes"] if t not in GENERIC and t not in self.want]
+        if f["phase"]:
+            ks.append(("phase", f["phase"]))
+        if f["opening"]:
+            ks.append(("opening", f["opening"]))
+        if f["one"]:
+            ks.append(("one", True))
+        return ks
+
+    def fits(self, r: dict, f: dict, strict: bool) -> bool:
+        same = SAME_MOVE if strict else SAME_MOVE + 1
+        if self._n(("first", f["first"])) >= same or self._n(("last", f["last"])) >= same:
+            return False
+        if not strict:
+            return True
+        cap = lambda share: max(1, int(STAGE_SIZE * share))  # noqa: E731
+        if f["one"] and not self.one_ok and self._n(("one", True)) >= cap(ONE_MOVE):
+            return False
+        if self._n(("piece", f["piece"])) >= cap(PIECE):
+            return False
+        if f["phase"] and not self.phase_free and self._n(("phase", f["phase"])) >= cap(PHASE):
+            return False
+        if f["opening"] and self._n(("opening", f["opening"])) >= SAME_OPENING:
+            return False
+        return all(self._n(("motif", t)) < cap(MOTIF) for t in r["themes"] if t not in GENERIC and t not in self.want)
+
+    def add(self, r: dict, f: dict) -> None:
+        self.rows.append(r)
+        for k in self.keys(r, f):
+            self.counts[k] = self.counts.get(k, 0) + 1
+
+
+def daily_list(rows: list[dict], exclude=()) -> list[str]:
+    """The puzzle of the day's list: hard enough, liked, long enough to be worth a day, shuffled once."""
+    out = [r["id"] for r in rows if DAILY_MIN <= r["rating"] <= DAILY_MAX and r["popularity"] >= DAILY_POPULARITY
+           and len(r["moves"].split()) >= DAILY_MIN_PLIES and r["id"] not in exclude]
+    out.sort()
+    random.Random(DAILY_SEED).shuffle(out)
+    return out
+
+
+def build(rows: list[dict], defs: list = DEFS, daily: Optional[list] = None, claim: list = CLAIM,
+          stage_size: int = STAGE_SIZE) -> dict:
+    """packs.json from candidate rows ({id, fen, moves, rating, popularity, plays, themes: [..], game_url, opening}).
+    daily: the daily list to keep (None draws one from rows). Deterministic: the same rows give the same packs."""
+    daily = daily_list(rows) if daily is None else list(daily)
+    by_theme: dict[str, list[dict]] = {}
+    for r in rows:
+        for t in r["themes"]:
+            by_theme.setdefault(t, []).append(r)
+    taken, games, positions = set(daily), set(), set()
+    feats: dict[str, dict] = {}
+    per = stage_size // SLICES
+    order = {pid: n for n, pid in enumerate(claim)}
+    built = {}
+    for pid, family, name, desc, themes, span, without in sorted(defs, key=lambda d: order.get(d[0], len(order))):
+        want, drop = set(themes), set(without)
+        lo, hi = span or SPAN
+        pool = {r["id"]: r for t in themes for r in by_theme.get(t, ()) if lo <= r["rating"] < hi
+                and not drop.intersection(r["themes"])}
+        slices: dict[int, list[dict]] = {}
+        for r in pool.values():
+            slices.setdefault((r["rating"] - lo) // (STEP // SLICES), []).append(r)
+        for s in slices.values():
+            s.sort(key=lambda r: (-base_score(r), r["id"]))
+        stages = []
+        for k in range((hi - lo) // STEP):
+            if len(stages) == MAX_STAGES:
+                break
+            parts = [[r for r in slices.get(k * SLICES + j, ()) if r["id"] not in taken] for j in range(SLICES)]
+            if any(len(p) < per * SLICE_DEPTH for p in parts):
+                continue
+            st = _Stage(want, family)
+            for part in parts:
+                got = 0
+                top = part[:per * 20]           # the best-liked of the slice, then the aha decides among them
+                for r in top:
+                    if r["id"] not in feats:
+                        feats[r["id"]] = features(r)
+                top.sort(key=lambda r: (-score(r, feats[r["id"]], want), r["id"]))
+                for strict in (True, False):
+                    for r in top:
+                        f = feats[r["id"]]
+                        if got == per:
+                            break
+                        if r["id"] in taken or game_of(r) in games or f["pos"] in positions or not st.fits(r, f, strict):
+                            continue
+                        st.add(r, f)
+                        taken.add(r["id"])
+                        games.add(game_of(r))
+                        positions.add(f["pos"])
+                        got += 1
+            if len(st.rows) == stage_size:
+                stages.append(st.rows)
+            else:                               # couldn't fill it: give its puzzles back
+                for r in st.rows:
+                    taken.discard(r["id"])
+                    games.discard(game_of(r))
+                    positions.discard(feats[r["id"]]["pos"])
         if not stages:
             continue
         out = []
         for n, st in enumerate(stages, 1):
             st = sorted(st, key=lambda r: (r["rating"], r["id"]))
             out.append({"n": n, "lo": st[0]["rating"], "hi": st[-1]["rating"], "ids": [r["id"] for r in st]})
-            used.update(r["id"] for r in st)
-        packs.append({"id": pid, "family": family, "name": name, "desc": desc, "themes": themes, "stages": out})
-    daily = [r["id"] for r in rows if DAILY_MIN <= r["rating"] <= DAILY_MAX and r["popularity"] >= DAILY_POPULARITY
-             and len(r["moves"].split()) >= DAILY_MIN_PLIES and r["id"] not in used]
-    daily.sort()
-    random.Random(DAILY_SEED).shuffle(daily)
-    return {"version": 1, "stage_size": stage_size, "packs": packs, "daily": daily}
+        built[pid] = {"id": pid, "family": family, "name": name, "desc": desc, "themes": themes, "without": without,
+                      "stages": out}
+    packs = [built[d[0]] for d in defs if d[0] in built]
+    return {"version": 2, "stage_size": stage_size, "packs": packs, "daily": daily}
 
 
 class Packs:
@@ -181,26 +348,42 @@ def need(stage: dict) -> int:
     return math.ceil(len(stage["ids"]) * STAGE_PASS)
 
 
-def ladder(pack: dict, first: dict[str, bool], later: set[str], stats: dict, pack_rows=None) -> dict:
-    """A pack with every puzzle's state, and which stages are open."""
+def credit(pack: dict, first: dict[str, bool], later: set[str], get: Callable = None) -> list[int]:
+    """The ratings of the puzzles you've solved with this pack's themes, wherever you solved them: in the library,
+    another pack, or an earlier layout of this one."""
+    get = get or puzzles.PACK_INSTANCE.get
+    want, drop = set(pack["themes"]), set(pack.get("without", ()))
+    out = []
+    for pid, clean in first.items():
+        if clean or pid in later:
+            r = get(pid)
+            if r and want.intersection(r["themes"]) and not drop.intersection(r["themes"]):
+                out.append(r["rating"])
+    return out
+
+
+def ladder(pack: dict, first: dict[str, bool], later: set[str], stats: dict, pack_rows=None, solved=()) -> dict:
+    """A pack with every puzzle's state, and which stages are open. solved: credit(), what opens a stage when
+    need() of the stage below's were solved at its level or above."""
     by_rating = pack_rows or {}
     rated = stats.get("played", 0) >= OPEN_BY_RATING_AFTER
-    stages, prev_ok = [], True
+    stages, prev_ok, prev = [], True, None
     for st in pack["stages"]:
         cells = [{"id": i, "state": state_of(i, first, later), "rating": by_rating.get(i)} for i in st["ids"]]
-        solved = sum(c["state"] in ("clean", "solved") for c in cells)
+        n_solved = sum(c["state"] in ("clean", "solved") for c in cells)
         clean = sum(c["state"] == "clean" for c in cells)
-        is_open = prev_ok or (rated and st["lo"] <= stats.get("rating", 0))
-        stages.append({"n": st["n"], "lo": st["lo"], "hi": st["hi"], "open": is_open, "solved": solved, "clean": clean,
-                       "need": need(st), "size": len(cells), "puzzles": cells})
-        prev_ok = solved >= need(st)
+        earned = prev is not None and sum(r >= prev["lo"] for r in solved) >= need(prev)
+        is_open = prev_ok or earned or (rated and st["lo"] <= stats.get("rating", 0))
+        stages.append({"n": st["n"], "lo": st["lo"], "hi": st["hi"], "open": is_open, "solved": n_solved,
+                       "clean": clean, "need": need(st), "size": len(cells), "puzzles": cells})
+        prev_ok, prev = n_solved >= need(st), st
     total = sum(s["size"] for s in stages)
-    solved = sum(s["solved"] for s in stages)
+    n_solved = sum(s["solved"] for s in stages)
     clean = sum(s["clean"] for s in stages)
     current = next((s["n"] for s in stages if s["open"] and s["solved"] < s["size"]), None)
     return {"id": pack["id"], "family": pack["family"], "name": pack["name"], "desc": pack["desc"], "stages": stages,
-            "total": total, "solved": solved, "clean": clean, "current": current,
-            "done": solved == total, "perfect": clean == total}
+            "total": total, "solved": n_solved, "clean": clean, "current": current,
+            "done": n_solved == total, "perfect": clean == total}
 
 
 def shelf(stats: dict, attempts_path: Path = None, solved_path: Path = None) -> list[dict]:
@@ -208,7 +391,7 @@ def shelf(stats: dict, attempts_path: Path = None, solved_path: Path = None) -> 
     first, later = first_tries(attempts_path), solved_later(solved_path)
     out = []
     for p in INSTANCE.data()["packs"]:
-        lad = ladder(p, first, later, stats)
+        lad = ladder(p, first, later, stats, solved=credit(p, first, later))
         stages = lad.pop("stages")
         lad["current_lo"] = next((s["lo"] for s in stages if s["n"] == lad["current"]), stages[-1]["lo"])   # how hard it is where you are
         lad["n_stages"] = len(p["stages"])
@@ -218,7 +401,7 @@ def shelf(stats: dict, attempts_path: Path = None, solved_path: Path = None) -> 
 
 
 def where(pid: str) -> list[dict]:
-    """The packs a puzzle is in: [{pack, name, stage, n}] (n counts from 1)."""
+    """The pack a puzzle is in, as a list: [{pack, name, stage, n}] (n counts from 1)."""
     out = []
     for p in INSTANCE.data()["packs"]:
         for st in p["stages"]:
