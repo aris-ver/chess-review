@@ -377,6 +377,7 @@ table.games button.an { padding: 3px 9px; font-size: 12px; font-weight: 600; whi
   .review { grid-template-columns: 14px 1fr; gap: 8px; }
   .review .panel { grid-column: 1 / -1; height: auto; min-height: 0; }
   .evalbar { margin-top: 42px; }
+  body.puzzle .review { grid-template-columns: 1fr; } body.puzzle .evalbar { display: none; }   /* no eval in a puzzle: no empty bar column pushing the board off centre */
   .player { height: 34px; font-size: 14px; gap: 6px; }
   .player .acc { display: none; }
   .cap svg, .cap img { width: 14px; height: 14px; }
