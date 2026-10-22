@@ -222,6 +222,9 @@ body.hasbar #toast { bottom: 72px; }
 /* profile list: pinned ones first (in the order they were pinned), then the rest newest first */
 .card.profile { cursor: pointer; }
 @media (hover: hover) { .card.profile:hover { border-color: var(--accent); } }
+/* a new profile still fetching its games: says so, and doesn't open until they're in */
+.card.profile.loading { cursor: progress; } .card.profile.loading .meta { color: var(--accent); }
+@media (hover: hover) { .card.profile.loading:hover { border-color: var(--line); } }
 .card.profile .who { padding-right: 52px; display: flex; align-items: baseline; gap: 8px; }
 table.games tr.unseen td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
 .newtag { display: inline-block; margin-left: 6px; background: var(--accent); color: #1b1b1b; font-size: 10px; font-weight: 700; padding: 1px 5px; border-radius: 8px; vertical-align: 1px; }
@@ -1523,7 +1526,11 @@ async function renderProfiles() {
   if (!ps.length) openDrawer('addcard', true, false);     // nothing to show yet: the form is the first thing to use
   $('profiles').querySelectorAll('.card.profile').forEach(c => {
     const seen = () => fetch(`api/profiles/${c.dataset.id}/seen`, { method: 'POST' });   // banner shown, job done
-    c.onclick = () => { if (c.querySelector('.banner')) seen(); location.hash = '#/p/' + c.dataset.id; };
+    c.onclick = () => {
+      if (c.classList.contains('loading')) { toast(`Still fetching ${c.dataset.name}'s games: the profile opens by itself when they're in`, 5000); return; }
+      if (c.querySelector('.banner')) seen();
+      location.hash = '#/p/' + c.dataset.id;
+    };
     const banner = c.querySelector('.banner');
     if (banner) {
       banner.querySelector('.dismiss').onclick = async e => { e.stopPropagation(); await seen(); banner.remove(); };
@@ -1543,6 +1550,7 @@ async function renderProfiles() {
       renderProfiles();
     };
   });
+  markFetching();
   // Enter in the username box adds the profile. Browsers submit a form on Enter by themselves, but not every
   // webview does, so it's handled here (preventDefault keeps it from submitting twice where they do).
   $('addform').username.onkeydown = e => {
@@ -1560,6 +1568,7 @@ async function renderProfiles() {
     f.username.value = ''; openDrawer('addcard', false);
     if (!d.job) { location.hash = '#/p/' + d.profile.id; return; }
     fetches.add(d.job.id);
+    jobsNow = [d.job, ...jobsNow];      // its card shows the fetch from the start, not from the first status poll
     toast(`Fetching ${body.username}'s games from ${SOURCE_NAME[body.source]}…`);
     await renderProfiles();
     pollStatus();
@@ -1577,6 +1586,7 @@ async function fetchMissingGames(id) {
   if (!r.ok) { toast(d.error === 'busy' ? `Busy: ${jobText(d.job)}` : d.error); return; }
   if (!d.job) { location.hash = '#/p/' + id; return; }
   fetches.add(d.job.id);
+  jobsNow = [d.job, ...jobsNow];
   toast(`Fetching ${p.username}'s games from ${SOURCE_NAME[p.source]}…`);
   await renderProfiles();
   pollStatus();
@@ -3102,6 +3112,22 @@ function gameJob(slug) {
     (x.kind === 'analyse' || x.kind === 'analyse_all' || (x.kind === 'build' && x.phase === 'analysing')));
 }
 const jobProgress = j => j.kind === 'analyse' ? [j.done, j.total] : [j.game_done, j.game_total];   // positions of that game
+// The home cards of profiles whose games are being fetched (or wait their turn): a bar and "Fetching games… 40%" in
+// place of the counts, and no opening until the games are in (the profile opens by itself then)
+function markFetching() {
+  for (const c of $('profiles') ? $('profiles').querySelectorAll('.card.profile') : []) {
+    const j = jobsNow.find(x => x.kind === 'ingest' && x.profile === c.dataset.id && ACTIVE(x.status));
+    const meta = c.querySelector('.meta'), prog = c.querySelector('.progress');
+    if (j && !c.classList.contains('loading')) c.dataset.meta = meta.innerHTML;
+    else if (!j && c.classList.contains('loading')) meta.innerHTML = c.dataset.meta;
+    c.classList.toggle('loading', !!j);
+    prog.classList.toggle('hidden', !j);
+    if (!j) continue;
+    const pct = j.total ? Math.round(100 * j.done / j.total) : 0;
+    prog.firstElementChild.style.width = pct + '%';
+    meta.textContent = j.status === 'queued' ? 'Waiting to fetch its games…' : `Fetching games…${j.total ? ' ' + pct + '%' : ''}`;
+  }
+}
 let lastJobStatus = null;
 // The fetches (a profile's games, a refresh) this page asked for or saw running, until their end has been told. By
 // id, not by the last status seen: the first poll to answer may already find one over.
@@ -3124,14 +3150,7 @@ async function pollStatus() {
     $('b-refresh').disabled = !!active && !['puzzles', 'build'].includes(j.kind);   // the background jobs give way to a refresh
     $('jobstat').textContent = active && j.kind !== 'build' ? jobText(j) : '';      // a build has its bar at the bottom
     const mine = j && j.profile === state.profile;   // jobs belong to a profile; only react to the one being viewed
-    if (j && j.kind === 'ingest') {
-      const card = $('profiles') && $('profiles').querySelector(`.card[data-id="${j.profile}"]`);
-      if (card) {
-        const prog = card.querySelector('.progress');
-        prog.classList.toggle('hidden', !active);
-        if (active) prog.firstElementChild.style.width = (j.total ? 100 * j.done / j.total : 0) + '%';
-      }
-    }
+    markFetching();
     for (const x of jobsNow) if ((x.kind === 'ingest' || x.kind === 'refresh') && ACTIVE(x.status)) fetches.add(x.id);
     for (const id of fetches) {
       const e = jobsNow.find(x => x.id === id);
