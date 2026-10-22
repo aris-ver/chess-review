@@ -21,7 +21,7 @@
   // the loading lines, as those say why the page isn't answering yet.
   const bar = document.createElement('div');
   bar.id = 'web-loading';
-  bar.style.cssText = 'position:fixed;left:12px;bottom:12px;z-index:9999;max-width:min(420px,calc(100vw - 24px));padding:8px 30px 8px 12px;' +
+  bar.style.cssText = 'position:fixed;z-index:9999;max-width:min(420px,calc(100vw - 24px));padding:8px 30px 8px 12px;' +
     'border-radius:8px;border-left:3px solid var(--accent);background:rgba(20,20,20,.88);color:#eee;font:13px/1.4 system-ui,sans-serif;' +
     'box-shadow:0 2px 10px rgba(0,0,0,.4)';
   // "Download the app" in the header, lit in the notice's accent colour (no flashing) for as long as the note is
@@ -31,23 +31,32 @@
   style.textContent =
     'header .right a#web-dl{color:var(--text);background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:6px 10px;' +
     'white-space:nowrap;transition:border-color .6s,color .6s,box-shadow .6s}' +
-    'header .right a#web-dl:hover{background:#46423d;border-color:var(--accent)}' +
+    '@media (hover:hover){header .right a#web-dl:hover{background:#46423d;border-color:var(--accent)}}' +
     'header .right a#web-dl.lit{border-color:var(--accent);color:var(--accent);box-shadow:0 0 8px 1px color-mix(in srgb,var(--accent) 40%,transparent)}' +
     '#web-loading .x,#web-a2hs .x{position:absolute;top:4px;right:4px;width:22px;height:22px;padding:0;border:0;border-radius:4px;background:none;' +
-    'color:#aaa;font:16px/22px system-ui,sans-serif;cursor:pointer}#web-loading .x:hover,#web-a2hs .x:hover{background:rgba(255,255,255,.1);color:#fff}' +
+    'color:#aaa;font:16px/22px system-ui,sans-serif;cursor:pointer}@media (hover:hover){#web-loading .x:hover,#web-a2hs .x:hover{background:rgba(255,255,255,.1);color:#fff}}' +
     '#web-loading .pb{height:4px;margin:4px 0 2px;border-radius:2px;background:rgba(255,255,255,.15);overflow:hidden}' +
     '#web-loading .pb>i{display:block;height:100%;background:var(--accent);transition:width .3s}' +
     'header .right a#web-dl svg,#web-a2hs svg{width:16px;height:16px;vertical-align:-3px;fill:none;stroke:currentColor;stroke-width:2;' +
     'stroke-linecap:round;stroke-linejoin:round}' +
-    '#web-a2hs{position:fixed;inset:0;z-index:10000;display:flex;align-items:flex-end;justify-content:center;padding:16px;background:rgba(0,0,0,.5)}' +
+    '#web-a2hs{position:fixed;inset:0;z-index:10000;display:flex;align-items:flex-end;justify-content:center;padding:16px;' +
+    'padding-bottom:calc(16px + env(safe-area-inset-bottom));background:rgba(0,0,0,.5)}' +
     '#web-a2hs>div{position:relative;width:min(420px,100%);padding:16px 36px 16px 16px;border-radius:10px;border-left:3px solid var(--accent);' +
     'background:var(--panel2);color:var(--text);font:15px/1.5 system-ui,sans-serif;box-shadow:0 4px 20px rgba(0,0,0,.5)}' +
-    '#web-a2hs b{color:var(--accent)}#web-a2hs ol{margin:8px 0 0;padding-left:20px}#web-a2hs .x{top:8px;right:8px;color:var(--text)}';
+    '#web-a2hs b{color:var(--accent)}#web-a2hs ol{margin:8px 0 0;padding-left:20px}#web-a2hs .x{top:8px;right:8px;color:var(--text)}' +
+    // Clear of the iPhone's home indicator; on a phone also of the board screens' nav pinned to the bottom (and of the
+    // puzzle build's bar under it). A phone on its side has that nav in the panel, so there the bar goes under the header.
+    '#web-loading{left:max(12px,env(safe-area-inset-left));bottom:calc(12px + env(safe-area-inset-bottom))}' +
+    '@media (max-width:900px){#web-loading .x{width:36px;height:36px;top:0;right:0}#web-a2hs .x{width:36px;height:36px;top:2px;right:2px}#web-loading{padding-right:40px!important}' +
+    'body.hasbar #web-loading{bottom:calc(72px + env(safe-area-inset-bottom))}' +
+    'body:has(#review:not(.hidden)) #web-loading{bottom:calc(76px + env(safe-area-inset-bottom))}' +
+    'body.hasbar:has(#review:not(.hidden)) #web-loading{bottom:calc(138px + env(safe-area-inset-bottom))}}' +
+    '@media (max-width:900px) and (orientation:landscape) and (max-height:500px){body:has(#review:not(.hidden)) #web-loading' +
+    '{top:calc(64px + env(safe-area-inset-top));bottom:auto!important;left:auto;right:max(12px,env(safe-area-inset-right));max-width:min(420px,45vw)}}';
   document.head.appendChild(style);
-  // Drawn, not ⬇ or ⊕: iOS shows those as colour emoji. Arrow into a tray (download); a square with a plus (home screen).
+  // Drawn, not ⬇: iOS shows that as a colour emoji. An arrow into a tray, on phones too (white there: the app to get).
   const svg = d => `<svg viewBox="0 0 24 24" aria-hidden="true">${d}</svg>`;
   const ICON_DL = svg('<path d="M12 4v11M7 10l5 5 5-5M5 20h14"/>');
-  const ICON_ADD = svg('<rect x="4" y="4" width="16" height="16" rx="4"/><path d="M12 8v8M8 12h8"/>');
   const ICON_SHARE = svg('<path d="M12 3v12M8 7l4-4 4 4M7 11H5v10h14V11h-2"/>');
   const dl = document.createElement('a');
   // Phones and tablets: the Windows app is no use there; the button puts the site on the home screen instead, where
@@ -55,7 +64,7 @@
   // be asked to, so the button says where the Share menu's "Add to Home Screen" is.
   if (lite) {
     Object.assign(dl, { id: 'web-dl', href: '#', title: 'Add Blundr to your home screen' });
-    dl.innerHTML = `<span class="i">${ICON_ADD}</span><span class="t"> Get the app</span>`;
+    dl.innerHTML = `<span class="i" style="color:#fff">${ICON_DL}</span><span class="t"> Get the app</span>`;
   } else {
     Object.assign(dl, { id: 'web-dl', href: DOWNLOAD, target: '_blank', rel: 'noopener', title: 'The Windows app analyses about 2× faster' });
     dl.innerHTML = `<span class="i">${ICON_DL}</span><span class="t"> Download the app</span>`;
