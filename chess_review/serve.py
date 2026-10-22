@@ -827,7 +827,8 @@ class Handler(SimpleHTTPRequestHandler):
                 return self._json({"error": "unknown pack"}, 404)
             st = puzzles.stats(puzzles.attempts())
             ratings = {i: (pack.get(i) or {}).get("rating") for s in p["stages"] for i in s["ids"]}
-            return self._json({"pack": packs.ladder(p, packs.first_tries(), packs.solved_later(), st, ratings), "stats": st})
+            first, later = packs.first_tries(), packs.solved_later()
+            return self._json({"pack": packs.ladder(p, first, later, st, ratings, packs.credit(p, first, later)), "stats": st})
         if what == "daily":
             return self._json(packs.daily(datetime.date.today()))
         if what == "get":

@@ -1,42 +1,84 @@
 import datetime as dt
 import json
+from collections import Counter
 
 from chess_review import packs as K
 
 
-def row(i, rating, themes=("fork",), popularity=95, plays=1000, moves="a b c d e f"):
-    return {"id": f"p{i:05d}", "rating": rating, "popularity": popularity, "plays": plays, "themes": list(themes), "moves": moves}
+from chess_review import puzzles
+
+DEFS = [d for d in K.DEFS if d[0] in ("forks", "pins", "sacrifices", "mate-in-two")]
 
 
-def test_stages_go_uphill_one_band_each_and_merge_thin_bands():
-    rows = [row(i, 600 + i % 100) for i in range(40)]                      # 40 in the 600s
-    rows += [row(100 + i, 700 + i) for i in range(10)]                     # only 10 in the 700s
-    rows += [row(200 + i, 800 + i) for i in range(25)]                     # 25 in the 800s
-    d = K.build(rows, [("forks", "Motifs", "Forks", "", ["fork"], None)], stage_size=30)
-    st = d["packs"][0]["stages"]
-    assert [len(s["ids"]) for s in st] == [30, 30]                         # 600s; 700s + 20 of the 800s (a band fills one stage at most)
-    assert st[0]["hi"] < 700 and st[1]["lo"] >= 700
-    ratings = {r["id"]: r["rating"] for r in rows}
-    for s in st:
-        rs = [ratings[i] for i in s["ids"]]
-        assert rs == sorted(rs)                                            # numbered from the easiest
+def row(i, rating, themes=("fork",), popularity=95, moves="a b c d e f"):
+    return {"id": f"p{i:05d}", "rating": rating, "popularity": popularity, "plays": 1000, "themes": list(themes), "moves": moves}
 
 
-def test_most_popular_first_within_a_band_and_deterministic():
-    rows = [row(i, 650, popularity=80 + i % 20) for i in range(60)]
-    a = K.build(rows, [("f", "M", "F", "", ["fork"], None)], stage_size=30)
-    b = K.build(list(reversed(rows)), [("f", "M", "F", "", ["fork"], None)], stage_size=30)
-    assert a == b
-    pops = {r["id"]: r["popularity"] for r in rows}
-    assert min(pops[i] for i in a["packs"][0]["stages"][0]["ids"]) >= 90
+def library_build(rows=None, daily=()):
+    return K.build(rows or puzzles.Pack().rows(), DEFS, daily=list(daily))
 
 
-def test_daily_avoids_pack_puzzles_and_easy_or_short_ones():
-    rows = [row(i, 2000, themes=("fork",)) for i in range(5)]               # in the pack
-    rows += [row(10 + i, 2000, themes=("quiet",)) for i in range(5)]        # daily material
-    rows += [row(20, 1500, themes=("quiet",)), row(21, 2100, themes=("quiet",), moves="a b c d")]
-    d = K.build(rows, [("f", "M", "F", "", ["fork"], None)], stage_size=5)
-    assert sorted(d["daily"]) == [f"p{10 + i:05d}" for i in range(5)]
+def test_packs_are_exclusive_climb_and_keep_the_daily_list():
+    lib = puzzles.Pack().rows()
+    daily = [r["id"] for r in lib if "fork" in r["themes"]][:200]
+    d = library_build(lib, daily)
+    assert d["daily"] == daily                                             # kept as given, order and all
+    ids = [i for p in d["packs"] for s in p["stages"] for i in s["ids"]]
+    assert ids and len(ids) == len(set(ids)) and not set(ids) & set(daily)  # one pack each, none from the daily list
+    by_id = {r["id"]: r for r in lib}
+    assert len({K.game_of(by_id[i]) for i in ids}) == len(ids)             # one puzzle per game
+    for p in d["packs"]:
+        st = p["stages"]
+        assert len(st) <= K.MAX_STAGES and all(len(s["ids"]) == K.STAGE_SIZE for s in st)
+        for a, b in zip(st, st[1:]):
+            assert b["lo"] >= a["lo"] + K.STEP // 2                        # a real climb from one stage to the next
+            assert a["hi"] < b["lo"]
+        for s in st:
+            rs = [by_id[i]["rating"] for i in s["ids"]]
+            assert rs == sorted(rs) and rs[-1] - rs[0] < K.STEP            # one band, easiest first
+
+
+def test_a_stage_doesnt_repeat_itself():
+    lib = puzzles.Pack().rows()
+    by_id = {r["id"]: r for r in lib}
+    for p in library_build(lib)["packs"]:
+        want = set(p["themes"])
+        for s in p["stages"]:
+            fs = [K.features(by_id[i]) for i in s["ids"]]
+            assert max(Counter(f["last"] for f in fs).values()) <= K.SAME_MOVE + 1
+            assert max(Counter(f["first"] for f in fs).values()) <= K.SAME_MOVE + 1
+            assert sum(f["one"] for f in fs) <= K.STAGE_SIZE * K.ONE_MOVE
+            motifs = Counter(t for i in s["ids"] for t in by_id[i]["themes"] if t not in K.GENERIC and t not in want)
+            assert not motifs or max(motifs.values()) <= K.STAGE_SIZE * K.MOTIF + 2   # a little slack where a band is thin
+
+
+def test_the_build_is_deterministic():
+    lib = puzzles.Pack().rows()
+    assert library_build(lib) == library_build(list(reversed(lib)))
+
+
+def test_daily_list_skips_easy_short_and_excluded_ones():
+    rows = [row(i, 2000) for i in range(5)]
+    rows += [row(10, 1500), row(11, 2100, moves="a b c d"), row(12, 2100, popularity=80)]
+    assert sorted(K.daily_list(rows, exclude={"p00004"})) == [f"p{i:05d}" for i in range(4)]
+
+
+def test_a_stage_opens_on_what_you_solved_elsewhere():
+    pack = {"id": "f", "family": "M", "name": "F", "desc": "", "themes": ["fork"], "without": ["mateIn1"], "stages": [
+        {"n": 1, "lo": 600, "hi": 790, "ids": [f"a{i}" for i in range(20)]},
+        {"n": 2, "lo": 800, "hi": 990, "ids": [f"b{i}" for i in range(20)]},
+        {"n": 3, "lo": 1000, "hi": 1190, "ids": [f"c{i}" for i in range(20)]}]}
+    rows = {f"x{i}": {"rating": 650 + 10 * i, "themes": ["fork"]} for i in range(30)}   # old pack puzzles, 650..940
+    rows["m"] = {"rating": 900, "themes": ["fork", "mateIn1"]}             # not this pack's kind
+    first = {i: True for i in rows}
+    got = K.credit(pack, first, set(), rows.get)
+    assert len(got) == 30
+    lad = K.ladder(pack, first, set(), {"played": 0}, solved=got)
+    assert [s["open"] for s in lad["stages"]] == [True, True, False]       # 30 at 600+ open stage 2; only 15 at 800+
+    first.update({f"y{i}": True for i in range(2)})
+    rows.update({f"y{i}": {"rating": 820, "themes": ["fork"]} for i in range(2)})
+    lad = K.ladder(pack, first, set(), {"played": 0}, solved=K.credit(pack, first, set(), rows.get))
+    assert [s["open"] for s in lad["stages"]] == [True, True, True]
 
 
 def test_states_unlocks_and_the_pass_mark():
@@ -92,5 +134,8 @@ def test_shipped_packs_are_consistent():
         assert all(len(s["ids"]) <= d["stage_size"] for s in p["stages"])
         los = [s["lo"] for s in p["stages"]]
         assert los == sorted(los)
-    in_packs = {i for p in d["packs"] for s in p["stages"] for i in s["ids"]}
-    assert not in_packs.intersection(d["daily"])
+    in_packs = [i for p in d["packs"] for s in p["stages"] for i in s["ids"]]
+    assert len(in_packs) == len(set(in_packs))                             # no puzzle in two packs
+    assert not set(in_packs).intersection(d["daily"])
+    lib = {r["id"] for r in puzzles.Pack().rows()}
+    assert all(i in lib for i in in_packs + d["daily"])                    # all of them playable

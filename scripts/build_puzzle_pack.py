@@ -7,13 +7,15 @@ database: CC0, about 5 million puzzles mined from real games, each rated by the 
 Only well-liked, well-tested puzzles are kept (Popularity, NbPlays, RatingDeviation below), sampled evenly over
 100-point rating bands so the pack doesn't pile up around 1500. Within a band no single theme may fill more than
 THEME_CAP of the quota, which keeps the generic tags (crushing, advantage, middlegame) from crowding out the rest.
-The sample is seeded, so the same input builds the same pack.
+The sample is seeded, so the same input builds the same pack. The puzzles in the packs (packs.json, picked from the
+whole database by scripts/build_puzzle_packs.py) are kept on top of the sample, so the packs go on working.
 
 A build tool, not part of the app: it needs pyarrow, which the app itself no longer installs (pip install pyarrow).
 """
 import argparse
 import csv
 import io
+import json
 import random
 import sys
 from pathlib import Path
@@ -57,7 +59,7 @@ def rows(path: Path):
         yield from csv.DictReader(io.TextIOWrapper(io.BufferedReader(zr), encoding="utf-8", newline=""))
 
 
-def build(src: Path, total: int) -> list[dict]:
+def build(src: Path, total: int, keep_ids=frozenset()) -> list[dict]:
     rng = random.Random(SEED)
     bands = list(range(RATING_LO, RATING_HI, BAND))
     quota = total // len(bands)
@@ -65,8 +67,13 @@ def build(src: Path, total: int) -> list[dict]:
     pools: dict[int, list[dict]] = {b: [] for b in bands}
     seen: dict[int, int] = {b: 0 for b in bands}
     scanned = eligible = 0
+    kept = []
     for r in rows(src):
         scanned += 1
+        if r["PuzzleId"] in keep_ids:
+            kept.append({"id": r["PuzzleId"], "fen": r["FEN"], "moves": r["Moves"], "rating": int(r["Rating"]),
+                         "popularity": int(r["Popularity"]), "plays": int(r["NbPlays"]), "themes": r["Themes"],
+                         "game_url": r["GameUrl"], "opening": r.get("OpeningTags") or ""})
         try:
             rating, rd = int(r["Rating"]), int(r["RatingDeviation"])
             pop, plays = int(r["Popularity"]), int(r["NbPlays"])
@@ -117,6 +124,9 @@ def build(src: Path, total: int) -> list[dict]:
             taken.append(row)
         out += taken
         print(f"  {b}-{b + BAND - 1}: {len(taken)} of {seen[b]:,}", file=sys.stderr)
+    have = {r["id"] for r in out}
+    out += [r for r in kept if r["id"] not in have]
+    print(f"  {len(kept):,} pack puzzles kept, {len(out) - len(have):,} of them not in the sample", file=sys.stderr)
     out.sort(key=lambda r: (r["rating"], r["id"]))
     return out
 
@@ -127,7 +137,10 @@ def main(argv=None) -> None:
     p.add_argument("--total", type=int, default=30_000, help="puzzles in the pack (default 30000)")
     p.add_argument("--out", type=Path, default=OUT)
     args = p.parse_args(argv)
-    pack = build(args.src, args.total)
+    packs_json = OUT.parent / "packs.json"
+    in_packs = ({i for p in json.loads(packs_json.read_text(encoding="utf-8"))["packs"] for s in p["stages"] for i in s["ids"]}
+                if packs_json.exists() else set())
+    pack = build(args.src, args.total, in_packs)
     args.out.parent.mkdir(parents=True, exist_ok=True)
     pq.write_table(pa.Table.from_pylist(pack, schema=SCHEMA), args.out, compression="zstd", compression_level=19)
     print(f"wrote {len(pack):,} puzzles to {args.out} ({args.out.stat().st_size / 1e6:.1f} MB)", file=sys.stderr)
