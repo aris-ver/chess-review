@@ -28,7 +28,7 @@ th { color: var(--muted); font-weight: 600; }
 <header><a href="./"><span>♞</span> Blundr</a></header>
 <main>
 <h1>Privacy policy</h1>
-<p class="muted">Version of 21 October 2026</p>
+<p class="muted">Version of 22 October 2026</p>
 
 <div class="box">
 <p><b>In short.</b> Blundr runs on your own computer, in your browser. Without an account, nothing about you is
@@ -52,7 +52,8 @@ Clearing the site's data in your browser deletes them.</li>
 player's public games directly. Their own privacy policies apply to those requests.</li>
 <li><b>Delivering the site.</b> The site is hosted by Cloudflare. To deliver pages and protect the service from attacks,
 Cloudflare necessarily processes your IP address and technical request data. We do not keep access logs. Part of the
-software (Pyodide, the Python runtime) is loaded from the jsDelivr network, which also sees your IP address when it serves it.</li>
+software (Pyodide, the Python runtime) is loaded from the jsDelivr network, and the full chess engine (Stockfish) from the
+unpkg network; they too see your IP address when they serve those files.</li>
 </ul>
 
 <h2>3. What we store if you create an account</h2>
@@ -87,8 +88,9 @@ necessary for the service you request, so they need no consent (section 8).</p>
 <ul>
 <li><b>Cloudflare</b> (Cloudflare, Inc. and its EU entities) hosts the site and the account database as our processor, under
 its data processing agreement. The account database is kept and run only inside the European Union. Cloudflare may process technical data in other countries, including the USA,
-under the EU-US Data Privacy Framework and the European Commission's standard contractual clauses. Cloudflare's Email
-Service also sends the sign-in codes; to do that it handles your email address and the message.</li>
+under the EU-US Data Privacy Framework and the European Commission's standard contractual clauses.</li>
+<li><b>Brevo</b> (Sendinblue SAS, France) sends the sign-in codes as our processor, under its data processing agreement.
+To do that it handles your email address and the message.</li>
 <li><b>Lichess</b> or <b>Google</b> handle your sign-in on their own sites, under their own privacy policies.</li>
 </ul>
 <p>We do not sell or share your data with anyone else, and we do not use it for advertising or profiling.</p>

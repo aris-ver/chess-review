@@ -5,6 +5,15 @@
   "name": "blundr",
   "main": "src/index.js",
   "compatibility_date": "2025-09-01",
+  // www only so that it resolves: a Cloudflare redirect rule sends it on to blundr.gr, the one origin Google's
+  // redirect URI and the browser's stored reviews belong to
+  "routes": [
+    { "pattern": "blundr.gr", "custom_domain": true },
+    { "pattern": "www.blundr.gr", "custom_domain": true }
+  ],
+  // and no blundr.<account>.workers.dev: a second origin would mean a second, separate set of stored reviews
+  "workers_dev": false,
+  "preview_urls": false,
   "assets": {
     "directory": "../web-dist",
     "binding": "ASSETS",
@@ -17,7 +26,7 @@
       "database_name": "blundr",
       // `wrangler d1 create blundr --jurisdiction eu` prints the real id; this one only works locally. The EU
       // jurisdiction is what lets privacy.html say the database stays in the EU.
-      "database_id": "00000000-0000-0000-0000-000000000000",
+      "database_id": "63f34fde-53a2-4b4e-b405-54a461df94da",
       "migrations_dir": "migrations"
     }
   ],
@@ -26,14 +35,13 @@
     "LICHESS_CLIENT_ID": "blundr.gr",
     // accounts unused this long are deleted with their data (the privacy policy says so)
     "RETENTION_DAYS": "730",
-    // sign-up and password-reset codes come from here; blundr.gr must be onboarded to Email Sending first
+    // sign-up and password-reset codes come from here; blundr.gr must be an authenticated domain at Brevo
     "MAIL_FROM": "Blundr <login@blundr.gr>"
-    // GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET are secrets: `wrangler secret put`, or .dev.vars locally.
-    // Without them the Google button is hidden.
+    // GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET and BREVO_API_KEY are secrets: `wrangler secret put`, or .dev.vars
+    // locally. Without Google's the Google button is hidden; without BREVO_API_KEY (as under `wrangler dev`) nothing
+    // is sent and the message is printed in the console. Cloudflare's own Email Sending (a "send_email" binding named
+    // EMAIL) is used instead when there is no Brevo key, but it needs the Workers Paid plan.
   },
-  // Cloudflare Email Sending, for the email-and-password codes. Under `wrangler dev` nothing is sent: the message
-  // is printed in the console.
-  "send_email": [{ "name": "EMAIL" }],
   // once a day: expired sessions, abandoned sign-ins, and accounts past RETENTION_DAYS
   "triggers": { "crons": ["17 3 * * *"] },
   // Cloudflare's request logs would hold IP addresses; the privacy policy says none are kept

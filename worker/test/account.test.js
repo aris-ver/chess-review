@@ -19,6 +19,7 @@ function b64url(s) {
 beforeEach(async () => {
   for (const t of ['progress', 'sessions', 'identities', 'logins', 'passwords', 'email_codes', 'login_failures', 'users']) await env.DB.prepare(`DELETE FROM ${t}`).run();
   outbox.length = 0;
+  brevoSent.length = 0;
   lichessUser = { id: 'magnus', username: 'Magnus' };
   googleClaims = { sub: 'g-1', email: 'magnus@example.com', email_verified: true };
   vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init = {}) => {
@@ -30,6 +31,7 @@ beforeEach(async () => {
       const claims = { iss: 'https://accounts.google.com', aud: 'gid', exp: Math.floor(Date.now() / 1000) + 600, ...googleClaims };
       return Response.json({ access_token: 'gt', id_token: `x.${b64url(JSON.stringify(claims))}.sig` });
     }
+    if (url === 'https://api.brevo.com/v3/smtp/email') { brevoSent.push({ key: init.headers['api-key'], ...JSON.parse(init.body) }); return Response.json({ messageId: 'b' }, { status: 201 }); }
     throw new Error('unexpected fetch ' + url);
   });
 });
@@ -37,6 +39,7 @@ afterEach(() => vi.restoreAllMocks());
 
 // The email binding: what was sent, so a test can read the code out of it.
 const outbox = [];
+const brevoSent = [];
 const EMAIL = { send: async m => { outbox.push(m); return { messageId: String(outbox.length) }; } };
 const lastCode = to => outbox.filter(m => m.to === to).at(-1)?.text.match(/\b(\d{6})\b/)?.[1];
 
@@ -291,6 +294,13 @@ describe('email and password', () => {
     if (r.status !== 200) return r;
     return post(b, 'verify', { email: address, code: lastCode(address.toLowerCase()), purpose: 'signup' });
   }
+
+  it('sends the codes through Brevo when it has a key', async () => {
+    const b = new Browser({ EMAIL: undefined, BREVO_API_KEY: 'bk' });
+    expect((await post(b, 'signup', { email: 'ana@example.com', password: PW, consent: CONSENT_VERSION })).status).toBe(200);
+    expect(brevoSent).toEqual([expect.objectContaining({ key: 'bk', sender: { email: 'login@blundr.gr', name: 'Blundr' }, to: [{ email: 'ana@example.com' }] })]);
+    expect(brevoSent[0].textContent).toMatch(/\b\d{6}\b/);
+  });
 
   it('signs up only once the emailed code is typed in', async () => {
     const b = new Browser();

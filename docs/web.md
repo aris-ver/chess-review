@@ -66,10 +66,14 @@ load takes about 15 s; `book.load` takes 8 s there (3.8 s native), so the book's
 
 ## Hosting
 
-- Static site on **Cloudflare Pages** (free: unlimited bandwidth, 25 MB per file). The 99 MB engine goes on
-  **Cloudflare R2** (free up to 10 GB stored and with no egress charge) behind the domain, as
-  `engine.blundr.gr/stockfish-19-single.wasm`, with long cache headers.
-- Pyodide itself from its CDN (jsDelivr) at first; self-host it on Pages later if the CDN is a worry.
+- One **Cloudflare Worker** (`worker/`, free plan) serves `web-dist/` as static assets and runs code only for
+  `/account/*` ([accounts.md](accounts.md)). Static requests are free and unmetered, but an asset may be 25 MiB at most.
+- The 99 MB engine comes from **unpkg**, the npm CDN: `https://unpkg.com/stockfish@19.0.1/bin/stockfish-19-single.wasm`
+  (`build_web.py --engine-wasm cdn`, versioned with the npm download). unpkg serves npm files of any size, with
+  `Access-Control-Allow-Origin: *` and a year's `Cache-Control`; jsDelivr refuses a file that big (403). The page keeps
+  it in Cache Storage after the first visit. R2 would also do, but it has to be enabled in the dashboard first and the
+  file uploaded by hand at every engine update.
+- Pyodide itself from its CDN (jsDelivr); self-host it later if the CDN is a worry.
 - `scripts/build_web.py` assembles `web-dist/`: the page with the shim tag, `web/`, a zip of `chess_review/`
   plus the book keys and puzzle packs, the python-chess wheel and the lite engine. `python scripts/build_web.py
   --serve` serves it locally.
@@ -84,13 +88,8 @@ load takes about 15 s; `book.load` takes 8 s there (3.8 s native), so the book's
    Cloudflare then shows two nameservers. At the registrar, replace blundr.gr's nameservers with those two.
    Cloudflare marks the zone active once the change has spread, usually within hours and at most about 48 h.
    Nothing else changes at the registrar, and the domain is still renewed there.
-2. Create an R2 bucket, upload `stockfish-19-single.wasm`, connect it as `engine.blundr.gr`, and give it CORS
-   `GET` from `https://blundr.gr` and a long `Cache-Control`.
-3. Create a Pages project, upload `web-dist/` built with
-   `--engine-wasm https://engine.blundr.gr/stockfish-19-single.wasm`, and leave out `web/engine/stockfish-19-single.wasm`
-   (over the 25 MB limit). Add blundr.gr and www.blundr.gr as custom domains. Cloudflare creates their DNS
-   records once the zone is active.
-4. With accounts, the Worker in `worker/` serves the site and `/account/*` in place of Pages ([accounts.md](accounts.md)).
+2. The rest (database, email, Google, build, Worker, domains) is in [accounts.md](accounts.md#deploy). blundr.gr went
+   live that way on 2026-10-22.
 
 ## Accounts (optional)
 
@@ -127,5 +126,4 @@ Python is up. That is a later step, and it would mean JavaScript for those route
 
 Not yet: the sandbox and puzzle engine replies (lite engine, `/api/eval`, `/api/explore`, `/api/eval_stream`),
 personal-puzzle builds and `analyse_all` (async versions of those jobs), the new-games scan, hiding the
-desktop-only buttons (screenshot reader, updater), ingest not blocking the worker (async fetch), accounts,
-deployment to Pages/R2.
+desktop-only buttons (screenshot reader, updater), ingest not blocking the worker (async fetch).
