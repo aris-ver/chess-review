@@ -181,7 +181,9 @@ after `npx wrangler login`. The domain's nameservers must already be Cloudflare'
    query string kept). There must be one origin only: Google's redirect URI names it, and a browser keeps the reviews
    and puzzles per origin.
 
-Updating: build as in step 4, then `npm run deploy`. The desktop app's sign-in needs the Worker with
+Updating: a push to main deploys by itself (`.github/workflows/deploy-web.yml`, with the repository secrets
+`CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`); migrations only from a manual run with the box ticked. By hand:
+build as in step 4, then `npm run deploy`. The desktop app's sign-in needs the Worker with
 `migrations/0003_app_sign_in.sql` and `/account/app/*` deployed before a desktop release that has it; no Google or
 Lichess setting changes for it. A new Stockfish is `STOCKFISH_VERSION` in `build_web.py`, together
 with the desktop's `bin/`, or reviews stop matching between the two.
