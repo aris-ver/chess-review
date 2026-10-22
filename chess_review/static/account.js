@@ -225,7 +225,7 @@ dialog#account .foot { display: flex; gap: 14px; justify-content: center; margin
     if (view.step) return note() + stepBody() + legal();
     return note() +
       `<div class="tabs"><button data-tab="login" class="${signup ? '' : 'active'}">Log in</button><button data-tab="signup" class="${signup ? 'active' : ''}">Sign up</button></div>` +
-      `<p>An account keeps your <b>puzzle progress</b> (puzzle rating, packs, the daily streak and review schedules) and your <b>list of profiles</b>, so they follow you to ${app ? 'blundr.gr and other computers' : 'other browsers'}, where the games are fetched again. ` +
+      `<p>An account keeps your <b>puzzle progress</b> (packs, the daily streak, review schedules) and your <b>list of profiles</b>, so they follow you to ${app ? 'blundr.gr and other computers' : 'other browsers'}, where the games are fetched again. ` +
       `Your reviewed games stay in ${here()} and are never uploaded. Everything ${app ? 'here' : 'on Blundr'} works without an account.</p>` +
       (signup
         ? `<label class="consent"><input type="checkbox" id="acc-consent"> <span>I am 15 or older and agree to the <a href="${sitePage('terms.html')}" target="_blank">terms of use</a> and the <a href="${sitePage('privacy.html')}" target="_blank">privacy policy</a>.</span></label>` +
