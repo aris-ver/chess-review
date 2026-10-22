@@ -1,7 +1,7 @@
 # Blundr accounts
 
 Optional. Guests can use everything. An account keeps **puzzle progress** and the **profile list**, so they follow you to
-other browsers: the library puzzle rating and attempts, pack progress, the daily-puzzle record, each profile's
+other browsers and to the desktop app: the library puzzle rating and attempts, pack progress, the daily-puzzle record, each profile's
 personal-puzzle review schedule, and the chess.com/Lichess profiles you added (source, username, when added, pinned).
 Reviewed games, analysis and the engine's eval cache stay in the browser and never reach the server.
 
@@ -15,21 +15,47 @@ reaches the others. If two browsers disagree at the same time, pinned wins. **A 
 on the others too, with the reviews made there** (they exist only in that browser), unless a job is running on it at
 that moment. Local-only state (the "new games" flags) is not synced.
 
-**The desktop app** could use the same account later. The format has nothing browser-specific in it, and `sync.py` is
-plain Python over `DATA`. It would need three things:
-1. Sign-in from a desktop app. Lichess and Google support OAuth for native apps with a loopback redirect
-   (`http://127.0.0.1:<port>/callback`, PKCE). The Worker would hand out a session token in the response body,
-   since a desktop app has no cookie jar, and accept it as a `Bearer` header.
-2. `sync.py` moved into `chess_review/`, with the delta, account, commit loop run by the desktop server after puzzle
-   results and at start-up.
-3. A Log in control in the shared page. It already exists in `account.js`; only the transport differs.
+## The desktop app
+
+Chess Review (the Windows app) has the same Log in button and dialog, and syncs the same account with blundr.gr. The
+page code is one file, `chess_review/static/account.js`, in both apps, and so is the merge, `chess_review/sync.py`:
+the page runs the delta, account, commit loop in both, after each puzzle result, at start-up, on log-in and when the
+window comes back into view. Only the transport differs:
+
+- **`api/sync/*`** is answered by Pyodide on the website and by the local server (`serve.py`) in the app. The app's
+  `DATA` folder plays the browser's part: "this computer" where the website says "this browser".
+- **`account/*`** goes straight to the Worker on the website, with the session cookie. In the app it goes to the local
+  server, and `chess_review/account.py` passes it on to `https://blundr.gr` (`BLUNDR_URL` to point it elsewhere) with
+  the header `X-Blundr-App: 1` and the session token as `Authorization: Bearer`. The token is kept in
+  `DATA/account_token.json` (`%LOCALAPPDATA%\chess-review\`), together with the site it is for, and only the server
+  reads it, as a browser keeps its cookie. The local server answers `account/*` only for its own page: a request from
+  another site's page (`Origin`), or under another host name (DNS rebinding), gets a 403.
+- **Email and password** works as on the website. The Worker sees `X-Blundr-App` and puts the session token in the
+  answer instead of a cookie; the local server keeps it and gives the page the rest.
+- **Lichess and Google** can't run in the app's window (Google refuses embedded webviews), so they run in the system
+  browser, with the Worker still doing the OAuth:
+  1. The app makes its own PKCE pair and asks `POST /account/app/start {provider, mode, consent, challenge, port}`.
+     The Worker keeps a sign-in as for the website, plus the app's challenge and port, and answers with
+     `https://blundr.gr/account/login/<provider>?resume=<state>`, which the app opens in the browser.
+  2. That sets the usual state cookie and goes to the provider, which comes back to the usual
+     `https://blundr.gr/account/callback/<provider>`. So the Google and Lichess settings are the website's, unchanged.
+  3. The Worker sees the sign-in came from the app, so it sets no cookie: it keeps a one-time code (2 minutes, in
+     `app_codes`, `migrations/0003_app_sign_in.sql`) and sends the browser to
+     `http://127.0.0.1:<port>/account/callback?account=<outcome>&state=…&code=…`, the app's own server.
+  4. The app checks the state, and swaps the code and its verifier for a session token at `POST /account/app/token`.
+     A code read off that redirect is no use without the verifier. The browser tab says to go back to the app, whose
+     dialog was waiting, asking `account/me` (which in the app also carries the outcome, once).
+  Linking another sign-in method works the same way, with the app's token on `/account/app/start`.
+- **Download my data** saves `blundr-account.json` to the Downloads folder (the app's window can't download), and the
+  privacy and terms links open the website's pages in the browser.
+- Offline, the button stays hidden until the window is focused again. Logging out offline forgets the token anyway.
 
 ## Shape
 
 ```
- page                                  Python worker (Pyodide)                Worker (Cloudflare)          D1
- ────                                  ───────────────────────                ───────────────────          ──
- web/account.js                        web/py/chess_web/sync.py               worker/src/index.js          users, identities,
+ page                                  Python: Pyodide, or the app's server   Worker (Cloudflare)          D1
+ ────                                  ────────────────────────────────────   ───────────────────          ──
+ chess_review/static/account.js        chess_review/sync.py                   worker/src/index.js          users, identities,
    header button + account dialog        POST api/sync/delta   ──┐            /account/me, login,           sessions, logins,
    sync: delta → account → commit        POST api/sync/commit    │  ───►      callback, logout,             progress
    after each puzzle result, on load,    POST api/sync/forget    │            progress, export, delete,
@@ -62,7 +88,9 @@ plain Python over `DATA`. It would need three things:
   - **Not yet**: a per-IP limit on asking for codes. Add a Cloudflare rate-limiting rule on `/account/email/*` if abuse
     shows up.
 - **Session**: a random token in the `blundr_session` cookie (HttpOnly, SameSite=Lax, Secure on https, `Path=/account/`),
-  stored in D1 only as its SHA-256. 90 days, extended on use. POSTs must carry the site's own `Origin`.
+  stored in D1 only as its SHA-256. 90 days, extended on use. POSTs must carry the site's own `Origin`, or the desktop
+  app's `X-Blundr-App` header, which no other site's page can send (the browser would ask first with a CORS preflight,
+  and the Worker never says yes). The desktop app's session is the same kind of token, sent as `Bearer`.
 - **Sync** is a three-way merge of the JSONL files, done in Python (`sync.py`, whose docstring has the details) against
   the copy last received from the account (`DATA/account_sync.json`). The server keeps a set of lines per file
   (`store.js`), so two browsers writing at once can't undo each other. A guest has no base, so signing up or logging
@@ -100,7 +128,7 @@ the visitor asked for (ePrivacy art. 5(3) exemption). Worker observability (requ
 analytics. **Adding analytics, ads, or any non-essential cookie or storage means a consent banner becomes
 required.** Account holders get Download my data (JSON of every row about them: art. 15/20) and Delete account
 (immediate, all tables: art. 17) in the dialog. When the terms or the policy change, bump `CONSENT_VERSION` in
-`worker/src/consent.js` and `web/account.js`, and the date on both pages.
+`worker/src/consent.js` and `chess_review/static/account.js`, and the date on both pages.
 
 ## Run it locally
 
@@ -115,7 +143,10 @@ npm test                                    # the Worker's tests (vitest, local 
 
 Without `LICHESS_URL` the real lichess.org is used, which also works from localhost. For Google locally, add
 `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` to `.dev.vars` with `http://localhost:8787/account/callback/google` as an
-authorised redirect URI. Python side: `pytest tests/test_sync.py`.
+authorised redirect URI. Python side: `pytest tests/test_sync.py tests/test_account.py`.
+
+The desktop app against that local Worker: `BLUNDR_URL=http://localhost:8787 python -m chess_review.serve` (or the
+launcher). Its token is kept per site, so one for blundr.gr isn't sent to localhost.
 
 ## Deploy
 
@@ -150,5 +181,7 @@ after `npx wrangler login`. The domain's nameservers must already be Cloudflare'
    query string kept). There must be one origin only: Google's redirect URI names it, and a browser keeps the reviews
    and puzzles per origin.
 
-Updating: build as in step 4, then `npm run deploy`. A new Stockfish is `STOCKFISH_VERSION` in `build_web.py`, together
+Updating: build as in step 4, then `npm run deploy`. The desktop app's sign-in needs the Worker with
+`migrations/0003_app_sign_in.sql` and `/account/app/*` deployed before a desktop release that has it; no Google or
+Lichess setting changes for it. A new Stockfish is `STOCKFISH_VERSION` in `build_web.py`, together
 with the desktop's `bin/`, or reviews stop matching between the two.

@@ -59,6 +59,9 @@
                                         puzzles tried before still aren't dealt again
                                         {what: "schedule", profile} -> that profile's review schedule starts over (its
                                         record archived the same way): every puzzle from its games is new again
+    POST /api/sync/<step>               the Blundr account's sync: state, delta, commit, switch, release (sync.py)
+    /account/...                        the Blundr account: passed on to blundr.gr with this app's session token
+                                        (account.py; on the website the page reaches the Worker itself)
 
     /                                   the app (data/site)
     /p/<id>/...                         a profile's games.json, games/<slug>.json, insights.html
@@ -93,7 +96,7 @@ import chess
 import duckdb
 import requests
 
-from . import aggregates, classify, ingest, normalise, own_puzzles, packs, profiles, puzzles, site, updater
+from . import account, aggregates, classify, ingest, normalise, own_puzzles, packs, profiles, puzzles, site, sync, updater
 from .analyse import Analyser, LivePace, export_parquet, open_db, pending_keys
 from .config import DATA, DEFAULT_NODES, ENGINE_IDLE_SECONDS, MULTIPV_N, SITE_DIR, USER_AGENT
 from .db import base_views
@@ -644,8 +647,34 @@ class Handler(SimpleHTTPRequestHandler):
             return self._json({"error": "busy", "job": self.runner.job.to_dict()}, 409)
         return self._json({"job": out.to_dict()})
 
+    def _account(self, method: str) -> None:
+        """account/* (account.py). Only from the app's own page: on this port, by its own address (no other site's
+        page, nor one that DNS-rebinds a name of its own to 127.0.0.1, can act for the account)."""
+        url = urlparse(self.path)
+        port = self.server.server_address[1]
+        ours = {f"127.0.0.1:{port}", f"localhost:{port}"}
+        origin = self.headers.get("Origin")
+        if self.headers.get("Host") not in ours or (origin and origin.split("://", 1)[-1] not in ours):
+            return self._json({"error": "cross-site request"}, 403)
+        n = int(self.headers.get("Content-Length") or 0)
+        body = self.rfile.read(n) if method == "POST" else None
+        try:
+            code, ctype, out = account.handle(method, url.path, url.query, body, port)
+        except requests.RequestException as e:
+            log.info("account %s: %s", url.path, e)
+            return self._json({"error": "Blundr can't be reached. Check the internet connection and try again."}, 502)
+        except (ValueError, KeyError) as e:
+            return self._json({"error": f"bad account request: {e}"}, 400)
+        self.send_response(code)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Content-Length", str(len(out)))
+        self.end_headers()
+        self.wfile.write(out)
+
     def do_GET(self):
         url = urlparse(self.path)
+        if url.path.startswith("/account/"):
+            return self._account("GET")
         if url.path == "/api/status":
             return self._json(self.runner.status())
         if url.path == "/api/profiles":
@@ -826,6 +855,14 @@ class Handler(SimpleHTTPRequestHandler):
     def do_POST(self):
         r = self.runner
         path = urlparse(self.path).path
+        if path.startswith("/account/"):
+            return self._account("POST")
+        if path.startswith("/api/sync/"):
+            try:
+                out = sync.handle(path, self._body())
+            except ValueError:
+                out = None
+            return self._json(out if out is not None else {"error": "bad sync request"}, 200 if out is not None else 400)
         if path == "/api/pgn":
             b = self._body()
             text = (b.get("pgn") or "").strip()

@@ -1,18 +1,13 @@
-"""Puzzle progress synced through a Blundr account (web/py/chess_web/sync.py): two browsers, each a DATA folder
+"""Puzzle progress synced through a Blundr account (chess_review/sync.py): two browsers, each a DATA folder
 written by the real puzzles/packs code, and an account that keeps lines the way the Worker does (worker/src/store.js:
 a set per file, new lines at the end)."""
 
 import json
-import sys
 from pathlib import Path
 
 import pytest
 
-ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(ROOT / "web" / "py"))
-
-from chess_review import packs, puzzles  # noqa: E402
-from chess_web import sync  # noqa: E402
+from chess_review import packs, puzzles, sync
 
 USER = "u-1"
 
@@ -34,7 +29,7 @@ class Account:
 
 
 def run(data: Path, account: Account, user: str = USER) -> dict:
-    """web/account.js's sync: delta, post, commit, again while the browser still has something the account lacks."""
+    """chess_review/static/account.js's sync: delta, post, commit, again while the browser still has something the account lacks."""
     for _ in range(3):
         d = sync.delta(user, data)
         out = sync.commit(user, account.post(d["add"], d["remove"]), data)

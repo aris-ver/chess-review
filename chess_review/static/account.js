@@ -1,15 +1,21 @@
 // The optional Blundr account (docs/accounts.md): a Log in button at the end of the header, the account dialog, and
-// keeping puzzle progress in step with the account. Loaded by the web build right after web/shim.js; the desktop
-// app has none of it. The page itself is untouched: everything here is added from the outside.
+// keeping puzzle progress in step with the account. The same file in both apps, loaded before the page's own script
+// (on the website right after web/shim.js). The page itself is untouched: everything here is added from the outside.
 //
-// The account API is the Worker's /account/* (worker/src/index.js), a real network request. The merge is the
-// Python worker's /api/sync/* (web/py/chess_web/sync.py), which shim.js routes there like every other api/ call.
+// The account API is account/*: on the website the Worker's (worker/src/index.js), a real network request with the
+// session cookie; in the desktop app the local server's, which passes it on to blundr.gr with the session token it
+// keeps (chess_review/account.py), and there a Lichess or Google sign-in runs in the system browser (appSignIn).
+// The merge is /api/sync/* (chess_review/sync.py): the Python worker's on the website (shim.js routes it there like
+// every other api/ call), the local server's in the desktop app.
 (() => {
   const CONSENT = '2026-10-22';      // worker/src/consent.js: the terms and privacy policy agreed to
   const PROGRESS_WRITES = /^api\/(puzzles\/(attempt|solved|daily|reset)|profiles|profiles\/[^/]+\/(delete|pin))$/;
   const OVERVIEW = /^(|#|#\/|#\/packs(\/[a-z0-9-]+)?|#\/puzzles\/mine)$/;     // screens that show progress, safe to redraw
 
   let me = null, providers = [], lastSync = null, syncError = null, minPassword = 10;
+  let app = false, site = '';                    // the desktop app (account/me says so), and the website's address
+  const here = () => (app ? 'this computer' : 'this browser');
+  const sitePage = name => (site ? `${site}/${name}` : name);     // privacy.html, terms.html: the website's
   const pageFetch = window.fetch;                // shim.js's: api/ goes to Python, the rest to the network
   const post = (url, body) => pageFetch(url, { method: 'POST', body: JSON.stringify(body || {}), headers: { 'Content-Type': 'application/json' } });
   const getJSON = async url => { const r = await pageFetch(url, { cache: 'no-store' }); if (!r.ok) throw new Error(`${url}: HTTP ${r.status}`); return r.json(); };
@@ -23,7 +29,7 @@
   const synced = (redrawn = false) => window.dispatchEvent(new CustomEvent('progresssynced', { detail: { redrawn } }));
   const redraw = () => { synced(true); window.dispatchEvent(new HashChangeEvent('hashchange')); };
 
-  // Whose data is in the browser (web/py/chess_web/sync.py switch()): set aside one owner's, bring back another's.
+  // Whose data is in the browser (chess_review/sync.py switch()): set aside one owner's, bring back another's.
   // Python answers busy while a profile that would move is being fetched or analysed: wait for it.
   async function handOver(body, route = 'api/sync/switch') {
     for (let i = 0; i < 200; i++) {
@@ -172,7 +178,7 @@ dialog#account .foot { display: flex; gap: 14px; justify-content: center; margin
       `${mode === 'signup' ? 'Sign up' : 'Log in'} with ${esc(p.name)}</button>`).join('');
   }
   const note = () => view.note ? `<div class="note${view.note.bad ? ' bad' : ''}">${view.note.html}</div>` : '';
-  const legal = '<div class="foot"><a href="privacy.html" target="_blank">Privacy policy</a><a href="terms.html" target="_blank">Terms of use</a></div>';
+  const legal = () => `<div class="foot"><a href="${sitePage('privacy.html')}" target="_blank">Privacy policy</a><a href="${sitePage('terms.html')}" target="_blank">Terms of use</a></div>`;
 
   // ---- email and password (worker/src/email.js): forms, and the step where the emailed code is typed in ----
   const PROVIDER_NAMES = { lichess: 'Lichess', google: 'Google', email: 'Email' };
@@ -208,22 +214,22 @@ dialog#account .foot { display: flex; gap: 14px; justify-content: center; margin
 
   function guestBody() {
     const signup = view.tab === 'signup';
-    if (view.step) return note() + stepBody() + legal;
+    if (view.step) return note() + stepBody() + legal();
     return note() +
       `<div class="tabs"><button data-tab="login" class="${signup ? '' : 'active'}">Log in</button><button data-tab="signup" class="${signup ? 'active' : ''}">Sign up</button></div>` +
-      '<p>An account keeps your <b>puzzle progress</b> (puzzle rating, packs, the daily streak and review schedules) and your <b>list of profiles</b>, so they follow you to other browsers, where the games are fetched again. ' +
-      'Your reviewed games stay in this browser and are never uploaded. Everything on Blundr works without an account.</p>' +
+      `<p>An account keeps your <b>puzzle progress</b> (puzzle rating, packs, the daily streak and review schedules) and your <b>list of profiles</b>, so they follow you to ${app ? 'blundr.gr and other computers' : 'other browsers'}, where the games are fetched again. ` +
+      `Your reviewed games stay in ${here()} and are never uploaded. Everything ${app ? 'here' : 'on Blundr'} works without an account.</p>` +
       (signup
-        ? '<label class="consent"><input type="checkbox" id="acc-consent"> <span>I am 15 or older and agree to the <a href="terms.html" target="_blank">terms of use</a> and the <a href="privacy.html" target="_blank">privacy policy</a>.</span></label>' +
+        ? `<label class="consent"><input type="checkbox" id="acc-consent"> <span>I am 15 or older and agree to the <a href="${sitePage('terms.html')}" target="_blank">terms of use</a> and the <a href="${sitePage('privacy.html')}" target="_blank">privacy policy</a>.</span></label>` +
           `<form data-form="signup" class="col">${emailInput()}${passwordInput('new-password', `Password (at least ${minPassword} characters)`)}` +
           '<button class="primary" data-mode="signup" disabled>Sign up with email</button></form>' +
           `${or()}<div class="col">${providerButtons('signup', true)}</div>` +
-          "<p class=\"muted\">If this browser has puzzle progress or profiles, you'll be asked whether to add them to the new account.</p>"
+          `<p class="muted">If ${here()} has puzzle progress or profiles, you'll be asked whether to add them to the new account.</p>`
         : `<form data-form="login" class="col">${emailInput()}${passwordInput('current-password')}<button class="primary">Log in</button></form>` +
           '<p class="muted"><a href="#" data-act="toforgot">Forgot password?</a></p>' +
           `${or()}<div class="col">${providerButtons('login', false)}</div>` +
           '<p class="muted">You get your account\'s progress and profiles. What you did here as a guest is set aside, not added to the account, and comes back when you log out.</p>') +
-      legal;
+      legal();
   }
 
   async function emailCall(step, body) {
@@ -233,7 +239,7 @@ dialog#account .foot { display: flex; gap: 14px; justify-content: center; margin
     return d;
   }
 
-  // signed in by email: the session cookie came with the answer
+  // signed in by email: the session cookie came with the answer (in the app, the local server kept the token)
   function signedIn(user, html) {
     me = user;
     view = { tab: 'login', confirmDelete: false, offer: null, step: null, note: html ? { html } : null };
@@ -291,7 +297,7 @@ dialog#account .foot { display: flex; gap: 14px; justify-content: center; margin
   }
 
   function accountBody() {
-    if (view.step) return note() + stepBody() + legal;
+    if (view.step) return note() + stepBody() + legal();
     const ids = me.identities.map(i => `<li><span>${esc(i.name)} <span class="muted">(${PROVIDER_NAMES[i.provider] || esc(i.provider)})</span></span>` +
       (me.identities.length > 1 ? `<button data-unlink="${i.provider}">Remove</button>` : '') + '</li>').join('');
     const more = providers.filter(p => !me.identities.some(i => i.provider === p.id))
@@ -299,40 +305,49 @@ dialog#account .foot { display: flex; gap: 14px; justify-content: center; margin
       (me.identities.some(i => i.provider === 'email') ? '' : '<button data-act="tolink">Also log in with an email and password</button>');
     const status = syncing ? 'Syncing…'
       : syncError ? `Last sync failed: ${esc(syncError)}`
-      : lastSync ? `Synced at ${lastSync.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : 'Not synced yet (waiting for Python to load)';
+      : lastSync ? `Synced at ${lastSync.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : app ? 'Not synced yet' : 'Not synced yet (waiting for Python to load)';
     const del = view.confirmDelete
       ? '<div class="note bad"><p><b>Delete your account?</b> Your account and the puzzle progress and profile list stored with it are deleted from the server straight away. This cannot be undone.</p>' +
-        '<label class="consent"><input type="checkbox" id="acc-wipe"> <span>Also remove this account\'s progress and profiles from this browser (otherwise they stay here as a guest\'s)</span></label>' +
+        `<label class="consent"><input type="checkbox" id="acc-wipe"> <span>Also remove this account's progress and profiles from ${here()} (otherwise they stay here as a guest's)</span></label>` +
         '<div class="col"><button class="danger" data-act="delete">Delete my account</button><button data-act="nodelete">Cancel</button></div></div>'
       : '<button data-act="askdelete">Delete account…</button>';
     if (view.offer) {
       const parts = [view.offer.puzzle_records && `${view.offer.puzzle_records} puzzle record${view.offer.puzzle_records > 1 ? 's' : ''}`, view.offer.profiles && `${view.offer.profiles} profile${view.offer.profiles > 1 ? 's' : ''}`].filter(Boolean).join(' and ');
       return note() +
-        `<div class="note"><p><b>Add this browser's progress to your new account?</b> You have ${parts} here from before you signed up.</p>` +
+        `<div class="note"><p><b>Add ${here()}'s progress to your new account?</b> You have ${parts} here from before you signed up.</p>` +
         '<div class="col"><button class="primary" data-act="keep">Yes, add it to my account</button>' +
         '<button data-act="fresh">No, start the account empty</button></div>' +
-        "<p class=\"muted\">If you start empty, what you did as a guest is set aside in this browser and comes back when you log out.</p></div>" + legal;
+        `<p class="muted">If you start empty, what you did as a guest is set aside in ${here()} and comes back when you log out.</p></div>` + legal();
     }
     return note() +
       `<p class="muted">Signed in with</p><ul class="ids">${ids}</ul>${more ? `<div class="col">${more}</div>` : ''}` +
       `<p>Puzzle progress and profiles: ${me.progress_lines || 0} records stored. <span class="muted">${status}</span></p>` +
       '<div class="col"><button data-act="sync">Sync now</button></div><hr>' +
-      '<div class="col"><a class="btn" href="account/export" download="blundr-account.json">Download my data</a>' +
+      // the app's window can't download: the local server saves the file instead
+      `<div class="col">${app ? '<button data-act="export">Download my data</button>' : '<a class="btn" href="account/export" download="blundr-account.json">Download my data</a>'}` +
       '<button data-act="logout">Log out</button>' +
-      '<button data-act="logout-wipe" title="For a shared computer">Log out and remove my progress and profiles from this browser</button>' +
+      `<button data-act="logout-wipe" title="For a shared computer">Log out and remove my progress and profiles from ${here()}</button>` +
       `${del}</div>` +
-      `<p class="muted">Account created ${new Date(me.created_at * 1000).toLocaleDateString()}. Reviewed games and engine analysis never leave this browser.</p>` +
-      legal;
+      `<p class="muted">Account created ${new Date(me.created_at * 1000).toLocaleDateString()}. Reviewed games and engine analysis never leave ${here()}.</p>` +
+      legal();
   }
 
   function renderDialog() {
     if (!dlg) return;
     dlg.innerHTML = `<div class="head"><b>${me ? 'Your account' : view.tab === 'signup' ? 'Sign up' : 'Log in'}</b><button data-act="close" title="Close">✕</button></div>` +
-      `<div class="body">${me ? accountBody() : guestBody()}</div>`;
+      `<div class="body">${view.waiting ? waitingBody() : me ? accountBody() : guestBody()}</div>`;
   }
 
   async function act(name) {
     if (name === 'close') return dlg.close();
+    if (name === 'stopwait') { view.waiting = null; return renderDialog(); }
+    if (name === 'export') {
+      const r = await post('account/app/export');
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
+      view.note = { html: `Saved to <b>${esc(d.path)}</b>` };
+      return renderDialog();
+    }
     if (name === 'sync') { const s = sync(); renderDialog(); return s; }
     if (name === 'askdelete' || name === 'nodelete') { view.confirmDelete = name === 'askdelete'; return renderDialog(); }
     if (name === 'keep' || name === 'fresh') { await answerOffer(name === 'keep'); return renderDialog(); }
@@ -349,7 +364,7 @@ dialog#account .foot { display: flex; gap: 14px; justify-content: center; margin
       dlg.close();
       say('Logging out…');
       await handOver({ user: null, wipe: name === 'logout-wipe' });     // the guest's own data comes back
-      say(name === 'logout-wipe' ? 'Logged out; your progress and profiles were removed from this browser' : 'Logged out');
+      say(name === 'logout-wipe' ? `Logged out; your progress and profiles were removed from ${here()}` : 'Logged out');
       return;
     }
     if (name === 'delete') {
@@ -359,7 +374,7 @@ dialog#account .foot { display: flex; gap: 14px; justify-content: center; margin
       me = null;
       attached = false;
       await handOver({ wipe }, 'api/sync/release');
-      view = { tab: 'login', confirmDelete: false, note: { html: 'Your account and its data have been deleted from the server.' + (wipe ? ' Its progress and profiles were removed from this browser too.' : ' Its progress and profiles stay in this browser for you to use as a guest.') } };
+      view = { tab: 'login', confirmDelete: false, note: { html: 'Your account and its data have been deleted from the server.' + (wipe ? ` Its progress and profiles were removed from ${here()} too.` : ` Its progress and profiles stay in ${here()} for you to use as a guest.`) } };
       render();
     }
   }
@@ -369,6 +384,11 @@ dialog#account .foot { display: flex; gap: 14px; justify-content: center; margin
       const el = e.target.closest('[data-tab],[data-go],[data-act],[data-unlink]');
       if (!el || el.disabled) return;
       if (el.dataset.tab) { view.tab = el.dataset.tab; view.note = null; return renderDialog(); }
+      if (el.dataset.go && app) {
+        el.disabled = true;
+        try { await appSignIn(el.dataset.go, el.dataset.mode); } catch (err) { view.waiting = null; view.note = { bad: true, html: esc(err.message) }; renderDialog(); }
+        return;
+      }
       if (el.dataset.go) {
         const q = new URLSearchParams({ mode: el.dataset.mode });
         if (el.dataset.mode === 'signup') q.set('consent', CONSENT);
@@ -413,10 +433,46 @@ dialog#account .foot { display: flex; gap: 14px; justify-content: center; margin
     if (!o) return;
     q.delete('account');
     history.replaceState(null, '', location.pathname + (q.toString() ? '?' + q : '') + location.hash);
-    if (o === 'signed-in') return say('Logged in. Your puzzle progress will sync.');
+    showOutcome(o);
+  }
+  function showOutcome(o) {
+    if (o === 'signed-in') { if (dlg.open) dlg.close(); return say('Logged in. Your puzzle progress will sync.'); }
     const n = OUTCOMES[o];
     if (n) open({ tab: n.tab || 'login', note: { bad: n.bad, html: n.html } });
   }
+
+  // ---------- the desktop app's sign-in with Lichess or Google ----------
+  // It can't happen in the app's window, so the local server opens it in the system browser, which comes back to the
+  // server once done (chess_review/account.py). Meanwhile the dialog waits, asking account/me how it went.
+  async function appSignIn(provider, mode) {
+    const r = await post(`account/app/login/${provider}`, { mode, consent: CONSENT });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
+    const w = view.waiting = { url: d.url, name: (providers.find(p => p.id === provider) || {}).name || provider };
+    view.note = null;
+    renderDialog();
+    for (let i = 0; i < 450 && view.waiting === w; i++) {         // 15 minutes, as long as the Worker keeps it
+      await sleep(2000);
+      const m = await getJSON('account/me').catch(() => null);
+      if (view.waiting !== w || !m || !m.outcome) continue;
+      view.waiting = null;
+      arrived(m);
+      return;
+    }
+    if (view.waiting === w) { view.waiting = null; renderDialog(); }
+  }
+  // how a sign-in in the browser ended, as account/me tells it once
+  function arrived(m) {
+    const was = me && me.id;
+    me = m.user;
+    render();
+    showOutcome(m.outcome);
+    if (me && me.id !== was) attach().catch(e => { syncError = String(e.message || e); renderDialog(); });
+  }
+  const waitingBody = () =>
+    `<p>Finish signing in with ${esc(view.waiting.name)} in your browser, then come back here.</p>` +
+    `<p class="muted">Nothing opened? <a href="${esc(view.waiting.url)}" target="_blank">Open the sign-in page</a>.</p>` +
+    '<div class="col"><button data-act="stopwait">Cancel</button></div>';
 
   async function start() {
     document.head.appendChild(css);
@@ -429,18 +485,23 @@ dialog#account .foot { display: flex; gap: 14px; justify-content: center; margin
     dlg.id = 'account';
     document.body.appendChild(dlg);
     wire();
+    let d;
     try {
-      const d = await getJSON('account/me');
-      me = d.user;
-      providers = d.providers || [];
-      minPassword = d.min_password || minPassword;
+      d = await getJSON('account/me');
     } catch (e) {
-      btn.classList.add('hidden');      // no account service (the plain static site): nothing to offer
+      btn.classList.add('hidden');      // no account service (the plain static site), or the app offline: nothing to offer
+      if (/HTTP 502/.test(e.message)) window.addEventListener('focus', () => { btn.remove(); dlg.remove(); start(); }, { once: true });
       return;
     }
+    me = d.user;
+    providers = d.providers || [];
+    minPassword = d.min_password || minPassword;
+    app = Boolean(d.app);
+    site = d.site || '';
     render();
     outcome();
-    if (me) attach().catch(e => { syncError = String(e.message || e); console.error('account attach', e); renderDialog(); });
+    if (d.outcome) arrived(d);          // the app: a sign-in finished in the browser while no dialog waited for it
+    else if (me) attach().catch(e => { syncError = String(e.message || e); console.error('account attach', e); renderDialog(); });
     // another tab or browser may have moved on: catch up when this tab comes back into view
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && me) syncSoon(); });
   }
