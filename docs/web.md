@@ -148,6 +148,23 @@ Then:
   still goes to Python, and if its answer differs, the home screen is drawn again (a `hashchange`). Only Python's
   own answers are kept, so no logic is copied into JavaScript. Measured on a reload of the local build: the profiles
   show at 0.2–0.4 s, Python's answer comes at 3.4 s, and a stale copy is replaced as soon as it does.
+  Now also a profile's `games.json`, its `api/profiles/<id>/unseen` and each game's review file under
+  `p/`, all in Cache Storage (`blundr-kept`; games.json is 150 KB a profile): a profile or a review opened by a reload
+  shows at ~0.4 s instead of ~3.6 s. When Python's answer differs, or is gone (a deleted profile), the screen it was
+  asked for is drawn again. Not the puzzles, which change with the date or at random.
+
+Measured on blundr.gr on 2026-10-22, all from cache: Python's first answer at 3.6–4.5 s; DuckDB and pyarrow in at
+9.4–9.7 s, the engine ready from Cache Storage at 8–10 s. Only actions wait for those (Analyse, Refresh games, a
+new profile, a pasted game): showing a profile or a review needs Python alone. Other findings:
+
+- The page's synchronous `XMLHttpRequest` for `api/settings` went past the shim to the network (404). The shim now
+  answers it with "no server copy" (`null`): on the web localStorage is the one store, so nothing is sent to Python.
+- The stale-page check (`HEAD index.html`) got a 307 on blundr.gr and no `Last-Modified`, so it did nothing at the
+  cost of two requests per route change. It now asks for `.` and takes `ETag` as well, and stops asking a server
+  that sends neither.
+- blundr.gr sends HTML without an `ETag` (JS and JSON have one), so the 84 KB page comes again in full at every
+  reload. Likely a Cloudflare zone feature that rewrites HTML (Email Address Obfuscation, Automatic HTTPS Rewrites
+  or the like): with it off, the page is a 304 and the stale-page check works on the web too.
 - **A smaller `app.zip`.** It was 2.5 MB on the critical path of a first visit, mostly the puzzle pack. Now it's
   240 KB: the pack is `puzzles.json` beside it (about 2 MB as sent compressed), which the worker fetches alongside
   Python and writes into `/app`. A request that reaches the pack first raises `PackNotLoaded` (a `NotLoaded`) and
