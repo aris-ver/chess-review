@@ -8,6 +8,8 @@ Only well-liked, well-tested puzzles are kept (Popularity, NbPlays, RatingDeviat
 100-point rating bands so the pack doesn't pile up around 1500. Within a band no single theme may fill more than
 THEME_CAP of the quota, which keeps the generic tags (crushing, advantage, middlegame) from crowding out the rest.
 The sample is seeded, so the same input builds the same pack.
+
+A build tool, not part of the app: it needs pyarrow, which the app itself no longer installs (pip install pyarrow).
 """
 import argparse
 import csv

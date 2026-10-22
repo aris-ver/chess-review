@@ -35,8 +35,8 @@ load takes about 15 s; `book.load` takes 8 s there (3.8 s native), so the book's
 - **The page** is `chess_review/static/index.html`, as the desktop serves it. The web build adds one
   `<script src="web/shim.js">`; the shim wraps `window.fetch` so the page's relative `api/…` and `p/…`
   requests become messages to the Python worker. Everything else (themes, sounds) is a static file.
-- **The Python worker** runs the existing package in Pyodide 314.0.7 (it ships DuckDB 1.5.1 and pyarrow 22;
-  python-chess 1.11.2 has no wheel on PyPI, so the build makes one). It answers requests with `serve.Handler`
+- **The Python worker** runs the existing package in Pyodide 314.0.7 (it ships DuckDB 1.5.1, the one
+  binary package the app uses; python-chess 1.11.2 has no wheel on PyPI, so the build makes one). It answers requests with `serve.Handler`
   itself: a request is fed to `do_GET`/`do_POST` through in-memory `rfile`/`wfile` and the raw HTTP response
   is handed back to the shim. So every route, file under `p/<id>/` and error message is the desktop's own,
   with no JavaScript copy of the logic. On the main thread Pyodide would freeze the page, hence the worker.
@@ -122,7 +122,7 @@ python scripts/build_web.py --serve      # then open http://127.0.0.1:8200/
   archive list), but chess.com answered 404 for the first month to every client that day, curl included,
   so that path is not verified yet.
 
-Load order: Pyodide starts loading the moment the page opens, then DuckDB and pyarrow, then the 99 MB engine, so
+Load order: Pyodide starts loading the moment the page opens, then DuckDB, then the 99 MB engine, so
 none of them share the bandwidth. The page draws at once (the home tiles' covers don't wait for the profile list).
 
 A reload downloads next to nothing (jsDelivr sends a year's `Cache-Control`; the site's files come back as 304s),
@@ -130,16 +130,28 @@ but Pyodide compiles every package's WebAssembly again at each visit. Measured 2
 cache: 12.2 s before the first `api/` answer, of which pyarrow ~3 s, pandas ~3 s (pulled in by pyarrow, never
 imported), DuckDB 1.2 s, numpy 1 s, the runtime 1.8 s. So:
 
-- Python starts without DuckDB and pyarrow. `web/py/chess_web/later.py` puts placeholder modules in their place, so
-  `chess_review` imports as it is; the home screen, the puzzles and the settings answer without them (the puzzle
-  pack ships as `puzzles.json`). A request that reaches them raises `NotLoaded`; the worker waits for
-  the packages and asks again. POSTs other than settings and puzzle results wait for them up front, so none runs
-  twice. For the placeholders, `chess_review` builds its pyarrow schemas on first use and the modules whose
-  signatures name DuckDB or pyarrow types have `from __future__ import annotations`.
-- pyarrow loads by its wheel's URL after its dependencies minus pandas.
+- Python starts without DuckDB. `web/py/chess_web/later.py` puts a placeholder module in its place, so
+  `chess_review` imports as it is; the home screen, the puzzles and the settings answer without it (the puzzle
+  pack ships as `puzzles.json`). A request that reaches it raises `NotLoaded`; the worker waits for
+  the package and asks again. POSTs other than settings and puzzle results wait for it up front, so none runs
+  twice. For the placeholder, the modules whose signatures name DuckDB types have
+  `from __future__ import annotations`.
+- pyarrow is gone (below), so pandas and numpy with it.
 
 Reload of the local build after that: status, profiles and puzzles answer at 3.6 s; DuckDB and pyarrow are in
 at about 8–9 s, when a pasted game or a review goes through.
+
+**No pyarrow** (branch `drop-pyarrow`, 2026-10-22). It only turned query results into dicts and wrote the three
+parquet files. Now `chess_review/db.py` does both with DuckDB: `dicts()` builds rows from `cursor.description` and
+`fetchall()`, and `write_parquet()` writes the rows as one JSON array to a file beside the target and has DuckDB
+`COPY` it to parquet through `read_json` with the schema's columns (binding them as parameters takes minutes). The
+schemas are `(name, SQL type)` tuples (`GAMES_SCHEMA`, `POSITIONS_SCHEMA`, `MOVES_SCHEMA`). Normalising and
+classifying two real profiles with `main` and with the branch gave the same Arrow schemas and the same rows. The
+web heavy stage is `loadPackage('duckdb')` alone: 13 MB less on a first visit (pyarrow 10 MB, numpy 3 MB).
+Reloads of the local build: Python's first answer at 3.4–4.5 s, a POST that waits for DuckDB answered at
+4.7–6.2 s (was 8–9 s locally, 9.4–9.7 s on blundr.gr), so actions are possible about 1.3 s after Python. A pasted
+game reviewed end to end in the browser, labels written. `scripts/build_puzzle_pack.py` still uses pyarrow (to read
+the zstd CSV and write the pack); it is a build tool, not part of the app.
 
 Then:
 
@@ -153,8 +165,8 @@ Then:
   shows at ~0.4 s instead of ~3.6 s. When Python's answer differs, or is gone (a deleted profile), the screen it was
   asked for is drawn again. Not the puzzles, which change with the date or at random.
 
-Measured on blundr.gr on 2026-10-22, all from cache: Python's first answer at 3.6–4.5 s; DuckDB and pyarrow in at
-9.4–9.7 s, the engine ready from Cache Storage at 8–10 s. Only actions wait for those (Analyse, Refresh games, a
+Measured on blundr.gr on 2026-10-22 (before pyarrow was dropped), all from cache: Python's first answer at
+3.6–4.5 s; DuckDB and pyarrow in at 9.4–9.7 s, the engine ready from Cache Storage at 8–10 s. Only actions wait for those (Analyse, Refresh games, a
 new profile, a pasted game): showing a profile or a review needs Python alone. Other findings:
 
 - The page's synchronous `XMLHttpRequest` for `api/settings` went past the shim to the network (404). The shim now

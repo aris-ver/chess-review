@@ -5,6 +5,7 @@ import duckdb
 
 from chess_review import analyse
 from chess_review import own_puzzles as O
+from chess_review.db import dicts
 from chess_review.fen import fen_key
 
 DAY = O.DAY
@@ -189,7 +190,7 @@ def test_extend_searches_only_what_the_lines_wait_on_and_caches_it():
     # the puzzle the pool builds from it: setup, then e5 Nf3 Nc6, then the engine's line after Nc6
     class P:
         id = "x"
-    r = con.execute(O.CANDIDATES_SQL).fetch_arrow_table().to_pylist()[0]
+    r = dicts(con.execute(O.CANDIDATES_SQL))[0]
     walked = O.settle([O._start(r)], lambda keys: O.cached_lines(con, keys))[0]
     p = O._puzzle(P, r, walked)
     assert [m["san"] for m in p["moves"]] == ["e4", "e5", "Nf3", "Nc6"]
@@ -201,7 +202,7 @@ def test_extend_stops_when_asked_and_unsettled_puzzles_stay_one_move():
     con = _candidate_db()
     stats = O.extend(con, lambda keys: None, should_stop=lambda: True)
     assert stats["waiting"] == 1 and stats["searched"] == 0
-    r = con.execute(O.CANDIDATES_SQL).fetch_arrow_table().to_pylist()[0]
+    r = dicts(con.execute(O.CANDIDATES_SQL))[0]
     walked = O.settle([O._start(r)], lambda keys: O.cached_lines(con, keys))[0]
 
     class P:

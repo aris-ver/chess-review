@@ -1,10 +1,10 @@
-"""DuckDB and pyarrow, loaded after the rest: the worker answers before they are in.
+"""DuckDB, loaded after the rest: the worker answers before it is in.
 
-Loading the two in Pyodide takes about 5 s at every visit, cached or not (their WebAssembly is compiled again
-each time), while the home screen, the puzzles and the settings never touch them. So the worker starts Python
-without them, and stand_in() puts a placeholder module in their place before chess_review is imported: its
-`import duckdb` and `import pyarrow.parquet as pq` succeed, and nothing is looked up in them until a request
-uses them. Such a request raises NotLoaded; the worker waits for the packages, calls swap_in() and asks again.
+Loading it in Pyodide takes over a second at every visit, cached or not (its WebAssembly is compiled again each
+time), while the home screen, the puzzles and the settings never touch it. So the worker starts Python without
+it, and stand_in() puts a placeholder module in its place before chess_review is imported: its `import duckdb`
+succeeds, and nothing is looked up in it until a request uses it. Such a request raises NotLoaded; the worker
+waits for the package, calls swap_in() and asks again.
 
 Imports nothing from chess_review, as it has to run before it.
 """
@@ -13,11 +13,11 @@ import importlib
 import sys
 import types
 
-MODULES = ("duckdb", "pyarrow", "pyarrow.parquet")
+MODULES = ("duckdb",)
 
 
 class NotLoaded(BaseException):
-    """A request reached DuckDB or pyarrow before they loaded. Not an Exception, so that serve.Handler's own
+    """A request reached DuckDB before it loaded. Not an Exception, so that serve.Handler's own
     `except Exception` replies let it through to the worker instead of answering 500."""
 
 
@@ -41,7 +41,6 @@ class _Later(types.ModuleType):
 def stand_in() -> None:
     for name in MODULES:
         sys.modules[name] = _Later(name)
-    sys.modules["pyarrow"].parquet = sys.modules["pyarrow.parquet"]    # `import pyarrow.parquet as pq` reads it
 
 
 def swap_in() -> None:

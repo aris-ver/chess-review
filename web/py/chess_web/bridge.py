@@ -59,7 +59,7 @@ def setup(app_dir: str, engines, pack_later: bool = False) -> None:
     # The opening book's positions, worked out by scripts/build_web.py: reading the TSVs takes 8 s in Pyodide.
     keys = frozenset((Path(app_dir) / "book_keys.txt").read_text(encoding="utf-8").split("\n"))
     book.load = lambda: keys
-    # the puzzle pack as JSON, made by the same script: the puzzles then answer before pyarrow has loaded (later.py)
+    # the puzzle pack as JSON, made by the same script: the puzzles then answer before DuckDB has loaded (later.py)
     pack = Path(app_dir) / "puzzles.json"
     if pack.exists() or pack_later:
         def read():

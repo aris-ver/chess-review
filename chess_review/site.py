@@ -28,7 +28,7 @@ from .classify import classify_game, game_fingerprint, load_multipv
 from . import profiles
 from .config import SITE_DIR
 from .critical import select
-from .db import connect
+from .db import connect, dicts
 from .profiles import Profile
 from .facts import extract
 from .pov import pov_win_pct, to_white_pov
@@ -164,13 +164,13 @@ def _cached(path: Path, fp: str) -> Optional[dict]:
 
 
 def game_review(con, profile: Profile, game: dict) -> dict:
-    positions = con.execute(POSITIONS_SQL.format(where="WHERE p.game_id = ?"), [game["game_id"]]).fetch_arrow_table().to_pylist()
+    positions = dicts(con.execute(POSITIONS_SQL.format(where="WHERE p.game_id = ?"), [game["game_id"]]))
     return _review(game, positions, load_multipv(con, game["game_id"]), profile.username)
 
 
 def write_game(con, profile: Profile, game_id: str) -> dict:
     """Rebuild one game's JSON (used by the server during on-demand analysis). Returns the index entry."""
-    game = con.execute("SELECT * FROM games WHERE game_id = ?", [game_id]).fetch_arrow_table().to_pylist()[0]
+    game = dicts(con.execute("SELECT * FROM games WHERE game_id = ?", [game_id]))[0]
     review = game_review(con, profile, game)
     (profile.site_dir / "games").mkdir(parents=True, exist_ok=True)
     (profile.site_dir / "games" / f"{review['id']}.json").write_text(json.dumps(review, ensure_ascii=False), encoding="utf-8")
@@ -227,8 +227,8 @@ def sync_tree(src: Path, dst: Path) -> None:
 def build(profile: Profile) -> dict:
     """Every game's review JSON + the index for one profile; also refreshes the shared index.html."""
     con = connect(profile)
-    games = con.execute("SELECT * FROM games ORDER BY played_at DESC").fetch_arrow_table().to_pylist()
-    positions = con.execute(POSITIONS_SQL.format(where="")).fetch_arrow_table().to_pylist()
+    games = dicts(con.execute("SELECT * FROM games ORDER BY played_at DESC"))
+    positions = dicts(con.execute(POSITIONS_SQL.format(where="")))
     multipv = load_multipv(con)
     pos_g: dict[str, list[dict]] = {}
     for r in positions:

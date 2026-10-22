@@ -14,7 +14,7 @@ import chess
 
 from .accuracy import game_accuracy
 from . import profiles
-from .db import connect
+from .db import connect, dicts
 from .profiles import Profile
 from .pov import pov_win_pct
 
@@ -34,7 +34,7 @@ def _order(buckets) -> str:
 
 def game_accuracies(con) -> dict[str, float]:
     """game_id -> my game accuracy (lichess aggregation), same number the review pages show."""
-    rows = con.execute("SELECT m.*, g.my_colour FROM moves m JOIN games g USING (game_id) ORDER BY game_id, ply").fetch_arrow_table().to_pylist()
+    rows = dicts(con.execute("SELECT m.*, g.my_colour FROM moves m JOIN games g USING (game_id) ORDER BY game_id, ply"))
     by: dict[str, list[dict]] = {}
     for r in rows:
         by.setdefault(r["game_id"], []).append(r)
