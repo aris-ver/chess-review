@@ -3,12 +3,16 @@
 // desktop's own serve.Handler. Everything else (themes, sounds) is a static file and goes to the network.
 (() => {
   const base = new URL('.', location.href).pathname;
-  const worker = new Worker('web/py-worker.js', { type: 'module' });
+  // Phones and tablets get the lite engine (web/py-worker.js says why). Every iOS browser is WebKit, the home-screen
+  // app too, so this is the device, not the browser; iPadOS says it is a Mac, its touch screen gives it away.
+  const nav = window.navigator || {};
+  const lite = /iPhone|iPad|iPod|Android|Mobi/.test(nav.userAgent || '') || (nav.platform === 'MacIntel' && nav.maxTouchPoints > 1);
+  const worker = new Worker('web/py-worker.js' + (lite ? '?lite' : ''), { type: 'module' });
   const pending = new Map();
   let seq = 0;
   const realFetch = window.fetch.bind(window);
 
-  // The notice bar: Python loading first (the page waits for it), then the 99 MB engine with a progress bar, and the
+  // The notice bar: Python loading first (the page waits for it), then the engine (95 MB, 2 MB on phones) with a progress bar, and the
   // note that the desktop app analyses faster. The note stays up while a game is being analysed or waits to be.
   // Its × closes the bar for this visit and drops the note (and the lit button) for good: later visits still show
   // the loading lines, as those say why the page isn't answering yet.
