@@ -9,7 +9,7 @@ const CR_CONFIG = self.CR_CONFIG;
 const progress = (what, done, total, text) => postMessage({ type: 'progress', what, done, total, text });
 
 // What the browser keeps between visits: DATA (profiles, reviews, the eval cache, puzzle progress) on IndexedDB.
-let py, bridge, persisting = null, again = false;
+let py, bridge, later, persisting = null, again = false;
 function persist() {      // debounced: a batch of evals may call it several times a second
   if (persisting) { again = true; return; }
   persisting = new Promise(res => setTimeout(() => py.FS.syncfs(false, err => {
@@ -34,8 +34,8 @@ const ready = (async () => {
   progress('python', 0, 3, 'Loading Python');
   const { loadPyodide } = await import(CR_CONFIG.pyodide + 'pyodide.mjs');
   py = await loadPyodide({ indexURL: CR_CONFIG.pyodide });
-  progress('python', 1, 3, 'Loading DuckDB and python-chess');
-  await py.loadPackage(['duckdb', 'pyarrow', 'requests', new URL(CR_CONFIG.chessWheel, location.href).href]);
+  progress('python', 1, 3, 'Loading python-chess');
+  await py.loadPackage(['requests', new URL(CR_CONFIG.chessWheel, location.href).href]);
   progress('python', 2, 3, 'Loading chess-review');
   py.FS.mkdirTree('/data');
   py.FS.mount(py.FS.filesystems.IDBFS, {}, '/data');
@@ -49,20 +49,46 @@ os.environ["CHESS_REVIEW_DATA"] = "/data"
 sys.path.insert(0, "/app")
 logging.basicConfig(level=logging.INFO, format="%(name)s %(message)s")
 `);
+  later = py.pyimport('chess_web.later');
+  later.stand_in();
   bridge = py.pyimport('chess_web.bridge');
   bridge.setup('/app', engines);
   progress('python', 3, 3, `Ready in ${((performance.now() - t0) / 1000).toFixed(1)} s`);
 })();
 ready.catch(e => { console.error(e); progress('python', 0, 0, 'Python failed to load: ' + e); });
-// The 99 MB engine only once Python is up: downloading both at once halves the bandwidth Python gets, and the page
-// answers nothing (puzzles included) until Python is ready, while the engine is wanted only for a review.
-ready.catch(() => {}).then(() => engines.load()).catch(e => console.error('engine failed to load', e));
+// DuckDB and pyarrow straight after. pyarrow by its wheel's URL, after its dependencies minus pandas: by name,
+// loadPackage would add pandas too (another 3 s), which nothing here imports.
+const heavy = ready.then(async () => {
+  const t0 = performance.now();
+  const lock = await (await fetch(CR_CONFIG.pyodide + 'pyodide-lock.json')).json();
+  const pyarrow = lock.packages.pyarrow;
+  await py.loadPackage(['duckdb', ...pyarrow.depends.filter(d => d !== 'pandas')]);
+  await py.loadPackage(CR_CONFIG.pyodide + pyarrow.file_name);
+  later.swap_in();
+  console.info(`DuckDB and pyarrow in ${((performance.now() - t0) / 1000).toFixed(1)} s`);
+});
+heavy.catch(e => console.error('DuckDB and pyarrow failed to load', e));
+// The 99 MB engine only once those are in: downloading at once halves the bandwidth each gets, and the engine is
+// wanted only for a review, which needs DuckDB as well.
+heavy.catch(() => {}).then(() => engines.load()).catch(e => console.error('engine failed to load', e));
+
+// The POSTs that never reach DuckDB or pyarrow. The others wait for them, so that none stops halfway (NotLoaded) and
+// then runs again. A GET runs at once, and once more after they have loaded if it reached them.
+const WITHOUT_HEAVY = /^\/api\/(settings|puzzles\/(attempt|solved|daily))$/;
 
 onmessage = async e => {
   const { id, method, path, body, contentType } = e.data;
   try {
     await ready;
-    const out = bridge.handle_js(method, path, body || null, contentType || null);
+    if (method !== 'GET' && !WITHOUT_HEAVY.test(path.split('?')[0])) await heavy;
+    let out;
+    try {
+      out = bridge.handle_js(method, path, body || null, contentType || null);
+    } catch (err) {
+      if (err.type !== 'NotLoaded') throw err;
+      await heavy;
+      out = bridge.handle_js(method, path, body || null, contentType || null);
+    }
     const [status, headers, payload] = out.toJs();
     out.destroy();
     postMessage({ type: 'response', id, status, headers, body: payload }, [payload.buffer]);

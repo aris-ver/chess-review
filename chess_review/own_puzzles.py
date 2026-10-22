@@ -18,6 +18,8 @@ finding it; a miss at any point starts it over. Solved first time, or found at t
 and stays away. Starting the schedule over (reset()) archives that file, and every puzzle is new again.
 """
 
+from __future__ import annotations
+
 import hashlib
 import json
 import logging
