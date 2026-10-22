@@ -21,12 +21,17 @@ function persist() {      // debounced: a batch of evals may call it several tim
 }
 self.crPersist = persist;
 
+// Phones (?lite, web/shim.js decides): the 95 MB engine compiled once per core is more memory than iOS gives a tab, which
+// it then kills and reloads, over and over. One lite engine (2 MB, a smaller net: evals differ a little from the full
+// engine's) with a small hash instead. Evals never leave the browser, so the two engines' never mix.
+const LITE = new URLSearchParams(location.search).has('lite');
+const engineName = (CR_CONFIG.engineName || 'Stockfish') + (LITE ? ' lite' : '');
 const engines = new EnginePool({
-  size: physicalCores(),
-  script: 'engine/stockfish-19-single.js',
-  wasmUrl: CR_CONFIG.engineWasm,
-  wasmBytes: CR_CONFIG.engineBytes,
-  onProgress: (done, total) => progress('engine', done, total, CR_CONFIG.engineName || 'Stockfish'),
+  ...(LITE ? { size: 1, hash: 16, script: 'engine/stockfish-19-lite-single.js',
+               wasmUrl: CR_CONFIG.engineLiteWasm || 'engine/stockfish-19-lite-single.wasm', wasmBytes: CR_CONFIG.engineLiteBytes || 0 }
+           : { size: physicalCores(), script: 'engine/stockfish-19-single.js',
+               wasmUrl: CR_CONFIG.engineWasm, wasmBytes: CR_CONFIG.engineBytes }),
+  onProgress: (done, total) => progress('engine', done, total, engineName),
 });
 
 const ready = (async () => {
