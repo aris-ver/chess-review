@@ -98,7 +98,7 @@ LATER = r"""
 import json, sys
 sys.path[:0] = [ROOT, ROOT + "/web/py"]
 from chess_web import later
-later.stand_in()        # as the worker does: DuckDB and pyarrow still loading
+later.stand_in()        # as the worker does: DuckDB still loading
 from chess_web import bridge
 
 class Pool:
@@ -127,7 +127,8 @@ out["solved"] = call("POST", "/api/puzzles/solved", {"id": pid})[0]
 out["post settings"] = call("POST", "/api/settings", {"theme": "x"})[0]
 pgn = '[White "a"]\n[Black "b"]\n[Result "1-0"]\n\n1. e4 e5 2. Bc4 Nc6 3. Qh5 Nf6 4. Qxf7# 1-0\n'
 out["pgn before"] = call("POST", "/api/pgn", {"pgn": pgn})
-out["pyarrow imported"] = "pyarrow.lib" in sys.modules or "duckdb.duckdb" in sys.modules
+out["duckdb imported"] = "duckdb.duckdb" in sys.modules
+out["pyarrow imported"] = "pyarrow" in sys.modules
 later.swap_in()
 status, d = call("POST", "/api/pgn", {"pgn": pgn})
 out["pgn after"] = [status, len(d["games"])]
@@ -137,10 +138,10 @@ print("RESULT" + json.dumps(out))
 """
 
 
-def test_light_routes_answer_before_duckdb_and_pyarrow(tmp_path):
-    """The worker starts Python with placeholders for DuckDB and pyarrow (web/py/chess_web/later.py): the home screen,
-    the puzzles and the settings answer from the pack's JSON, and a request that needs the two raises NotLoaded
-    until they are swapped in, then works."""
+def test_light_routes_answer_before_duckdb(tmp_path):
+    """The worker starts Python with a placeholder for DuckDB (web/py/chess_web/later.py): the home screen, the
+    puzzles and the settings answer from the pack's JSON, and a request that needs DuckDB raises NotLoaded until
+    it is swapped in, then works. Nothing imports pyarrow at all."""
     from chess_review import puzzles
     app = tmp_path / "app"
     app.mkdir()
@@ -156,6 +157,7 @@ def test_light_routes_answer_before_duckdb_and_pyarrow(tmp_path):
     assert out["attempt"] == out["solved"] == out["post settings"] == 200
     assert out["pack before"] == "PackNotLoaded" and out["profiles before pack"] == 200
     assert out["pgn before"][0] == "NotLoaded"
-    assert out["pyarrow imported"] is False
+    assert out["duckdb imported"] is False
     assert out["pgn after"] == [200, 1]
     assert out["swapped"] == "module"
+    assert out["pyarrow imported"] is False

@@ -9,7 +9,7 @@ web-dist/
   themes/               the page's pieces, boards and sounds
   app.zip               chess_review (minus static/, sound_packs/ and the puzzle pack's parquet) + web/py/chess_web
                         + book_keys.txt, unpacked into Pyodide (240 KB)
-  puzzles.json          the same puzzle pack, readable before pyarrow has loaded; fetched alongside Python
+  puzzles.json          the same puzzle pack, readable before DuckDB has loaded; fetched alongside Python
   web/                  shim.js, py-worker.js, engines.js, config.js, the python-chess wheel, engine/ (Stockfish 19)
 
 Downloads (cached in data/web-cache): python-chess's wheel (PyPI has only its sdist) and npm stockfish@19.0.1.

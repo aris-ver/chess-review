@@ -61,24 +61,20 @@ ready.catch(e => { console.error(e); progress('python', 0, 0, 'Python failed to 
 const packFile = fetch('../puzzles.json').then(r => { if (!r.ok) throw new Error('puzzles.json: HTTP ' + r.status); return r.arrayBuffer(); });
 const pack = Promise.all([ready, packFile]).then(([, buf]) => py.FS.writeFile('/app/puzzles.json', new Uint8Array(buf)));
 pack.catch(e => console.error('puzzle pack failed to load', e));
-// DuckDB and pyarrow straight after. pyarrow by its wheel's URL, after its dependencies minus pandas: by name,
-// loadPackage would add pandas too (another 3 s), which nothing here imports.
+// DuckDB straight after.
 const heavy = ready.then(async () => {
   const t0 = performance.now();
-  const lock = await (await fetch(CR_CONFIG.pyodide + 'pyodide-lock.json')).json();
-  const pyarrow = lock.packages.pyarrow;
-  await py.loadPackage(['duckdb', ...pyarrow.depends.filter(d => d !== 'pandas')]);
-  await py.loadPackage(CR_CONFIG.pyodide + pyarrow.file_name);
+  await py.loadPackage('duckdb');
   later.swap_in();
-  console.info(`DuckDB and pyarrow in ${((performance.now() - t0) / 1000).toFixed(1)} s`);
+  console.info(`DuckDB in ${((performance.now() - t0) / 1000).toFixed(1)} s`);
 });
-heavy.catch(e => console.error('DuckDB and pyarrow failed to load', e));
-// The 99 MB engine only once those are in: downloading at once halves the bandwidth each gets, and the engine is
+heavy.catch(e => console.error('DuckDB failed to load', e));
+// The 99 MB engine only once it is in: downloading at once halves the bandwidth each gets, and the engine is
 // wanted only for a review, which needs DuckDB as well.
 heavy.catch(() => {}).then(() => engines.load()).catch(e => console.error('engine failed to load', e));
 
-// The POSTs that never reach DuckDB or pyarrow. The others wait for them, so that none stops halfway (NotLoaded) and
-// then runs again. A GET runs at once, and once more after they have loaded if it reached them.
+// The POSTs that never reach DuckDB. The others wait for it, so that none stops halfway (NotLoaded) and then runs
+// again. A GET runs at once, and once more after it has loaded if it reached it.
 const WITHOUT_HEAVY = /^\/api\/(settings|puzzles\/(attempt|solved|daily))$/;
 
 onmessage = async e => {
