@@ -282,12 +282,12 @@ dialog#whatsnew .rel h3 span { font-size: 12px; font-weight: 400; color: var(--m
 .lines .depth { margin-left: auto; color: var(--muted); font-size: 11px; flex-shrink: 0; }
 body.sandbox .lines { display: block; }
 /* sandbox review: hide the game-specific chrome that doesn't apply to a free position */
-body.sandbox .ptabs, body.sandbox .overview, body.sandbox .stepchip, body.sandbox svg.graph, body.sandbox .pfoot, body.sandbox #b-explain, body.sandbox #b-nextm, body.sandbox #b-key { display: none !important; }
+body.sandbox .ptabs, body.sandbox .overview, body.sandbox .stepchip, body.sandbox svg.graph, body.sandbox #a-insights2, body.sandbox #b-explain, body.sandbox #b-nextm { display: none !important; }
 body.sandbox .actions { padding-bottom: 10px; }
 /* puzzles: the review board with the puzzle box in place of the game's panels */
 .pzbox { display: none; padding: 4px 12px 12px; }
 body.puzzle .pzbox { display: block; }
-body.puzzle .ptabs, body.puzzle .overview, body.puzzle .stepchip, body.puzzle svg.graph, body.puzzle .pfoot, body.puzzle .actions, body.puzzle .lines, body.puzzle #aprog { display: none !important; }
+body.puzzle .ptabs, body.puzzle .overview, body.puzzle .stepchip, body.puzzle svg.graph, body.puzzle #a-insights2, body.puzzle .actions, body.puzzle .lines, body.puzzle #aprog { display: none !important; }
 body.puzzle .evalbar { visibility: hidden; }
 .pzhead { display: flex; align-items: baseline; gap: 10px; padding: 6px 2px 10px; }
 .pzhead .r { font-size: 26px; font-weight: 800; font-variant-numeric: tabular-nums; }
@@ -360,7 +360,6 @@ table.games button.an { padding: 3px 9px; font-size: 12px; font-weight: 600; whi
   .bubble::before { display: none; }
   .actions { padding: 4px 8px 8px; }
   .actions button { padding: 8px 4px; }
-  .pfoot { flex-wrap: wrap; }
   /* home: one column, full-width form controls, 16px fields so iOS doesn't zoom in on focus */
   .home { margin-top: 6px; }
   .home h2 { margin: 18px 0 8px; }
@@ -471,14 +470,14 @@ svg.board.playable use.piece.own { cursor: grab; }
 .ginfo { text-align: center; color: var(--muted); font-size: 12px; padding: 4px 10px 0; }
 .pbtn { background: transparent; border: 0; color: var(--muted); font-size: 18px; padding: 4px 8px; border-radius: 6px; cursor: pointer; }
 .pbtn:hover { background: var(--panel2); color: var(--text); }
-.coach { display: flex; gap: 10px; padding: 12px 12px 6px; align-items: flex-start; }
-.coach .avatar { width: 44px; height: 44px; border-radius: 8px; background: var(--panel2); display: flex; align-items: center; justify-content: center; font-size: 28px; flex-shrink: 0; }
-.bubble { flex: 1; background: #fff; color: #1b1b1b; border-radius: 10px; padding: 10px 12px; position: relative; min-height: 44px; }
-.bubble::before { content: ""; position: absolute; left: -8px; top: 16px; border: 8px solid transparent; border-right-color: #fff; border-left: 0; }
+.coach { display: flex; gap: 8px; padding: 8px 10px 4px; align-items: flex-start; }
+.coach .avatar { width: 34px; height: 34px; border-radius: 8px; background: var(--panel2); display: flex; align-items: center; justify-content: center; font-size: 22px; flex-shrink: 0; }
+.bubble { flex: 1; background: #fff; color: #1b1b1b; border-radius: 10px; padding: 6px 10px; position: relative; min-height: 34px; }
+.bubble::before { content: ""; position: absolute; left: -8px; top: 10px; border: 8px solid transparent; border-right-color: #fff; border-left: 0; }
 .bubble .top { display: flex; align-items: center; gap: 8px; }
 .bubble .verdict { flex: 1; font-weight: 600; }
 .bubble .evbox { background: #ececec; border-radius: 4px; padding: 2px 8px; font-weight: 700; font-variant-numeric: tabular-nums; }
-.bubble p { margin: 6px 0 0; font-size: 13px; color: #333; }
+.bubble p { margin: 4px 0 0; font-size: 13px; color: #333; }
 .bubble .var { font-size: 11px; color: var(--c-great); border: 1px solid var(--c-great); border-radius: 3px; padding: 0 5px; }
 .bubble .unanalysed { color: #777; }
 .bubble.loading .top { align-items: center; }
@@ -488,8 +487,8 @@ svg.board.playable use.piece.own { cursor: grab; }
 .skel.dot { width: 20px; height: 20px; border-radius: 50%; }
 .skel.w1 { width: 34%; height: 14px; } .skel.w2 { width: 22%; height: 14px; margin-left: auto; }
 .skel.line { width: 100%; margin-top: 8px; } .skel.short { width: 55%; margin-top: 8px; }
-.actions { display: flex; gap: 8px; padding: 6px 12px 10px; }
-.actions button { flex: 1; padding: 9px 6px; font-weight: 600; background: var(--panel2); }
+.actions { display: flex; gap: 8px; padding: 4px 10px 8px; }
+.actions button { flex: 1; padding: 7px 6px; font-weight: 600; background: var(--panel2); }
 .actions button.active { background: var(--accent); color: #1b1b1b; }
 /* panel tabs: the game's overview, or its moves. No tab chosen (sandbox, puzzles) shows the moves. */
 .ptabs { display: flex; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
@@ -506,13 +505,13 @@ body.sandbox #movelist, body.puzzle #movelist { display: grid !important; }
 .ovlive .bar > div { height: 100%; background: var(--accent); transition: width .4s; }
 .ovopen { padding: 10px 14px 0; color: var(--muted); } .ovopen b { color: var(--text); } .ovopen a { color: var(--accent); }
 .ovnote { padding: 4px 14px; color: var(--muted); }
-.ovstart { display: block; width: calc(100% - 28px); margin: 14px 14px 2px; padding: 10px; font-weight: 700; }
+/* Start review: pinned to the bottom of the overview, so it shows however far down the panel is scrolled */
+.ovfoot { position: sticky; bottom: 0; z-index: 2; margin-top: 8px; padding: 10px 14px; background: var(--panel); }
+.ovfoot .ovstart { display: block; width: 100%; padding: 13px; font-size: 16px; font-weight: 700; }
 /* stepping through one label's moves (a count clicked in the overview), pinned over the move list */
 .stepchip { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; gap: 6px; padding: 6px 10px; background: var(--panel2); border-bottom: 1px solid var(--line); }
 .stepchip .pos { margin-left: auto; color: var(--muted); font-variant-numeric: tabular-nums; }
 .stepchip button { padding: 2px 9px; }
-.pfoot { display: flex; gap: 8px; align-items: center; padding: 8px 12px; border-top: 1px solid var(--line); }
-.pfoot #astatus { flex: 1; color: var(--muted); font-size: 12px; }
 .panel .nav { padding: 8px 10px 4px; }
 .panel .nav button { flex: 1; }
 .cap { display: inline-flex; align-items: center; gap: 4px; margin-left: 4px; }
@@ -525,7 +524,7 @@ body.sandbox #movelist, body.puzzle #movelist { display: grid !important; }
 .cap .diff { margin-left: 2px; color: var(--muted); font-size: 12px; }
 .panel .body { overflow: auto; flex: 1; position: relative; }
 .panel > :not(.body) { flex-shrink: 0; }
-svg.graph { width: 100%; height: 90px; display: block; cursor: pointer; background: #3a3733; flex-shrink: 0; }
+svg.graph { width: 100%; height: 52px; display: block; cursor: pointer; background: #3a3733; flex-shrink: 0; }
 /* summary: label | white | icon | black, like chess.com's review card */
 .summary { padding: 6px 14px 12px; font-variant-numeric: tabular-nums; }
 .summary .row { display: grid; grid-template-columns: 96px 72px 48px 72px; justify-content: center; align-items: center; padding: 5px 0; }
@@ -569,6 +568,11 @@ svg.graph { width: 100%; height: 90px; display: block; cursor: pointer; backgrou
 .m.pending .san { color: var(--muted); opacity: .7; }
 .m.pending .pend { width: 10px; height: 10px; margin: 0 2px; border-radius: 50%; border: 1.5px dashed #6a6764; flex: none; }
 .bubble .livehint { color: #777; font-size: 12px; }
+/* the board following the analysis on its own: the coach only shows it is busy, so nothing in the panel moves */
+.bubble .dots { display: flex; gap: 5px; align-items: center; height: 22px; }
+.bubble .dots span { width: 7px; height: 7px; border-radius: 50%; background: #9a9a9a; animation: dots 1.2s infinite ease-in-out; }
+.bubble .dots span:nth-child(2) { animation-delay: .2s; } .bubble .dots span:nth-child(3) { animation-delay: .4s; }
+@keyframes dots { 0%, 80%, 100% { opacity: .3; } 40% { opacity: 1; } }
 .bubble .livehint a { color: #5d8a2e; font-weight: 600; }
 .empty { padding: 30px; text-align: center; color: var(--muted); }
 
@@ -765,7 +769,7 @@ svg.graph { width: 100%; height: 90px; display: block; cursor: pointer; backgrou
       <div class="panel">
         <div class="phead">
           <span class="ptitle"><svg class="ico"><use href="#ic-best"/></svg> <span id="ptitle-t">Game Review</span></span>
-          <span class="pright"><button class="pbtn" id="b-flip" title="Flip (f)">⇅</button></span>
+          <span class="pright"><a href="#" class="pbtn" id="a-insights2" title="Insights">📊</a><button class="pbtn" id="b-flip" title="Flip (f)">⇅</button></span>
         </div>
         <div class="ginfo" id="ginfo"></div>
         <div class="coach"><div class="avatar">♞</div><div class="bubble" id="now"></div></div>
@@ -792,12 +796,6 @@ svg.graph { width: 100%; height: 90px; display: block; cursor: pointer; backgrou
           <button id="b-play" title="Autoplay (p)"><svg viewBox="0 0 24 24"><path class="i-play" d="M8 5v14l11-7z"/><path class="i-pause" d="M7 5h4v14H7zM13 5h4v14h-4z"/></svg></button>
           <button id="b-next" title="Next (→)"><svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
           <button id="b-last" title="End (End)"><svg viewBox="0 0 24 24"><path d="M16 5h2v14h-2zM6 6v12l9-6z"/></svg></button>
-        </div>
-        <div class="pfoot">
-          <button class="primary" id="b-analyse">Analyse game</button>
-          <span id="astatus"></span>
-          <button id="b-key" title="Next key moment (space)">Key ▸</button>
-          <a href="#" class="pbtn" id="a-insights2" title="Insights">📊</a>
         </div>
         <div class="progress hidden" id="aprog"><div style="width:0%"></div></div>
       </div>
@@ -920,6 +918,7 @@ const state = { profile: null, games: null, username: '', filters: { result:'', 
                 sound: true, poll: null,
                 variation: null,      // { basePly, moves: [...] } - a "what if" line branching after basePly main-line moves
                 sel: null, legal: null, exploring: false, step: null, tab: null, playing: null, explain: false, showBest: false,
+                quiet: false,         // the board follows the analysis on its own (not the user's Play): no explanations
                 livePlayed: new Set() };   // games whose analysis autoplay has followed on its own once
 try { state.sound = localStorage.getItem('sound') !== 'off'; } catch (e) {}
 state.volume = 90;   // 0-100, the slider under the speaker button
@@ -1172,7 +1171,7 @@ function ratingsHTML(ratings) {
 }
 // which engine answers on-demand questions, and how deep: shown next to every result
 state.engine = null;
-(async () => { try { const d = await (await fetch('api/engine')).json(); if (!d.error) { state.engine = d; if (state.game) { renderAnalyseBox(); renderLines(); renderNow(); } } } catch (e) {} })();
+(async () => { try { const d = await (await fetch('api/engine')).json(); if (!d.error) { state.engine = d; if (state.game) { renderLines(); renderNow(); } } } catch (e) {} })();
 // updates (desktop build only): one check per launch, the banner on the home screen does the rest
 state.update = null;
 const fmtMB = b => b ? `${(b / 1048576).toFixed(b < 10485760 ? 1 : 0)} MB` : '';
@@ -2708,8 +2707,7 @@ async function showGame(id) {
   $('ginfo').innerHTML = `${fmtDate(g.played_at)} · ${g.time_class} ${g.time_control || ''} · ${esc(g.termination || '')}` +
     (g.url.startsWith('http') ? ` · <a href="${g.url}" target="_blank" style="color:var(--accent)">${new URL(g.url).hostname.replace(/^www\./, '')} ↗</a>` : '');
   renderOverview(); renderMoveList(); renderGraph(); renderAnalyseBox();
-  if (!same && !back) setTab(g.analysed >= 0.999 || gameJob(g.id) ? 'overview' : 'moves');   // an unanalysed game has only its moves to show
-  else if (!state.tab) setTab('overview');
+  if ((!same && !back) || !state.tab) setTab('overview');   // a review opens on its overview, with Start review at hand
   update(false);
   if (!same && !back) play('start');
   pollStatus();
@@ -2738,7 +2736,6 @@ function renderNav() {
   const n = line().length;
   $('b-first').disabled = $('b-prev').disabled = state.ply === 0;
   $('b-next').disabled = $('b-last').disabled = state.ply >= n;
-  $('b-key').disabled = !state.game.key_moments.length;
   $('b-play').disabled = n === 0;
   $('b-play').classList.toggle('playing', !!state.playing);
   $('b-play').title = state.playing ? 'Stop (p)' : liveFrontier() != null ? 'Follow the analysis (p)' : 'Autoplay (p)';
@@ -2767,7 +2764,7 @@ function syncLive() {
   const g = state.game, key = g && liveFrontier() != null ? g.id : null;
   if (key === liveShown) return;
   liveShown = key;
-  if (g && key) setTab('overview');      // the analysis starts: the overview fills in while the moves come
+  if (g && key) setTab('moves');      // the analysis starts: the moves play out as they come
   if (g) { patchMoveList(); renderOverview(); renderGraph(); renderNow(); renderNav(); }
 }
 // The analysis's pace. Its engines search side by side and finish together, so moves come ready in batches (one per
@@ -2791,6 +2788,8 @@ function notePace() {
 // same pace. With more in hand than a batch (fallen behind, Play pressed back in the game) it goes quicker in
 // proportion, down to a slide apart (FOLLOW_MS, just over the pieces' .18 s slide). Otherwise it is the plain
 // autoplay, a move every PLAY_MS. Navigating by hand (go() without `auto`, a click on the board) stops either.
+// quiet: the board follows on its own (Start review, or a game opened while it is analysed), and the coach leaves out
+// the explanations, whose height would make the panel jump at each move; the user's Play brings them back.
 const PLAY_MS = 1500, FOLLOW_MS = 200, FOLLOW_FIRST_MS = 600, FOLLOW_MAX_MS = 3000, FOLLOW_WAIT_MS = 100;
 function followDelay(ahead) {     // ahead: the ready moves still to show
   const known = pace.gid === state.game.id;
@@ -2798,9 +2797,10 @@ function followDelay(ahead) {     // ahead: the ready moves still to show
   return Math.max(FOLLOW_MS, Math.min(FOLLOW_MAX_MS, pace.ms * Math.min(1, pace.batch / ahead)));
 }
 function togglePlay() { if (state.playing) stopPlay(); else startPlay(); }
-function startPlay() {
+function startPlay(quiet = false) {
   stopPlay();
   const follow = liveFrontier() != null && !state.variation;
+  state.quiet = quiet && follow;
   if (!follow && state.ply >= line().length) go(0, true);
   if (follow && state.ply > liveFrontier()) go(liveFrontier(), true);   // ahead of the analysis: back to where it is
   const step = () => {
@@ -2823,37 +2823,21 @@ function startPlay() {
 function stopPlay() {
   const was = state.playing;
   if (was) clearTimeout(was);
-  state.playing = null;
+  state.playing = null; state.quiet = false;
   if (state.game) { renderNav(); if (was) renderNow(); }
 }
 
 // ---------- analyse / refresh ----------
+// Under the panel, a thin bar while the game on screen is analysed: its own analysis, a batch or a puzzle build that
+// has got to it. The overview's Start review is the one button; it starts the analysis.
 function renderAnalyseBox(job) {
-  const g = state.game;
-  const btn = $('b-analyse'), st = $('astatus'), prog = $('aprog');
-  const active = job && ACTIVE(job.status);
-  if (active) {
-    // this game's own analysis, a batch or a puzzle build that has got to it, or one waiting its turn
-    const [done, total] = jobProgress(job), queued = job.status === 'queued', cur = state.status && state.status.job;
-    btn.disabled = true; btn.classList.add('primary');
-    btn.textContent = queued ? 'Queued…' : job.status === 'finishing' ? 'Finishing…' : 'Analysing…';
-    const pct = total ? Math.round(100 * done / total) : 0;
-    const why = job.kind === 'build' ? ' · for the puzzles from these games' : job.kind === 'analyse_all' ? ' · with the other games' : ` · ${Math.round(job.elapsed)}s`;
-    st.textContent = queued ? (cur && cur.id !== job.id && ACTIVE(cur.status) ? `Next, once it's done ${jobText(cur)}` : 'starting engines…')
-      : total ? `${done}/${total} positions · ${pct}%${why}` : 'starting engines…';
-    prog.classList.remove('hidden');
-    prog.firstElementChild.style.width = pct + '%';
-    return;
-  }
-  prog.classList.add('hidden');
-  if (g.analysed >= 0.999) { btn.textContent = 'Analysed ✓'; btn.disabled = true; btn.classList.remove('primary'); st.textContent = `${g.moves.length} moves · ${engineName()}${state.engine ? ` · ${fmtNodes(state.engine.nodes)}/position` : ''} · MultiPV ${state.engine ? state.engine.multipv : 3}`; }
-  else {
-    // a partial figure here is the shared engine cache (openings seen in other games), not a run that stopped
-    btn.textContent = 'Analyse game'; btn.disabled = false; btn.classList.add('primary');
-    st.textContent = g.analysed > 0 ? `Not analysed yet · ${Math.round(g.analysed * 100)}% of positions already in the engine cache` : 'Not analysed yet';
-  }
+  const prog = $('aprog'), active = job && ACTIVE(job.status);
+  prog.classList.toggle('hidden', !active);
+  if (!active) return;
+  const [done, total] = jobProgress(job);
+  prog.firstElementChild.style.width = (total ? Math.round(100 * done / total) : 0) + '%';
 }
-$('b-analyse').onclick = async () => {
+async function startReview() {
   const r = await fetch(`api/${P()}/analyse/${state.game.id}`, { method: 'POST' });
   const d = await r.json();
   if (!r.ok) { toast(d.error === 'busy' ? `Busy: ${jobText(d.job)}` : d.error); return; }
@@ -2863,9 +2847,9 @@ $('b-analyse').onclick = async () => {
   state.livePlayed.add(state.game.id);
   syncLive();
   if (state.ply >= line().length) go(0, true);
-  startPlay();
+  startPlay(true);
   pollStatus();
-};
+}
 $('b-refresh').onclick = async () => {
   const r = await fetch(`api/${P()}/refresh`, { method: 'POST' });
   const d = await r.json();
@@ -2932,7 +2916,7 @@ async function pollStatus() {
       if (gj) {
         if (!gameWatch || gameWatch.id !== gj.id || gameWatch.slug !== g.id) gameWatch = { id: gj.id, slug: g.id, at: -1 };
         // a game opened at its start while its analysis runs (started from the list, say): play along, once
-        if (!state.livePlayed.has(g.id) && state.ply === 0 && !state.variation) { state.livePlayed.add(g.id); startPlay(); }
+        if (!state.livePlayed.has(g.id) && state.ply === 0 && !state.variation) { state.livePlayed.add(g.id); startPlay(true); }
         const [done] = jobProgress(gj);
         if (gj.status !== 'queued' && done !== gameWatch.at) { gameWatch.at = done; await reloadGame(); }
         renderAnalyseBox(gj);
@@ -3546,18 +3530,18 @@ function renderNow() {
       `<p>${top ? `${esc(engineName(sandboxEval[currentFen()]))} likes <b style="color:var(--text)">${esc(top.san)}</b> here (depth ${top.depth ?? '?'}, still searching). ` : `${esc(engineName())} is evaluating… `}Drag a piece to explore — nothing here is saved.</p>`;
     return;
   }
+  // the board following the analysis on its own: three dots, and the explanations wait for the user's hand or Play
+  if (state.quiet && !inVariation()) { el.innerHTML = '<div class="dots" title="Following the analysis: ← → or a click takes over"><span></span><span></span><span></span></div>'; return; }
   const live = liveFrontier() != null;
-  // while the game is analysed: how to take over from autoplay, or get it back
-  const hint = !live || g.puzzle ? '' : state.playing ? '<p class="livehint">Following the analysis. <a href="#" data-live="stop">Stop</a>, or use ← → to take over.</p>'
-    : '<p class="livehint">The analysis carries on in the background. <a href="#" data-live="play">Follow it</a> again.</p>';
+  // while the game is analysed and the user has taken over: a way back to following it
+  const hint = !live || g.puzzle || state.playing ? '' : '<p class="livehint"><a href="#" data-live="play">Follow the analysis ▸</a></p>';
   const withHint = html => {
     el.innerHTML = html + hint;
-    el.querySelectorAll('[data-live]').forEach(a => a.onclick = e => { e.preventDefault(); if (a.dataset.live === 'stop') stopPlay(); else startPlay(); });
+    el.querySelectorAll('[data-live]').forEach(a => a.onclick = e => { e.preventDefault(); startPlay(); });
   };
   if (state.ply === 0) {
     withHint(`<div class="top"><span class="verdict">${g.opening_name ? esc(g.opening_name) : 'Start of the game'}</span><span class="evbox">0.00</span></div>` +
-      (g.analysed >= 0.999 ? `<p>${g.key_moments.length ? `${g.key_moments.length} key moment${g.key_moments.length > 1 ? 's' : ''} — press space to jump to the first.` : 'No decisive mistakes in this game.'}</p>`
-        : live ? '' : `<p>Not analysed yet — press Analyse game.</p>`));
+      (g.analysed >= 0.999 && g.key_moments.length ? `<p>${g.key_moments.length} key moment${g.key_moments.length > 1 ? 's' : ''} — space jumps to the first.</p>` : ''));
     return;
   }
   const m = currentMove();
@@ -3807,7 +3791,11 @@ function renderOverview() {
     });
   }
   html += `<div class="summary">${s}</div>`;
-  if (!any && f == null) { $('overview').innerHTML = html + `<div class="ovnote">Analyse the game to see its accuracy, how each move rates and its key moments.</div>`; bindOverview(); return; }
+  // Start review: on an analysed game it opens the moves at the start; on one not analysed yet it starts the analysis,
+  // and the board plays the game along with it. While the analysis runs there is nothing to press.
+  const foot = full ? `<div class="ovfoot"><button class="primary ovstart" id="ov-start">Start review</button></div>`
+    : f == null ? `<div class="ovfoot"><button class="primary ovstart" id="ov-analyse">Start review</button></div>` : '';
+  if (!any && f == null) { $('overview').innerHTML = html + foot; bindOverview(); return; }
 
   // the labels: the four bad ones and the rest as "good moves", or all eleven
   const counts = { white: {}, black: {} };
@@ -3841,8 +3829,7 @@ function renderOverview() {
                       t('white', x => `${x.low}<span class="sub"> of ${x.errs}</span>`), '', t('black', x => `${x.low}<span class="sub"> of ${x.errs}</span>`), 'num');
     html += `<div class="ovh">Time</div><div class="summary">${s}</div>`;
   }
-  if (full) html += `<button class="primary ovstart" id="ov-start">Start review</button>`;
-  $('overview').innerHTML = html;
+  $('overview').innerHTML = html + foot;
   bindOverview();
 }
 function bindOverview() {
@@ -3853,6 +3840,8 @@ function bindOverview() {
   if (more) more.onclick = () => { allLabels = !allLabels; try { localStorage.setItem('overview.labels', allLabels ? 'all' : 'some'); } catch (e) {} renderOverview(); };
   const start = $('ov-start');
   if (start) start.onclick = () => { setTab('moves'); dropVariation(); renderMoveList(); go(0); };
+  const analyse = $('ov-analyse');
+  if (analyse) analyse.onclick = async () => { analyse.disabled = true; try { await startReview(); } finally { analyse.disabled = false; } };
   highlightCurrent();
 }
 // A count clicked in the overview: that side's first such move, then the next on each click or with the chip's arrows.
@@ -3934,7 +3923,7 @@ function highlightCurrent() {
 // ---------- eval graph ----------
 function renderGraph() {
   const g = state.game, svg = $('graph');
-  const n = g.moves.length, W = 400, H = 110;
+  const n = g.moves.length, W = 400, H = 60;
   const x = p => (n ? p / n : 0) * W;
   const y = wp => H - (wp ?? 50) / 100 * H;
   let pts = [`0,${y(g.start_wp_white)}`], last = g.start_wp_white ?? 50;
@@ -3978,7 +3967,6 @@ $('b-next').onclick = () => go(state.ply + 1);
 $('b-last').onclick = () => go(line().length);
 $('b-flip').onclick = () => { state.flipped = !state.flipped; $('pieces').innerHTML = ''; update(false); renderMarks(); };
 $('b-play').onclick = togglePlay;
-$('b-key').onclick = nextKey;
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape' && location.hash === '#/settings') { goBack(); return; }
   if (!state.game|| state.exploring || e.target.type === 'range') return;   // the volume slider has the arrows
@@ -4042,7 +4030,8 @@ else if (location.search.includes('selftest')) (async () => {
   const say = m => { log.push(m); el.textContent = log.join(String.fromCharCode(10)); };
   try {
     while (!state.game) await new Promise(r => setTimeout(r, 200));
-    say(`opened at ply ${state.ply}; first disabled=${$('b-first').disabled} next disabled=${$('b-next').disabled}`);
+    say(`opened at ply ${state.ply}; first disabled=${$('b-first').disabled} next disabled=${$('b-next').disabled}; on the ${state.tab} tab, Start review ${!!document.querySelector('.ovfoot .ovstart')} ` +
+        `${state.tab === 'overview' && document.querySelector('.ovfoot .ovstart') ? 'ok' : 'BAD'}`);
     go(line().length); say(`end: ply ${state.ply}, last disabled=${$('b-last').disabled}`);
     const before = state.ply; go(state.ply + 1); say(`spam past end: ply still ${state.ply} (${before === state.ply ? 'ok' : 'BAD'})`);
     go(10); say(`at ply 10 fen turn=${currentFen().split(' ')[1]}`);
@@ -4070,16 +4059,31 @@ else if (location.search.includes('selftest')) (async () => {
     const wait = async (ok, ms) => { const t = Date.now(); while (!ok() && Date.now() - t < ms) await new Promise(r => setTimeout(r, 50)); return ok(); };
     const real = state.game, K = Math.min(8, real.moves.length - 4);
     const partial = upTo => ({ ...real, analysed: 0.5, moves: real.moves.map((m, i) => i < upTo ? m : { ...m, wp_white: null, label: m.label === 'book' ? 'book' : null }) });
-    stopPolling(); dropVariation(); renderMoveList();
+    pollGen++; stopPolling(); dropVariation(); renderMoveList();     // pollGen: an in-flight poll would overwrite the faked jobs
+    // Start review on a game not analysed yet: the overview's button starts the analysis (the POST faked), the moves show and the board follows, quietly
+    state.game = { ...partial(0), analysed: 0 }; jobsNow = []; syncLive(); setTab('overview'); renderOverview(); go(0);
+    const realFetch = window.fetch;
+    window.fetch = (input, init = {}) => init.method === 'POST' && String(input).includes('/analyse/')
+      ? Promise.resolve(new Response(JSON.stringify({ job: { id: -1, kind: 'analyse', profile: state.profile, game: real.id, status: 'running', done: 0, total: 2 } })))
+      : realFetch(input, init);
+    const cta = $('ov-analyse');
+    try { if (cta) await cta.onclick(); } finally { window.fetch = realFetch; pollGen++; stopPolling(); }
+    const dots = () => !!$('now').querySelector('.dots');
+    say(`Start review (not analysed): button ${!!cta}, tab ${state.tab}, frontier ${liveFrontier()}, playing=${!!state.playing}, quiet=${state.quiet}, coach dots=${dots()} ` +
+        `${cta && state.tab === 'moves' && liveFrontier() === 0 && state.playing && state.quiet && dots() ? 'ok' : 'BAD'}`);
+    stopPlay(); jobsNow = []; syncLive();
     state.game = partial(K); jobsNow = [{ id: -1, kind: 'analyse', profile: state.profile, game: real.id, status: 'running', done: 1, total: 2 }];
     syncLive(); go(K - 2);
     say(`live: frontier ${liveFrontier()} (expect ${K}), pending cells ${$('movelist').querySelectorAll('.m.pending').length} (expect ${real.moves.length - K})`);
-    const ovLive = state.tab === 'overview' && $('tprog').textContent === `${K}/${real.moves.length}` && $('overview').textContent.includes(`Analysed ${K} of`) &&
+    const ovLive = state.tab === 'moves' && $('tprog').textContent === `${K}/${real.moves.length}` && $('overview').textContent.includes(`Analysed ${K} of`) &&
                    !!$('overview').querySelector('.accbox.prov') && !$('ov-start');
     say(`live overview: tab ${state.tab}, moves tab "${$('tprog').textContent}", provisional accuracy ${!!$('overview').querySelector('.accbox.prov')}, start button ${!!$('ov-start')} ${ovLive ? 'ok' : 'BAD'}`);
-    const tf = Date.now(); startPlay();
-    await wait(() => state.ply === K, 8000); const took = Date.now() - tf; await new Promise(r => setTimeout(r, 1000));
-    say(`follows the analysis: 2 moves in ${took} ms (expect < 1000), waits at the frontier: ply ${state.ply} (expect ${K}), playing=${!!state.playing}, hint="${($('now').querySelector('.livehint') || {}).textContent}"`);
+    // the coach while the board follows: three dots, so one height throughout
+    const talk = () => $('now').querySelectorAll('p:not(.livehint)').length, heights = new Set(), quietNow = [];
+    const watchNow = () => { heights.add($('now').offsetHeight); quietNow.push(dots() && !talk()); };
+    const tf = Date.now(); startPlay(true);
+    await wait(() => { watchNow(); return state.ply === K; }, 8000); const took = Date.now() - tf; await new Promise(r => setTimeout(r, 1000));
+    say(`follows the analysis: 2 moves in ${took} ms (expect < 1000), waits at the frontier: ply ${state.ply} (expect ${K}), playing=${!!state.playing}, coach dots=${dots()}`);
     state.game = partial(K + 2); patchMoveList();
     const caught = await wait(() => state.ply === K + 2, 3000);
     say(`analysis moves on, the board follows: ply ${state.ply} (${caught ? 'ok' : 'BAD'}), pending cells ${$('movelist').querySelectorAll('.m.pending').length}`);
@@ -4087,17 +4091,24 @@ else if (location.search.includes('selftest')) (async () => {
     await new Promise(r => setTimeout(r, 1600 - (performance.now() - pace.at)));
     state.game = partial(K + 6); notePace();
     const steps = []; let lastPly = state.ply, lastT = performance.now();
-    await wait(() => { if (state.ply !== lastPly) { const t = performance.now(); steps.push(Math.round(t - lastT)); lastPly = state.ply; lastT = t; } return state.ply === K + 6; }, 4000);
+    await wait(() => { watchNow(); if (state.ply !== lastPly) { const t = performance.now(); steps.push(Math.round(t - lastT)); lastPly = state.ply; lastT = t; } return state.ply === K + 6; }, 4000);
     say(`paced to the analysis: ${Math.round(pace.ms)} ms a move measured (expect ~400), steps ${steps.join(' ')} ms (expect ~${Math.round(pace.ms)} after the first)`);
     const at = state.ply;
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft' }));
     say(`← takes over: playing=${!!state.playing} (expect false), ply ${state.ply} (expect ${at - 1})`);
-    $('b-play').onclick(); const resumed = !!state.playing; $('boardbox').dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+    const quietOk = quietNow.every(Boolean);
+    say(`coach while following: dots only ${quietNow.filter(Boolean).length} of ${quietNow.length} looks, heights ${[...heights].join(',')} px; after ← dots=${dots()}, quiet=${state.quiet} ` +
+        `${quietOk && heights.size === 1 && !dots() && !state.quiet ? 'ok' : 'BAD'}`);
+    const withText = real.moves.findIndex((m, i) => i < K + 6 && BAD.has(m.label) && (m.comment || []).length);
+    if (withText >= 0) { go(withText + 1); say(`by hand at ${moveLabel(withText, real.moves[withText].san)}: explanations ${talk()} ${talk() ? 'ok' : 'BAD'}`); go(at - 1); }
+    $('b-play').onclick(); const resumed = !!state.playing;
+    say(`Play pressed: quiet=${state.quiet}, dots=${dots()} (expect false: the explanations show) ${resumed && !state.quiet && !dots() ? 'ok' : 'BAD'}`); $('boardbox').dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
     say(`Play resumes: ${resumed}; a click on the board stops it: playing=${!!state.playing}`);
     state.game = real; jobsNow = []; syncLive();
     say(`analysis done: frontier ${liveFrontier()} (expect null), pending cells ${$('movelist').querySelectorAll('.m.pending').length} (expect 0)`);
-    const ovDone = state.tab === 'overview' && !!$('ov-start') && !$('overview').querySelector('.accbox.prov') && $('tprog').textContent === '';
-    say(`done overview: stays on ${state.tab}, start button ${!!$('ov-start')}, accuracy firm ${!$('overview').querySelector('.accbox.prov')} ${ovDone ? 'ok' : 'BAD'}`);
+    setTab('overview');
+    const ovDone = !!$('ov-start') && !$('overview').querySelector('.accbox.prov') && $('tprog').textContent === '';
+    say(`done overview: start button ${!!$('ov-start')}, accuracy firm ${!$('overview').querySelector('.accbox.prov')} ${ovDone ? 'ok' : 'BAD'}`);
     $('ov-start').onclick(); say(`Start review: tab ${state.tab}, ply ${state.ply} ${state.tab === 'moves' && state.ply === 0 ? 'ok' : 'BAD'}`);
     say('DONE');
   } catch (e) { say('ERROR ' + e.stack); }
