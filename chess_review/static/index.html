@@ -2858,11 +2858,13 @@ function renderNav() {
 
 // ---------- live review: the board plays the game as the analysis reaches each move ----------
 // The runner analyses a game's positions in game order and rewrites its JSON as they come in. A move's label is
-// final once the positions before and after it both have their evals (book and forced moves get theirs without,
-// so the evals are what counts); until then, while the analysis runs, the move is pending.
+// final once the positions before and after it both have their evals; until then, while the analysis runs, the move is
+// pending. A book move is final from the start: it is labelled book whatever the engine says, so the board plays the
+// opening at once instead of waiting for the engines' first batch, and its eval fills in when it comes.
 function moveReady(g, i) {
+  if (g.analysed >= 0.999 || g.moves[i].label === 'book') return true;
   const before = i === 0 ? g.start_wp_white : g.moves[i - 1].wp_white;
-  return g.analysed >= 0.999 || (before != null && g.moves[i].wp_white != null);
+  return before != null && g.moves[i].wp_white != null;
 }
 // How many moves from the start are ready while the game on screen is being analysed (or waits to be); null if it isn't.
 function liveFrontier() {
@@ -2907,6 +2909,8 @@ function notePace() {
 // the explanations, whose height would make the panel jump at each move; the user's Play brings them back.
 const PLAY_MS = 1500, FOLLOW_MS = 200, FOLLOW_FIRST_MS = 600, FOLLOW_MAX_MS = 3000, FOLLOW_WAIT_MS = 100;
 function followDelay(ahead) {     // ahead: the ready moves still to show
+  // the opening's book moves, ready before the engines have said anything: a steady step, over about the time their first batch takes
+  if (state.game.moves[state.ply]?.label === 'book' && state.game.analysed < 0.999) return FOLLOW_FIRST_MS;
   const known = pace.gid === state.game.id;
   if (!known || pace.ms == null) return ahead > Math.max(known ? pace.batch : 0, 3) ? FOLLOW_MS : FOLLOW_FIRST_MS;
   return Math.max(FOLLOW_MS, Math.min(FOLLOW_MAX_MS, pace.ms * Math.min(1, pace.batch / ahead)));
@@ -4172,7 +4176,8 @@ else if (location.search.includes('selftest')) (async () => {
     chip.querySelector('[data-d="0"]').onclick(); say(`✕ hides it: ${chip.classList.contains('hidden') ? 'ok' : 'BAD'}`);
     // live review: an analysis that has reached move K, faked on a copy of the game (the evals after it taken out)
     const wait = async (ok, ms) => { const t = Date.now(); while (!ok() && Date.now() - t < ms) await new Promise(r => setTimeout(r, 50)); return ok(); };
-    const real = state.game, K = Math.min(8, real.moves.length - 4);
+    const real = state.game, nBook = real.moves.filter((m, i) => real.moves.slice(0, i + 1).every(b => b.label === 'book')).length;
+    const K = Math.min(Math.max(8, nBook + 4), real.moves.length - 4);   // past the book: these moves wait for evals
     const partial = upTo => ({ ...real, analysed: 0.5, moves: real.moves.map((m, i) => i < upTo ? m : { ...m, wp_white: null, label: m.label === 'book' ? 'book' : null }) });
     pollGen++; stopPolling(); dropVariation(); renderMoveList();     // pollGen: an in-flight poll would overwrite the faked jobs
     // Start review on a game not analysed yet: the overview's button starts the analysis (the POST faked), the moves show and the board follows, quietly
@@ -4184,8 +4189,13 @@ else if (location.search.includes('selftest')) (async () => {
     const cta = $('ov-analyse');
     try { if (cta) await cta.onclick(); } finally { window.fetch = realFetch; pollGen++; stopPolling(); }
     const dots = () => !!$('now').querySelector('.dots');
-    say(`Start review (not analysed): button ${!!cta}, tab ${state.tab}, frontier ${liveFrontier()}, playing=${!!state.playing}, quiet=${state.quiet}, coach dots=${dots()} ` +
-        `${cta && state.tab === 'moves' && liveFrontier() === 0 && state.playing && state.quiet && dots() ? 'ok' : 'BAD'}`);
+    say(`Start review (not analysed): button ${!!cta}, tab ${state.tab}, frontier ${liveFrontier()} (expect the ${nBook} book moves, no evals yet), playing=${!!state.playing}, quiet=${state.quiet}, coach dots=${dots()} ` +
+        `${cta && state.tab === 'moves' && liveFrontier() === nBook && state.playing && state.quiet && dots() ? 'ok' : 'BAD'}`);
+    if (nBook > 0) {      // the board plays the book moves before any eval is in
+      const tb = Date.now(), played = await wait(() => state.ply >= 1, 1500);
+      say(`book moves play at once: ply ${state.ply} after ${Date.now() - tb} ms, pending cells ${$('movelist').querySelectorAll('.m.pending').length} (expect ${real.moves.length - nBook}) ` +
+          `${played && $('movelist').querySelectorAll('.m.pending').length === real.moves.length - nBook ? 'ok' : 'BAD'}`);
+    }
     stopPlay(); jobsNow = []; syncLive();
     state.game = partial(K); jobsNow = [{ id: -1, kind: 'analyse', profile: state.profile, game: real.id, status: 'running', done: 1, total: 2 }];
     syncLive(); go(K - 2);
