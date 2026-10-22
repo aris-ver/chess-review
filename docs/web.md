@@ -132,7 +132,7 @@ imported), DuckDB 1.2 s, numpy 1 s, the runtime 1.8 s. So:
 
 - Python starts without DuckDB and pyarrow. `web/py/chess_web/later.py` puts placeholder modules in their place, so
   `chess_review` imports as it is; the home screen, the puzzles and the settings answer without them (the puzzle
-  pack ships as `puzzles.json` in `app.zip`). A request that reaches them raises `NotLoaded`; the worker waits for
+  pack ships as `puzzles.json`). A request that reaches them raises `NotLoaded`; the worker waits for
   the packages and asks again. POSTs other than settings and puzzle results wait for them up front, so none runs
   twice. For the placeholders, `chess_review` builds its pyarrow schemas on first use and the modules whose
   signatures name DuckDB or pyarrow types have `from __future__ import annotations`.
@@ -140,6 +140,19 @@ imported), DuckDB 1.2 s, numpy 1 s, the runtime 1.8 s. So:
 
 Reload of the local build after that: status, profiles and puzzles answer at 3.6 s; DuckDB and pyarrow are in
 at about 8–9 s, when a pasted game or a review goes through.
+
+Then:
+
+- **The home screen from the last visit.** `web/shim.js` keeps Python's last answers to `api/profiles` and
+  `api/puzzles/{packs,themes,sources}` in localStorage and hands them back at once while Python loads. The request
+  still goes to Python, and if its answer differs, the home screen is drawn again (a `hashchange`). Only Python's
+  own answers are kept, so no logic is copied into JavaScript. Measured on a reload of the local build: the profiles
+  show at 0.2–0.4 s, Python's answer comes at 3.4 s, and a stale copy is replaced as soon as it does.
+- **A smaller `app.zip`.** It was 2.5 MB on the critical path of a first visit, mostly the puzzle pack. Now it's
+  240 KB: the pack is `puzzles.json` beside it (about 2 MB as sent compressed), which the worker fetches alongside
+  Python and writes into `/app`. A request that reaches the pack first raises `PackNotLoaded` (a `NotLoaded`) and
+  waits for that file alone; puzzle POSTs wait for it up front. `chess_review/sound_packs/` (the themes' sound
+  sources) is no longer in the zip.
 
 Not yet: the sandbox and puzzle engine replies (lite engine, `/api/eval`, `/api/explore`, `/api/eval_stream`),
 personal-puzzle builds and `analyse_all` (async versions of those jobs), the new-games scan, hiding the

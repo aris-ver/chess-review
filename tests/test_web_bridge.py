@@ -108,12 +108,16 @@ def call(method, path, body=None):
     try:
         status, _, payload = bridge.handle(method, path, json.dumps(body).encode() if body is not None else b"")
     except later.NotLoaded as e:
-        return ["NotLoaded", str(e)]
+        return [type(e).__name__, str(e)]
     return [status, json.loads(payload) if payload[:1] in (b"{", b"[") else None]
 
 open(APP + "/book_keys.txt", "w").write("")
-bridge.setup(APP, Pool())
+bridge.setup(APP, Pool(), pack_later=True)
 out = {}
+# the puzzle pack still downloading: the puzzles wait for it (PackNotLoaded), the profiles don't
+out["pack before"] = call("GET", "/api/puzzles/themes")[0]
+out["profiles before pack"] = call("GET", "/api/profiles")[0]
+import shutil; shutil.copy(PACK, APP + "/puzzles.json")       # as the worker writes it once downloaded
 for path in ("/api/status", "/api/profiles", "/api/settings", "/api/puzzles/themes", "/api/puzzles/packs",
              "/api/puzzles/daily", "/api/puzzles/next", "/api/legal?fen=8/8/8/8/8/8/8/K1k5%20w%20-%20-%200%201"):
     out[path] = call("GET", path)[0]
@@ -140,15 +144,17 @@ def test_light_routes_answer_before_duckdb_and_pyarrow(tmp_path):
     from chess_review import puzzles
     app = tmp_path / "app"
     app.mkdir()
-    (app / "puzzles.json").write_text(json.dumps(puzzles.PACK_INSTANCE._read()[:300]), encoding="utf-8")
+    pack = tmp_path / "puzzles.json"        # arrives after start-up: the worker downloads it alongside Python
+    pack.write_text(json.dumps(puzzles.PACK_INSTANCE._read()[:300]), encoding="utf-8")
     env = {**os.environ, "CHESS_REVIEW_DATA": str(tmp_path / "data")}
-    script = f"ROOT, APP = {str(ROOT)!r}, {str(app)!r}\n" + LATER
+    script = f"ROOT, APP, PACK = {str(ROOT)!r}, {str(app)!r}, {str(pack)!r}\n" + LATER
     run = subprocess.run([sys.executable, "-c", script], env=env, capture_output=True, text=True, timeout=120)
     line = next((x for x in run.stdout.splitlines() if x.startswith("RESULT")), None)
     assert line, run.stdout + run.stderr
     out = json.loads(line[6:])
     assert {k: v for k, v in out.items() if k.startswith("/api/")} == {k: 200 for k in out if k.startswith("/api/")}
     assert out["attempt"] == out["solved"] == out["post settings"] == 200
+    assert out["pack before"] == "PackNotLoaded" and out["profiles before pack"] == 200
     assert out["pgn before"][0] == "NotLoaded"
     assert out["pyarrow imported"] is False
     assert out["pgn after"] == [200, 1]

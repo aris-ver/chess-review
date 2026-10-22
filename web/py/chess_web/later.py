@@ -21,6 +21,10 @@ class NotLoaded(BaseException):
     `except Exception` replies let it through to the worker instead of answering 500."""
 
 
+class PackNotLoaded(NotLoaded):
+    """A request reached the puzzle pack (puzzles.json) before it downloaded: the worker waits for that alone."""
+
+
 class _Later(types.ModuleType):
     def __init__(self, name: str):
         super().__init__(name)

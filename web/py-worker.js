@@ -52,10 +52,15 @@ logging.basicConfig(level=logging.INFO, format="%(name)s %(message)s")
   later = py.pyimport('chess_web.later');
   later.stand_in();
   bridge = py.pyimport('chess_web.bridge');
-  bridge.setup('/app', engines);
+  bridge.setup.callKwargs('/app', engines, { pack_later: true });
   progress('python', 3, 3, `Ready in ${((performance.now() - t0) / 1000).toFixed(1)} s`);
 })();
 ready.catch(e => { console.error(e); progress('python', 0, 0, 'Python failed to load: ' + e); });
+// The puzzle pack (8 MB of JSON, under 2 MB as sent) downloads alongside Python instead of inside app.zip, so Python
+// answers sooner on a first visit; it's written into /app once both are there. Puzzle requests that come first wait.
+const packFile = fetch('../puzzles.json').then(r => { if (!r.ok) throw new Error('puzzles.json: HTTP ' + r.status); return r.arrayBuffer(); });
+const pack = Promise.all([ready, packFile]).then(([, buf]) => py.FS.writeFile('/app/puzzles.json', new Uint8Array(buf)));
+pack.catch(e => console.error('puzzle pack failed to load', e));
 // DuckDB and pyarrow straight after. pyarrow by its wheel's URL, after its dependencies minus pandas: by name,
 // loadPackage would add pandas too (another 3 s), which nothing here imports.
 const heavy = ready.then(async () => {
@@ -81,13 +86,17 @@ onmessage = async e => {
   try {
     await ready;
     if (method !== 'GET' && !WITHOUT_HEAVY.test(path.split('?')[0])) await heavy;
+    if (method !== 'GET' && path.startsWith('/api/puzzles')) await pack;
     let out;
-    try {
-      out = bridge.handle_js(method, path, body || null, contentType || null);
-    } catch (err) {
-      if (err.type !== 'NotLoaded') throw err;
-      await heavy;
-      out = bridge.handle_js(method, path, body || null, contentType || null);
+    for (let tries = 0; ; tries++) {      // a GET may stop at the pack, then at DuckDB: ask again after each
+      try {
+        out = bridge.handle_js(method, path, body || null, contentType || null);
+        break;
+      } catch (err) {
+        const wait = { NotLoaded: heavy, PackNotLoaded: pack }[err.type];
+        if (!wait || tries === 2) throw err;
+        await wait;
+      }
     }
     const [status, headers, payload] = out.toJs();
     out.destroy();
