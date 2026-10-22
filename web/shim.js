@@ -6,7 +6,10 @@
   // Phones and tablets get the lite engine (web/py-worker.js says why). Every iOS browser is WebKit, the home-screen
   // app too, so this is the device, not the browser; iPadOS says it is a Mac, its touch screen gives it away.
   const nav = window.navigator || {};
-  const lite = /iPhone|iPad|iPod|Android|Mobi/.test(nav.userAgent || '') || (nav.platform === 'MacIntel' && nav.maxTouchPoints > 1);
+  const ios = /iPhone|iPad|iPod/.test(nav.userAgent || '') || (nav.platform === 'MacIntel' && nav.maxTouchPoints > 1);
+  const lite = ios || /Android|Mobi/.test(nav.userAgent || '');
+  // Opened from the home screen: already the app, nothing to offer
+  const standalone = nav.standalone === true || !!(window.matchMedia && matchMedia('(display-mode: standalone)').matches);
   const worker = new Worker('web/py-worker.js' + (lite ? '?lite' : ''), { type: 'module' });
   const pending = new Map();
   let seq = 0;
@@ -30,17 +33,69 @@
     'white-space:nowrap;transition:border-color .6s,color .6s,box-shadow .6s}' +
     'header .right a#web-dl:hover{background:#46423d;border-color:var(--accent)}' +
     'header .right a#web-dl.lit{border-color:var(--accent);color:var(--accent);box-shadow:0 0 8px 1px color-mix(in srgb,var(--accent) 40%,transparent)}' +
-    '#web-loading .x{position:absolute;top:4px;right:4px;width:22px;height:22px;padding:0;border:0;border-radius:4px;background:none;' +
-    'color:#aaa;font:16px/22px system-ui,sans-serif;cursor:pointer}#web-loading .x:hover{background:rgba(255,255,255,.1);color:#fff}' +
+    '#web-loading .x,#web-a2hs .x{position:absolute;top:4px;right:4px;width:22px;height:22px;padding:0;border:0;border-radius:4px;background:none;' +
+    'color:#aaa;font:16px/22px system-ui,sans-serif;cursor:pointer}#web-loading .x:hover,#web-a2hs .x:hover{background:rgba(255,255,255,.1);color:#fff}' +
     '#web-loading .pb{height:4px;margin:4px 0 2px;border-radius:2px;background:rgba(255,255,255,.15);overflow:hidden}' +
-    '#web-loading .pb>i{display:block;height:100%;background:var(--accent);transition:width .3s}';
+    '#web-loading .pb>i{display:block;height:100%;background:var(--accent);transition:width .3s}' +
+    'header .right a#web-dl svg,#web-a2hs svg{width:16px;height:16px;vertical-align:-3px;fill:none;stroke:currentColor;stroke-width:2;' +
+    'stroke-linecap:round;stroke-linejoin:round}' +
+    '#web-a2hs{position:fixed;inset:0;z-index:10000;display:flex;align-items:flex-end;justify-content:center;padding:16px;background:rgba(0,0,0,.5)}' +
+    '#web-a2hs>div{position:relative;width:min(420px,100%);padding:16px 36px 16px 16px;border-radius:10px;border-left:3px solid var(--accent);' +
+    'background:var(--panel2);color:var(--text);font:15px/1.5 system-ui,sans-serif;box-shadow:0 4px 20px rgba(0,0,0,.5)}' +
+    '#web-a2hs b{color:var(--accent)}#web-a2hs ol{margin:8px 0 0;padding-left:20px}#web-a2hs .x{top:8px;right:8px;color:var(--text)}';
   document.head.appendChild(style);
+  // Drawn, not ⬇ or ⊕: iOS shows those as colour emoji. Arrow into a tray (download); a square with a plus (home screen).
+  const svg = d => `<svg viewBox="0 0 24 24" aria-hidden="true">${d}</svg>`;
+  const ICON_DL = svg('<path d="M12 4v11M7 10l5 5 5-5M5 20h14"/>');
+  const ICON_ADD = svg('<rect x="4" y="4" width="16" height="16" rx="4"/><path d="M12 8v8M8 12h8"/>');
+  const ICON_SHARE = svg('<path d="M12 3v12M8 7l4-4 4 4M7 11H5v10h14V11h-2"/>');
   const dl = document.createElement('a');
-  Object.assign(dl, { id: 'web-dl', href: DOWNLOAD, target: '_blank', rel: 'noopener', title: 'The Windows app analyses about 2× faster' });
-  dl.innerHTML = '<span class="i">⬇</span><span class="t"> Download the app</span>';
-  const NOTE_OFF = 'webSpeedNoteDismissed';
-  let noteOff = false, closed = false;
-  try { noteOff = localStorage.getItem(NOTE_OFF) === '1'; } catch (e) {}
+  // Phones and tablets: the Windows app is no use there; the button puts the site on the home screen instead, where
+  // it opens full screen like an app. Android's browsers can do that themselves (beforeinstallprompt); iOS's can't
+  // be asked to, so the button says where the Share menu's "Add to Home Screen" is.
+  if (lite) {
+    Object.assign(dl, { id: 'web-dl', href: '#', title: 'Add Blundr to your home screen' });
+    dl.innerHTML = `<span class="i">${ICON_ADD}</span><span class="t"> Get the app</span>`;
+  } else {
+    Object.assign(dl, { id: 'web-dl', href: DOWNLOAD, target: '_blank', rel: 'noopener', title: 'The Windows app analyses about 2× faster' });
+    dl.innerHTML = `<span class="i">${ICON_DL}</span><span class="t"> Download the app</span>`;
+  }
+  let installPrompt = null;
+  addEventListener('beforeinstallprompt', e => { e.preventDefault(); installPrompt = e; });
+  addEventListener('appinstalled', () => { installPrompt = null; dl.remove(); });
+  const howTo = () => {
+    const ua = nav.userAgent || '';
+    const share = `<b>Share</b> ${ICON_SHARE}`;
+    const where = !ios ? null
+      : /CriOS/.test(ua) ? `Tap ${share} at the right of the address bar.`
+      : /FxiOS|EdgiOS|OPiOS/.test(ua) ? `Open the menu and tap ${share}.`
+      : `Tap ${share} in the toolbar (at the bottom, or at the top on iPad).`;
+    const steps = where ? [where, 'Scroll down and tap <b>Add to Home Screen</b>.', 'Tap <b>Add</b>.']
+      : ['Open the browser menu <b>⋮</b>.', 'Tap <b>Add to Home screen</b> or <b>Install app</b>.'];
+    const sheet = document.createElement('div');
+    sheet.id = 'web-a2hs';
+    sheet.innerHTML = '<div><button class="x" title="Close" aria-label="Close">×</button>' +
+      '<div>Put Blundr on your home screen: it opens full screen, like an app, and keeps your reviews.</div>' +
+      `<ol>${steps.map(t => `<li>${t}</li>`).join('')}</ol></div>`;
+    sheet.onclick = e => { if (e.target === sheet || e.target.closest('.x')) sheet.remove(); };
+    document.body.appendChild(sheet);
+  };
+  const addToHome = async e => {
+    if (e) e.preventDefault();
+    if (installPrompt) {
+      const p = installPrompt;
+      installPrompt = null;
+      await p.prompt();
+      return;
+    }
+    howTo();
+  };
+  if (lite) dl.onclick = addToHome;
+  // The note under the loading lines: on a computer that the Windows app is faster, until its × is clicked; on a
+  // phone, once, that the site goes on the home screen
+  const NOTE_OFF = lite ? 'webHomeScreenNoteShown' : 'webSpeedNoteDismissed';
+  let noteOff = lite && standalone, closed = false;
+  try { noteOff = noteOff || localStorage.getItem(NOTE_OFF) === '1'; if (lite) localStorage.setItem(NOTE_OFF, '1'); } catch (e) {}
   const state = { python: 'Loading Python', engine: null };    // engine: { done, total, name } once it starts
   const mb = b => (b / 1048576).toFixed(0);
   let pythonReady = false, engineReady = false, analysing = false, hideT = null;
@@ -53,9 +108,14 @@
       loading += `<div>Downloading ${name}, the chess engine: ${mb(done)}${total ? ' / ' + mb(total) : ''} MB</div>` +
         (total ? `<div class="pb"><i style="width:${Math.min(100, done / total * 100).toFixed(1)}%"></i></div>` : '');
     }
-    const note = noteOff ? '' : `<div style="opacity:.7${loading ? ';margin-top:4px' : ''}">Analysis in the browser is about 2× slower than the ` +
-      `<a style="color:var(--accent)" href="${DOWNLOAD}" target="_blank" rel="noopener">Windows app</a>.</div>`;
+    const note = noteOff ? '' : lite
+      ? `<div style="opacity:.85${loading ? ';margin-top:4px' : ''}">New: Blundr works as an app. ` +
+        `<a class="a2hs" style="color:var(--accent)" href="#">Add it to your home screen</a>.</div>`
+      : `<div style="opacity:.7${loading ? ';margin-top:4px' : ''}">Analysis in the browser is about 2× slower than the ` +
+        `<a style="color:var(--accent)" href="${DOWNLOAD}" target="_blank" rel="noopener">Windows app</a>.</div>`;
     bar.innerHTML = '<button class="x" title="Dismiss" aria-label="Dismiss">×</button>' + loading + note;
+    const a2hs = bar.querySelector('.a2hs');
+    if (a2hs) a2hs.onclick = addToHome;
     bar.querySelector('.x').onclick = () => {
       closed = noteOff = true;
       try { localStorage.setItem(NOTE_OFF, '1'); } catch (e) {}
@@ -70,7 +130,7 @@
     clearTimeout(hideT);
     if (!document.body) return;
     const right = document.querySelector('header .right');
-    if (right && !dl.isConnected) right.prepend(dl);
+    if (right && !dl.isConnected && !(lite && standalone)) right.prepend(dl);
     dl.classList.toggle('lit', !noteOff);
     if (closed || !render()) { bar.remove(); return; }
     if (!bar.isConnected) document.body.appendChild(bar);
