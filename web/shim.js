@@ -26,7 +26,8 @@
     'box-shadow:0 2px 10px rgba(0,0,0,.4)';
   // "Download the app" in the header, lit in the notice's accent colour (no flashing) for as long as the note is
   // up, so the two read as one: the note says the browser is slower, the button is where the faster app is.
-  const DOWNLOAD = 'https://github.com/aris-ver/chess-review/releases/latest';
+  // It downloads the zip itself: GitHub's latest-asset link follows each release, so it never needs changing.
+  const DOWNLOAD = 'https://github.com/aris-ver/chess-review/releases/latest/download/chess-review-windows.zip';
   const style = document.createElement('style');
   style.textContent =
     'header .right a#web-dl{color:var(--text);background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:6px 10px;' +
@@ -66,7 +67,7 @@
     Object.assign(dl, { id: 'web-dl', href: '#', title: 'Add Blundr to your home screen' });
     dl.innerHTML = `<span class="i" style="color:#fff">${ICON_DL}</span><span class="t"> Get the app</span>`;
   } else {
-    Object.assign(dl, { id: 'web-dl', href: DOWNLOAD, target: '_blank', rel: 'noopener', title: 'The Windows app analyses about 2× faster' });
+    Object.assign(dl, { id: 'web-dl', href: DOWNLOAD, title: 'Download the Windows app: it analyses about 2× faster' });
     dl.innerHTML = `<span class="i">${ICON_DL}</span><span class="t"> Download the app</span>`;
   }
   let installPrompt = null;
@@ -100,6 +101,9 @@
     howTo();
   };
   if (lite) dl.onclick = addToHome;
+  // A download leaves the page as it is, so say what just happened and what to do with the zip
+  const downloading = () => { if (window.toast) toast('Downloading Chess Review for Windows… unzip it and run Chess Review.exe', 8000); };
+  if (!lite) dl.onclick = downloading;
   // The note under the loading lines: on a computer that the Windows app is faster, until its × is clicked; on a
   // phone, once, that the site goes on the home screen
   const NOTE_OFF = lite ? 'webHomeScreenNoteShown' : 'webSpeedNoteDismissed';
@@ -121,10 +125,12 @@
       ? `<div style="opacity:.85${loading ? ';margin-top:4px' : ''}">New: Blundr works as an app. ` +
         `<a class="a2hs" style="color:var(--accent)" href="#">Add it to your home screen</a>.</div>`
       : `<div style="opacity:.7${loading ? ';margin-top:4px' : ''}">Analysis in the browser is about 2× slower than the ` +
-        `<a style="color:var(--accent)" href="${DOWNLOAD}" target="_blank" rel="noopener">Windows app</a>.</div>`;
+        `<a class="dl" style="color:var(--accent)" href="${DOWNLOAD}">Windows app</a>.</div>`;
     bar.innerHTML = '<button class="x" title="Dismiss" aria-label="Dismiss">×</button>' + loading + note;
     const a2hs = bar.querySelector('.a2hs');
     if (a2hs) a2hs.onclick = addToHome;
+    const get = bar.querySelector('.dl');
+    if (get) get.onclick = downloading;
     bar.querySelector('.x').onclick = () => {
       closed = noteOff = true;
       try { localStorage.setItem(NOTE_OFF, '1'); } catch (e) {}
