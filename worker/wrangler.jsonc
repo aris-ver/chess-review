@@ -5,6 +5,15 @@
   "name": "blundr",
   "main": "src/index.js",
   "compatibility_date": "2025-09-01",
+  // www only so that it resolves: a Cloudflare redirect rule sends it on to blundr.gr, the one origin Google's
+  // redirect URI and the browser's stored reviews belong to
+  "routes": [
+    { "pattern": "blundr.gr", "custom_domain": true },
+    { "pattern": "www.blundr.gr", "custom_domain": true }
+  ],
+  // and no blundr.<account>.workers.dev: a second origin would mean a second, separate set of stored reviews
+  "workers_dev": false,
+  "preview_urls": false,
   "assets": {
     "directory": "../web-dist",
     "binding": "ASSETS",
