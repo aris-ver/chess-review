@@ -100,11 +100,25 @@
       return r ? { text: await r.text(), type: r.headers.get('Content-Type') } : null;
     } catch (e) { return null; }
   };
+  // The browser holds someone else's data now (a log in, a log out, a deleted account: chess_review/sync.py switch()
+  // and release()): what was kept is the last owner's, so it goes, and answers asked for before that aren't kept.
+  let owners = 0;
+  const forget = async body => {
+    let r;
+    try { r = JSON.parse(new TextDecoder().decode(body)); } catch (e) { return; }
+    if (!r || !(r.switched || r.released)) return;
+    owners++;
+    try {
+      const c = await store;
+      for (const k of await c.keys()) await c.delete(k);
+    } catch (e) { /* blocked: nothing was kept */ }
+  };
   let redrawT = null;
-  const keep = async (rel, m, shown, hash) => {
+  const keep = async (rel, m, shown, hash, owner) => {
     const text = m.status === 200 ? new TextDecoder().decode(m.body) : null;
     try {
       const c = await store;
+      if (owner !== owners) return;
       if (text == null) await c.delete(keyOf(rel));
       else await c.put(keyOf(rel), new Response(text, { headers: m.headers.filter(([k]) => /^content-type$/i.test(k)) }));
     } catch (e) { /* full or blocked: next visit waits */ }
@@ -120,7 +134,8 @@
       if (!p) return;
       pending.delete(m.id);
       if (p.path === '/api/status' && m.status === 200) watchStatus(m.body);
-      if (p.keep) keep(p.rel, m, p.shown, p.hash);
+      if (p.keep) keep(p.rel, m, p.shown, p.hash, p.owner);
+      if (/^\/api\/sync\/(switch|release)$/.test(p.path) && m.status === 200) forget(m.body);
       const empty = m.status === 204 || m.status === 304;
       p.resolve(new Response(empty ? null : m.body, { status: m.status, headers: m.headers }));
     } else if (m.type === 'progress') {
@@ -154,7 +169,7 @@
         resolve(new Response(shown.text, { status: 200, headers: { 'Content-Type': shown.type || 'application/json' } }));
         resolve = () => {};
       }
-      pending.set(id, { resolve, reject, path: '/' + rel, rel, keep: keepIt, shown, hash });
+      pending.set(id, { resolve, reject, path: '/' + rel, rel, keep: keepIt, shown, hash, owner: owners });
       if (init.signal) init.signal.addEventListener('abort', () => { pending.delete(id); reject(new DOMException('Aborted', 'AbortError')); });
       worker.postMessage({ id, method, path, body, contentType: 'application/json' }, body ? [body.buffer] : []);
     });
