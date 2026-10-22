@@ -5,13 +5,13 @@
    "san": "e4",
    "label": "book",
    "best_san": "e4",
-   "wp_loss": 0.6
+   "wp_loss": 0.0
   },
   {
    "ply": 1,
    "san": "e5",
    "label": "book",
-   "best_san": "e5",
+   "best_san": "c5",
    "wp_loss": 0.0
   },
   {
@@ -19,77 +19,77 @@
    "san": "Nf3",
    "label": "book",
    "best_san": "Nf3",
-   "wp_loss": 0.0
+   "wp_loss": 0.6
   },
   {
    "ply": 3,
    "san": "d6",
    "label": "book",
    "best_san": "Nc6",
-   "wp_loss": 1.2
+   "wp_loss": 3.2
   },
   {
    "ply": 4,
    "san": "d4",
    "label": "book",
    "best_san": "d4",
-   "wp_loss": 0.0
+   "wp_loss": 0.6
   },
   {
    "ply": 5,
    "san": "exd4",
    "label": "book",
    "best_san": "Nf6",
-   "wp_loss": 1.4
+   "wp_loss": 2.0
   },
   {
    "ply": 6,
    "san": "Bc4",
    "label": "book",
    "best_san": "Nxd4",
-   "wp_loss": 4.6
+   "wp_loss": 5.6
   },
   {
    "ply": 7,
    "san": "Bg4",
-   "label": "inaccuracy",
+   "label": "good",
    "best_san": "Nf6",
-   "wp_loss": 6.8
+   "wp_loss": 5.1
   },
   {
    "ply": 8,
    "san": "Bxf7+",
    "label": "blunder",
    "best_san": "c3",
-   "wp_loss": 31.1
+   "wp_loss": 38.0
   },
   {
    "ply": 9,
    "san": "Kxf7",
    "label": "best",
    "best_san": "Kxf7",
-   "wp_loss": 0.0
+   "wp_loss": 1.3
   },
   {
    "ply": 10,
    "san": "Ng5+",
-   "label": "inaccuracy",
+   "label": "mistake",
    "best_san": "c3",
-   "wp_loss": 7.0
+   "wp_loss": 13.1
   },
   {
    "ply": 11,
    "san": "Ke8",
-   "label": "blunder",
+   "label": "miss",
    "best_san": "Qxg5",
-   "wp_loss": 43.7
+   "wp_loss": 59.4
   },
   {
    "ply": 12,
    "san": "Qxg4",
    "label": "best",
    "best_san": "Qxg4",
-   "wp_loss": 0.0
+   "wp_loss": 1.7
   }
  ],
  "critical": [
@@ -97,10 +97,9 @@
    "ply": 11,
    "rank": 1,
    "crosses_boundary": true,
-   "headline": "Blunder \u2014 win chance 81% \u2192 37%",
+   "headline": "Miss \u2014 win chance 93% \u2192 34%",
    "text": [
-    "This hangs the bishop on g4: 7. Qxg4 Nc6 8. Nxh7 Qe7 9. Qg6+.",
-    "Qxg5 kept the win.",
+    "This hangs the bishop on g4: 7. Qxg4 Nc6 8. Nxh7 Qd7 9. Qg6+.",
     "Played with 2:10 remaining."
    ],
    "hung": [
@@ -115,15 +114,30 @@
    "ply": 8,
    "rank": 2,
    "crosses_boundary": true,
-   "headline": "Blunder \u2014 win chance 59% \u2192 28%",
+   "headline": "Blunder \u2014 win chance 56% \u2192 18%",
    "text": [
-    "This hangs the bishop on f7: 5... Kxf7 6. c3 Nc6 7. cxd4 Nf6.",
+    "This hangs the bishop on f7: 5... Kxf7 6. c3 Ke8 7. cxd4 Nc6.",
     "c3 held the balance.",
     "Played with 2:45 remaining."
    ],
    "hung": [
     "f7"
    ],
+   "motif": null,
+   "missed_mate": null,
+   "allowed_mate": null
+  },
+  {
+   "ply": 10,
+   "rank": 3,
+   "crosses_boundary": false,
+   "headline": "Mistake \u2014 win chance 20% \u2192 7%",
+   "text": [
+    "The position falls apart after 6... Qxg5 7. f3 Qh4+ 8. g3 Qe7.",
+    "c3 was the best chance.",
+    "Played with 2:40 remaining."
+   ],
+   "hung": [],
    "motif": null,
    "missed_mate": null,
    "allowed_mate": null

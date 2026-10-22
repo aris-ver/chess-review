@@ -1,6 +1,7 @@
 """Golden-file test: the fixture game through the whole classification chain with a
 real engine at a fixed node count. Regenerate with UPDATE_GOLDEN=1 after an
-intentional change to thresholds, fact extraction or wording."""
+intentional change to thresholds, fact extraction or wording, or a new Stockfish in
+bin/ (the evals move with the engine; the golden file comes from Stockfish 19)."""
 
 import json
 import os
