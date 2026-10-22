@@ -102,14 +102,26 @@ function sender(env) {
   return m ? { email: m[2], name: m[1] } : { email: String(env.MAIL_FROM) };
 }
 
+// Brevo's transactional API (blundr.gr is authenticated there): Cloudflare's own Email Sending only reaches arbitrary
+// addresses on the Workers Paid plan, Brevo's free tier sends 300 a day.
+async function brevo(env, to, m) {
+  const r = await fetch('https://api.brevo.com/v3/smtp/email', {
+    method: 'POST',
+    headers: { 'api-key': env.BREVO_API_KEY, 'content-type': 'application/json', accept: 'application/json' },
+    body: JSON.stringify({ sender: sender(env), to: [{ email: to }], subject: m.subject, textContent: m.text }),
+  });
+  if (!r.ok) throw Object.assign(new Error(await r.text()), { code: r.status });
+}
+
 export async function sendMail(env, to, kind, code) {
   const m = MESSAGES[kind](code);
-  if (!env.EMAIL) {     // no email binding (plain local runs): the message goes to the console instead
+  if (!env.BREVO_API_KEY && !env.EMAIL) {     // no sender (plain local runs): the message goes to the console instead
     console.log(`[email to ${to}] ${m.subject}\n${m.text}`);
     return;
   }
   try {
-    await env.EMAIL.send({ to, from: sender(env), subject: m.subject, text: m.text });
+    if (env.BREVO_API_KEY) await brevo(env, to, m);
+    else await env.EMAIL.send({ to, from: sender(env), subject: m.subject, text: m.text });
   } catch (e) {
     console.error('sending email failed', e.code, e.message);
     throw new EmailError(503, "The email couldn't be sent. Please try again later.");

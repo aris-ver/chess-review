@@ -1,6 +1,6 @@
 """Assemble the browser version (docs/web.md) into web-dist/, a static site.
 
-    python scripts/build_web.py [--serve [--port 8200]] [--engine-wasm URL]
+    python scripts/build_web.py [--serve [--port 8200]] [--engine-wasm URL|cdn]
 
 web-dist/
   index.html            chess_review/static/index.html as site.write_static makes it, plus the web/shim.js and
@@ -11,8 +11,9 @@ web-dist/
   web/                  shim.js, py-worker.js, engines.js, config.js, the python-chess wheel, engine/ (Stockfish 19)
 
 Downloads (cached in data/web-cache): python-chess's wheel (PyPI has only its sdist) and npm stockfish@19.0.1.
---engine-wasm points the full engine at another host (R2: Pages refuses files over 25 MB); by default it is
-served from web/engine/ next to the rest, which is what --serve wants.
+--engine-wasm points the full engine at another host (the Worker refuses files over 25 MiB); `--engine-wasm cdn` is
+blundr.gr's: the same npm package's file on unpkg. By default it is served from web/engine/ next to the rest, which is
+what --serve wants.
 """
 
 import argparse
@@ -39,7 +40,10 @@ OUT = ROOT / "web-dist"
 CACHE = ROOT / "data" / "web-cache"
 PYODIDE = "https://cdn.jsdelivr.net/pyodide/v314.0.7/full/"
 CHESS_VERSION = "1.11.2"
-STOCKFISH_NPM = "https://registry.npmjs.org/stockfish/-/stockfish-19.0.1.tgz"
+STOCKFISH_VERSION = "19.0.1"      # the same Stockfish as the desktop's bin/: change both together, or reviews stop matching
+STOCKFISH_NPM = f"https://registry.npmjs.org/stockfish/-/stockfish-{STOCKFISH_VERSION}.tgz"
+# the full engine (95 MB) as visitors download it: unpkg serves npm files of any size, with CORS and a year's cache
+ENGINE_CDN = f"https://unpkg.com/stockfish@{STOCKFISH_VERSION}/bin/stockfish-19-single.wasm"
 ENGINE_FILES = ("stockfish-19-single.js", "stockfish-19-single.wasm", "stockfish-19-lite-single.js",
                 "stockfish-19-lite-single.wasm")
 
@@ -125,11 +129,11 @@ def build(engine_wasm: str | None) -> None:
     copy_if_changed(whl, OUT / "web" / whl.name)
     for name, src in engine_files().items():
         dst = OUT / "web" / "engine" / name
-        if engine_wasm and name == "stockfish-19-single.wasm":     # served from elsewhere (R2): too big for Pages
+        if engine_wasm and name == "stockfish-19-single.wasm":     # served from elsewhere (unpkg): too big for the Worker
             dst.unlink(missing_ok=True)
             continue
         copy_if_changed(src, dst)
-    # The Worker (worker/, wrangler) serves web-dist/ but refuses files over 25 MiB: the full engine goes to R2.
+    # The Worker (worker/, wrangler) serves web-dist/ but refuses files over 25 MiB: the full engine comes from unpkg.
     (OUT / ".assetsignore").write_text("web/engine/stockfish-19-single.wasm\n", encoding="utf-8")
     app_zip(OUT / "app.zip")
     config = {"pyodide": PYODIDE, "chessWheel": whl.name, "engineWasm": engine_wasm or "engine/stockfish-19-single.wasm"}
@@ -150,9 +154,9 @@ def main() -> None:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--serve", action="store_true", help="serve web-dist/ on localhost after building")
     p.add_argument("--port", type=int, default=8200)
-    p.add_argument("--engine-wasm", help="URL of stockfish-19-single.wasm (default: served with the site)")
+    p.add_argument("--engine-wasm", help="URL of stockfish-19-single.wasm, or cdn for unpkg (default: served with the site)")
     args = p.parse_args()
-    build(args.engine_wasm)
+    build(ENGINE_CDN if args.engine_wasm == "cdn" else args.engine_wasm)
     if args.serve:
         srv = ThreadingHTTPServer(("127.0.0.1", args.port), functools.partial(_Handler, directory=str(OUT)))
         print(f"serving http://127.0.0.1:{args.port}/")
