@@ -12,6 +12,13 @@
 //   POST /account/unlink/<provider>      drop a sign-in method (not the last one)
 //   GET  /account/export                 everything kept about you, as a JSON download
 //   POST /account/delete                 the account and all its data, at once
+//
+// The desktop app (chess_review/account.py) has no cookie jar: it sends X-Blundr-App: 1 and gets the session token in
+// the body instead of a cookie, then sends it back as Authorization: Bearer. Its provider sign-ins run in the system
+// browser and come back to the app's loopback port:
+//   POST /account/app/start              {provider, mode, consent, challenge, port} -> {url}: a path, to open in the browser
+//   GET  /account/login/<provider>?resume=<state>   the browser's way in to that sign-in
+//   POST /account/app/token              {code, verifier} -> {token, user}: the code the loopback address was sent
 
 import { CONSENT_VERSION } from './consent.js';
 import * as email from './email.js';
@@ -61,8 +68,15 @@ const redirect = (location, setCookies = []) => {
   return new Response(null, { status: 302, headers: h });
 };
 
+// The session token: the cookie from a browser, the Authorization header from the desktop app.
+function sessionToken(req) {
+  const m = (req.headers.get('Authorization') || '').match(/^Bearer ([A-Za-z0-9_-]{20,})$/);
+  return m ? m[1] : cookies(req)[SESSION];
+}
+const fromApp = req => req.headers.get('X-Blundr-App') === '1';
+
 async function currentUser(req, env) {
-  const token = cookies(req)[SESSION];
+  const token = sessionToken(req);
   return token ? store.sessionUser(env.DB, await sha256(token), now(), SESSION_DAYS) : null;
 }
 
@@ -85,28 +99,89 @@ function provider(env, id) {
 
 const redirectUri = (url, id) => `${url.origin}/account/callback/${id}`;
 
-async function login(req, env, url, id) {
-  const p = provider(env, id);
-  const mode = url.searchParams.get('mode') || 'login';
+// A sign-in about to go to the provider: kept in D1 with a fresh state and PKCE verifier. Returns the state.
+async function beginLogin(req, env, id, mode, consent, app = {}) {
   if (!['login', 'signup', 'link'].includes(mode)) throw new HttpError(400, 'mode: login, signup or link');
-  if (mode === 'signup' && url.searchParams.get('consent') !== CONSENT_VERSION) {
+  if (mode === 'signup' && consent !== CONSENT_VERSION) {
     throw new HttpError(400, 'sign-up needs agreement to the current terms and privacy policy');
   }
   const linkUser = mode === 'link' ? await requireUser(req, env) : null;
   const state = randomToken(24), verifier = randomToken(48);
-  await store.startLogin(env.DB, { state, provider: id, verifier, mode, linkUser, now: now() });
-  const to = p.authorizeUrl(env, { redirectUri: redirectUri(url, id), state, challenge: await sha256(verifier) });
+  await store.startLogin(env.DB, { state, provider: id, verifier, mode, linkUser, appChallenge: app.challenge, appPort: app.port, now: now() });
+  return { state, verifier };
+}
+
+// Off to the provider, with the cookie that ties the way back to this browser.
+async function toProvider(env, url, id, state, verifier) {
+  const to = provider(env, id).authorizeUrl(env, { redirectUri: redirectUri(url, id), state, challenge: await sha256(verifier) });
   return redirect(to, [cookie(url, LOGIN, state, 900)]);
 }
 
+async function login(req, env, url, id) {
+  provider(env, id);
+  const resume = url.searchParams.get('resume');
+  if (resume) {                    // the desktop app's sign-in (appStart), opened in the system browser
+    const l = await store.appLogin(env.DB, resume, now());
+    if (!l || l.provider !== id) return redirect('/?account=error');
+    return toProvider(env, url, id, resume, l.verifier);
+  }
+  const { state, verifier } = await beginLogin(req, env, id, url.searchParams.get('mode') || 'login', url.searchParams.get('consent'));
+  return toProvider(env, url, id, state, verifier);
+}
+
+const B64URL = /^[A-Za-z0-9_-]{43}$/;      // a SHA-256 in base64url
+
+async function body(req) {
+  let b;
+  try { b = await req.json(); } catch { throw new HttpError(400, 'JSON expected'); }
+  if (!b || typeof b !== 'object') throw new HttpError(400, 'JSON expected');
+  return b;
+}
+
+async function appStart(req, env, url) {
+  const b = await body(req);
+  const id = String(b.provider || '');
+  provider(env, id);
+  const port = Number(b.port);
+  if (!Number.isInteger(port) || port < 1024 || port > 65535) throw new HttpError(400, 'port: 1024 to 65535');
+  if (!B64URL.test(String(b.challenge))) throw new HttpError(400, 'challenge: a base64url SHA-256');
+  const { state } = await beginLogin(req, env, id, String(b.mode || 'login'), b.consent, { challenge: b.challenge, port });
+  return json({ url: `/account/login/${id}?resume=${state}` });      // on the site the app talks to
+}
+
+async function appToken(req, env, url) {
+  const b = await body(req);
+  const c = await store.takeAppCode(env.DB, await sha256(String(b.code || '')), now());
+  // only the app that started the sign-in knows the verifier: a code read off the loopback redirect is no use alone
+  if (!c || c.challenge !== await sha256(String(b.verifier || ''))) throw new HttpError(400, 'that sign-in code is wrong or has expired');
+  const token = await newSession(env, c.user_id, now());
+  return json({ token, user: await store.account(env.DB, c.user_id) });
+}
+
 async function callback(req, env, url, id) {
-  const done = (outcome, extra = []) => redirect(`/?account=${outcome}`, [cookie(url, LOGIN, '', 0), ...extra]);
+  let app = null;        // the desktop app's sign-in: the outcome goes to its loopback address, not to the site
+  const done = async (outcome, userId) => {
+    const clear = cookie(url, LOGIN, '', 0);
+    if (app) {
+      const to = new URL(`http://127.0.0.1:${app.app_port}/account/callback`);
+      to.searchParams.set('account', outcome);
+      to.searchParams.set('state', state);
+      if (userId) {
+        const code = randomToken();
+        await store.putAppCode(env.DB, await sha256(code), userId, app.app_challenge, now());
+        to.searchParams.set('code', code);
+      }
+      return redirect(to.href, [clear]);
+    }
+    return redirect(`/?account=${outcome}`, [clear, ...(userId ? [await startSession(env, url, userId, now())] : [])]);
+  };
   const p = provider(env, id);
   const state = url.searchParams.get('state') || '';
   // the state must be the one this browser was sent off with, or someone else's sign-in could land here
   if (!state || cookies(req)[LOGIN] !== state) return done('error');
   const l = await store.takeLogin(env.DB, state, now());
   if (!l || l.provider !== id) return done('error');
+  if (l.app_challenge) app = l;
   if (url.searchParams.get('error') || !url.searchParams.get('code')) return done('cancelled');
   let who;
   try {
@@ -133,22 +208,25 @@ async function callback(req, env, url, id) {
   } else {
     return done('no-account');     // logging in to an account that doesn't exist: the page offers to sign up
   }
-  return done(outcome, [await startSession(env, url, userId, t)]);
+  return done(outcome, userId);
+}
+
+// A new session for userId: its token.
+async function newSession(env, userId, t) {
+  const token = randomToken();
+  await store.createSession(env.DB, await sha256(token), userId, t, SESSION_DAYS);
+  return token;
 }
 
 // A new session for userId: its Set-Cookie header.
 async function startSession(env, url, userId, t) {
-  const token = randomToken();
-  await store.createSession(env.DB, await sha256(token), userId, t, SESSION_DAYS);
-  return cookie(url, SESSION, token, SESSION_DAYS * 86400);
+  return cookie(url, SESSION, await newSession(env, userId, t), SESSION_DAYS * 86400);
 }
 
 const EMAIL_STEPS = ['signup', 'verify', 'login', 'forgot', 'reset', 'link'];
 
 async function emailStep(req, env, url, step) {
-  let b;
-  try { b = await req.json(); } catch { throw new HttpError(400, 'JSON expected'); }
-  if (!b || typeof b !== 'object') throw new HttpError(400, 'JSON expected');
+  const b = await body(req);
   const t = now();
   const signedIn = await currentUser(req, env);
   if (step === 'link' && !signedIn) throw new HttpError(401, 'not signed in');
@@ -166,8 +244,9 @@ async function emailStep(req, env, url, step) {
   if (!out.userId || out.linked) {
     return json({ ok: true, user: out.linked ? await store.account(env.DB, out.userId) : undefined });
   }
-  const sc = await startSession(env, url, out.userId, t);
-  return json({ ok: true, created: Boolean(out.created), user: await store.account(env.DB, out.userId) }, 200, { 'Set-Cookie': sc });
+  const answer = { ok: true, created: Boolean(out.created), user: await store.account(env.DB, out.userId) };
+  if (fromApp(req)) return json({ ...answer, token: await newSession(env, out.userId, t) });
+  return json(answer, 200, { 'Set-Cookie': await startSession(env, url, out.userId, t) });
 }
 
 async function route(req, env, url) {
@@ -175,7 +254,9 @@ async function route(req, env, url) {
   const m = path.match(/^\/account\/(login|callback|unlink)\/([a-z]+)$/);
   if (req.method === 'POST') {
     // A cookie-carrying POST from another site must not act for you (SameSite=Lax stops most; this stops the rest).
-    if (req.headers.get('Origin') !== url.origin) throw new HttpError(403, 'cross-site request');
+    // The desktop app sends no Origin but a header of its own, which no page on another site can send: a browser asks
+    // first (CORS preflight), and nothing here says yes.
+    if (req.headers.get('Origin') !== url.origin && !fromApp(req)) throw new HttpError(403, 'cross-site request');
   }
   if (req.method === 'GET' && path === '/account/me') {
     const u = await currentUser(req, env);
@@ -186,16 +267,17 @@ async function route(req, env, url) {
   if (req.method === 'POST' && em && EMAIL_STEPS.includes(em[1])) return emailStep(req, env, url, em[1]);
   if (req.method === 'GET' && m && m[1] === 'login') return login(req, env, url, m[2]);
   if (req.method === 'GET' && m && m[1] === 'callback') return callback(req, env, url, m[2]);
+  if (req.method === 'POST' && path === '/account/app/start') return appStart(req, env, url);
+  if (req.method === 'POST' && path === '/account/app/token') return appToken(req, env, url);
   if (req.method === 'POST' && path === '/account/logout') {
-    const token = cookies(req)[SESSION];
+    const token = sessionToken(req);
     if (token) await store.deleteSession(env.DB, await sha256(token));
     return json({ ok: true }, 200, { 'Set-Cookie': cookie(url, SESSION, '', 0) });
   }
   if (path === '/account/progress' && (req.method === 'GET' || req.method === 'POST')) {
     const u = await requireUser(req, env);
     if (req.method === 'POST') {
-      let b;
-      try { b = await req.json(); } catch { throw new HttpError(400, 'JSON expected'); }
+      const b = await body(req);
       try {
         await store.applyProgress(env.DB, u, store.checkLines(b.add, 'add'), store.checkLines(b.remove, 'remove'), now());
       } catch (e) {

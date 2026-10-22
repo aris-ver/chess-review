@@ -14,7 +14,7 @@ import logging
 from pathlib import Path
 from typing import Optional
 
-from chess_review import book, profiles, serve, site, updater
+from chess_review import book, profiles, puzzles, serve, site, updater
 from chess_review.config import SITE_DIR
 
 log = logging.getLogger("web.bridge")
@@ -35,15 +35,6 @@ class _Request(serve.Handler):
 
 def handle(method: str, path: str, body: bytes = b"", content_type: Optional[str] = None) -> tuple[int, list, bytes]:
     """(status, [(header, value)], body) for one request, as the desktop server would send it."""
-    if method == "POST" and path.startswith("/api/sync/"):    # the web build's own: account sync (sync.py)
-        from . import sync
-        try:
-            out = sync.handle(path, json.loads(bytes(body or b"{}") or b"{}"))
-        except ValueError:
-            out = None
-        if out is None:
-            return 400, [("Content-Type", "application/json")], b'{"error": "bad sync request"}'
-        return 200, [("Content-Type", "application/json")], json.dumps(out).encode()
     req = _Request(method, path, bytes(body or b""), content_type)
     try:
         getattr(req, "do_" + method)()
@@ -58,14 +49,24 @@ def handle(method: str, path: str, body: bytes = b"", content_type: Optional[str
     return status, headers, payload
 
 
-def setup(app_dir: str, engines) -> None:
+def setup(app_dir: str, engines, pack_later: bool = False) -> None:
     """Pyodide start-up: what serve.main does before serving, minus the socket and the threads. `engines` is the
-    JavaScript engine pool (web/engines.js)."""
+    JavaScript engine pool (web/engines.js). pack_later: puzzles.json arrives in app_dir after start-up (the worker
+    downloads it alongside Python instead of inside app.zip)."""
+    from .later import PackNotLoaded
     from .runner import WebRunner
 
     # The opening book's positions, worked out by scripts/build_web.py: reading the TSVs takes 8 s in Pyodide.
     keys = frozenset((Path(app_dir) / "book_keys.txt").read_text(encoding="utf-8").split("\n"))
     book.load = lambda: keys
+    # the puzzle pack as JSON, made by the same script: the puzzles then answer before DuckDB has loaded (later.py)
+    pack = Path(app_dir) / "puzzles.json"
+    if pack.exists() or pack_later:
+        def read():
+            if not pack.exists():       # still downloading: the worker asks again once it's written
+                raise PackNotLoaded("puzzles.json")
+            return json.loads(pack.read_text(encoding="utf-8"))
+        puzzles.PACK_INSTANCE._read = read
     # site.build copies the page and its themes next to the profiles for the desktop server; here the page and
     # themes are the static site's own files
     site.write_static = lambda: None

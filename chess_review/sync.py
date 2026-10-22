@@ -1,4 +1,6 @@
-"""Puzzle progress kept in step with a Blundr account (docs/accounts.md). Only these files ever leave the browser:
+"""Puzzle progress kept in step with a Blundr account (docs/accounts.md), for the website (in Pyodide) and the desktop
+app alike: static/account.js runs the loop through /api/sync/* in both. "This browser" below is the desktop app's DATA
+folder there. Only these files ever leave the browser:
 
     DATA/puzzle_attempts.jsonl, puzzle_attempts.reset-*.jsonl     library puzzles: first tries, rating (puzzles.py)
     DATA/puzzle_solved.jsonl, puzzle_daily.jsonl                  pack progress and the daily puzzle (packs.py)
@@ -26,8 +28,7 @@ leaving are set aside in DATA/.accounts/<owner>/, and those of the one arriving 
     - logging in to an account that already exists: the guest's data is set aside, never added to the account
     - logging out: the account's copy is set aside (its reviews are there next time) and the guest's comes back
 
-Reviewed games, analysis and the eval cache are not in the list and stay in the browser. The format is plain JSON
-lines with nothing browser-specific in it, so the desktop app could sync the same account.
+Reviewed games, analysis and the eval cache are not in the list and stay in the browser.
 """
 
 import json
@@ -40,7 +41,7 @@ from typing import Optional
 from chess_review import profiles
 from chess_review.config import DATA
 
-log = logging.getLogger("web.sync")
+log = logging.getLogger("sync")
 BASE = "account_sync.json"
 PROFILES = "profiles.jsonl"
 SYNCED_SOURCES = ("chesscom", "lichess")
@@ -366,7 +367,7 @@ def release(wipe: bool = False, data: Path = DATA) -> dict:
 
 
 def handle(path: str, body: dict) -> Optional[dict]:
-    """The bridge's /api/sync/* routes, for web/account.js."""
+    """serve.py's /api/sync/* routes, for static/account.js."""
     user = str(body.get("user") or "") or None
     if path == "/api/sync/state":
         return {"owner": owner(), "guest_data": guest_data() if owner() is None else None}

@@ -37,15 +37,16 @@
   const NOTE_OFF = 'webSpeedNoteDismissed';
   let noteOff = false, closed = false;
   try { noteOff = localStorage.getItem(NOTE_OFF) === '1'; } catch (e) {}
-  const state = { python: 'Loading Python', engine: null };    // engine: { done, total } once it starts
+  const state = { python: 'Loading Python', engine: null };    // engine: { done, total, name } once it starts
   const mb = b => (b / 1048576).toFixed(0);
   let pythonReady = false, engineReady = false, analysing = false, hideT = null;
   const render = () => {
     let loading = pythonReady ? '' : `<div>${state.python}</div>`;
-    if (engineReady) { if (!analysing) loading += '<div>Engine ready</div>'; }   // "Engine ready" is old news by then
+    // the engine by name and version ("Stockfish 19"), so a 95 MB download says what it is
+    if (engineReady) { if (!analysing) loading += `<div>${state.engine.name} ready</div>`; }   // old news by then
     else if (state.engine) {
-      const { done, total } = state.engine;
-      loading += `<div>Downloading the engine: ${mb(done)}${total ? ' / ' + mb(total) : ''} MB</div>` +
+      const { done, total, name } = state.engine;
+      loading += `<div>Downloading ${name}, the chess engine: ${mb(done)}${total ? ' / ' + mb(total) : ''} MB</div>` +
         (total ? `<div class="pb"><i style="width:${Math.min(100, done / total * 100).toFixed(1)}%"></i></div>` : '');
     }
     const note = noteOff ? '' : `<div style="opacity:.7${loading ? ';margin-top:4px' : ''}">Analysis in the browser is about 2× slower than the ` +
@@ -81,6 +82,37 @@
     if (now !== analysing) { analysing = now; update(); }
   };
 
+  // Answers from the last visit, handed back at once while Python loads (about 4 s on a reload): the home screen's
+  // (profiles, puzzle tiles) and a profile's: its games.json, which of them are new, and each game's review, so those
+  // open straight away too. The request still goes to Python; when its answer differs from the one
+  // shown, or is gone (a deleted profile), the screen is drawn again. Only answers Python gave are kept: no logic is
+  // copied here. Not the puzzles themselves, which change with the date or at random. In Cache Storage, as games.json
+  // is 150 KB a profile.
+  const KEEP = /^(api\/(profiles(\/[^/]+\/unseen)?|puzzles\/(packs|themes|sources))|p\/[^/]+\/games(\.json|\/[^/]+\.json))$/;
+  const store = (self.caches ? caches.open('blundr-kept') : Promise.reject()).catch(() => null);   // none: every visit waits
+  const keyOf = rel => location.origin + base + rel;
+  try {     // where earlier builds kept the home screen's
+    for (const k of Object.keys(localStorage)) if (k.startsWith('webKept:')) localStorage.removeItem(k);
+  } catch (e) {}
+  const kept = async rel => {
+    try {
+      const r = await (await store).match(keyOf(rel));
+      return r ? { text: await r.text(), type: r.headers.get('Content-Type') } : null;
+    } catch (e) { return null; }
+  };
+  let redrawT = null;
+  const keep = async (rel, m, shown, hash) => {
+    const text = m.status === 200 ? new TextDecoder().decode(m.body) : null;
+    try {
+      const c = await store;
+      if (text == null) await c.delete(keyOf(rel));
+      else await c.put(keyOf(rel), new Response(text, { headers: m.headers.filter(([k]) => /^content-type$/i.test(k)) }));
+    } catch (e) { /* full or blocked: next visit waits */ }
+    if (shown == null || shown.text === text || location.hash !== hash) return;
+    clearTimeout(redrawT);      // the home screen asks for several at once: draw it again once
+    redrawT = setTimeout(() => { if (location.hash === hash) dispatchEvent(new HashChangeEvent('hashchange')); }, 100);
+  };
+
   worker.onmessage = e => {
     const m = e.data;
     if (m.type === 'response') {
@@ -88,6 +120,7 @@
       if (!p) return;
       pending.delete(m.id);
       if (p.path === '/api/status' && m.status === 200) watchStatus(m.body);
+      if (p.keep) keep(p.rel, m, p.shown, p.hash);
       const empty = m.status === 204 || m.status === 304;
       p.resolve(new Response(empty ? null : m.body, { status: m.status, headers: m.headers }));
     } else if (m.type === 'progress') {
@@ -96,7 +129,7 @@
         pythonReady = m.total > 0 && m.done === m.total;
       } else {
         engineReady = m.total > 0 && m.done >= m.total;
-        state.engine = { done: m.done, total: m.total };
+        state.engine = { done: m.done, total: m.total, name: m.text };
       }
       update();
     }
@@ -112,12 +145,28 @@
     if (body != null && !(body instanceof Uint8Array)) body = new Uint8Array(await new Response(body).arrayBuffer());
     if (init.signal && init.signal.aborted) throw new DOMException('Aborted', 'AbortError');
     const id = ++seq;
+    const keepIt = method === 'GET' && !url.search && KEEP.test(rel);
+    const hash = location.hash;
+    const shown = keepIt && !pythonReady ? await kept(rel) : null;
     return new Promise((resolve, reject) => {
       const path = '/' + rel + url.search;     // the desktop server's paths are absolute (/api/..., /p/...)
-      pending.set(id, { resolve, reject, path: '/' + rel });
+      if (shown != null) {     // last visit's answer now; Python's, when it comes, only updates what's kept
+        resolve(new Response(shown.text, { status: 200, headers: { 'Content-Type': shown.type || 'application/json' } }));
+        resolve = () => {};
+      }
+      pending.set(id, { resolve, reject, path: '/' + rel, rel, keep: keepIt, shown, hash });
       if (init.signal) init.signal.addEventListener('abort', () => { pending.delete(id); reject(new DOMException('Aborted', 'AbortError')); });
       worker.postMessage({ id, method, path, body, contentType: 'application/json' }, body ? [body.buffer] : []);
     });
+  };
+  // The page reads the server's copy of its settings with a synchronous XMLHttpRequest, which the worker can't answer.
+  // That copy is for the desktop, whose port (so its localStorage) may change; here localStorage is the one store, so
+  // the answer is "no server copy" without asking the network (which would only say 404).
+  const xhrOpen = XMLHttpRequest.prototype.open;
+  XMLHttpRequest.prototype.open = function (method, url, ...rest) {
+    const u = new URL(String(url), location.href);
+    if (u.origin === location.origin && u.pathname === base + 'api/settings') url = 'data:application/json,null';
+    return xhrOpen.call(this, method, url, ...rest);
   };
   document.addEventListener('DOMContentLoaded', update);
 })();

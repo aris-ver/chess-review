@@ -18,6 +18,8 @@ finding it; a miss at any point starts it over. Solved first time, or found at t
 and stays away. Starting the schedule over (reset()) archives that file, and every puzzle is new again.
 """
 
+from __future__ import annotations
+
 import hashlib
 import json
 import logging
@@ -33,7 +35,7 @@ import duckdb
 from . import profiles
 from .classify import only_move
 from .config import MISTAKE
-from .db import connect
+from .db import connect, dicts
 from .fen import fen_key
 from .puzzles import archive, line
 from .site import slug
@@ -198,7 +200,7 @@ def extend(con: duckdb.DuckDBPyConnection, search: Callable[[list[str]], None], 
     """The background half: search every position the puzzles' lines are waiting on, a round (a ply) at a time,
     until each line is settled. `con` is a write connection to evals.duckdb with the profile's views on it, and
     `search(keys)` puts the MultiPV of those positions into it. Settled lines cost a few cache reads, nothing else."""
-    rows = con.execute(CANDIDATES_SQL).fetch_arrow_table().to_pylist()
+    rows = dicts(con.execute(CANDIDATES_SQL))
     starts = [s for s in map(_start, rows) if s]
     searched: set[str] = set()
     out = []
@@ -245,7 +247,7 @@ class Pool:
                 return hit
             con = connect(profile)
             try:
-                rows = con.execute(CANDIDATES_SQL).fetch_arrow_table().to_pylist()
+                rows = dicts(con.execute(CANDIDATES_SQL))
                 rows = [(r, s) for r, s in ((r, _start(r)) for r in rows) if s]
                 walked = settle([s for _, s in rows], lambda keys: cached_lines(con, keys))
                 # without the live cache (the engine job has it open) every line looks unsettled: don't keep that

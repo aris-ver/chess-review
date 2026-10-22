@@ -8,6 +8,8 @@ i.e. the mover's clock immediately AFTER making that move. time_spent is
 derived downstream as the delta between consecutive same-side readings.
 """
 
+from __future__ import annotations
+
 import argparse
 import io
 import json
@@ -18,40 +20,40 @@ from typing import Iterator, Optional
 
 import chess
 import chess.pgn
-import pyarrow as pa
-import pyarrow.parquet as pq
-
 from . import profiles
+from .db import write_parquet
 from .profiles import Profile
 
 log = logging.getLogger("normalise")
 
 DRAW_CODES = {"agreed", "repetition", "stalemate", "insufficient", "50move", "timevsinsufficient"}
 
-GAMES_SCHEMA = pa.schema([
-    ("game_id", pa.string()),
-    ("played_at", pa.timestamp("us")),
-    ("time_control", pa.string()),
-    ("time_class", pa.string()),
-    ("my_colour", pa.string()),
-    ("my_rating", pa.int32()),
-    ("opponent_rating", pa.int32()),
-    ("result", pa.string()),
-    ("termination", pa.string()),
-    ("eco", pa.string()),
-    ("opening_name", pa.string()),
-    ("opponent", pa.string()),      # not in the spec schema; needed to label games in the UI
-    ("my_name", pa.string()),       # the profile's username for chess.com games; the PGN header name for pasted ones
-])
+# games.parquet's columns, (name, SQL type) in order
+GAMES_SCHEMA = (
+    ("game_id", "VARCHAR"),
+    ("played_at", "TIMESTAMP"),
+    ("time_control", "VARCHAR"),
+    ("time_class", "VARCHAR"),
+    ("my_colour", "VARCHAR"),
+    ("my_rating", "INTEGER"),
+    ("opponent_rating", "INTEGER"),
+    ("result", "VARCHAR"),
+    ("termination", "VARCHAR"),
+    ("eco", "VARCHAR"),
+    ("opening_name", "VARCHAR"),
+    ("opponent", "VARCHAR"),      # not in the spec schema; needed to label games in the UI
+    ("my_name", "VARCHAR"),       # the profile's username for chess.com games; the PGN header name for pasted ones
+)
 
-POSITIONS_SCHEMA = pa.schema([
-    ("game_id", pa.string()),
-    ("ply", pa.int32()),
-    ("fen", pa.string()),
-    ("move_played", pa.string()),
-    ("side_to_move", pa.string()),
-    ("clock_remaining", pa.int32()),
-])
+# positions.parquet's columns
+POSITIONS_SCHEMA = (
+    ("game_id", "VARCHAR"),
+    ("ply", "INTEGER"),
+    ("fen", "VARCHAR"),
+    ("move_played", "VARCHAR"),
+    ("side_to_move", "VARCHAR"),
+    ("clock_remaining", "INTEGER"),
+)
 
 
 def extract_positions(game: chess.pgn.Game, game_id: str) -> list[dict]:
@@ -324,8 +326,8 @@ def build(profile: Profile) -> dict:
             positions.extend(pos)
 
     profile.dir.mkdir(parents=True, exist_ok=True)
-    pq.write_table(pa.Table.from_pylist(list(games.values()), schema=GAMES_SCHEMA), profile.games_parquet)
-    pq.write_table(pa.Table.from_pylist(positions, schema=POSITIONS_SCHEMA), profile.positions_parquet)
+    write_parquet(list(games.values()), GAMES_SCHEMA, profile.games_parquet)
+    write_parquet(positions, POSITIONS_SCHEMA, profile.positions_parquet)
     stats["games"] = len(games)
     stats["positions"] = len(positions)
     return stats

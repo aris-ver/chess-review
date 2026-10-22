@@ -35,8 +35,8 @@ load takes about 15 s; `book.load` takes 8 s there (3.8 s native), so the book's
 - **The page** is `chess_review/static/index.html`, as the desktop serves it. The web build adds one
   `<script src="web/shim.js">`; the shim wraps `window.fetch` so the page's relative `api/…` and `p/…`
   requests become messages to the Python worker. Everything else (themes, sounds) is a static file.
-- **The Python worker** runs the existing package in Pyodide 314.0.7 (it ships DuckDB 1.5.1 and pyarrow 22;
-  python-chess 1.11.2 has no wheel on PyPI, so the build makes one). It answers requests with `serve.Handler`
+- **The Python worker** runs the existing package in Pyodide 314.0.7 (it ships DuckDB 1.5.1, the one
+  binary package the app uses; python-chess 1.11.2 has no wheel on PyPI, so the build makes one). It answers requests with `serve.Handler`
   itself: a request is fed to `do_GET`/`do_POST` through in-memory `rfile`/`wfile` and the raw HTTP response
   is handed back to the shim. So every route, file under `p/<id>/` and error message is the desktop's own,
   with no JavaScript copy of the logic. On the main thread Pyodide would freeze the page, hence the worker.
@@ -122,11 +122,66 @@ python scripts/build_web.py --serve      # then open http://127.0.0.1:8200/
   archive list), but chess.com answered 404 for the first month to every client that day, curl included,
   so that path is not verified yet.
 
-Load order: Pyodide starts loading the moment the page opens; the 99 MB engine starts only once Python is ready,
-so the two don't share the bandwidth. The page draws at once (the home tiles' covers don't wait for the profile
-list), but every `api/` request waits for Python, puzzles included, about 20 s on a first visit.
-A puzzle visitor could skip that wait if the puzzle routes (static data plus attempts) were answered before
-Python is up. That is a later step, and it would mean JavaScript for those routes.
+Load order: Pyodide starts loading the moment the page opens, then DuckDB, then the 99 MB engine, so
+none of them share the bandwidth. The page draws at once (the home tiles' covers don't wait for the profile list).
+
+A reload downloads next to nothing (jsDelivr sends a year's `Cache-Control`; the site's files come back as 304s),
+but Pyodide compiles every package's WebAssembly again at each visit. Measured 2026-10-22 on blundr.gr, all from
+cache: 12.2 s before the first `api/` answer, of which pyarrow ~3 s, pandas ~3 s (pulled in by pyarrow, never
+imported), DuckDB 1.2 s, numpy 1 s, the runtime 1.8 s. So:
+
+- Python starts without DuckDB. `web/py/chess_web/later.py` puts a placeholder module in its place, so
+  `chess_review` imports as it is; the home screen, the puzzles and the settings answer without it (the puzzle
+  pack ships as `puzzles.json`). A request that reaches it raises `NotLoaded`; the worker waits for
+  the package and asks again. POSTs other than settings and puzzle results wait for it up front, so none runs
+  twice. For the placeholder, the modules whose signatures name DuckDB types have
+  `from __future__ import annotations`.
+- pyarrow is gone (below), so pandas and numpy with it.
+
+Reload of the local build after that: status, profiles and puzzles answer at 3.6 s; DuckDB and pyarrow are in
+at about 8–9 s, when a pasted game or a review goes through.
+
+**No pyarrow** (branch `drop-pyarrow`, 2026-10-22). It only turned query results into dicts and wrote the three
+parquet files. Now `chess_review/db.py` does both with DuckDB: `dicts()` builds rows from `cursor.description` and
+`fetchall()`, and `write_parquet()` writes the rows as one JSON array to a file beside the target and has DuckDB
+`COPY` it to parquet through `read_json` with the schema's columns (binding them as parameters takes minutes). The
+schemas are `(name, SQL type)` tuples (`GAMES_SCHEMA`, `POSITIONS_SCHEMA`, `MOVES_SCHEMA`). Normalising and
+classifying two real profiles with `main` and with the branch gave the same Arrow schemas and the same rows. The
+web heavy stage is `loadPackage('duckdb')` alone: 13 MB less on a first visit (pyarrow 10 MB, numpy 3 MB).
+Reloads of the local build: Python's first answer at 3.4–4.5 s, a POST that waits for DuckDB answered at
+4.7–6.2 s (was 8–9 s locally, 9.4–9.7 s on blundr.gr), so actions are possible about 1.3 s after Python. A pasted
+game reviewed end to end in the browser, labels written. `scripts/build_puzzle_pack.py` still uses pyarrow (to read
+the zstd CSV and write the pack); it is a build tool, not part of the app.
+
+Then:
+
+- **The home screen from the last visit.** `web/shim.js` keeps Python's last answers to `api/profiles` and
+  `api/puzzles/{packs,themes,sources}` in localStorage and hands them back at once while Python loads. The request
+  still goes to Python, and if its answer differs, the home screen is drawn again (a `hashchange`). Only Python's
+  own answers are kept, so no logic is copied into JavaScript. Measured on a reload of the local build: the profiles
+  show at 0.2–0.4 s, Python's answer comes at 3.4 s, and a stale copy is replaced as soon as it does.
+  Now also a profile's `games.json`, its `api/profiles/<id>/unseen` and each game's review file under
+  `p/`, all in Cache Storage (`blundr-kept`; games.json is 150 KB a profile): a profile or a review opened by a reload
+  shows at ~0.4 s instead of ~3.6 s. When Python's answer differs, or is gone (a deleted profile), the screen it was
+  asked for is drawn again. Not the puzzles, which change with the date or at random.
+
+Measured on blundr.gr on 2026-10-22 (before pyarrow was dropped), all from cache: Python's first answer at
+3.6–4.5 s; DuckDB and pyarrow in at 9.4–9.7 s, the engine ready from Cache Storage at 8–10 s. Only actions wait for those (Analyse, Refresh games, a
+new profile, a pasted game): showing a profile or a review needs Python alone. Other findings:
+
+- The page's synchronous `XMLHttpRequest` for `api/settings` went past the shim to the network (404). The shim now
+  answers it with "no server copy" (`null`): on the web localStorage is the one store, so nothing is sent to Python.
+- The stale-page check (`HEAD index.html`) got a 307 on blundr.gr and no `Last-Modified`, so it did nothing at the
+  cost of two requests per route change. It now asks for `.` and takes `ETag` as well, and stops asking a server
+  that sends neither.
+- blundr.gr sends HTML without an `ETag` (JS and JSON have one), so the 84 KB page comes again in full at every
+  reload. Likely a Cloudflare zone feature that rewrites HTML (Email Address Obfuscation, Automatic HTTPS Rewrites
+  or the like): with it off, the page is a 304 and the stale-page check works on the web too.
+- **A smaller `app.zip`.** It was 2.5 MB on the critical path of a first visit, mostly the puzzle pack. Now it's
+  240 KB: the pack is `puzzles.json` beside it (about 2 MB as sent compressed), which the worker fetches alongside
+  Python and writes into `/app`. A request that reaches the pack first raises `PackNotLoaded` (a `NotLoaded`) and
+  waits for that file alone; puzzle POSTs wait for it up front. `chess_review/sound_packs/` (the themes' sound
+  sources) is no longer in the zip.
 
 Not yet: the sandbox and puzzle engine replies (lite engine, `/api/eval`, `/api/explore`, `/api/eval_stream`),
 personal-puzzle builds and `analyse_all` (async versions of those jobs), the new-games scan, hiding the
