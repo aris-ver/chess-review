@@ -152,6 +152,10 @@ dialog#account input:focus { outline: none; border-color: var(--accent); }
 dialog#account #acc-code { letter-spacing: .3em; text-align: center; font-size: 18px; }
 dialog#account .or { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 12px; margin: 4px 0; }
 dialog#account .or::before, dialog#account .or::after { content: ""; flex: 1; border-top: 1px solid var(--line); }
+dialog#account button.prov { display: flex; align-items: center; justify-content: center; gap: 8px; }
+dialog#account button.prov svg { width: 18px; height: 18px; flex: none; }
+dialog#account button.prov.primary svg[viewBox="0 0 48 48"] { background: #fff; border-radius: 50%; padding: 2px; box-sizing: content-box; }
+dialog#account .switch { text-align: center; margin: 12px 0 0; }
 dialog#account .foot { display: flex; flex-wrap: wrap; gap: 6px 14px; justify-content: center; margin-top: 12px; font-size: 13px; }
 dialog#account .who { display: flex; align-items: center; gap: 12px; margin: 2px 0 14px; }
 dialog#account .who > svg { width: 40px; height: 40px; flex: none; padding: 8px; box-sizing: border-box; border-radius: 50%; background: var(--panel2); fill: var(--muted); }
@@ -188,9 +192,14 @@ dialog#account .syncrow button { flex: none; padding: 4px 10px; }
 
   // ---------- the dialog ----------
 
+  // each provider's own mark on its button: Google's G, Lichess's knight
+  const PROVIDER_ICONS = {
+    google: '<svg viewBox="0 0 48 48"><path fill="#FFC107" d="M43.6 20.1H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 8 3l5.7-5.7C34 6.1 29.3 4 24 4 13 4 4 13 4 24s9 20 20 20 20-9 20-20c0-1.3-.1-2.6-.4-3.9z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 8 3l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2A11.9 11.9 0 0 1 24 36c-5.2 0-9.6-3.3-11.3-7.9l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.1H42V20H24v8h11.3a12 12 0 0 1-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.6-.4-3.9z"/></svg>',
+    lichess: '<svg viewBox="5 6 34 34"><path fill="currentColor" d="M22 10c10.5 1 16.5 8 16 29H15c0-9 10-6.5 8-21 .38 2.91-5.55 7.37-8 9-3 2-2.82 4.34-5 4-1.04-.94 1.41-3.04 0-3-1 0 .19 1.23-1 2-1 0-4 1-4-4 0-2 6-12 6-12s1.89-1.9 2-3.5c-.73-.99-.5-2-.5-3 1-1 3 2.5 3 2.5h2s.78-1.99 2.5-3c1 0 1 3 1 3z"/></svg>',
+  };
   function providerButtons(mode, disabled) {
-    return providers.map(p => `<button class="${mode === 'signup' ? 'primary' : ''}" data-go="${p.id}" data-mode="${mode}"${disabled ? ' disabled' : ''}>` +
-      `${mode === 'signup' ? 'Sign up' : 'Log in'} with ${esc(p.name)}</button>`).join('');
+    return providers.map(p => `<button class="prov${mode === 'signup' ? ' primary' : ''}" data-go="${p.id}" data-mode="${mode}"${disabled ? ' disabled' : ''}>` +
+      `${PROVIDER_ICONS[p.id] || ''}<span>${mode === 'signup' ? 'Sign up' : 'Log in'} with ${esc(p.name)}</span></button>`).join('');
   }
   const note = () => view.note ? `<div class="note${view.note.bad ? ' bad' : ''}">${view.note.html}</div>` : '';
   const legal = () => `<div class="foot"><a href="${sitePage('privacy.html')}" target="_blank">Privacy policy</a><a href="${sitePage('terms.html')}" target="_blank">Terms of use</a></div>`;
@@ -226,23 +235,25 @@ dialog#account .syncrow button { flex: none; padding: 4px 10px; }
     return '';
   }
 
-  // Logged out: a line on what an account is for, then the sign-ins, the one-tap ones first
+  // Logged out: email and password first, then the one-tap sign-ins, then the way to sign up, which has the
+  // sign-up options (and the way back)
   function guestBody() {
-    const signup = view.tab === 'signup';
     if (view.step) return note() + stepBody() + legal();
-    const or = providers.length ? '<div class="or"><span>or with email</span></div>' : '';
+    const or = text => providers.length ? `<div class="or"><span>${text}</span></div>` : '';
+    const what = `An account is optional: it keeps your puzzle progress and profiles on ${app ? 'blundr.gr and your computers' : 'all your devices'}.`;
+    if (view.tab === 'signup') {
+      return note() + `<p class="muted">${what}</p>` +
+        `<label class="consent"><input type="checkbox" id="acc-consent"> <span>I am 15 or older and agree to the <a href="${sitePage('terms.html')}" target="_blank">terms of use</a> and the <a href="${sitePage('privacy.html')}" target="_blank">privacy policy</a>.</span></label>` +
+        `<div class="col">${providerButtons('signup', true)}</div>${or('or with email')}` +
+        `<form data-form="signup" class="col">${emailInput()}${passwordInput('new-password', `Password (at least ${minPassword} characters)`)}` +
+        '<button class="primary" data-mode="signup" disabled>Sign up with email</button></form>' +
+        '<p class="switch">Already have an account? <a href="#" data-tab="login">Log in</a></p>' + legal();
+    }
     return note() +
-      `<div class="tabs"><button data-tab="login" class="${signup ? '' : 'active'}">Log in</button><button data-tab="signup" class="${signup ? 'active' : ''}">Sign up</button></div>` +
-      `<p class="muted">Optional: keeps your puzzle progress and profiles on ${app ? 'blundr.gr and your computers' : 'all your devices'}.</p>` +
-      (signup
-        ? `<label class="consent"><input type="checkbox" id="acc-consent"> <span>I am 15 or older and agree to the <a href="${sitePage('terms.html')}" target="_blank">terms of use</a> and the <a href="${sitePage('privacy.html')}" target="_blank">privacy policy</a>.</span></label>` +
-          `<div class="col">${providerButtons('signup', true)}</div>${or}` +
-          `<form data-form="signup" class="col">${emailInput()}${passwordInput('new-password', `Password (at least ${minPassword} characters)`)}` +
-          '<button class="primary" data-mode="signup" disabled>Sign up with email</button></form>'
-        : `<div class="col">${providerButtons('login', false)}</div>${or}` +
-          `<form data-form="login" class="col">${emailInput()}${passwordInput('current-password')}<button class="primary">Log in</button></form>` +
-          '<p class="muted"><a href="#" data-act="toforgot">Forgot password?</a></p>') +
-      legal();
+      `<form data-form="login" class="col">${emailInput()}${passwordInput('current-password')}<button class="primary">Log in</button></form>` +
+      '<p class="muted"><a href="#" data-act="toforgot">Forgot password?</a></p>' +
+      (providers.length ? `${or('or')}<div class="col">${providerButtons('login', false)}</div>` : '') +
+      `<hr><p class="muted">New here? ${what}</p><div class="col"><button data-tab="signup">Sign up</button></div>` + legal();
   }
 
   async function emailCall(step, body) {
@@ -416,7 +427,7 @@ dialog#account .syncrow button { flex: none; padding: 4px 10px; }
     dlg.addEventListener('click', async e => {
       const el = e.target.closest('[data-tab],[data-go],[data-act],[data-unlink]');
       if (!el || el.disabled) return;
-      if (el.dataset.tab) { view.tab = el.dataset.tab; view.note = null; return renderDialog(); }
+      if (el.dataset.tab) { e.preventDefault(); view.tab = el.dataset.tab; view.note = null; return renderDialog(); }
       if (el.dataset.go && app) {
         el.disabled = true;
         try { await appSignIn(el.dataset.go, el.dataset.mode); } catch (err) { view.waiting = null; view.note = { bad: true, html: esc(err.message) }; renderDialog(); }
