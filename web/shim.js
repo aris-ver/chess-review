@@ -82,6 +82,19 @@
     if (now !== analysing) { analysing = now; update(); }
   };
 
+  // The home screen's answers from the last visit, handed back at once while Python loads (about 4 s on a reload), so
+  // the profiles and the puzzle tiles show straight away. The request still goes to Python; when its answer differs
+  // from the one shown, the home screen is drawn again. Only answers Python gave are kept: no logic is copied here.
+  const KEEP = new Set(['/api/profiles', '/api/puzzles/packs', '/api/puzzles/themes', '/api/puzzles/sources']);
+  const kept = path => { try { return localStorage.getItem('webKept:' + path); } catch (e) { return null; } };
+  let redrawT = null;
+  const keep = (path, text, shown) => {
+    try { localStorage.setItem('webKept:' + path, text); } catch (e) { /* full or blocked: next visit waits */ }
+    if (shown == null || shown === text) return;
+    clearTimeout(redrawT);      // the home screen asks for several at once: draw it again once
+    redrawT = setTimeout(() => { if (['', '#', '#/'].includes(location.hash)) dispatchEvent(new HashChangeEvent('hashchange')); }, 100);
+  };
+
   worker.onmessage = e => {
     const m = e.data;
     if (m.type === 'response') {
@@ -89,6 +102,7 @@
       if (!p) return;
       pending.delete(m.id);
       if (p.path === '/api/status' && m.status === 200) watchStatus(m.body);
+      if (p.keep && m.status === 200) keep(p.path, new TextDecoder().decode(m.body), p.shown);
       const empty = m.status === 204 || m.status === 304;
       p.resolve(new Response(empty ? null : m.body, { status: m.status, headers: m.headers }));
     } else if (m.type === 'progress') {
@@ -113,9 +127,15 @@
     if (body != null && !(body instanceof Uint8Array)) body = new Uint8Array(await new Response(body).arrayBuffer());
     if (init.signal && init.signal.aborted) throw new DOMException('Aborted', 'AbortError');
     const id = ++seq;
+    const keepIt = method === 'GET' && !url.search && KEEP.has('/' + rel);
+    const shown = keepIt && !pythonReady ? kept('/' + rel) : null;
     return new Promise((resolve, reject) => {
       const path = '/' + rel + url.search;     // the desktop server's paths are absolute (/api/..., /p/...)
-      pending.set(id, { resolve, reject, path: '/' + rel });
+      if (shown != null) {     // last visit's answer now; Python's, when it comes, only updates what's kept
+        resolve(new Response(shown, { status: 200, headers: { 'Content-Type': 'application/json' } }));
+        resolve = () => {};
+      }
+      pending.set(id, { resolve, reject, path: '/' + rel, keep: keepIt, shown });
       if (init.signal) init.signal.addEventListener('abort', () => { pending.delete(id); reject(new DOMException('Aborted', 'AbortError')); });
       worker.postMessage({ id, method, path, body, contentType: 'application/json' }, body ? [body.buffer] : []);
     });

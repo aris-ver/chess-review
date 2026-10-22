@@ -7,8 +7,9 @@ web-dist/
   account.js            the Blundr account, from chess_review/static/ (the desktop app has the same one)
   privacy.html, terms.html   from web/pages/
   themes/               the page's pieces, boards and sounds
-  app.zip               chess_review (minus static/ and the puzzle pack's parquet) + web/py/chess_web + book_keys.txt
-                        + puzzles.json (the same pack, readable before pyarrow has loaded), unpacked into Pyodide
+  app.zip               chess_review (minus static/, sound_packs/ and the puzzle pack's parquet) + web/py/chess_web
+                        + book_keys.txt, unpacked into Pyodide (240 KB)
+  puzzles.json          the same puzzle pack, readable before pyarrow has loaded; fetched alongside Python
   web/                  shim.js, py-worker.js, engines.js, config.js, the python-chess wheel, engine/ (Stockfish 19)
 
 Downloads (cached in data/web-cache): python-chess's wheel (PyPI has only its sdist) and npm stockfish@19.0.1.
@@ -105,13 +106,17 @@ def app_zip(dst: Path) -> None:
         pkg = ROOT / "chess_review"
         for f in sorted(pkg.rglob("*")):
             rel = f.relative_to(pkg)
-            if f.is_file() and rel.parts[0] != "static" and "__pycache__" not in rel.parts and f != puzzles.PACK:
+            # static/ is the site itself, sound_packs/ only a source for the themes' sounds
+            if (f.is_file() and rel.parts[0] not in ("static", "sound_packs") and "__pycache__" not in rel.parts
+                    and f != puzzles.PACK):
                 z.write(f, "chess_review/" + rel.as_posix())
         web = ROOT / "web" / "py"
         for f in sorted(web.rglob("*.py")):
             z.write(f, f.relative_to(web).as_posix())
         z.writestr("book_keys.txt", "\n".join(keys))
-        z.writestr("puzzles.json", json.dumps(puzzles.PACK_INSTANCE._read(), separators=(",", ":")))
+    # the puzzle pack beside it, not in it: the worker fetches it alongside Python (the Worker sends it compressed)
+    (dst.parent / "puzzles.json").write_text(json.dumps(puzzles.PACK_INSTANCE._read(), separators=(",", ":")),
+                                             encoding="utf-8")
 
 
 def build(engine_wasm: str | None) -> None:

@@ -49,9 +49,11 @@ def handle(method: str, path: str, body: bytes = b"", content_type: Optional[str
     return status, headers, payload
 
 
-def setup(app_dir: str, engines) -> None:
+def setup(app_dir: str, engines, pack_later: bool = False) -> None:
     """Pyodide start-up: what serve.main does before serving, minus the socket and the threads. `engines` is the
-    JavaScript engine pool (web/engines.js)."""
+    JavaScript engine pool (web/engines.js). pack_later: puzzles.json arrives in app_dir after start-up (the worker
+    downloads it alongside Python instead of inside app.zip)."""
+    from .later import PackNotLoaded
     from .runner import WebRunner
 
     # The opening book's positions, worked out by scripts/build_web.py: reading the TSVs takes 8 s in Pyodide.
@@ -59,8 +61,12 @@ def setup(app_dir: str, engines) -> None:
     book.load = lambda: keys
     # the puzzle pack as JSON, made by the same script: the puzzles then answer before pyarrow has loaded (later.py)
     pack = Path(app_dir) / "puzzles.json"
-    if pack.exists():
-        puzzles.PACK_INSTANCE._read = lambda: json.loads(pack.read_text(encoding="utf-8"))
+    if pack.exists() or pack_later:
+        def read():
+            if not pack.exists():       # still downloading: the worker asks again once it's written
+                raise PackNotLoaded("puzzles.json")
+            return json.loads(pack.read_text(encoding="utf-8"))
+        puzzles.PACK_INSTANCE._read = read
     # site.build copies the page and its themes next to the profiles for the desktop server; here the page and
     # themes are the static site's own files
     site.write_static = lambda: None
