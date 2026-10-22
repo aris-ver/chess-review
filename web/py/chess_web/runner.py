@@ -9,13 +9,14 @@ into analyse.evaluate_multipv, so a browser eval is stored exactly as a desktop 
 
 import asyncio
 import logging
+import time
 from typing import Callable, Iterable, Optional
 
 import chess
 import chess.engine
 
 from chess_review import aggregates, analyse, classify, serve, site
-from chess_review.analyse import CRASH_RETRY_NODES, export_parquet, open_db, pending_keys, write_results
+from chess_review.analyse import CRASH_RETRY_NODES, LivePace, export_parquet, open_db, pending_keys, write_results
 from chess_review.config import DEFAULT_NODES, MULTIPV_N
 from chess_review.db import base_views
 from chess_review.explore import Explorer
@@ -75,32 +76,50 @@ class BrowserAnalyser:
         return key, dict(NO_EVAL), []
 
     async def run(self, keys: Iterable[str], con, on_progress: Optional[Callable[[int, int], None]] = None,
-                  batch: int = 20, should_stop: Optional[Callable[[], bool]] = None) -> int:
+                  batch: int = 20, should_stop: Optional[Callable[[], bool]] = None,
+                  live: Optional[LivePace] = None) -> int:
         keys = list(keys)
         if not keys:
             return 0
-        todo, buf, done, stop = iter(keys), [], 0, False
+        todo, buf, done, stop, timer = iter(keys), [], 0, False, None
 
         def flush() -> None:
+            started = time.monotonic()
             write_results(con, buf)
             buf.clear()
             if on_progress:
                 on_progress(done, len(keys))
+            if live:
+                live.wrote(started)
             persist()
 
+        async def due() -> None:        # live: the results in hand go out once due, whether or not more come
+            nonlocal timer
+            while live.wait():
+                await asyncio.sleep(live.wait())
+            timer = None
+            if buf:
+                flush()
+
         async def lane() -> None:       # one per engine, taking the next position as it frees up
-            nonlocal done, stop
+            nonlocal done, stop, timer
             for key in todo:
                 buf.append(await self.evaluate(key))
                 done += 1
+                if live:
+                    live.got()
                 if len(buf) >= batch or done == len(keys):
                     flush()
+                elif live and timer is None:
+                    timer = asyncio.ensure_future(due())
                 if should_stop and should_stop():
                     stop = True
                 if stop:
                     return
 
         await asyncio.gather(*(lane() for _ in range(self.workers)))
+        if timer:
+            timer.cancel()
         if buf:         # stopped: what is in hand is kept
             flush()
         return done
@@ -166,7 +185,7 @@ class WebRunner(serve.Runner):
                 site.update_index(p, site.write_game(con, p, job.game_id))
 
             await self.analyser.run(keys, con, on_progress=progress, batch=self.analyser.workers,
-                                    should_stop=lambda: job.stop_requested)
+                                    should_stop=lambda: job.stop_requested, live=LivePace(serve.LIVE_WRITE_S))
             job.status = "finishing"
             site.update_index(p, site.write_game(con, p, job.game_id))
             export_parquet(con)

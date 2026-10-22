@@ -94,7 +94,7 @@ import duckdb
 import requests
 
 from . import aggregates, classify, ingest, normalise, own_puzzles, packs, profiles, puzzles, site, updater
-from .analyse import Analyser, export_parquet, open_db, pending_keys
+from .analyse import Analyser, LivePace, export_parquet, open_db, pending_keys
 from .config import DATA, DEFAULT_NODES, ENGINE_IDLE_SECONDS, MULTIPV_N, SITE_DIR, USER_AGENT
 from .db import base_views
 from .explore import Explorer
@@ -133,6 +133,7 @@ class Job:
 
 
 BACKGROUND = ("puzzles", "build")    # jobs that give way to anything the user asks for
+LIVE_WRITE_S = 0.3                   # a game analysed on demand: its review is rewritten at most this often
 PUZZLE_REFRESH_S = 20                # a build reclassifies the profile (its puzzles) at most this often, after a game
 
 
@@ -402,7 +403,9 @@ class Runner:
                 job.done = done
                 site.update_index(p, site.write_game(con, p, job.game_id))
 
-            self.analyser.run(keys, con, on_progress=progress, batch=self.analyser.workers, should_stop=lambda: job.stop_requested)
+            # the review is on screen, following the analysis: rewritten as results come in, not in batches
+            self.analyser.run(keys, con, on_progress=progress, batch=self.analyser.workers, should_stop=lambda: job.stop_requested,
+                              live=LivePace(LIVE_WRITE_S))
             job.status = "finishing"
             site.update_index(p, site.write_game(con, p, job.game_id))
             export_parquet(con)
