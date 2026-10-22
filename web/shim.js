@@ -37,15 +37,16 @@
   const NOTE_OFF = 'webSpeedNoteDismissed';
   let noteOff = false, closed = false;
   try { noteOff = localStorage.getItem(NOTE_OFF) === '1'; } catch (e) {}
-  const state = { python: 'Loading Python', engine: null };    // engine: { done, total } once it starts
+  const state = { python: 'Loading Python', engine: null };    // engine: { done, total, name } once it starts
   const mb = b => (b / 1048576).toFixed(0);
   let pythonReady = false, engineReady = false, analysing = false, hideT = null;
   const render = () => {
     let loading = pythonReady ? '' : `<div>${state.python}</div>`;
-    if (engineReady) { if (!analysing) loading += '<div>Engine ready</div>'; }   // "Engine ready" is old news by then
+    // the engine by name and version ("Stockfish 19"), so a 95 MB download says what it is
+    if (engineReady) { if (!analysing) loading += `<div>${state.engine.name} ready</div>`; }   // old news by then
     else if (state.engine) {
-      const { done, total } = state.engine;
-      loading += `<div>Downloading the engine: ${mb(done)}${total ? ' / ' + mb(total) : ''} MB</div>` +
+      const { done, total, name } = state.engine;
+      loading += `<div>Downloading ${name}, the chess engine: ${mb(done)}${total ? ' / ' + mb(total) : ''} MB</div>` +
         (total ? `<div class="pb"><i style="width:${Math.min(100, done / total * 100).toFixed(1)}%"></i></div>` : '');
     }
     const note = noteOff ? '' : `<div style="opacity:.7${loading ? ';margin-top:4px' : ''}">Analysis in the browser is about 2× slower than the ` +
@@ -96,7 +97,7 @@
         pythonReady = m.total > 0 && m.done === m.total;
       } else {
         engineReady = m.total > 0 && m.done >= m.total;
-        state.engine = { done: m.done, total: m.total };
+        state.engine = { done: m.done, total: m.total, name: m.text };
       }
       update();
     }

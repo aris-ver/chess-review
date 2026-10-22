@@ -137,9 +137,10 @@ def build(engine_wasm: str | None) -> None:
     # The Worker (worker/, wrangler) serves web-dist/ but refuses files over 25 MiB: the full engine comes from unpkg.
     (OUT / ".assetsignore").write_text("web/engine/stockfish-19-single.wasm\n", encoding="utf-8")
     app_zip(OUT / "app.zip")
-    # engineBytes: the progress bar's total, as unpkg sends no Content-Length
+    # engineBytes: the progress bar's total, as unpkg sends no Content-Length; engineName: what the notice says it is
     config = {"pyodide": PYODIDE, "chessWheel": whl.name, "engineWasm": engine_wasm or "engine/stockfish-19-single.wasm",
-              "engineBytes": engines["stockfish-19-single.wasm"].stat().st_size}
+              "engineBytes": engines["stockfish-19-single.wasm"].stat().st_size,
+              "engineName": f"Stockfish {STOCKFISH_VERSION.split('.')[0]}"}
     (OUT / "web" / "config.js").write_text(f"self.CR_CONFIG = {json.dumps(config, indent=1)};\n", encoding="utf-8")
     print("built", OUT)
 
