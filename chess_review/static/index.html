@@ -1558,6 +1558,7 @@ async function renderProfiles() {
     if (!r.ok) { toast(d.error === 'busy' ? `Busy: ${jobText(d.job)}` : d.error); return; }
     f.username.value = ''; openDrawer('addcard', false);
     if (!d.job) { location.hash = '#/p/' + d.profile.id; return; }
+    fetches.add(d.job.id);
     toast(`Fetching ${body.username}'s games from ${SOURCE_NAME[body.source]}…`);
     await renderProfiles();
     pollStatus();
@@ -1574,6 +1575,7 @@ async function fetchMissingGames(id) {
   const d = await r.json();
   if (!r.ok) { toast(d.error === 'busy' ? `Busy: ${jobText(d.job)}` : d.error); return; }
   if (!d.job) { location.hash = '#/p/' + id; return; }
+  fetches.add(d.job.id);
   toast(`Fetching ${p.username}'s games from ${SOURCE_NAME[p.source]}…`);
   await renderProfiles();
   pollStatus();
@@ -3077,6 +3079,7 @@ $('b-refresh').onclick = async () => {
   const r = await fetch(`api/${P()}/refresh`, { method: 'POST' });
   const d = await r.json();
   if (!r.ok) { toast(d.error === 'busy' ? `Busy: ${jobText(d.job)}` : d.error); return; }
+  fetches.add(d.job.id);
   const from = sourceName(state.profile);
   toast(`Fetching new games from ${from}…`);
   pollStatus();
@@ -3099,6 +3102,9 @@ function gameJob(slug) {
 }
 const jobProgress = j => j.kind === 'analyse' ? [j.done, j.total] : [j.game_done, j.game_total];   // positions of that game
 let lastJobStatus = null;
+// The fetches (a profile's games, a refresh) this page asked for or saw running, until their end has been told. By
+// id, not by the last status seen: the first poll to answer may already find one over.
+const fetches = new Set();
 let gameWatch = null;    // {id, slug, at}: the job on the game on screen at the last tick, to tell when it has ended
 let listSig = '', listIds = new Set();   // the analyses on the list's rows at the last tick
 let pollGen = 0;   // showList()/reloadGame() inside a tick restart polling; the generation stops the old loop from also rescheduling
@@ -3124,9 +3130,19 @@ async function pollStatus() {
         prog.classList.toggle('hidden', !active);
         if (active) prog.firstElementChild.style.width = (j.total ? 100 * j.done / j.total : 0) + '%';
       }
-      if (!active && lastJobStatus && lastJobStatus !== j.status) {
-        if (j.status === 'done') { toast('Profile ready'); if (!$('home').classList.contains('hidden')) location.hash = '#/p/' + j.profile; }
-        else { toast(`Fetch ${j.status}` + (j.error ? ': ' + j.error : '')); if (!state.profile) renderProfiles(); }
+    }
+    for (const x of jobsNow) if ((x.kind === 'ingest' || x.kind === 'refresh') && ACTIVE(x.status)) fetches.add(x.id);
+    for (const id of fetches) {
+      const e = jobsNow.find(x => x.id === id);
+      if (e && ACTIVE(e.status)) continue;
+      fetches.delete(id);
+      if (!e) continue;
+      if (e.kind === 'ingest') {
+        if (e.status === 'done') { toast('Profile ready'); if (!$('home').classList.contains('hidden')) location.hash = '#/p/' + e.profile; }
+        else { toast(`Couldn't fetch ${e.username}'s games` + (e.error ? ': ' + e.error : ''), 8000); if (!state.profile) renderProfiles(); }
+      } else if (e.profile === state.profile) {
+        toast(e.status === 'done' ? 'Games refreshed' : 'Refresh failed: ' + e.error);
+        if (!state.game) showList(); else reloadGame();
       }
     }
     if (j && j.kind === 'analyse_all' && mine) {
@@ -3161,10 +3177,6 @@ async function pollStatus() {
       listIds = ids;
       const sig = state.profile + '|' + on.map(x => `${x.id}:${x.game}:${x.status}:${jobProgress(x)[0]}`).join() + (j && j.kind === 'analyse_all' && mine ? `|${j.done}` : '');
       if (sig !== listSig) { listSig = sig; showList(); }
-    }
-    if (j && j.kind === 'refresh' && mine && lastJobStatus && lastJobStatus !== j.status && !active) {
-      toast(j.status === 'done' ? 'Games refreshed' : 'Refresh failed: ' + j.error);
-      if (!state.game) showList(); else reloadGame();
     }
     lastJobStatus = j ? j.status : null;
     // following a game's analysis: look often, so the board moves as soon as results land

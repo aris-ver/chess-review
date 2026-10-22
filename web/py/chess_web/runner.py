@@ -8,14 +8,18 @@ into analyse.evaluate_multipv, so a browser eval is stored exactly as a desktop 
 """
 
 import asyncio
+import json
 import logging
 import time
 from typing import Callable, Iterable, Optional
+from urllib.parse import urlencode, urlsplit
 
 import chess
 import chess.engine
+import requests
+from requests.structures import CaseInsensitiveDict
 
-from chess_review import aggregates, analyse, classify, serve, site
+from chess_review import aggregates, analyse, classify, ingest, serve, site
 from chess_review.analyse import CRASH_RETRY_NODES, LivePace, export_parquet, open_db, pending_keys, write_results
 from chess_review.config import DEFAULT_NODES, MULTIPV_N
 from chess_review.db import base_views
@@ -33,6 +37,107 @@ def persist() -> None:
         js.crPersist()
     except (ImportError, AttributeError):
         pass
+
+
+async def js_fetch(url: str, headers: dict):
+    """A GET with the browser's fetch: (status, headers, read, close), read() giving the body's next bytes, b"" at
+    its end. Awaited, so the worker answers the page meanwhile; Pyodide's requests would block it on a synchronous
+    XHR for the whole fetch (minutes for a long history, the page frozen at "fetching 0/0")."""
+    from pyodide.http import pyfetch
+    resp = await pyfetch(url, headers=headers)
+    body = resp.js_response.body
+    reader = body.getReader() if body is not None else None
+
+    async def read() -> bytes:
+        if reader is None:
+            return b""
+        chunk = await reader.read()
+        return b"" if chunk.done else chunk.value.to_bytes()
+
+    def close() -> None:
+        if reader is not None:
+            reader.cancel()
+    return resp.status, dict(resp.headers), read, close
+
+
+class _Reply:
+    """A fetch's answer as ingest reads a requests.Response."""
+
+    def __init__(self, url: str, status: int, headers: dict, read, close, timeout: float):
+        self.url, self.status_code, self.headers = url, status, CaseInsensitiveDict(headers)
+        self._read, self._close, self.timeout = read, close, timeout
+        self.content, self._rest, self._ended = b"", b"", False
+
+    async def chunk(self) -> bytes:
+        try:
+            return await asyncio.wait_for(self._read(), self.timeout)
+        except asyncio.TimeoutError:
+            raise TimeoutError(f"{urlsplit(self.url).netloc} stopped answering ({self.timeout:g} s without data)") from None
+
+    async def lines(self) -> Optional[list[bytes]]:
+        if self._ended:
+            return None
+        data = await self.chunk()
+        if not data:
+            self._ended = True
+            return [self._rest] if self._rest else None
+        *out, self._rest = (self._rest + data).split(b"\n")
+        return out
+
+    @property
+    def text(self) -> str:
+        return self.content.decode("utf-8")
+
+    def json(self):
+        return json.loads(self.content)
+
+    def raise_for_status(self) -> None:
+        if self.status_code >= 400:     # worded as requests words it: a 404 is told apart by it (serve.Runner._failed)
+            kind = "Client" if self.status_code < 500 else "Server"
+            raise requests.HTTPError(f"{self.status_code} {kind} Error for url: {self.url}")
+
+    def close(self) -> None:
+        if not self._ended:
+            self._ended = True
+            self._close()
+
+
+async def _send(fetch, step: ingest.Get) -> _Reply:
+    url = step.url + ("?" + urlencode(step.params) if step.params else "")
+    host = urlsplit(url).netloc
+    try:    # no User-Agent: browsers set their own, and asking for one would cost a CORS preflight
+        status, headers, read, close = await asyncio.wait_for(fetch(url, step.headers), step.timeout)
+    except asyncio.TimeoutError:
+        raise TimeoutError(f"{host} didn't answer within {step.timeout:g} s") from None
+    except Exception as e:  # noqa: BLE001 - a TypeError from fetch: offline, blocked, or refused by CORS
+        raise ConnectionError(f"couldn't reach {host}: {e}") from None
+    r = _Reply(url, status, headers, read, close, step.timeout)
+    if not step.stream:
+        parts = []
+        while chunk := await r.chunk():
+            parts.append(chunk)
+        r.content, r._ended = b"".join(parts), True
+    return r
+
+
+async def drive(steps, fetch=js_fetch):
+    """ingest.run() for the browser: each request awaited, each with its timeout, so a fetch ends one way or the
+    other and the page is answered while it runs."""
+    out = None
+    try:
+        while True:
+            step = steps.send(out)
+            if isinstance(step, ingest.Sleep):
+                await asyncio.sleep(step.seconds)
+                out = None
+            elif isinstance(step, ingest.Read):
+                out = await step.response.lines()
+            else:
+                out = await _send(fetch, step)
+    except StopIteration as e:
+        return e.value
+    finally:
+        steps.close()
 
 
 class _Replay:
@@ -140,10 +245,11 @@ class WebExplorer(Explorer):
 
 
 class WebRunner(serve.Runner):
-    def __init__(self, engines, nodes: int = DEFAULT_NODES):
+    def __init__(self, engines, nodes: int = DEFAULT_NODES, fetch=js_fetch):
         super().__init__(nodes, workers=int(engines.size))
         self.analyser = BrowserAnalyser(engines, nodes)
         self.explorer = WebExplorer(engines, nodes)
+        self.fetch = fetch
 
     def _spawn(self, job: serve.Job, before):
         return asyncio.ensure_future(self._run_async(job, before))
@@ -159,13 +265,23 @@ class WebRunner(serve.Runner):
                 elif job.kind in ("analyse_all", "build", "puzzles"):
                     raise RuntimeError(f"{job.kind} isn't in the browser version yet")
                 else:
-                    self._work(job)     # no engine: ingest, refresh (the worker is busy until it is done)
+                    await self._fetch(job)
                 job.status = "stopped" if job.stop_requested else "done"
             except Exception as e:  # noqa: BLE001 - surfaced to the UI
                 self._failed(job, e)
         finally:
             self._ended(job)
             persist()
+
+    async def _fetch(self, job: serve.Job) -> None:
+        """serve.Runner._ingest and _refresh with the requests awaited."""
+        p = job.profile
+        if job.kind == "ingest":
+            self._ingested(job, await drive(ingest.fetch_steps(p, on_progress=self._fetching(job)), self.fetch))
+        else:
+            job.total = 4
+            had = p.game_ids()
+            self._refreshed(job, had, await drive(ingest.fetch_steps(p, refresh=True), self.fetch))
 
     async def _analyse(self, job: serve.Job) -> None:
         """serve.Runner._analyse with the search awaited."""

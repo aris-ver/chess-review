@@ -45,8 +45,13 @@ load takes about 15 s; `book.load` takes 8 s there (3.8 s native), so the book's
     is a `Runner` whose jobs are asyncio tasks, and its analyser sends FENs to the engine workers and feeds
     their `info` lines through python-chess's own parser into `analyse.evaluate_multipv`, as in the test.
     The job bodies (`pending_keys`, `write_results`, `site.write_game`, `classify.build`, ...) are the same calls.
-  - Fetching games: chess.com and lichess both send `Access-Control-Allow-Origin: *`. Pyodide's `requests`
-    goes over synchronous XHR, which a worker may use, so `ingest.py` should run as it is.
+  - Fetching games: chess.com and lichess both send `Access-Control-Allow-Origin: *`. `ingest.py`'s fetches are
+    generators of the requests they want made; the desktop makes them with `requests` (`ingest.run`), the web
+    runner with the browser's `fetch`, awaited (`chess_web.runner.drive`). Pyodide's `requests` would do them over
+    synchronous XHR, which blocks the worker for the whole fetch: no status poll answered, the page stuck at
+    "fetching 0/0" for minutes and then missing the job's end. Every request has a timeout (and a streamed lichess
+    export one per read), so a fetch always ends, and a failure is the job's error, shown on the page. Only "no such
+    player" removes the profile; after any other failure, opening it fetches again.
   - Files: `DATA` is `/data` in Pyodide's file system, mounted on IndexedDB and synced after every request that
     writes and after every batch of evals. Reviewed games and the eval cache never leave the browser.
   - `/api/fetch_image` (screenshot reader) and `/api/update` (desktop updater) have no browser equivalent;

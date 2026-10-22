@@ -67,9 +67,12 @@ def _api(monkeypatch, games):
     """The export returns `games` from the `since` asked for; the user endpoint counts them."""
     asked = []
 
-    def stream(_session, _username, params):
+    def stream(_username, params, on_game):
         asked.append(params)
-        return iter([g for g in games if g["createdAt"] >= params.get("since", 0)])
+        for g in games:
+            if g["createdAt"] >= params.get("since", 0):
+                on_game(g)
+        yield from ()
     monkeypatch.setattr(ingest, "_lichess_stream", stream)
     monkeypatch.setattr(ingest.requests.Session, "get",
                         lambda self, url, **kw: SimpleNamespace(status_code=200, raise_for_status=lambda: None,
