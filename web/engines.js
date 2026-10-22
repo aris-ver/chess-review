@@ -1,5 +1,5 @@
 // Stockfish 19 (npm stockfish@19.0.1, single-threaded WASM builds) as a pool of Web Workers, for the Python worker.
-// Same scheme as analyse.py: one engine per physical core, Threads=1, Hash=64, MultiPV 3, a fixed node count and
+// Same scheme as analyse.py: one engine per physical core, Threads=1, Hash=64 (16 on phones), MultiPV 3, a fixed node count and
 // `ucinewgame` (hash cleared) before every position, so a result is the same whichever engine gets it.
 
 // Fetch a .wasm with progress, keep it in Cache Storage for the next visit, and hand back a blob: URL the engine
@@ -34,9 +34,10 @@ export async function cachedWasm(url, onProgress, bytes = 0) {
 }
 
 class Engine {
-  constructor(script, wasm) {
+  constructor(script, wasm, hash) {
     this.script = script;
     this.wasm = wasm;
+    this.hash = hash;
     this.start();
   }
   start() {
@@ -57,7 +58,7 @@ class Engine {
     };
     this.ready = this.until(/^uciok/, ['uci']).then(lines => {
       this.name = ((lines.find(l => l.startsWith('id name ')) || '').slice(8) || 'Stockfish').trim();
-      return this.until(/^readyok/, ['setoption name Threads value 1', 'setoption name Hash value 64', 'isready']);
+      return this.until(/^readyok/, ['setoption name Threads value 1', `setoption name Hash value ${this.hash}`, 'isready']);
     });
     return this.ready;
   }
@@ -79,13 +80,14 @@ class Engine {
 
 export class EnginePool {
   // size: engines to run; script: the engine's .js; wasmUrl: its .wasm (may be on another origin, e.g. unpkg) and
-  // wasmBytes its size. Nothing is fetched until load() (or the first search), so the caller decides what downloads first.
-  constructor({ size, script, wasmUrl, wasmBytes, onProgress }) {
-    Object.assign(this, { size, script, wasmUrl, wasmBytes, onProgress, name: 'Stockfish 19', free: [], waiting: [], loaded: null });
+  // wasmBytes its size; hash: MB per engine. Nothing is fetched until load() (or the first search), so the caller decides
+  // what downloads first.
+  constructor({ size, script, wasmUrl, wasmBytes, hash = 64, onProgress }) {
+    Object.assign(this, { size, script, wasmUrl, wasmBytes, hash, onProgress, name: 'Stockfish 19', free: [], waiting: [], loaded: null });
   }
   load() {
     if (!this.loaded) this.loaded = cachedWasm(this.wasmUrl, this.onProgress, this.wasmBytes).then(wasm => {
-      for (let i = 0; i < this.size; i++) this.free.push(new Engine(this.script, wasm));
+      for (let i = 0; i < this.size; i++) this.free.push(new Engine(this.script, wasm, this.hash));
       return this.free[0].ready.then(() => { this.name = this.free[0].name; });
     });
     return this.loaded;
