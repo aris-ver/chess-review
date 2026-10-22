@@ -1,0 +1,72 @@
+# Builds the browser version (scripts/build_web.py) and deploys it with the Worker to blundr.gr: on every push to
+# main that touches the site, and by hand (Actions -> Deploy blundr.gr -> Run workflow). D1 migrations run only by
+# hand, with "Apply D1 migrations" ticked: a migration on every push would reach the live database unreviewed.
+# Needs the repository secrets CLOUDFLARE_API_TOKEN (the "Edit Cloudflare Workers" template, plus D1 Edit) and
+# CLOUDFLARE_ACCOUNT_ID.
+name: Deploy blundr.gr
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "chess_review/**"
+      - "web/**"
+      - "worker/**"
+      - "scripts/build_web.py"
+      - "requirements.txt"
+      - ".github/workflows/deploy-web.yml"
+  workflow_dispatch:
+    inputs:
+      migrations:
+        description: "Apply D1 migrations before deploying"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+# one deploy at a time, the latest last: a queued one waits instead of racing the one in flight
+concurrency:
+  group: deploy-web
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Tests
+        run: python -m pytest -q
+      - uses: actions/cache@v4
+        with:
+          path: data/web-cache      # python-chess's wheel and npm stockfish, as build_web.py downloads them
+          key: web-cache-${{ hashFiles('scripts/build_web.py') }}
+      - name: Opening book
+        run: bash scripts/fetch_book.sh
+      - name: Build
+        run: python scripts/build_web.py --engine-wasm cdn
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: worker/package-lock.json
+      - run: npm ci --no-audit --no-fund
+        working-directory: worker
+      - name: D1 migrations
+        if: github.event_name == 'workflow_dispatch' && inputs.migrations
+        working-directory: worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: npx wrangler d1 migrations apply blundr --remote
+      - name: Deploy
+        working-directory: worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: npx wrangler deploy
