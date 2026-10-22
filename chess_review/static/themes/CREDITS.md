@@ -84,4 +84,4 @@ NES | Enigmahack | AGPLv3+
 Piano | Enigmahack | AGPLv3+
 SFX | Enigmahack | AGPLv3+
 Clubhouse | Aris | Own work: every sound synthesized from scratch by scripts/synth_clubhouse_sounds.py
-Morning Wood | Aris | Personal use: piece sounds edited from the YouTube recording "Oddly Satisfying Chess Sounds 2 ♔ ASMR ♔ No talking"; GenericNotify, LowTime, Victory, Defeat and Draw are Lisp's, by EdinburghCollective (CC BY-NC-SA 4.0)
+Morning Wood | Aris | Own work: piece sounds made by Aris with Claude; GenericNotify, LowTime, Victory, Defeat and Draw are Lisp's, by EdinburghCollective (CC BY-NC-SA 4.0)
