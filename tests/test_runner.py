@@ -290,6 +290,17 @@ def test_the_browser_runner_writes_each_burst_of_results_as_it_comes_in():
     assert [d for d, _ in n] == [3, 4] and n[0][1] < 0.5
 
 
+def test_a_live_analysis_starts_where_the_game_leaves_the_book(monkeypatch):
+    # positions p0..p5; the moves into p1..p3 are book, so the engines start at p3 (the first move out of book is
+    # played from it) and the positions book moves are played from (p0..p2) come last, still in game order
+    con = duckdb.connect()
+    con.execute("CREATE TABLE positions (game_id TEXT, ply INTEGER, fen_key TEXT)")
+    con.executemany("INSERT INTO positions VALUES ('g', ?, ?)", [(i, f"p{i}") for i in range(6)])
+    monkeypatch.setattr(serve.book, "is_book", lambda k: k in ("p1", "p2", "p3"))
+    keys = [f"p{i}" for i in (5, 0, 3, 1, 4, 2)]
+    assert serve.live_order(con, "g", keys) == ["p3", "p4", "p5", "p0", "p1", "p2"]
+
+
 def test_resetting_the_rating_archives_the_record_and_keeps_tried_puzzles_out(tmp_path):
     path = tmp_path / "puzzle_attempts.jsonl"
     puzzles.record("aaaaa", 1500, True, path=path)

@@ -176,9 +176,7 @@ class WebRunner(serve.Runner):
             keys, stats = pending_keys(con, p, job.game_id)
             job.total = len(keys)
             log.info("analyse %s/%s: %s", p.id, job.slug, stats)
-            order = {r[0]: i for i, r in enumerate(con.execute(
-                "SELECT fen_key, min(ply) FROM positions WHERE game_id = ? GROUP BY 1 ORDER BY 2", [job.game_id]).fetchall())}
-            keys.sort(key=lambda k: order.get(k, 1 << 30))
+            keys = serve.live_order(con, job.game_id, keys)
 
             def progress(done: int, _total: int) -> None:
                 job.done = done
