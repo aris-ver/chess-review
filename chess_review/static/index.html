@@ -1170,7 +1170,8 @@ async function loadGames(force) {
 async function siteJSON(url, tries = 4) {
   for (let i = 1; ; i++) {
     const r = await fetch(url);
-    if (r.status === 404 || i >= tries) return r.json();
+    if (r.status === 404) throw Object.assign(new Error(url + ' not found'), { missing: true });
+    if (i >= tries) return r.json();
     try { return JSON.parse(await r.text()); } catch (e) { await new Promise(res => setTimeout(res, 150 * i)); }
   }
 }
@@ -1498,6 +1499,21 @@ async function renderProfiles() {
   };
 }
 
+// A profile with no games here: one that came from the account (its games are fetched per browser), or one whose
+// fetch never finished (the page was closed, or the phone killed it, mid-fetch: the job is gone, the profile stays).
+// Fetch them now, as adding it would.
+async function fetchMissingGames(id) {
+  const p = ((await (await fetch('api/profiles')).json()).profiles || []).find(p => p.id === id);
+  if (!p) { toast('No such profile'); return; }
+  const r = await fetch('api/profiles', { method: 'POST', body: JSON.stringify({ source: p.source, username: p.username }) });
+  const d = await r.json();
+  if (!r.ok) { toast(d.error === 'busy' ? `Busy: ${jobText(d.job)}` : d.error); return; }
+  if (!d.job) { location.hash = '#/p/' + id; return; }
+  toast(`Fetching ${p.username}'s games from ${SOURCE_NAME[p.source]}…`);
+  await renderProfiles();
+  pollStatus();
+}
+
 // ---------- list ----------
 async function showList() {
   showSection('list');
@@ -1509,7 +1525,12 @@ async function showList() {
     const unseen = fetch(`api/profiles/${state.profile}/unseen`).then(r => r.json()).then(d => new Set(d.unseen || [])).catch(() => new Set());
     games = await loadGames(true);
     state.unseen = await unseen;
-  } catch (e) { location.hash = '#/'; return; }
+  } catch (e) {
+    const id = state.profile;
+    location.hash = '#/';
+    if (e.missing) fetchMissingGames(id); else toast(`Couldn't open the profile: ${e.message}`);
+    return;
+  }
   $('crumb').textContent = state.username || '';
   if (state.pendingRefresh === state.profile) { state.pendingRefresh = null; $('b-refresh').onclick(); }   // "Fetch" on the home card
   const f = state.filters;

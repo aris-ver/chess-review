@@ -6,7 +6,7 @@ web-dist/
   index.html            chess_review/static/index.html as site.write_static makes it, plus the web/shim.js tag
   account.js            the Blundr account, from chess_review/static/ (the desktop app has the same one)
   privacy.html, terms.html   from web/pages/
-  manifest.json, icons/ what "Add to Home Screen" installs (icons from web/icons/, rendered from its icon.svg)
+  manifest.json, icons/ what "Add to Home Screen" installs (icons from web/icons/, rendered from packaging/chess-review.ico)
   themes/               the page's pieces, boards and sounds
   app.zip               chess_review (minus static/, sound_packs/ and the puzzle pack's parquet) + web/py/chess_web
                         + book_keys.txt, unpacked into Pyodide (240 KB)
@@ -90,7 +90,7 @@ BG = "#302e2b"      # the page's --bg: the status bar and the splash while it lo
 # Added to the home screen (iPhone: Share > Add to Home Screen; Android: Install app) the site opens full screen with
 # its own icon. iOS reads the apple-* tags, everything else the manifest. No service worker: it stays an online site.
 HEAD = f"""<link rel="manifest" href="manifest.json">
-<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="icon" href="icons/favicon-32.png" type="image/png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <meta name="theme-color" content="{BG}">
 <meta name="apple-mobile-web-app-capable" content="yes">
