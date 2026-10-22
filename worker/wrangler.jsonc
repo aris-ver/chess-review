@@ -15,7 +15,8 @@
     {
       "binding": "DB",
       "database_name": "blundr",
-      // `wrangler d1 create blundr --location weur` prints the real id; this one only works locally
+      // `wrangler d1 create blundr --jurisdiction eu` prints the real id; this one only works locally. The EU
+      // jurisdiction is what lets privacy.html say the database stays in the EU.
       "database_id": "00000000-0000-0000-0000-000000000000",
       "migrations_dir": "migrations"
     }

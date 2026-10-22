@@ -89,8 +89,9 @@ plain Python over `DATA`. It would need three things:
 `web/pages/privacy.html` and `web/pages/terms.html` are built to `/privacy.html` and `/terms.html`.
 
 > **Not legal advice.** They were drafted with Claude Code, not by a lawyer. Have them checked before going live.
-> Fill in every `[[…]]` placeholder (your name, postal address, contact email, the D1 location, the backup window).
-> `build_web.py` warns while any are left.
+> The controller's details are filled in. The page says the database stays in the EU, which holds only if D1 is
+> created with `--jurisdiction eu`. A new placeholder goes in `<span class="fill">`, and `build_web.py` warns while any
+> are left.
 
 What makes it fit without a cookie banner: the two cookies and the browser storage are all strictly necessary for what
 the visitor asked for (ePrivacy art. 5(3) exemption). Worker observability (request logs with IPs) is off. There's no
@@ -116,7 +117,7 @@ authorised redirect URI. Python side: `pytest tests/test_sync.py`.
 
 ## Deploy (when you're ready)
 
-1. `npx wrangler d1 create blundr --location weur`, put the printed id in `wrangler.jsonc`.
+1. `npx wrangler d1 create blundr --jurisdiction eu`, put the printed id in `wrangler.jsonc`.
 2. Google Cloud console: create an OAuth client (web application) with the redirect URI
    `https://blundr.gr/account/callback/google`. Set the consent screen's privacy policy and terms links to the pages
    above. Then `npx wrangler secret put GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`.
