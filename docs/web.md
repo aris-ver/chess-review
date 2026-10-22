@@ -90,23 +90,15 @@ load takes about 15 s; `book.load` takes 8 s there (3.8 s native), so the book's
    `--engine-wasm https://engine.blundr.gr/stockfish-19-single.wasm`, and leave out `web/engine/stockfish-19-single.wasm`
    (over the 25 MB limit). Add blundr.gr and www.blundr.gr as custom domains. Cloudflare creates their DNS
    records once the zone is active.
-4. Later, for accounts: a Worker on `blundr.gr/api/account/*` with D1.
+4. With accounts, the Worker in `worker/` serves the site and `/account/*` in place of Pages ([accounts.md](accounts.md)).
 
-## Accounts (later, optional)
+## Accounts (optional)
 
 Guests can use everything. An account only keeps puzzle progress (puzzle rating and attempts, pack progress,
 the daily streak, the personal-puzzle review schedule) across browsers. Reviewed games and the eval cache
-stay in the browser.
-
-Recommended: **Cloudflare Workers + D1**, signing in with Lichess OAuth (no password storage, chess players
-have it) and Google. Same platform and bill as the site, free tier is ample (D1: 5 GB, 5M reads/day).
-Supabase would also work but adds a second provider whose free projects pause after a week idle.
-
-Puzzle progress is already append-only JSONL files (`puzzle_attempts.jsonl`, the packs' records, each
-profile's review schedule); syncing means uploading new lines and merging the server's on sign-in.
-
-A short privacy page (EU): what is stored where (games and evals in your browser only; for account holders,
-email/Lichess name and puzzle progress on Cloudflare in the EU), no tracking, how to delete the account.
+stay in the browser. Built on **one Cloudflare Worker + D1** (`worker/`), which also serves the static site, with
+sign-in through Lichess or Google. The privacy policy and terms are drafts to be checked. Design, local run and
+deployment: [accounts.md](accounts.md).
 
 ## First slice (branch `web`)
 
