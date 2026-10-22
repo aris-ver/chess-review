@@ -5,7 +5,7 @@
 // The account API is the Worker's /account/* (worker/src/index.js), a real network request. The merge is the
 // Python worker's /api/sync/* (web/py/chess_web/sync.py), which shim.js routes there like every other api/ call.
 (() => {
-  const CONSENT = '2026-10-21';      // worker/src/consent.js: the terms and privacy policy agreed to
+  const CONSENT = '2026-10-22';      // worker/src/consent.js: the terms and privacy policy agreed to
   const PROGRESS_WRITES = /^api\/(puzzles\/(attempt|solved|daily|reset)|profiles|profiles\/[^/]+\/(delete|pin))$/;
   const OVERVIEW = /^(|#|#\/|#\/packs(\/[a-z0-9-]+)?|#\/puzzles\/mine)$/;     // screens that show progress, safe to redraw
 
