@@ -809,6 +809,7 @@ svg.graph { width: 100%; height: 90px; display: block; cursor: pointer; backgrou
   <symbol id="ic-equal" viewBox="0 0 20 20"><rect x=".5" y=".5" width="19" height="19" rx="5.5" fill="#9a958d"/><text x="10" y="14.6" text-anchor="middle" font-size="13" font-weight="800" fill="#fff" font-family="Arial">½</text></symbol>
 </defs></svg>
 
+<script src="account.js"></script>
 <script>
 // ---------- settings: localStorage, backed by the server's DATA/settings.json ----------
 // localStorage belongs to the origin, and the desktop app's port changes whenever 8123 is taken, so on its own
@@ -2071,7 +2072,7 @@ function replayDaily() {
   Object.assign(pz.ctx, { review: false, replay: true });
   startPuzzle(pz.p, pz.stats);
 }
-// Progress merged in from another browser (the web build's account sync, web/account.js, fires this): forget what
+// Progress merged in from another browser (the Blundr account's sync, account.js, fires this): forget what
 // was kept from the puzzle files, and if the daily open here unplayed was played there, show it played. With
 // detail.redrawn the screen is being drawn again anyway (another account's data came in).
 window.addEventListener('progresssynced', e => {

@@ -196,6 +196,9 @@ def write_static() -> None:
     out = SITE_DIR / "index.html"
     if not out.exists() or out.read_text(encoding="utf-8") != html:
         out.write_text(html, encoding="utf-8")
+    js = (STATIC / "account.js").read_bytes()      # the Blundr account (account.py), the same file as the website's
+    if not (SITE_DIR / "account.js").exists() or (SITE_DIR / "account.js").read_bytes() != js:
+        (SITE_DIR / "account.js").write_bytes(js)
     global _themes_synced
     if not _themes_synced:      # the bundled themes can't change while the app runs (an update restarts it)
         sync_tree(STATIC / "themes", SITE_DIR / "themes")
