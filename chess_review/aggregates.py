@@ -245,7 +245,7 @@ def render(d: dict, username: str, profile_id: str = "") -> str:
     tiles = "".join(f'<div class="tile"><div class="v">{v}</div><div class="k">{k}</div></div>' for k, v in (
         ("games", h[0]), ("win rate", f"{h[1]}%"), ("avg accuracy", f"{h[2]}%"),
         ("win% lost / move", h[3]), ("blunders / game", h[4])))
-    return f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Insights · {html.escape(username)}</title>
+    return f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Insights · {html.escape(username)}</title>
 <style>
 :root {{ --bg:#262421; --panel:#302e2b; --panel2:#3a3733; --line:#45423d; --text:#e6e3de; --muted:#9a958d; --accent:#81b64c; }}
 body {{ margin:0; background:var(--bg); color:var(--text); font:14px/1.45 -apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; }}

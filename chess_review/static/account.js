@@ -136,7 +136,7 @@ dialog#account .tabs button { flex: 1; }
 dialog#account .col { display: flex; flex-direction: column; gap: 8px; margin: 12px 0; }
 dialog#account .col button, dialog#account a.btn { padding: 8px 12px; }
 dialog#account a.btn { display: block; text-align: center; color: var(--text); background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; }
-dialog#account a.btn:hover { background: #46423d; }
+@media (hover: hover) { dialog#account a.btn:hover { background: #46423d; } }
 dialog#account label.consent { display: flex; gap: 8px; align-items: flex-start; margin: 4px 0 2px; cursor: pointer; }
 dialog#account label.consent input { margin-top: 3px; }
 dialog#account .note { background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; margin-bottom: 12px; }
@@ -153,6 +153,14 @@ dialog#account #acc-code { letter-spacing: .3em; text-align: center; font-size: 
 dialog#account .or { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 12px; margin: 4px 0; }
 dialog#account .or::before, dialog#account .or::after { content: ""; flex: 1; border-top: 1px solid var(--line); }
 dialog#account .foot { display: flex; gap: 14px; justify-content: center; margin-top: 12px; font-size: 13px; }
+/* phones: 16px fields so iOS doesn't zoom in on focus, and the height that is visible (dvh) with Safari's toolbars up */
+@media (max-width: 900px) {
+  dialog#account { max-height: 85dvh; } dialog#account .body { max-height: calc(85dvh - 52px); }
+  dialog#account input:not([type=checkbox]) { font-size: 16px; }
+  dialog#account .head button { padding: 8px 12px; }
+  dialog#account .col button, dialog#account a.btn { padding: 11px 12px; }
+  dialog#account .tabs button { padding: 10px; }
+}
 `;
   const ICON = '<svg viewBox="0 0 24 24"><path d="M12 12a4.5 4.5 0 1 0 0-9 4.5 4.5 0 0 0 0 9zm0 2c-4.4 0-8 2.2-8 5v2h16v-2c0-2.8-3.6-5-8-5z"/></svg>';
   let btn, dlg, view = { tab: 'login', note: null, confirmDelete: false };
@@ -217,7 +225,7 @@ dialog#account .foot { display: flex; gap: 14px; justify-content: center; margin
     if (view.step) return note() + stepBody() + legal();
     return note() +
       `<div class="tabs"><button data-tab="login" class="${signup ? '' : 'active'}">Log in</button><button data-tab="signup" class="${signup ? 'active' : ''}">Sign up</button></div>` +
-      `<p>An account keeps your <b>puzzle progress</b> (puzzle rating, packs, the daily streak and review schedules) and your <b>list of profiles</b>, so they follow you to ${app ? 'blundr.gr and other computers' : 'other browsers'}, where the games are fetched again. ` +
+      `<p>An account keeps your <b>puzzle progress</b> (packs, the daily streak, review schedules) and your <b>list of profiles</b>, so they follow you to ${app ? 'blundr.gr and other computers' : 'other browsers'}, where the games are fetched again. ` +
       `Your reviewed games stay in ${here()} and are never uploaded. Everything ${app ? 'here' : 'on Blundr'} works without an account.</p>` +
       (signup
         ? `<label class="consent"><input type="checkbox" id="acc-consent"> <span>I am 15 or older and agree to the <a href="${sitePage('terms.html')}" target="_blank">terms of use</a> and the <a href="${sitePage('privacy.html')}" target="_blank">privacy policy</a>.</span></label>` +
