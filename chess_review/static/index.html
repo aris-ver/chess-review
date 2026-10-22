@@ -19,20 +19,21 @@ button, .nav, .m, .moment, .varrow .v, .summary .click { user-select: none; -web
 html, body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.45 -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
 a { color: inherit; text-decoration: none; }
 button { font: inherit; color: inherit; background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; padding: 6px 10px; cursor: pointer; }
-button:hover { background: #46423d; } button:disabled { opacity: .5; cursor: default; }
+/* hover looks only where something hovers (a mouse): on a touch screen :hover sticks to whatever a finger last touched, scrolling included */
+@media (hover: hover) { button:hover { background: #46423d; } } button:disabled { opacity: .5; cursor: default; }
 button.active { background: var(--accent); color: #1b1b1b; border-color: var(--accent); }
 button.primary { background: var(--accent); color: #1b1b1b; border-color: var(--accent); font-weight: 700; }
-button.primary:hover { background: #8fc55a; }
+@media (hover: hover) { button.primary:hover { background: #8fc55a; } }
 header { display: flex; align-items: center; gap: 16px; padding: 10px 18px; background: var(--panel); border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 5; }
 header h1 { font-size: 18px; margin: 0; }
 /* the title: "Chess Review" on the home screen, everywhere else a Home button that looks like one */
 header h1 a { display: inline-block; padding: 4px 10px; margin: 0 -10px; border: 1px solid transparent; border-radius: 6px; cursor: default; transition: background .12s, border-color .12s; }
 header h1 a.away { margin: 0; font-size: 15px; background: var(--panel2); border-color: var(--line); cursor: pointer; }
-header h1 a.away:hover { border-color: var(--accent); }
+@media (hover: hover) { header h1 a.away:hover { border-color: var(--accent); } }
 header h1 a.away:active { background: #46423d; }
 /* Back: one level up (a puzzle -> its pack, a game -> its list), never a replay of the history */
 header button.back { color: var(--text); white-space: nowrap; font-size: 15px; font-weight: 600; padding: 4px 10px; }
-header button.back:hover { border-color: var(--accent); }
+@media (hover: hover) { header button.back:hover { border-color: var(--accent); } }
 header .crumb { color: var(--muted); }
 header .right { margin-left: auto; display: flex; gap: 10px; align-items: center; }
 header .right a { color: var(--muted); }
@@ -40,7 +41,7 @@ button.snd { color: var(--text); padding: 6px 8px; } button.snd svg { width: 18p
 button.snd.off { color: var(--muted); }
 /* the speaker button widens into a volume slider: the wrapper wears the button's chrome, the slider slides out of it */
 .vol { display: inline-flex; align-items: center; background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; }
-.vol:hover { background: #46423d; }
+@media (hover: hover) { .vol:hover { background: #46423d; } }
 .vol button.snd { background: transparent; border: 0; }
 .vol input { width: 0; min-width: 0; margin: 0; opacity: 0; pointer-events: none; accent-color: var(--accent); cursor: pointer; outline: none; transition: width .2s ease, margin .2s ease, opacity .15s; }
 .vol.open input { width: 110px; margin: 0 10px 0 0; opacity: 1; pointer-events: auto; }
@@ -57,7 +58,7 @@ main { padding: 16px 18px; max-width: 1800px; margin: 0 auto; }
 .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; }
 .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; cursor: default; position: relative; min-height: 96px; display: flex; flex-direction: column; gap: 4px; }
 .card.pztile { cursor: pointer; }
-.card.pztile:hover { border-color: var(--accent); }
+@media (hover: hover) { .card.pztile:hover { border-color: var(--accent); } }
 /* profiles first, then the two puzzle tiles, then a row of small one-off entries; the forms open on demand */
 .home .hhead { display: flex; align-items: center; gap: 10px; margin: 26px 0 10px; }
 .home .hhead h2 { margin: 0; flex: 1; }
@@ -80,7 +81,7 @@ main { padding: 16px 18px; max-width: 1800px; margin: 0 auto; }
 .card.pzp .btns { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; align-items: center; }
 .card.pzp .btns button { padding: 4px 12px; font-size: 13px; }
 .card.pzp .btns a { color: var(--muted); font-size: 12px; cursor: pointer; margin-left: auto; text-decoration: underline; }
-.card.pzp .btns a:hover { color: var(--text); }
+@media (hover: hover) { .card.pzp .btns a:hover { color: var(--text); } }
 .card.pzp .bstate { color: var(--accent); font-size: 12px; }
 /* puzzle packs: the shelf (a card per pack, by family) and a pack's ladder (its stages on a carousel, a numbered tile per puzzle) */
 /* a cover: a tinted square with a piece or two from your piece set, coloured by family, so the cards tell apart */
@@ -102,7 +103,7 @@ main { padding: 16px 18px; max-width: 1800px; margin: 0 auto; }
 /* difficulty, by rating: the stage titles, the bars and the chips */
 .diff { font-size: 11px; font-weight: 700; padding: 1px 7px; border-radius: 4px; color: var(--dc); background: color-mix(in srgb, var(--dc) 18%, transparent); white-space: nowrap; }
 .card.pack { cursor: pointer; min-height: 0; }
-.card.pack:hover { border-color: var(--accent); }
+@media (hover: hover) { .card.pack:hover { border-color: var(--accent); } }
 .card.pack .who { display: flex; align-items: baseline; gap: 8px; }
 .pbadge { flex-shrink: 0; margin-left: auto; font-size: 12px; font-weight: 700; line-height: 1; white-space: nowrap; color: var(--accent);
   background: color-mix(in srgb, var(--accent) 16%, transparent); border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent); border-radius: 12px; padding: 4px 9px; }
@@ -133,7 +134,7 @@ main { padding: 16px 18px; max-width: 1800px; margin: 0 auto; }
 .scard .tiles { display: grid; grid-template-columns: repeat(var(--cols, 6), minmax(0, 1fr)); gap: 8px; margin: 14px 0; }
 .tile { aspect-ratio: 1; border-radius: 10px; background: var(--panel2); color: var(--muted); display: grid; place-items: center; font-weight: 700; font-variant-numeric: tabular-nums;
   cursor: pointer; border: 2px solid transparent; position: relative; user-select: none; -webkit-user-select: none; }
-.tile:hover { border-color: var(--text); }
+@media (hover: hover) { .tile:hover { border-color: var(--text); } }
 .tile.clean { background: var(--dc); color: #1b1b1b; }
 .tile.solved { background: color-mix(in srgb, var(--dc) 35%, transparent); color: var(--text); }
 .tile.missed { border-color: var(--c-miss); color: var(--c-miss); }
@@ -197,7 +198,7 @@ body.hasbar #toast { bottom: 72px; }
 .card .who { font-size: 17px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-right: 22px; }
 .card .meta { color: var(--muted); font-size: 12px; margin-top: auto; }
 .card .x { position: absolute; top: 8px; right: 8px; color: var(--muted); font-size: 14px; padding: 2px 6px; border-radius: 4px; }
-.card .x:hover { background: var(--panel2); color: var(--c-blunder); }
+@media (hover: hover) { .card .x:hover { background: var(--panel2); color: var(--c-blunder); } }
 .card .progress { margin-top: 6px; }
 .card.add, .card.fen { border-style: dashed; justify-content: center; }
 .card.add form, .card.fen form { display: flex; flex-direction: column; gap: 8px; }
@@ -210,7 +211,7 @@ body.hasbar #toast { bottom: 72px; }
 .imgpage { max-width: 560px; display: flex; flex-direction: column; gap: 12px; }
 .imgpage h2 { margin-bottom: 0; }
 .imgpage .drop { border: 2px dashed var(--muted); border-radius: 10px; padding: 48px 20px; text-align: center; color: var(--muted); font-size: 14px; cursor: pointer; background: var(--panel); }
-.imgpage .drop:hover, .imgpage .drop.over, .imgpage .drop:focus { border-color: var(--accent); color: var(--text); outline: none; }
+.imgpage .drop.over, .imgpage .drop:focus { border-color: var(--accent); color: var(--text); outline: none; } @media (hover: hover) { .imgpage .drop:hover { border-color: var(--accent); color: var(--text); outline: none; } }
 .imgpage form { display: flex; gap: 8px; }
 .imgpage input { font: inherit; color: var(--text); background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; flex: 1; }
 .imgpage input::placeholder { color: var(--muted); }
@@ -220,7 +221,7 @@ body.hasbar #toast { bottom: 72px; }
 .card .desc { color: var(--muted); font-size: 13px; }
 /* profile list: pinned ones first (in the order they were pinned), then the rest newest first */
 .card.profile { cursor: pointer; }
-.card.profile:hover { border-color: var(--accent); }
+@media (hover: hover) { .card.profile:hover { border-color: var(--accent); } }
 .card.profile .who { padding-right: 52px; display: flex; align-items: baseline; gap: 8px; }
 table.games tr.unseen td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
 .newtag { display: inline-block; margin-left: 6px; background: var(--accent); color: #1b1b1b; font-size: 10px; font-weight: 700; padding: 1px 5px; border-radius: 8px; vertical-align: 1px; }
@@ -229,7 +230,7 @@ table.games tr.unseen td:first-child { box-shadow: inset 3px 0 0 var(--accent); 
 .card .banner .txt { flex: 1; min-width: 0; }
 .card .banner button { padding: 2px 10px; font-size: 12px; background: var(--accent); color: #1b1b1b; border-color: var(--accent); font-weight: 600; }
 .card .banner .dismiss { color: var(--muted); padding: 2px 6px; border-radius: 4px; font-size: 13px; line-height: 1; }
-.card .banner .dismiss:hover { background: var(--panel2); color: var(--text); }
+@media (hover: hover) { .card .banner .dismiss:hover { background: var(--panel2); color: var(--text); } }
 .card .banner + .meta { margin-top: 6px; }
 /* ratings per time class: icon + number (+ 7-day change) */
 .card .ratings { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 2px; }
@@ -239,7 +240,7 @@ table.games tr.unseen td:first-child { box-shadow: inset 3px 0 0 var(--accent); 
 .card .rc .delta.up { color: var(--accent); } .card .rc .delta.down { color: var(--c-blunder); } .card .rc .delta.flat { color: var(--muted); }
 .card.profile .who .name { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .card.profile .pin { position: absolute; top: 8px; right: 30px; color: var(--muted); padding: 2px 6px; border-radius: 4px; font-size: 14px; line-height: 1.4; }
-.card.profile .pin:hover { background: var(--panel2); color: var(--text); } .card.profile.pinned .pin { color: var(--accent); }
+@media (hover: hover) { .card.profile .pin:hover { background: var(--panel2); color: var(--text); } } .card.profile.pinned .pin { color: var(--accent); }
 .cards .empty { padding: 10px 12px; color: var(--muted); font-size: 13px; grid-column: 1 / -1; text-align: left; }
 .update { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; background: var(--panel); border: 1px solid var(--accent); border-radius: 10px; padding: 12px 16px; margin-top: 4px; }
 .update .msg { flex: 1; min-width: 200px; }
@@ -280,7 +281,7 @@ dialog#whatsnew .rel h3 span { font-size: 12px; font-weight: 400; color: var(--m
 .setup-panel { display: flex; flex-direction: column; gap: 12px; }
 .palette { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; background: var(--panel); border-radius: 8px; padding: 8px; }
 .palette button { padding: 4px; height: 46px; display: flex; align-items: center; justify-content: center; background: transparent; border-color: transparent; }
-.palette button:hover { background: var(--panel2); }
+@media (hover: hover) { .palette button:hover { background: var(--panel2); } }
 .palette button img, .palette button svg { width: 34px; height: 34px; }
 .palette button.active { background: var(--accent); border-color: var(--accent); }
 .palette button.erase { grid-row: span 2; align-self: stretch; height: auto; color: var(--muted); margin-left: 6px; }
@@ -305,7 +306,7 @@ dialog#whatsnew .rel h3 span { font-size: 12px; font-weight: 400; color: var(--m
 /* sandbox: the engine's top lines for the position on the board, best first, updated live */
 .lines { border-bottom: 1px solid var(--line); padding: 4px 0; }
 .lines .ln { display: flex; gap: 8px; align-items: baseline; padding: 4px 10px; cursor: pointer; font-size: 13px; line-height: 1.4; }
-.lines .ln:hover { background: var(--panel2); }
+@media (hover: hover) { .lines .ln:hover { background: var(--panel2); } }
 .lines .ln .ev { flex-shrink: 0; min-width: 44px; text-align: center; font-weight: 700; font-variant-numeric: tabular-nums; background: #fff; color: #1b1b1b; border-radius: 4px; padding: 0 5px; font-size: 12px; }
 .lines .ln.black .ev { background: #454340; color: #fff; }
 .lines .ln .pv { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -334,7 +335,7 @@ body.puzzle .evalbar { visibility: hidden; }
 .pzinfo .tag { background: var(--panel2); border-radius: 4px; padding: 1px 7px; color: var(--text); }
 .pzinfo a { color: var(--accent); text-decoration: none; }
 .pzhead .meta a.pzreset { color: var(--muted); text-decoration: underline; cursor: pointer; font-size: 11px; }
-.pzhead .meta a.pzreset:hover { color: var(--text); }
+@media (hover: hover) { .pzhead .meta a.pzreset:hover { color: var(--text); } }
 .pzfoot { display: flex; gap: 8px; align-items: center; padding-top: 12px; }
 .pzfoot select { flex: 1; font: inherit; color: var(--text); background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; min-width: 0; }
 
@@ -348,7 +349,7 @@ table.games { width: 100%; border-collapse: collapse; background: var(--panel); 
 table.games th, table.games td { padding: 9px 12px; text-align: left; border-bottom: 1px solid var(--line); white-space: nowrap; }
 table.games th { color: var(--muted); font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
 table.games tr.row { cursor: pointer; }
-table.games tr.row:hover { background: var(--panel2); }
+@media (hover: hover) { table.games tr.row:hover { background: var(--panel2); } }
 .dot { display: inline-block; width: 11px; height: 11px; border-radius: 50%; border: 1px solid #777; vertical-align: -1px; margin-right: 6px; }
 .dot.white { background: #f0f0f0; } .dot.black { background: #222; }
 .res { display: inline-block; min-width: 22px; text-align: center; padding: 1px 6px; border-radius: 4px; font-weight: 600; font-size: 12px; color: #1b1b1b; }
@@ -543,7 +544,7 @@ svg.board { background: var(--board-img, var(--dark)) center / 100% 100%; }
 svg.board.playable use.piece.own { cursor: grab; }
 .varrow { grid-column: 1 / -1; background: #2e2c29; padding: 4px 8px 4px 16px; font-size: 13px; border-left: 3px solid var(--c-great); display: flex; flex-wrap: wrap; gap: 2px 8px; align-items: center; }
 .varrow .v { cursor: pointer; padding: 1px 4px; border-radius: 3px; display: inline-flex; gap: 4px; align-items: center; }
-.varrow .v:hover { background: var(--panel2); } .varrow .v.cur { background: #4b4844; }
+@media (hover: hover) { .varrow .v:hover { background: var(--panel2); } } .varrow .v.cur { background: #4b4844; }
 .varrow .x { margin-left: auto; color: var(--muted); cursor: pointer; }
 .now .var { font-size: 11px; color: var(--c-great); border: 1px solid var(--c-great); border-radius: 3px; padding: 0 5px; }
 .progress { height: 6px; background: var(--panel2); border-radius: 3px; overflow: hidden; }
@@ -556,7 +557,7 @@ svg.board.playable use.piece.own { cursor: grab; }
 .phead .pright { display: flex; gap: 4px; }
 .ginfo { text-align: center; color: var(--muted); font-size: 12px; padding: 4px 10px 0; }
 .pbtn { background: transparent; border: 0; color: var(--muted); font-size: 18px; padding: 4px 8px; border-radius: 6px; cursor: pointer; }
-.pbtn:hover { background: var(--panel2); color: var(--text); }
+@media (hover: hover) { .pbtn:hover { background: var(--panel2); color: var(--text); } }
 .coach { display: flex; gap: 8px; padding: 8px 10px 4px; align-items: flex-start; }
 .coach .avatar { width: 34px; height: 34px; border-radius: 8px; background: var(--panel2); display: flex; align-items: center; justify-content: center; font-size: 22px; flex-shrink: 0; }
 .bubble { flex: 1; background: #fff; color: #1b1b1b; border-radius: 10px; padding: 6px 10px; position: relative; min-height: 34px; }
@@ -586,7 +587,7 @@ svg.board.playable use.piece.own { cursor: grab; }
 body.sandbox #movelist, body.puzzle #movelist { display: grid !important; }
 .overview { padding-bottom: 10px; }
 .ovh { display: flex; align-items: center; padding: 12px 14px 4px; color: var(--muted); font-size: 12px; font-weight: 600; }
-.ovh .more { margin-left: auto; font-weight: 400; cursor: pointer; } .ovh .more:hover { color: var(--text); }
+.ovh .more { margin-left: auto; font-weight: 400; cursor: pointer; } @media (hover: hover) { .ovh .more:hover { color: var(--text); } }
 .ovlive { padding: 10px 14px 0; color: var(--muted); font-size: 12px; }
 .ovlive .bar { height: 4px; margin-top: 5px; border-radius: 2px; background: var(--panel2); overflow: hidden; }
 .ovlive .bar > div { height: 100%; background: var(--accent); transition: width .4s; }
@@ -627,7 +628,7 @@ svg.graph { width: 100%; height: 52px; display: block; cursor: pointer; backgrou
 .summary .cnt { font-weight: 700; font-size: 16px; }
 .summary .i .ico { width: 22px; height: 22px; }
 .summary .sep { border-top: 1px solid var(--line); margin: 8px 0; }
-.summary .click { cursor: pointer; } .summary .click:hover { text-decoration: underline; text-underline-offset: 3px; }
+.summary .click { cursor: pointer; } @media (hover: hover) { .summary .click:hover { text-decoration: underline; text-underline-offset: 3px; } }
 .summary .accbox.prov { color: var(--muted); font-style: italic; }    /* the moves analysed so far: still moving */
 .summary .num { font-weight: 700; font-size: 15px; }
 .summary .sub { color: var(--muted); font-size: 12px; font-weight: 400; }
@@ -645,7 +646,7 @@ svg.graph { width: 100%; height: 52px; display: block; cursor: pointer; backgrou
 .movelist .mrow { display: contents; }
 /* every other move pair a shade darker so the rows are easy to tell apart (before hover/cur so those still win) */
 .mrow.alt > .n { background: #1b1a18; } .mrow.alt > .m, .mrow.alt > .e { background: #1f1e1b; }
-.movelist .m:hover { background: var(--panel2); }
+@media (hover: hover) { .movelist .m:hover { background: var(--panel2); } }
 .movelist .m.cur { background: #4b4844; border-radius: 3px; }
 .m.brilliant .san { color: var(--c-brilliant); font-weight: 700; } .m.great .san { color: var(--c-great); font-weight: 700; }
 .m.best .san { color: var(--c-best); } .m.excellent .san { color: var(--c-excellent); }
@@ -677,7 +678,7 @@ svg.graph { width: 100%; height: 52px; display: block; cursor: pointer; backgrou
 .ttabs { display: flex; gap: 6px; } .ttabs button { flex: 1; }
 .tgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); gap: 8px; max-height: 58vh; overflow: auto; padding: 2px; }
 .tile { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 8px 6px; background: var(--panel2); border: 2px solid transparent; border-radius: 8px; }
-.tile:hover { background: #46423d; } .tile.on { border-color: var(--accent); }
+@media (hover: hover) { .tile:hover { background: #46423d; } } .tile.on { border-color: var(--accent); }
 .tile .tp { display: flex; background: var(--board-img) 0 0 / 256px 256px; border-radius: 3px; }   /* three squares of the chosen board */
 .tile .tp img { width: 32px; height: 32px; display: block; }
 .tile .tb { width: 72px; height: 72px; border-radius: 4px; background: center / cover; }

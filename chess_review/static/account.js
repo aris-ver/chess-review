@@ -136,7 +136,7 @@ dialog#account .tabs button { flex: 1; }
 dialog#account .col { display: flex; flex-direction: column; gap: 8px; margin: 12px 0; }
 dialog#account .col button, dialog#account a.btn { padding: 8px 12px; }
 dialog#account a.btn { display: block; text-align: center; color: var(--text); background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; }
-dialog#account a.btn:hover { background: #46423d; }
+@media (hover: hover) { dialog#account a.btn:hover { background: #46423d; } }
 dialog#account label.consent { display: flex; gap: 8px; align-items: flex-start; margin: 4px 0 2px; cursor: pointer; }
 dialog#account label.consent input { margin-top: 3px; }
 dialog#account .note { background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; margin-bottom: 12px; }
