@@ -120,7 +120,7 @@ async def _send(fetch, step: ingest.Get) -> _Reply:
     return r
 
 
-async def drive(steps, fetch=js_fetch):
+async def drive(steps, fetch=js_fetch, on_wait=None):
     """ingest.run() for the browser: each request awaited, each with its timeout, so a fetch ends one way or the
     other and the page is answered while it runs."""
     out = None
@@ -128,7 +128,11 @@ async def drive(steps, fetch=js_fetch):
         while True:
             step = steps.send(out)
             if isinstance(step, ingest.Sleep):
+                if step.note and on_wait:
+                    on_wait(step.note)
                 await asyncio.sleep(step.seconds)
+                if step.note and on_wait:
+                    on_wait(None)
                 out = None
             elif isinstance(step, ingest.Read):
                 out = await step.response.lines()
@@ -274,14 +278,15 @@ class WebRunner(serve.Runner):
             persist()
 
     async def _fetch(self, job: serve.Job) -> None:
-        """serve.Runner._ingest and _refresh with the requests awaited."""
-        p = job.profile
-        if job.kind == "ingest":
-            self._ingested(job, await drive(ingest.fetch_steps(p, on_progress=self._fetching(job)), self.fetch))
+        """serve.Runner._ingest, _older and _refresh with the requests awaited."""
+        p, wait = job.profile, self._waiting(job)
+        if job.kind in ("ingest", "older"):
+            steps = ingest.fetch_steps(p, on_progress=self._fetching(job), older=job.kind == "older")
+            self._ingested(job, await drive(steps, self.fetch, wait))
         else:
             job.total = 4
             had = p.game_ids()
-            self._refreshed(job, had, await drive(ingest.fetch_steps(p, refresh=True), self.fetch))
+            self._refreshed(job, had, await drive(ingest.fetch_steps(p, refresh=True), self.fetch, wait))
 
     async def _analyse(self, job: serve.Job) -> None:
         """serve.Runner._analyse with the search awaited."""

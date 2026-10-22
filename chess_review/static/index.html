@@ -375,6 +375,9 @@ td.num { text-align: right; font-variant-numeric: tabular-nums; }
 .pill { font-size: 11px; padding: 1px 7px; border-radius: 10px; background: var(--panel2); color: var(--muted); }
 .pill.full { background: #3f5a2a; color: #cde6b3; } .pill.part { background: #5a4a2a; color: #e6d3b3; }
 table.games button.an { padding: 3px 9px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+.older { text-align: center; padding: 14px 0 4px; }
+.older .note { color: var(--muted); font-size: 12px; margin-top: 6px; }
+.older .note:empty { display: none; }
 
 /* review layout */
 .review { display: grid; grid-template-columns: 30px minmax(320px, min(900px, calc(100vh - 192px))) minmax(400px, 540px); gap: 14px; align-items: start; justify-content: center; }
@@ -850,6 +853,7 @@ svg.graph { width: 100%; height: 52px; display: block; cursor: pointer; backgrou
       <thead><tr><th>Date</th><th>Me</th><th>Opponent</th><th>Result</th><th>Opening</th><th>Accuracy</th><th>Analysis</th><th>Key</th><th>Blunders</th><th title="brilliant moves (mine)">!!</th></tr></thead>
       <tbody id="rows"></tbody>
     </table>
+    <div class="older hidden" id="older"><button id="b-older"></button><div class="note" id="older-note"></div></div>
   </section>
 
   <section id="review" class="hidden">
@@ -1601,8 +1605,10 @@ async function showList() {
   let games;
   try {
     const unseen = fetch(`api/profiles/${state.profile}/unseen`).then(r => r.json()).then(d => new Set(d.unseen || [])).catch(() => new Set());
+    const older = fetch('api/profiles').then(r => r.json()).then(d => !!((d.profiles || []).find(p => p.id === state.profile) || {}).older).catch(() => false);
     games = await loadGames(true);
     state.unseen = await unseen;
+    state.older = await older;
   } catch (e) {
     const id = state.profile;
     location.hash = '#/';
@@ -1615,7 +1621,8 @@ async function showList() {
   const rows = games.filter(g => (!f.result || g.result === f.result) && (!f.colour || g.my_colour === f.colour) &&
     (f.analysed === '' || (f.analysed === '1' ? g.analysed >= 0.999 : g.analysed < 0.999)) &&
     (f.brilliant === '' || (f.brilliant === 'mine' ? g.brilliants > 0 : g.brilliants_any > 0)));
-  $('liststat').textContent = `${rows.length} of ${games.length} games`;
+  $('liststat').textContent = `${rows.length} of ${games.length} games` + (state.older ? ' (the newest; older ones not loaded yet)' : '');
+  markOlder();
   const eloDelta = {};   // games[] is newest-first, so the previous chronological game sits right after
   games.forEach((g, i) => {
     const prev = games[i + 1];
@@ -3086,6 +3093,28 @@ async function startReview() {
   startPlay(true);
   pollStatus();
 }
+// A profile is fetched a page at a time, newest first: under its list, the button for the page before. It shows the
+// fetch while it runs (and a site's "slow down" while it waits), and after a failure offers to try again.
+const olderFailed = {};      // profile -> why its last "older" fetch failed, until it's tried again
+function markOlder() {
+  const box = $('older'), b = $('b-older');
+  const j = jobsNow.find(x => x.kind === 'older' && x.profile === state.profile && ACTIVE(x.status));
+  box.classList.toggle('hidden', !state.older && !j);
+  b.disabled = !!j;
+  b.textContent = j ? `Loading older games…${j.total > 3 ? ' ' + Math.round(100 * j.done / j.total) + '%' : ''}`
+    : olderFailed[state.profile] ? 'Try again' : 'Load older games';
+  $('older-note').textContent = j ? (j.note || '') : olderFailed[state.profile] ? `Couldn't load older games: ${olderFailed[state.profile]}` : '';
+}
+$('b-older').onclick = async () => {
+  const r = await fetch(`api/${P()}/older`, { method: 'POST' });
+  const d = await r.json();
+  if (!r.ok) { toast(d.error === 'busy' ? `Busy: ${jobText(d.job)}` : d.error); return; }
+  delete olderFailed[state.profile];
+  fetches.add(d.job.id);
+  jobsNow = [d.job, ...jobsNow];
+  markOlder();
+  pollStatus();
+};
 $('b-refresh').onclick = async () => {
   const r = await fetch(`api/${P()}/refresh`, { method: 'POST' });
   const d = await r.json();
@@ -3097,7 +3126,9 @@ $('b-refresh').onclick = async () => {
 };
 function jobText(j) {
   if (j.kind === 'analyse_all') return `analysing all games: ${j.done}/${j.total} done, current ${j.game} ${j.game_done}/${j.game_total}`;
+  if (j.note) return j.note;
   if (j.kind === 'ingest') return `fetching ${j.username || j.profile}'s games (${j.done}/${j.total})`;
+  if (j.kind === 'older') return `loading ${j.username || j.profile}'s older games (${j.done}/${j.total})`;
   if (j.kind === 'puzzles') return `finding puzzle lines (${j.done}/${j.total})`;
   if (j.kind === 'build') return j.phase === 'lines' ? `finishing ${j.username}'s puzzles (${j.done}/${j.total})` : `making puzzles from ${j.username}'s games (${j.done}/${j.total} analysed)`;
   if (j.kind === 'analyse') return j.status === 'queued' ? `game ${j.game}, waiting its turn` : `analysing game ${j.game} (${j.done}/${j.total})`;
@@ -3125,7 +3156,7 @@ function markFetching() {
     if (!j) continue;
     const pct = j.total ? Math.round(100 * j.done / j.total) : 0;
     prog.firstElementChild.style.width = pct + '%';
-    meta.textContent = j.status === 'queued' ? 'Waiting to fetch its games…' : `Fetching games…${j.total ? ' ' + pct + '%' : ''}`;
+    meta.textContent = j.status === 'queued' ? 'Waiting to fetch its games…' : j.note || `Fetching games…${j.total ? ' ' + pct + '%' : ''}`;
   }
 }
 let lastJobStatus = null;
@@ -3151,13 +3182,17 @@ async function pollStatus() {
     $('jobstat').textContent = active && j.kind !== 'build' ? jobText(j) : '';      // a build has its bar at the bottom
     const mine = j && j.profile === state.profile;   // jobs belong to a profile; only react to the one being viewed
     markFetching();
-    for (const x of jobsNow) if ((x.kind === 'ingest' || x.kind === 'refresh') && ACTIVE(x.status)) fetches.add(x.id);
+    if (state.profile && !state.game) markOlder();
+    for (const x of jobsNow) if (['ingest', 'refresh', 'older'].includes(x.kind) && ACTIVE(x.status)) fetches.add(x.id);
     for (const id of fetches) {
       const e = jobsNow.find(x => x.id === id);
       if (e && ACTIVE(e.status)) continue;
       fetches.delete(id);
       if (!e) continue;
-      if (e.kind === 'ingest') {
+      if (e.kind === 'older') {
+        if (e.status !== 'done') olderFailed[e.profile] = e.error || e.status;
+        if (e.profile === state.profile && !state.game) showList();
+      } else if (e.kind === 'ingest') {
         if (e.status === 'done') { toast('Profile ready'); if (!$('home').classList.contains('hidden')) location.hash = '#/p/' + e.profile; }
         else { toast(`Couldn't fetch ${e.username}'s games` + (e.error ? ': ' + e.error : ''), 8000); if (!state.profile) renderProfiles(); }
       } else if (e.profile === state.profile) {

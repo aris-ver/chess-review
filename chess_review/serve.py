@@ -9,8 +9,10 @@
     GET  /api/profiles/<id>/unseen      games a refresh brought in that haven't been opened yet (flagged NEW in the list
                                         until opened, or until the launch after the list has shown them)
     POST /api/profiles/<id>/games/<game>/seen   the game was opened: drop its "new" flag in the list
-    POST /api/profiles                  {source, username, puzzles?} -> create the profile and fetch its games (job
-                                        "ingest"); puzzles=true makes its puzzles afterwards (a build, see below)
+    POST /api/profiles                  {source, username, puzzles?} -> create the profile and fetch its newest page of
+                                        games (job "ingest"); puzzles=true makes its puzzles afterwards (a build, see
+                                        below). The profile's `older` says whether the site has games before those
+    POST /api/p/<id>/older              fetch the page of games before the oldest the profile has (job "older")
     POST /api/profiles/<id>/delete      remove a profile and everything under it (the engine cache is shared and stays)
     POST /api/profiles/<id>/pin         {pinned: bool} keep it at the top of the home screen
     POST /api/p/<id>/analyse/<slug>     analyse one game (MultiPV=3, fixed nodes), streaming progress into its JSON;
@@ -126,16 +128,18 @@ class Job:
         self.game_done, self.game_total = 0, 0   # analyse_all: position progress within the current game
         self.phase: Optional[str] = None         # build: "analysing" (done/total count games) or "lines" (puzzles)
         self.puzzles: Optional[int] = None       # build: puzzles the profile has so far
+        self.note: Optional[str] = None          # a fetch waiting out a site's "slow down", said while it waits
 
     def to_dict(self) -> dict:
         return {"id": self.id, "kind": self.kind, "profile": self.profile.id, "username": self.profile.username,
                 "game": self.slug, "status": self.status,
                 "done": self.done, "total": self.total, "game_done": self.game_done, "game_total": self.game_total,
                 "error": self.error, "elapsed": round(time.time() - self.started, 1),
-                "phase": self.phase, "puzzles": self.puzzles}
+                "phase": self.phase, "puzzles": self.puzzles, "note": self.note}
 
 
 BACKGROUND = ("puzzles", "build")    # jobs that give way to anything the user asks for
+FETCHES = ("ingest", "refresh", "older")    # a profile's games: a new profile's first page, what's new, a page back
 LIVE_WRITE_S = 0.3                   # a game analysed on demand: its review is rewritten at most this often
 PUZZLE_REFRESH_S = 20                # a build reclassifies the profile (its puzzles) at most this often, after a game
 
@@ -224,7 +228,7 @@ class Runner:
             if cur.kind in BACKGROUND and (job.kind not in BACKGROUND or (job.kind == "build" and cur.kind == "puzzles")):
                 cur.stop_requested = cur.preempted = True
                 before = self.thread
-            elif job.kind in ("ingest", "refresh") and cur.kind == job.kind and cur.profile.id == job.profile.id:
+            elif job.kind in FETCHES and cur.kind == job.kind and cur.profile.id == job.profile.id:
                 return cur      # asked again (the page redrawn by an account sync, say): the fetch under way
             elif job.kind == "analyse":
                 same = next((j for j in [cur, *self.queue] if j.kind == "analyse" and j.profile.id == job.profile.id
@@ -394,6 +398,8 @@ class Runner:
             self._analyse_all(job)
         elif job.kind == "ingest":
             self._ingest(job)
+        elif job.kind == "older":
+            self._older(job)
         else:
             self._refresh(job)
 
@@ -546,15 +552,26 @@ class Runner:
         job.done += 1   # (rebuild_profile() is the same sequence without the progress counter)
 
     def _ingest(self, job: Job) -> None:
-        """New profile: fetch every game, then build its site. done/total count months (chess.com) or games
-        (lichess) while fetching."""
-        self._ingested(job, ingest.fetch(job.profile, on_progress=self._fetching(job)))
+        """New profile: fetch its newest page of games, then build its site. done/total count the page's games
+        while fetching."""
+        self._ingested(job, ingest.fetch(job.profile, on_progress=self._fetching(job), on_wait=self._waiting(job)))
+
+    def _older(self, job: Job) -> None:
+        """The page of games before the oldest the profile has ("Load older games"), then its site again."""
+        self._ingested(job, ingest.fetch(job.profile, older=True, on_progress=self._fetching(job),
+                                         on_wait=self._waiting(job)))
 
     @staticmethod
     def _fetching(job: Job):
         def progress(done: int, total: int) -> None:
             job.done, job.total = done, total + 3
         return progress
+
+    @staticmethod
+    def _waiting(job: Job):
+        def note(text: Optional[str]) -> None:
+            job.note = text
+        return note
 
     def _ingested(self, job: Job, stats: dict) -> None:
         p = job.profile
@@ -567,7 +584,7 @@ class Runner:
     def _refresh(self, job: Job) -> None:
         job.total = 4
         had = job.profile.game_ids()
-        self._refreshed(job, had, ingest.fetch(job.profile, refresh=True))
+        self._refreshed(job, had, ingest.fetch(job.profile, refresh=True, on_wait=self._waiting(job)))
 
     def _refreshed(self, job: Job, had: set, stats: dict) -> None:
         p = job.profile
@@ -936,7 +953,7 @@ class Handler(SimpleHTTPRequestHandler):
                 return self._json({"error": "busy", "job": r.job.to_dict()}, 409)
             r.cancel_build(m.group(1))
             return self._json({"ok": profiles.delete(m.group(1))})
-        m = re.match(r"^/api/p/([A-Za-z0-9_.-]+)/(analyse_all|refresh|analyse/([^/]+))$", path)
+        m = re.match(r"^/api/p/([A-Za-z0-9_.-]+)/(analyse_all|refresh|older|analyse/([^/]+))$", path)
         if m:
             p = profiles.load(m.group(1))
             if p is None:
@@ -950,7 +967,7 @@ class Handler(SimpleHTTPRequestHandler):
                 return self._start(Job("analyse", p, game_id, slug))
             if action == "analyse_all":
                 return self._start(Job("analyse_all", p))
-            return self._start(Job("refresh", p))
+            return self._start(Job(action, p))
         if path.startswith("/api/explore"):
             b = self._body()
             try:

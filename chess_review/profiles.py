@@ -124,7 +124,7 @@ class Profile:
         return {"id": self.id, "source": self.source, "username": self.username, "games": games,
                 "analysed": analysed, "created": meta.get("created"), "pinned": meta.get("pinned"),
                 "rating": rating, "rating_delta_7d": rating_delta_7d, "ratings": ratings,
-                "unseen": meta.get("unseen", [])}
+                "unseen": meta.get("unseen", []), "older": bool(meta.get("older"))}
 
 
 def profile_id(source: str, username: str) -> str:
@@ -174,6 +174,12 @@ def add_unseen(pid: str, ids) -> None:
     ids = [i for i in ids]
     if ids:
         _update_meta(pid, lambda meta: meta.__setitem__("unseen", sorted(set(meta.get("unseen", [])) | set(ids))))
+
+
+def set_older(pid: str, older: bool) -> None:
+    """Whether the site has games older than the oldest fetched (a profile is fetched a page at a time, newest
+    first). Profiles fetched whole before paging have no flag: nothing older."""
+    _update_meta(pid, lambda meta: meta.__setitem__("older", older))
 
 
 def mark_seen(pid: str, game_id: str) -> None:

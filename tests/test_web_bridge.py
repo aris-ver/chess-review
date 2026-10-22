@@ -229,6 +229,9 @@ async def main():
     out["seen"] = seen
     out["games"] = len(call("GET", "/p/chesscom-testuser/games.json")[1]["games"])
     out["user agent"] = any("User-Agent" in h for _, h in asked)
+    status, d = call("POST", "/api/p/chesscom-testuser/older")     # nothing before September: done, still no older
+    out["older"] = [status, (await until_ended())["status"],
+                    next(p for p in call("GET", "/api/profiles")[1]["profiles"] if p["id"] == "chesscom-testuser")["older"]]
 
     call("POST", "/api/profiles", {"source": "chesscom", "username": "typo"})
     out["typo"] = (await until_ended())["error"]
@@ -276,7 +279,8 @@ def test_fetching_a_profile_in_the_browser_keeps_answering_and_always_ends(tmp_p
     out = json.loads(line[6:])
     assert out["again"] == [200, True]
     assert out["ok"] == {"status": "done", "error": None}
-    assert ["running", 0, 4] in out["seen"]        # polled mid-fetch: the month list is in, the month isn't yet
+    assert ["running", 0, 23] in out["seen"]       # polled mid-fetch: the month list is in, the month isn't yet
+    assert out["older"] == [200, "done", False]
     assert out["games"] == 1
     assert out["user agent"] is False
     assert out["typo"] == "chess.com has no user called typo"

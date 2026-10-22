@@ -8,6 +8,11 @@ Lichess profiles stream the game export API instead (one request, NDJSON) into
 raw/YYYY-MM.ndjson by the month each game started; a refresh asks only for games
 started since the newest one on disk.
 
+The app fetches a profile a page at a time, newest first (fetch_steps): a new
+profile gets its latest PAGE games or so (whole chess.com months, since that is
+what the API hands out), and each "older" fetch the page before the oldest on
+disk. The CLI still fetches everything.
+
 The fetches are generators of the requests they want made (Get): run()
 makes them here, the browser without blocking the page's own requests.
 """
@@ -36,6 +41,9 @@ LICHESS_USER = "https://lichess.org/api/user/{username}"
 LICHESS_GAMES = "https://lichess.org/api/games/user/{username}"
 # Standard chess only: the speeds, not the variants (chess960, atomic, ...), which this app can't review.
 LICHESS_PERFS = "ultraBullet,bullet,blitz,rapid,classical,correspondence"
+PAGE = 20           # games a page of the app's fetch brings in (at least, on chess.com: whole months)
+# after a 429 without a Retry-After (chess.com's isn't readable cross-origin, so always in the browser)
+BACKOFF = (2, 5, 15, 30, 60)
 
 
 class NoSuchPlayer(ValueError):
@@ -63,9 +71,10 @@ class Read:
 @dataclass
 class Sleep:
     seconds: float
+    note: str = ""      # why, for the user while it lasts (a site asking to slow down): on_wait(note), then None
 
 
-def run(steps):
+def run(steps, on_wait=None):
     """A fetch's return value, its requests made with requests."""
     session = requests.Session()
     session.headers["User-Agent"] = USER_AGENT
@@ -74,7 +83,11 @@ def run(steps):
         while True:
             step = steps.send(out)
             if isinstance(step, Sleep):
+                if step.note and on_wait:
+                    on_wait(step.note)
                 time.sleep(step.seconds)
+                if step.note and on_wait:
+                    on_wait(None)
                 out = None
             elif isinstance(step, Read):
                 out = list(itertools.islice(lines[id(step.response)], 200)) or None
@@ -95,13 +108,15 @@ def _get(url: str, max_retries: int = 6, missing: str | None = None):
         if r.status_code == 404 and missing:
             raise NoSuchPlayer(missing)
         if r.status_code == 429:
-            wait = int(r.headers.get("Retry-After", 0)) or 30 * (attempt + 1)
+            if attempt == max_retries - 1:
+                break
+            wait = int(r.headers.get("Retry-After", 0)) or BACKOFF[min(attempt, len(BACKOFF) - 1)]
             log.warning("429 on %s, sleeping %ss", url, wait)
-            yield Sleep(wait)
+            yield Sleep(wait, f"chess.com asked to slow down: trying again in {wait} s")
             continue
         r.raise_for_status()
         return r
-    raise RuntimeError(f"gave up on {url} after {max_retries} attempts")
+    raise RuntimeError("chess.com kept asking to slow down: try again in a few minutes")
 
 
 def _archive_list(profile: Profile):
@@ -109,23 +124,34 @@ def _archive_list(profile: Profile):
     return (yield from _get(API.format(username=profile.username), missing=f"chess.com has no user called {profile.username}"))
 
 
+def _month(url: str) -> str:
+    year, month = url.rstrip("/").split("/")[-2:]
+    return f"{year}-{month}"
+
+
+def _months_on_disk(profile: Profile) -> list[str]:
+    return sorted(f.stem for f in profile.raw_dir.glob("*.json")) if profile.raw_dir.exists() else []
+
+
 def _archives(profile: Profile, force: bool = False, only: str | None = None, delay: float = 1.0,
-              refresh_latest: bool = False, on_progress=None):
+              refresh_latest: bool = False, since: str | None = None, on_progress=None):
+    """Every month not on disk (since: only from that month on, a refresh of a profile fetched a page at a time)."""
     profile.raw_dir.mkdir(parents=True, exist_ok=True)
     archive_urls = (yield from _archive_list(profile)).json()["archives"]
     log.info("%d archives listed for %s", len(archive_urls), profile.username)
+    if since:
+        archive_urls = [u for u in archive_urls if _month(u) >= since]
 
     stats = {"listed": len(archive_urls), "fetched": 0, "skipped": 0}
     for i, url in enumerate(archive_urls):
         if on_progress:
             on_progress(i, len(archive_urls))
-        year, month = url.rstrip("/").split("/")[-2:]
-        key = f"{year}-{month}"
+        key = _month(url)
         out = profile.raw_dir / f"{key}.json"
         if only and key != only:
             stats["skipped"] += 1
             continue
-        is_latest = url == archive_urls[-1]
+        is_latest = url == archive_urls[-1] or key == since    # (the newest month on disk may have been partial)
         if out.exists() and not force and not (refresh_latest and is_latest):
             stats["skipped"] += 1
             continue
@@ -136,6 +162,38 @@ def _archives(profile: Profile, force: bool = False, only: str | None = None, de
         out.write_text(body, encoding="utf-8")
         stats["fetched"] += 1
         log.info("%s: %d games", key, n)
+    return stats
+
+
+def _archive_page(profile: Profile, older: bool = False, delay: float = 1.0, on_progress=None):
+    """A page of chess.com months, newest first, until they hold PAGE games: the latest months for a new profile
+    (months already on disk count without being fetched again: a first fetch cut short picks up where it stopped),
+    with `older` the months before the oldest on disk. Sets the profile's "older" flag."""
+    profile.raw_dir.mkdir(parents=True, exist_ok=True)
+    archive_urls = (yield from _archive_list(profile)).json()["archives"]
+    have = _months_on_disk(profile)
+    todo = [u for u in reversed(archive_urls) if not (older and have) or _month(u) < have[0]]
+    stats = {"listed": len(archive_urls), "fetched": 0, "skipped": 0, "games": 0}
+    for url in todo:
+        if stats["games"] >= PAGE:
+            break
+        if on_progress:
+            on_progress(stats["games"], PAGE)
+        out = profile.raw_dir / f"{_month(url)}.json"
+        if out.exists():
+            body = out.read_text(encoding="utf-8")
+            stats["skipped"] += 1
+        else:
+            if delay and stats["fetched"]:
+                yield Sleep(delay)      # between months only: a page is often one request
+            body = (yield from _get(url)).text
+            out.write_text(body, encoding="utf-8")
+            stats["fetched"] += 1
+        stats["games"] += len(json.loads(body).get("games", []))
+    have = _months_on_disk(profile)
+    stats["older"] = bool(have) and any(_month(u) < have[0] for u in archive_urls)
+    profiles.set_older(profile.id, stats["older"])
+    log.info("chess.com %s, a page%s: %s", profile.username, " back" if older else "", stats)
     return stats
 
 
@@ -180,8 +238,10 @@ def _lichess_stream(username: str, params: dict, on_game, max_retries: int = 4):
                       headers=NDJSON, stream=True)
         if r.status_code == 429:
             r.close()
+            if attempt == max_retries - 1:
+                break
             log.warning("429 from lichess, sleeping 60s")
-            yield Sleep(60)
+            yield Sleep(60, "lichess asked to slow down: trying again in a minute")
             continue
         try:
             r.raise_for_status()
@@ -192,20 +252,23 @@ def _lichess_stream(username: str, params: dict, on_game, max_retries: int = 4):
             return
         finally:
             r.close()
-    raise RuntimeError(f"gave up on lichess games for {username} after {max_retries} attempts")
+    raise RuntimeError("lichess kept asking to slow down: try again in a few minutes")
 
 
-def _lichess_on_disk(profile: Profile) -> tuple[int, int]:
-    """(newest createdAt, number of games) over the profile's raw/*.ndjson."""
-    newest, n = 0, 0
+def _lichess_on_disk(profile: Profile) -> tuple[int, int, int]:
+    """(newest createdAt, oldest createdAt, number of games) over the profile's raw/*.ndjson; 0s when there's none."""
+    newest, oldest, n = 0, 0, 0
     for f in profile.raw_dir.glob("*.ndjson") if profile.raw_dir.exists() else []:
         for line in f.read_text(encoding="utf-8").splitlines():
             if line.strip():
-                newest, n = max(newest, json.loads(line).get("createdAt", 0)), n + 1
-    return newest, n
+                t = json.loads(line).get("createdAt", 0)
+                newest, oldest, n = max(newest, t), min(oldest, t) if n else t, n + 1
+    return newest, oldest, n
 
 
-def _lichess(profile: Profile, on_progress=None):
+def _lichess(profile: Profile, on_progress=None, page: str | None = None):
+    """Without `page`: every game, or those since the newest on disk. page="new": the newest PAGE games;
+    page="older": the PAGE before the oldest on disk. A page sets the profile's "older" flag."""
     profile.raw_dir.mkdir(parents=True, exist_ok=True)
     r = yield Get(LICHESS_USER.format(username=profile.username), headers={"Accept": "application/json"}, timeout=30)
     if r.status_code == 404:
@@ -214,19 +277,25 @@ def _lichess(profile: Profile, on_progress=None):
     user = r.json()
     if user.get("disabled"):
         raise NoSuchPlayer(f"lichess account {profile.username} is closed")
-    newest, had = _lichess_on_disk(profile)
-    # the total is every game, variants included, so a rough bar: it stops short and jumps at the end
-    total = max(user.get("count", {}).get("all", 0) - had, 1)
+    newest, oldest, had = _lichess_on_disk(profile)
     params = {"clocks": "true", "opening": "true", "pgnInJson": "true", "sort": "dateAsc"}
-    if newest:
-        params["since"] = newest
+    if page:
+        total = PAGE
+        params.update(sort="dateDesc", max=PAGE)
+        if page == "older" and oldest:
+            params["until"] = oldest - 1
+    else:
+        # the total is every game, variants included, so a rough bar: it stops short and jumps at the end
+        total = max(user.get("count", {}).get("all", 0) - had, 1)
+        if newest:
+            params["since"] = newest
 
     seen: dict[str, set] = {}       # month -> ids already in that file
     stats = {"fetched": 0, "skipped": 0}
 
     def take(g: dict) -> None:
         i = stats["fetched"] + stats["skipped"]
-        if on_progress and i % 20 == 0:
+        if on_progress and (page or i % 20 == 0):
             on_progress(min(i, total), total)
         month = datetime.fromtimestamp(g["createdAt"] / 1000, tz=timezone.utc).strftime("%Y-%m")
         out = profile.raw_dir / f"{month}.ndjson"
@@ -242,7 +311,10 @@ def _lichess(profile: Profile, on_progress=None):
         stats["fetched"] += 1
 
     yield from _lichess_stream(profile.username, params, take)
-    log.info("lichess %s: %s", profile.username, stats)
+    if page:        # a full page: there may be more before it (a page that ends exactly at the first game says so too)
+        stats["older"] = stats["fetched"] + stats["skipped"] >= PAGE
+        profiles.set_older(profile.id, stats["older"])
+    log.info("lichess %s%s: %s", profile.username, f", a page ({page})" if page else "", stats)
     return stats
 
 
@@ -255,7 +327,7 @@ def fetch_lichess(profile: Profile, on_progress=None) -> dict:
 
 
 def _count_lichess(profile: Profile):
-    newest, _ = _lichess_on_disk(profile)
+    newest, _, _ = _lichess_on_disk(profile)
     ids_on_disk = set()
     for f in profile.raw_dir.glob("*.ndjson"):
         ids_on_disk |= {json.loads(l)["id"] for l in f.read_text(encoding="utf-8").splitlines() if l.strip()}
@@ -270,19 +342,25 @@ def count_new_lichess(profile: Profile) -> int:
     return run(_count_lichess(profile))
 
 
-def fetch_steps(profile: Profile, refresh: bool = False, on_progress=None):
+def fetch_steps(profile: Profile, refresh: bool = False, on_progress=None, older: bool = False):
     """fetch() as steps, for a driver other than run()."""
     if profile.source == "chesscom":
-        # chess.com only rate-limits parallel requests; the pause is politeness for a whole history, not a refresh
-        return (yield from _archives(profile, refresh_latest=refresh, delay=0 if refresh else 1.0, on_progress=on_progress))
+        have = _months_on_disk(profile)
+        if refresh and have:
+            # the latest month again and any newer. chess.com only rate-limits parallel requests: no pause
+            return (yield from _archives(profile, refresh_latest=True, since=have[-1], delay=0))
+        return (yield from _archive_page(profile, older=older, on_progress=on_progress))
     if profile.source == "lichess":
-        return (yield from _lichess(profile, on_progress=on_progress))
+        if refresh and _lichess_on_disk(profile)[2]:
+            return (yield from _lichess(profile))
+        return (yield from _lichess(profile, on_progress=on_progress, page="older" if older else "new"))
     raise ValueError(f"{profile.source} profiles can't be fetched")
 
 
-def fetch(profile: Profile, refresh: bool = False, on_progress=None) -> dict:
-    """The profile's games from wherever it lives: everything for a new profile, what's new on a refresh."""
-    return run(fetch_steps(profile, refresh, on_progress))
+def fetch(profile: Profile, refresh: bool = False, on_progress=None, older: bool = False, on_wait=None) -> dict:
+    """The profile's games from wherever it lives, a page at a time: the newest page for a new profile, the page
+    before the oldest on disk with `older`, what's new since the newest on a refresh."""
+    return run(fetch_steps(profile, refresh, on_progress, older), on_wait)
 
 
 def count_new(profile: Profile) -> int:
