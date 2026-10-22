@@ -21,7 +21,7 @@
   // the loading lines, as those say why the page isn't answering yet.
   const bar = document.createElement('div');
   bar.id = 'web-loading';
-  bar.style.cssText = 'position:fixed;left:12px;bottom:12px;z-index:9999;max-width:min(420px,calc(100vw - 24px));padding:8px 30px 8px 12px;' +
+  bar.style.cssText = 'position:fixed;z-index:9999;max-width:min(420px,calc(100vw - 24px));padding:8px 30px 8px 12px;' +
     'border-radius:8px;border-left:3px solid var(--accent);background:rgba(20,20,20,.88);color:#eee;font:13px/1.4 system-ui,sans-serif;' +
     'box-shadow:0 2px 10px rgba(0,0,0,.4)';
   // "Download the app" in the header, lit in the notice's accent colour (no flashing) for as long as the note is
@@ -39,10 +39,20 @@
     '#web-loading .pb>i{display:block;height:100%;background:var(--accent);transition:width .3s}' +
     'header .right a#web-dl svg,#web-a2hs svg{width:16px;height:16px;vertical-align:-3px;fill:none;stroke:currentColor;stroke-width:2;' +
     'stroke-linecap:round;stroke-linejoin:round}' +
-    '#web-a2hs{position:fixed;inset:0;z-index:10000;display:flex;align-items:flex-end;justify-content:center;padding:16px;background:rgba(0,0,0,.5)}' +
+    '#web-a2hs{position:fixed;inset:0;z-index:10000;display:flex;align-items:flex-end;justify-content:center;padding:16px;' +
+    'padding-bottom:calc(16px + env(safe-area-inset-bottom));background:rgba(0,0,0,.5)}' +
     '#web-a2hs>div{position:relative;width:min(420px,100%);padding:16px 36px 16px 16px;border-radius:10px;border-left:3px solid var(--accent);' +
     'background:var(--panel2);color:var(--text);font:15px/1.5 system-ui,sans-serif;box-shadow:0 4px 20px rgba(0,0,0,.5)}' +
-    '#web-a2hs b{color:var(--accent)}#web-a2hs ol{margin:8px 0 0;padding-left:20px}#web-a2hs .x{top:8px;right:8px;color:var(--text)}';
+    '#web-a2hs b{color:var(--accent)}#web-a2hs ol{margin:8px 0 0;padding-left:20px}#web-a2hs .x{top:8px;right:8px;color:var(--text)}' +
+    // Clear of the iPhone's home indicator; on a phone also of the board screens' nav pinned to the bottom (and of the
+    // puzzle build's bar under it). A phone on its side has that nav in the panel, so there the bar goes under the header.
+    '#web-loading{left:max(12px,env(safe-area-inset-left));bottom:calc(12px + env(safe-area-inset-bottom))}' +
+    '@media (max-width:900px){#web-loading .x{width:36px;height:36px;top:0;right:0}#web-a2hs .x{width:36px;height:36px;top:2px;right:2px}#web-loading{padding-right:40px!important}' +
+    'body.hasbar #web-loading{bottom:calc(72px + env(safe-area-inset-bottom))}' +
+    'body:has(#review:not(.hidden)) #web-loading{bottom:calc(76px + env(safe-area-inset-bottom))}' +
+    'body.hasbar:has(#review:not(.hidden)) #web-loading{bottom:calc(138px + env(safe-area-inset-bottom))}}' +
+    '@media (max-width:900px) and (orientation:landscape) and (max-height:500px){body:has(#review:not(.hidden)) #web-loading' +
+    '{top:calc(64px + env(safe-area-inset-top));bottom:auto!important;left:auto;right:max(12px,env(safe-area-inset-right));max-width:min(420px,45vw)}}';
   document.head.appendChild(style);
   // Drawn, not ⬇ or ⊕: iOS shows those as colour emoji. Arrow into a tray (download); a square with a plus (home screen).
   const svg = d => `<svg viewBox="0 0 24 24" aria-hidden="true">${d}</svg>`;

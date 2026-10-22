@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Chess Review</title>
 <style>
 :root {
@@ -365,15 +365,21 @@ table.games button.an { padding: 3px 9px; font-size: 12px; font-weight: 600; whi
 .review { display: grid; grid-template-columns: 30px minmax(320px, min(900px, calc(100vh - 192px))) minmax(400px, 540px); gap: 14px; align-items: start; justify-content: center; }
 /* phones and small tablets: board on top, panel below, nav pinned to the bottom edge */
 @media (max-width: 900px) {
-  header { padding: 8px 10px; gap: 8px; }
+  /* the env() insets: the notch and the home indicator once the page runs edge to edge (viewport-fit=cover); 0 elsewhere */
+  header { padding: calc(8px + env(safe-area-inset-top)) max(10px, env(safe-area-inset-right)) 8px max(10px, env(safe-area-inset-left)); gap: 8px; }
   header h1 { font-size: 16px; }
   header .crumb { display: none; }
   header .right { gap: 6px; }
   header .right button { padding: 5px 8px; font-size: 14px; }
+  /* a finger-sized header: every button at least 40px square */
+  header h1 a, header button.back, header .right > button, header .right > a, header .vol button.snd { min-width: 40px; min-height: 40px; display: inline-flex; align-items: center; justify-content: center; }
+  /* the volume slider drops down under the speaker instead of widening a header that has no room for it */
+  header .vol { position: relative; }
+  header .vol.open input { position: absolute; top: calc(100% + 6px); right: -1px; width: 180px; height: 44px; margin: 0; padding: 0 14px; background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; box-shadow: 0 4px 12px rgba(0,0,0,.4); }
   header .t, header #jobstat { display: none; }
   header h1 { white-space: nowrap; }
   .evalbar .lbl { display: none; }
-  main { padding: 8px 8px 84px; }
+  main { padding: 8px max(8px, env(safe-area-inset-right)) calc(84px + env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left)); }
   .review { grid-template-columns: 14px 1fr; gap: 8px; }
   .review .panel { grid-column: 1 / -1; height: auto; min-height: 0; }
   .evalbar { margin-top: 42px; }
@@ -383,11 +389,17 @@ table.games button.an { padding: 3px 9px; font-size: 12px; font-weight: 600; whi
   .cap svg, .cap img { width: 14px; height: 14px; }
   .panel .body { max-height: 46vh; }
   .panel .nav { position: fixed; left: 0; right: 0; bottom: 0; background: var(--panel); border-top: 1px solid var(--line); padding: 8px 10px calc(8px + env(safe-area-inset-bottom)); z-index: 6; }
+  .review .panel .nav { padding: 8px max(10px, env(safe-area-inset-right)) calc(8px + env(safe-area-inset-bottom)) max(10px, env(safe-area-inset-left)); }   /* over the base .panel .nav, further down */
   .panel .nav button { min-width: 0; padding: 10px 4px; }
-  .buildbar { flex-wrap: wrap; gap: 4px 10px; padding: 6px 10px calc(6px + env(safe-area-inset-bottom)); }
+  .buildbar { flex-wrap: wrap; gap: 4px 10px; padding: 6px max(10px, env(safe-area-inset-right)) calc(6px + env(safe-area-inset-bottom)) max(10px, env(safe-area-inset-left)); }
   .buildbar .bb-text { flex: 1 1 0; } .buildbar .progress { order: 3; flex-basis: 100%; }
-  body.hasbar .panel .nav { bottom: 62px; }
-  body.hasbar main { padding-bottom: 150px; }
+  body.hasbar .review .panel .nav { bottom: calc(62px + env(safe-area-inset-bottom)); padding-bottom: 8px; }     /* the bar below takes the inset */
+  body.hasbar main { padding-bottom: calc(150px + env(safe-area-inset-bottom)); }
+  /* toasts clear the home indicator, and the nav on a board screen (the bar, when it's up, is below that) */
+  #toast { bottom: calc(16px + env(safe-area-inset-bottom)); max-width: calc(100vw - 32px); width: max-content; text-align: center; z-index: 10000; }   /* over the web build's notice */
+  body:has(#review:not(.hidden)) #toast { bottom: calc(76px + env(safe-area-inset-bottom)); }
+  body.hasbar #toast { bottom: calc(72px + env(safe-area-inset-bottom)); }
+  body.hasbar:has(#review:not(.hidden)) #toast { bottom: calc(138px + env(safe-area-inset-bottom)); }
   body.hasbar .panel { height: auto; }
   .nav button svg { width: 26px; height: 26px; }
   .coach { padding: 8px 8px 4px; }
@@ -404,7 +416,7 @@ table.games button.an { padding: 3px 9px; font-size: 12px; font-weight: 600; whi
   .acts button { flex: 1 1 auto; padding: 10px 12px; }
   .cards { grid-template-columns: 1fr; gap: 10px; }
   .card { padding: 12px 14px; min-height: 0; }
-  .card.add select, .card.add input, .card.fen input, .card.fen textarea, .imgpage input, .imgpage select, .fenbox { font-size: 16px; }
+  html body :is(input:not([type=checkbox]):not([type=radio]):not([type=range]), select, textarea) { font-size: 16px; }
   .card.add button, .card.fen button { align-self: stretch; padding: 10px; }
   .card .x, .card.profile .pin { font-size: 18px; padding: 6px 10px; top: 2px; }
   .card .x { right: 2px; } .card.profile .pin { right: 38px; }
@@ -415,7 +427,8 @@ table.games button.an { padding: 3px 9px; font-size: 12px; font-weight: 600; whi
   .filters .fbar { display: none; width: 100%; gap: 6px; padding: 4px 0 2px; }
   .filters.open .fbar { display: flex; }
   .filters .sep { flex-basis: 100%; height: 0; margin: 0; }
-  .filters .fbar button { padding: 6px 10px; font-size: 13px; }
+  .filters .fbar button { padding: 9px 12px; font-size: 13px; }
+  .filters .fbtn { padding: 9px 10px; }
   .filters .stat { font-size: 12px; }
   /* games: each row becomes two lines - "result · opponent · analysis" over "date · time control · my rating · accuracy" */
   table.games, table.games tbody { display: block; }
@@ -434,6 +447,45 @@ table.games button.an { padding: 3px 9px; font-size: 12px; font-weight: 600; whi
   table.games td:nth-child(2) { color: var(--text); }
   table.games td:nth-child(5), table.games td:nth-child(8), table.games td:nth-child(9), table.games td:nth-child(10) { display: none; }
   .opening { max-width: none; }
+  /* small buttons grown to a finger's size */
+  .home .hhead button, .card.pzp .btns button, .card .banner button, .panel .stepchip button, .tpanel .tsounds .row button { padding: 8px 14px; }
+  .panel .phead .pbtn { padding: 8px 12px; }
+  .card .banner .dismiss { padding: 8px 10px; }
+  table.games button.an { padding: 7px 10px; }
+  /* setup editor: the board over its tools, not beside them */
+  .setup { grid-template-columns: minmax(0, 1fr); gap: 12px; margin-top: 4px; }
+  .setup-row button.icon { padding: 10px; }
+  .setup-row button, .setup-row select { min-height: 40px; }
+  .castling label { padding: 6px 0; }
+  .castling input { width: 20px; height: 20px; }
+  /* dialogs: the visible height (dvh), not the one with Safari's toolbars hidden */
+  dialog#whatsnew { max-height: 80dvh; } dialog#whatsnew .md { max-height: calc(80dvh - 60px); }
+}
+/* a phone on its side: board and panel side by side, the board as tall as the screen allows */
+@media (max-width: 900px) and (orientation: landscape) and (max-height: 500px) {
+  /* 57px of header, 16px of main's padding; the board's column also leaves room for the two player rows (76px) */
+  .review { grid-template-columns: 14px minmax(0, calc(100vh - 149px)) minmax(0, 1fr); grid-template-columns: 14px minmax(0, calc(100dvh - 149px)) minmax(0, 1fr); }
+  body.puzzle .review { grid-template-columns: minmax(0, calc(100dvh - 149px)) minmax(0, 1fr); }
+  .review .boardwrap .player { height: 30px; } .review .evalbar { margin-top: 38px; }
+  .review .panel { grid-column: auto; height: calc(100vh - 73px); height: calc(100dvh - 73px); }
+  .review .panel .body { max-height: none; min-height: 60px; }
+  .review .panel .nav, body.hasbar .review .panel .nav { position: static; padding: 6px 8px; }
+  .review .panel .nav button { padding: 6px 4px; }
+  .panel .phead { padding: 4px 8px; } .panel .ginfo, .panel svg.graph { display: none; }
+  /* the puzzle build's bar along the bottom (62px): both columns shrink by it */
+  body.hasbar .review { grid-template-columns: 14px minmax(0, calc(100dvh - 211px - env(safe-area-inset-bottom))) minmax(0, 1fr); }
+  body.hasbar.puzzle .review { grid-template-columns: minmax(0, calc(100dvh - 211px - env(safe-area-inset-bottom))) minmax(0, 1fr); }
+  body.hasbar .review .panel { height: calc(100dvh - 135px - env(safe-area-inset-bottom)); }
+  body.hasbar .review .panel .body { min-height: 0; }
+  body:has(#review:not(.hidden)) main { padding-bottom: 8px; }      /* it all fits: nothing to scroll clear of */
+  body.hasbar:has(#review:not(.hidden)) main { padding-bottom: calc(70px + env(safe-area-inset-bottom)); }
+  body:has(#review:not(.hidden)) #toast { top: calc(64px + env(safe-area-inset-top)); bottom: auto !important; }     /* off the panel's nav */
+  .setup { grid-template-columns: minmax(0, calc(100dvh - 73px)) minmax(0, 1fr); }      /* the editor too: board beside its tools */
+}
+/* touch screens: no long-press selection or callout on the boards, and no cursor-following piece in the editor */
+@media (hover: none) and (pointer: coarse) {
+  .boardbox, .setup-board, .palette, .tile, .stcar { -webkit-user-select: none; -webkit-touch-callout: none; }
+  .ghost-piece { display: none !important; }
 }
 .evalbar { position: relative; height: 640px; background: #403d39; border-radius: 4px; overflow: hidden; align-self: start; margin-top: 46px; }
 .evalbar .w { position: absolute; left: 0; right: 0; bottom: 0; background: #f0f0f0; transition: height .25s; }
@@ -639,7 +691,7 @@ svg.graph { width: 100%; height: 52px; display: block; cursor: pointer; backgrou
 @media (max-width: 760px) {
   .themes { grid-template-columns: 1fr; margin-top: 8px; }
   .tpreview { position: static; max-width: 420px; width: 100%; margin: 0 auto; }
-  .tgrid { max-height: none; }
+  .tgrid { max-height: none; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); }     /* three a row: the tiles are square */
 }
 </style>
 </head>
