@@ -127,7 +127,8 @@ def build(engine_wasm: str | None) -> None:
         copy_if_changed(f, OUT / "web" / f.name)
     whl = chess_wheel()
     copy_if_changed(whl, OUT / "web" / whl.name)
-    for name, src in engine_files().items():
+    engines = engine_files()
+    for name, src in engines.items():
         dst = OUT / "web" / "engine" / name
         if engine_wasm and name == "stockfish-19-single.wasm":     # served from elsewhere (unpkg): too big for the Worker
             dst.unlink(missing_ok=True)
@@ -136,7 +137,9 @@ def build(engine_wasm: str | None) -> None:
     # The Worker (worker/, wrangler) serves web-dist/ but refuses files over 25 MiB: the full engine comes from unpkg.
     (OUT / ".assetsignore").write_text("web/engine/stockfish-19-single.wasm\n", encoding="utf-8")
     app_zip(OUT / "app.zip")
-    config = {"pyodide": PYODIDE, "chessWheel": whl.name, "engineWasm": engine_wasm or "engine/stockfish-19-single.wasm"}
+    # engineBytes: the progress bar's total, as unpkg sends no Content-Length
+    config = {"pyodide": PYODIDE, "chessWheel": whl.name, "engineWasm": engine_wasm or "engine/stockfish-19-single.wasm",
+              "engineBytes": engines["stockfish-19-single.wasm"].stat().st_size}
     (OUT / "web" / "config.js").write_text(f"self.CR_CONFIG = {json.dumps(config, indent=1)};\n", encoding="utf-8")
     print("built", OUT)
 

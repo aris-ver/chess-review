@@ -78,8 +78,11 @@ load takes about 15 s; `book.load` takes 8 s there (3.8 s native), so the book's
   plus the book keys and puzzle packs, the python-chess wheel and the lite engine. `python scripts/build_web.py
   --serve` serves it locally.
 - The page says that the browser analyses about 2× slower than the desktop app and links the Windows
-  download (GitHub Releases). The notice shows while Python and the engine load, and again for as long as a
-  game is being analysed or waits to be. `web/shim.js` reads the `api/status` answers the page polls.
+  download (GitHub Releases). The notice shows while Python and the engine load (the engine with a progress bar;
+  its size comes from `config.js`, as unpkg sends no `Content-Length`), and again for as long as a game is being
+  analysed or waits to be. `web/shim.js` reads the `api/status` answers the page polls. Its × closes it, and the
+  speed note and the lit "Download the app" button stay off from then on (localStorage); later visits still show
+  the loading lines.
 
 ### Deploying to blundr.gr
 
@@ -119,8 +122,9 @@ python scripts/build_web.py --serve      # then open http://127.0.0.1:8200/
   archive list), but chess.com answered 404 for the first month to every client that day, curl included,
   so that path is not verified yet.
 
-Load order: Pyodide starts loading the moment the page opens and the engine downloads alongside it. The page
-draws at once, but every `api/` request waits for Python, puzzles included, about 20 s on a first visit.
+Load order: Pyodide starts loading the moment the page opens; the 99 MB engine starts only once Python is ready,
+so the two don't share the bandwidth. The page draws at once (the home tiles' covers don't wait for the profile
+list), but every `api/` request waits for Python, puzzles included, about 20 s on a first visit.
 A puzzle visitor could skip that wait if the puzzle routes (static data plus attempts) were answered before
 Python is up. That is a later step, and it would mean JavaScript for those routes.
 

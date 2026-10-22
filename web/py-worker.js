@@ -25,6 +25,7 @@ const engines = new EnginePool({
   size: physicalCores(),
   script: 'engine/stockfish-19-single.js',
   wasmUrl: CR_CONFIG.engineWasm,
+  wasmBytes: CR_CONFIG.engineBytes,
   onProgress: (done, total) => progress('engine', done, total),
 });
 
@@ -53,6 +54,9 @@ logging.basicConfig(level=logging.INFO, format="%(name)s %(message)s")
   progress('python', 3, 3, `Ready in ${((performance.now() - t0) / 1000).toFixed(1)} s`);
 })();
 ready.catch(e => { console.error(e); progress('python', 0, 0, 'Python failed to load: ' + e); });
+// The 99 MB engine only once Python is up: downloading both at once halves the bandwidth Python gets, and the page
+// answers nothing (puzzles included) until Python is ready, while the engine is wanted only for a review.
+ready.catch(() => {}).then(() => engines.load()).catch(e => console.error('engine failed to load', e));
 
 onmessage = async e => {
   const { id, method, path, body, contentType } = e.data;

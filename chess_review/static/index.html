@@ -1242,8 +1242,8 @@ async function showHome() {
   document.body.classList.remove('sandbox', 'puzzle'); stopSandboxStream();
   state.game = null; state.profile = null; state.games = null; dropVariation(); stopPlay();
   setContext(false); $('crumb').textContent = '';
+  renderPuzzleCards();      // first: its covers are static, the profile list waits for the server (Python, on the web)
   await renderProfiles();
-  renderPuzzleCards();
   pollStatus();
 }
 // the add-profile form and the PGN box stay folded away until their button is clicked

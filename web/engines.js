@@ -3,8 +3,9 @@
 // `ucinewgame` (hash cleared) before every position, so a result is the same whichever engine gets it.
 
 // Fetch a .wasm with progress, keep it in Cache Storage for the next visit, and hand back a blob: URL the engine
-// script takes from its location hash (stockfish.js reads the wasm's URL from there).
-export async function cachedWasm(url, onProgress) {
+// script takes from its location hash (stockfish.js reads the wasm's URL from there). bytes: the file's size, for
+// the progress bar when the host sends no Content-Length (unpkg doesn't).
+export async function cachedWasm(url, onProgress, bytes = 0) {
   const cache = self.caches ? await caches.open('chess-review-engines') : null;
   let res = cache && await cache.match(url);
   if (res) {
@@ -12,17 +13,19 @@ export async function cachedWasm(url, onProgress) {
     onProgress(blob.size, blob.size);
     return URL.createObjectURL(blob);
   }
+  onProgress(0, bytes);       // the bar shows at once: the first chunk can take seconds
   res = await fetch(url);
   if (!res.ok) throw new Error(`${url}: HTTP ${res.status}`);
-  const total = +res.headers.get('Content-Length') || 0, chunks = [], reader = res.body.getReader();
+  const total = bytes || +res.headers.get('Content-Length') || 0, chunks = [], reader = res.body.getReader();
   let done = 0;
   for (;;) {
     const { done: end, value } = await reader.read();
     if (end) break;
     chunks.push(value);
     done += value.length;
-    onProgress(done, total);
+    onProgress(Math.min(done, total || done), total);
   }
+  onProgress(done, done);     // finished, whatever the size said
   const blob = new Blob(chunks, { type: 'application/wasm' });
   if (cache) {
     try { await cache.put(url, new Response(blob, { headers: { 'Content-Type': 'application/wasm' } })); } catch (e) { /* quota: fetch again next time */ }
@@ -75,19 +78,20 @@ class Engine {
 }
 
 export class EnginePool {
-  // size: engines to run; script: the engine's .js; wasmUrl: its .wasm (may be on another origin, e.g. R2)
-  constructor({ size, script, wasmUrl, onProgress }) {
-    this.size = size;
-    this.name = 'Stockfish 19';
-    this.free = [];
-    this.waiting = [];
-    this.loaded = cachedWasm(wasmUrl, onProgress).then(wasm => {
-      for (let i = 0; i < size; i++) this.free.push(new Engine(script, wasm));
+  // size: engines to run; script: the engine's .js; wasmUrl: its .wasm (may be on another origin, e.g. unpkg) and
+  // wasmBytes its size. Nothing is fetched until load() (or the first search), so the caller decides what downloads first.
+  constructor({ size, script, wasmUrl, wasmBytes, onProgress }) {
+    Object.assign(this, { size, script, wasmUrl, wasmBytes, onProgress, name: 'Stockfish 19', free: [], waiting: [], loaded: null });
+  }
+  load() {
+    if (!this.loaded) this.loaded = cachedWasm(this.wasmUrl, this.onProgress, this.wasmBytes).then(wasm => {
+      for (let i = 0; i < this.size; i++) this.free.push(new Engine(this.script, wasm));
       return this.free[0].ready.then(() => { this.name = this.free[0].name; });
     });
+    return this.loaded;
   }
   async acquire() {
-    await this.loaded;
+    await this.load();
     if (this.free.length) return this.free.pop();
     return new Promise(resolve => this.waiting.push(resolve));
   }
