@@ -111,16 +111,35 @@ export async function deleteSession(db, tokenHash) {
   await db.prepare('DELETE FROM sessions WHERE token_hash = ?').bind(tokenHash).run();
 }
 
-export async function startLogin(db, { state, provider, verifier, mode, linkUser, now }) {
-  await db.prepare('INSERT INTO logins (state, provider, verifier, mode, link_user, created_at) VALUES (?, ?, ?, ?, ?, ?)')
-    .bind(state, provider, verifier, mode, linkUser || null, now).run();
+export async function startLogin(db, { state, provider, verifier, mode, linkUser, appChallenge, appPort, now }) {
+  await db.prepare('INSERT INTO logins (state, provider, verifier, mode, link_user, app_challenge, app_port, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+    .bind(state, provider, verifier, mode, linkUser || null, appChallenge || null, appPort || null, now).run();
+}
+
+// A sign-in the desktop app started, as the system browser picks it up (still unfinished, within 15 minutes).
+export async function appLogin(db, state, now) {
+  const l = await db.prepare('SELECT provider, verifier, created_at FROM logins WHERE state = ? AND app_challenge IS NOT NULL')
+    .bind(state).first();
+  return l && l.created_at > now - 900 ? l : null;
 }
 
 // A sign-in can be finished once, within 15 minutes.
 export async function takeLogin(db, state, now) {
-  const l = await db.prepare('DELETE FROM logins WHERE state = ? RETURNING provider, verifier, mode, link_user, created_at')
+  const l = await db.prepare('DELETE FROM logins WHERE state = ? RETURNING provider, verifier, mode, link_user, app_challenge, app_port, created_at')
     .bind(state).first();
   return l && l.created_at > now - 900 ? l : null;
+}
+
+// The desktop app's sign-in, finished in the browser: kept until the app collects it with its verifier.
+export async function putAppCode(db, codeHash, userId, challenge, now) {
+  await db.prepare('INSERT INTO app_codes (code_hash, user_id, challenge, created_at) VALUES (?, ?, ?, ?)')
+    .bind(codeHash, userId, challenge, now).run();
+}
+
+// {user_id, challenge} once, within 2 minutes.
+export async function takeAppCode(db, codeHash, now) {
+  const c = await db.prepare('DELETE FROM app_codes WHERE code_hash = ? RETURNING user_id, challenge, created_at').bind(codeHash).first();
+  return c && c.created_at > now - 120 ? c : null;
 }
 
 // ---------- puzzle progress ----------
@@ -174,6 +193,7 @@ export async function deleteUser(db, userId) {
     db.prepare('DELETE FROM sessions WHERE user_id = ?').bind(userId),
     db.prepare('DELETE FROM identities WHERE user_id = ?').bind(userId),
     db.prepare('DELETE FROM logins WHERE link_user = ?').bind(userId),
+    db.prepare('DELETE FROM app_codes WHERE user_id = ?').bind(userId),
     db.prepare('DELETE FROM users WHERE id = ?').bind(userId),
   ]);
 }
@@ -183,6 +203,7 @@ export async function expire(db, now, retentionDays) {
   await db.batch([
     db.prepare('DELETE FROM sessions WHERE expires_at <= ?').bind(now),
     db.prepare('DELETE FROM logins WHERE created_at <= ?').bind(now - 900),
+    db.prepare('DELETE FROM app_codes WHERE created_at <= ?').bind(now - 120),
     db.prepare('DELETE FROM email_codes WHERE created_at <= ?').bind(now - 900),
     db.prepare('DELETE FROM login_failures WHERE first_at <= ?').bind(now - 900),
   ]);

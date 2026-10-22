@@ -35,15 +35,6 @@ class _Request(serve.Handler):
 
 def handle(method: str, path: str, body: bytes = b"", content_type: Optional[str] = None) -> tuple[int, list, bytes]:
     """(status, [(header, value)], body) for one request, as the desktop server would send it."""
-    if method == "POST" and path.startswith("/api/sync/"):    # the web build's own: account sync (sync.py)
-        from . import sync
-        try:
-            out = sync.handle(path, json.loads(bytes(body or b"{}") or b"{}"))
-        except ValueError:
-            out = None
-        if out is None:
-            return 400, [("Content-Type", "application/json")], b'{"error": "bad sync request"}'
-        return 200, [("Content-Type", "application/json")], json.dumps(out).encode()
     req = _Request(method, path, bytes(body or b""), content_type)
     try:
         getattr(req, "do_" + method)()

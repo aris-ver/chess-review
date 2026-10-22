@@ -3,8 +3,8 @@
     python scripts/build_web.py [--serve [--port 8200]] [--engine-wasm URL|cdn]
 
 web-dist/
-  index.html            chess_review/static/index.html as site.write_static makes it, plus the web/shim.js and
-                        web/account.js tags
+  index.html            chess_review/static/index.html as site.write_static makes it, plus the web/shim.js tag
+  account.js            the Blundr account, from chess_review/static/ (the desktop app has the same one)
   privacy.html, terms.html   from web/pages/
   themes/               the page's pieces, boards and sounds
   app.zip               chess_review (minus static/) + web/py/chess_web + book_keys.txt, unpacked into Pyodide
@@ -92,8 +92,8 @@ def page() -> str:
         if s not in html:
             raise SystemExit(f"index.html no longer has {s!r}: update RENAME in {Path(__file__).name}")
         html = html.replace(s, s.replace("Chess Review", NAME))
-    i = html.index("<script")       # before the page's own scripts: the first fetch must already be redirected
-    return html[:i] + '<script src="web/shim.js"></script>\n<script src="web/account.js"></script>\n' + html[i:]
+    i = html.index("<script")       # before the page's own scripts (account.js first): the first fetch must already be redirected
+    return html[:i] + '<script src="web/shim.js"></script>\n' + html[i:]
 
 
 def app_zip(dst: Path) -> None:
@@ -115,6 +115,8 @@ def app_zip(dst: Path) -> None:
 def build(engine_wasm: str | None) -> None:
     OUT.mkdir(exist_ok=True)
     (OUT / "index.html").write_text(page(), encoding="utf-8")
+    copy_if_changed(ROOT / "chess_review" / "static" / "account.js", OUT / "account.js")
+    (OUT / "web" / "account.js").unlink(missing_ok=True)       # where builds before the desktop app had it
     themes = ROOT / "chess_review" / "static" / "themes"
     for f in themes.rglob("*"):
         if f.is_file():

@@ -17,7 +17,7 @@ function b64url(s) {
 }
 
 beforeEach(async () => {
-  for (const t of ['progress', 'sessions', 'identities', 'logins', 'passwords', 'email_codes', 'login_failures', 'users']) await env.DB.prepare(`DELETE FROM ${t}`).run();
+  for (const t of ['progress', 'sessions', 'identities', 'logins', 'passwords', 'email_codes', 'login_failures', 'app_codes', 'users']) await env.DB.prepare(`DELETE FROM ${t}`).run();
   outbox.length = 0;
   brevoSent.length = 0;
   lichessUser = { id: 'magnus', username: 'Magnus' };
@@ -404,5 +404,110 @@ describe('email and password', () => {
     await post(b, 'signup', { email: 'ana@example.com', password: PW, consent: CONSENT_VERSION });
     expect((await post(b, 'signup', { email: 'ana@example.com', password: PW, consent: CONSENT_VERSION })).status).toBe(429);
     expect(outbox.length).toBe(1);
+  });
+});
+
+// The desktop app (chess_review/account.py): no cookies, its own header, the token in the body and back as Bearer.
+// Its provider sign-ins run in the system browser (a Browser here) and come back to its loopback port.
+class App {
+  constructor(extraEnv = {}) { this.env = { ...env, LICHESS_URL: '', EMAIL, ...extraEnv }; this.extraEnv = extraEnv; this.token = null; }
+  async json(path, { method = 'GET', body, app = true } = {}) {
+    const headers = new Headers();
+    if (app) headers.set('X-Blundr-App', '1');
+    if (this.token) headers.set('Authorization', `Bearer ${this.token}`);
+    if (body !== undefined) headers.set('Content-Type', 'application/json');
+    const res = await worker.fetch(new Request(ORIGIN + path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body), redirect: 'manual' }), this.env);
+    return { status: res.status, body: await res.json(), cookies: res.headers.getSetCookie() };
+  }
+  // start in the app, through the provider in the browser, back to the loopback address; returns what came back there
+  async signIn(provider = 'lichess', mode = 'login', { consent = CONSENT_VERSION, collect = true } = {}) {
+    const verifier = 'v'.repeat(40) + Math.random().toString(36).slice(2);
+    const challenge = b64url(String.fromCharCode(...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier)))));
+    const s = await this.json('/account/app/start', { method: 'POST', body: { provider, mode, consent, challenge, port: 8123 } });
+    if (s.status !== 200) return { outcome: `refused ${s.status}` };
+    const browser = new Browser(this.extraEnv);
+    const go = await browser.req(s.body.url);
+    const state = new URL(go.headers.get('Location')).searchParams.get('state');
+    const back = new URL((await browser.req(`/account/callback/${provider}?code=c&state=${state}`)).headers.get('Location'));
+    const out = { outcome: back.searchParams.get('account'), code: back.searchParams.get('code'), back, browser, verifier };
+    if (collect && out.code) {
+      const t = await this.json('/account/app/token', { method: 'POST', body: { code: out.code, verifier } });
+      if (t.status === 200) this.token = t.body.token;
+      out.user = t.body.user;
+    }
+    return out;
+  }
+}
+
+describe('the desktop app', () => {
+  it('signs up through the browser, and the loopback address gets a code, not a cookie', async () => {
+    const app = new App();
+    const r = await app.signIn('lichess', 'signup');
+    expect(r.outcome).toBe('welcome');
+    expect(r.back.origin + r.back.pathname).toBe('http://127.0.0.1:8123/account/callback');
+    expect(Object.keys(r.browser.jar)).toEqual([]);          // the browser holds no session: the app does
+    expect(app.token).toBeTruthy();
+    const me = (await app.json('/account/me')).body.user;
+    expect(me.identities.map(i => i.name)).toEqual(['Magnus']);
+    expect(r.user.id).toBe(me.id);
+    // and the same account from the website
+    expect(await new Browser().signIn('lichess', 'login')).toBe('signed-in');
+  });
+
+  it("a code is no use without the app's verifier, and works once", async () => {
+    const app = new App();
+    const r = await app.signIn('lichess', 'signup', { collect: false });
+    expect((await app.json('/account/app/token', { method: 'POST', body: { code: r.code, verifier: 'someone else' } })).status).toBe(400);
+    expect((await app.json('/account/app/token', { method: 'POST', body: { code: r.code, verifier: r.verifier } })).status).toBe(400);
+    const again = await app.signIn('lichess', 'login', { collect: false });
+    expect((await app.json('/account/app/token', { method: 'POST', body: { code: again.code, verifier: again.verifier } })).status).toBe(200);
+    expect((await app.json('/account/app/token', { method: 'POST', body: { code: again.code, verifier: again.verifier } })).status).toBe(400);
+  });
+
+  it('logging in without an account comes back to the app without a code', async () => {
+    const r = await new App().signIn('lichess', 'login');
+    expect(r.outcome).toBe('no-account');
+    expect(r.code).toBeNull();
+    expect(await count('users')).toBe(0);
+  });
+
+  it('checks what it starts: consent, port, challenge, and a session to link to', async () => {
+    const app = new App(GOOGLE);
+    expect((await app.signIn('lichess', 'signup', { consent: null })).outcome).toBe('refused 400');
+    expect((await app.signIn('google', 'link')).outcome).toBe('refused 401');
+    for (const bad of [{ port: 80 }, { port: 'x' }, { challenge: 'short' }]) {
+      const b = { provider: 'lichess', mode: 'login', challenge: 'a'.repeat(43), port: 8123, ...bad };
+      expect((await app.json('/account/app/start', { method: 'POST', body: b })).status).toBe(400);
+    }
+    await app.signIn('lichess', 'signup');
+    expect((await app.signIn('google', 'link')).outcome).toBe('linked');
+    expect((await app.json('/account/me')).body.user.identities.map(i => i.provider)).toEqual(['lichess', 'google']);
+  });
+
+  it('email and password give the token in the body, and progress, logout and delete take it as Bearer', async () => {
+    const app = new App();
+    const PW = 'correct horse battery';
+    await app.json('/account/email/signup', { method: 'POST', body: { email: 'ana@example.com', password: PW, consent: CONSENT_VERSION } });
+    const v = await app.json('/account/email/verify', { method: 'POST', body: { email: 'ana@example.com', code: lastCode('ana@example.com'), purpose: 'signup' } });
+    expect(v.body.token).toBeTruthy();
+    expect(v.cookies).toEqual([]);
+    const l = await app.json('/account/email/login', { method: 'POST', body: { email: 'ana@example.com', password: PW } });
+    app.token = l.body.token;
+    const p = await app.json('/account/progress', { method: 'POST', body: { add: { 'puzzle_attempts.jsonl': [A1] } } });
+    expect(p.body.files).toEqual({ 'puzzle_attempts.jsonl': [A1] });
+    expect(await count('sessions')).toBe(2);
+    expect((await app.json('/account/logout', { method: 'POST' })).status).toBe(200);
+    expect(await count('sessions')).toBe(1);
+    expect((await app.json('/account/progress')).status).toBe(401);
+    app.token = v.body.token;
+    expect((await app.json('/account/delete', { method: 'POST' })).body).toEqual({ deleted: true });
+    expect(await count('users')).toBe(0);
+  });
+
+  it('a POST with neither the site\'s Origin nor the app header is refused', async () => {
+    const app = new App();
+    await app.signIn('lichess', 'signup');
+    expect((await app.json('/account/delete', { method: 'POST', app: false })).status).toBe(403);
+    expect(await count('users')).toBe(1);
   });
 });
