@@ -14,7 +14,7 @@ import logging
 from pathlib import Path
 from typing import Optional
 
-from chess_review import book, profiles, serve, site, updater
+from chess_review import book, profiles, puzzles, serve, site, updater
 from chess_review.config import SITE_DIR
 
 log = logging.getLogger("web.bridge")
@@ -66,6 +66,10 @@ def setup(app_dir: str, engines) -> None:
     # The opening book's positions, worked out by scripts/build_web.py: reading the TSVs takes 8 s in Pyodide.
     keys = frozenset((Path(app_dir) / "book_keys.txt").read_text(encoding="utf-8").split("\n"))
     book.load = lambda: keys
+    # the puzzle pack as JSON, made by the same script: the puzzles then answer before pyarrow has loaded (later.py)
+    pack = Path(app_dir) / "puzzles.json"
+    if pack.exists():
+        puzzles.PACK_INSTANCE._read = lambda: json.loads(pack.read_text(encoding="utf-8"))
     # site.build copies the page and its themes next to the profiles for the desktop server; here the page and
     # themes are the static site's own files
     site.write_static = lambda: None

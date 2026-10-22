@@ -1,5 +1,7 @@
 """Read-side DuckDB connection with views over the on-disk parquet/duckdb files."""
 
+from __future__ import annotations
+
 import logging
 from typing import Optional
 

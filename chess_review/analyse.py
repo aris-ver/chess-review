@@ -12,6 +12,8 @@ Two entry points:
 Sign convention: see pov.py. Everything is stored from the side-to-move POV.
 """
 
+from __future__ import annotations
+
 import argparse
 import atexit
 import logging

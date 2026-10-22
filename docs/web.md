@@ -122,11 +122,24 @@ python scripts/build_web.py --serve      # then open http://127.0.0.1:8200/
   archive list), but chess.com answered 404 for the first month to every client that day, curl included,
   so that path is not verified yet.
 
-Load order: Pyodide starts loading the moment the page opens; the 99 MB engine starts only once Python is ready,
-so the two don't share the bandwidth. The page draws at once (the home tiles' covers don't wait for the profile
-list), but every `api/` request waits for Python, puzzles included, about 20 s on a first visit.
-A puzzle visitor could skip that wait if the puzzle routes (static data plus attempts) were answered before
-Python is up. That is a later step, and it would mean JavaScript for those routes.
+Load order: Pyodide starts loading the moment the page opens, then DuckDB and pyarrow, then the 99 MB engine, so
+none of them share the bandwidth. The page draws at once (the home tiles' covers don't wait for the profile list).
+
+A reload downloads next to nothing (jsDelivr sends a year's `Cache-Control`; the site's files come back as 304s),
+but Pyodide compiles every package's WebAssembly again at each visit. Measured 2026-10-22 on blundr.gr, all from
+cache: 12.2 s before the first `api/` answer, of which pyarrow ~3 s, pandas ~3 s (pulled in by pyarrow, never
+imported), DuckDB 1.2 s, numpy 1 s, the runtime 1.8 s. So:
+
+- Python starts without DuckDB and pyarrow. `web/py/chess_web/later.py` puts placeholder modules in their place, so
+  `chess_review` imports as it is; the home screen, the puzzles and the settings answer without them (the puzzle
+  pack ships as `puzzles.json` in `app.zip`). A request that reaches them raises `NotLoaded`; the worker waits for
+  the packages and asks again. POSTs other than settings and puzzle results wait for them up front, so none runs
+  twice. For the placeholders, `chess_review` builds its pyarrow schemas on first use and the modules whose
+  signatures name DuckDB or pyarrow types have `from __future__ import annotations`.
+- pyarrow loads by its wheel's URL after its dependencies minus pandas.
+
+Reload of the local build after that: status, profiles and puzzles answer at 3.6 s; DuckDB and pyarrow are in
+at about 8–9 s, when a pasted game or a review goes through.
 
 Not yet: the sandbox and puzzle engine replies (lite engine, `/api/eval`, `/api/explore`, `/api/eval_stream`),
 personal-puzzle builds and `analyse_all` (async versions of those jobs), the new-games scan, hiding the

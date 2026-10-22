@@ -41,6 +41,8 @@ inaccuracy (mate in 4 or more) or a mistake (mate in 1-3) rather than a blunder,
 than the one already coming is an inaccuracy (as chess.com grades them).
 """
 
+from __future__ import annotations
+
 import argparse
 import hashlib
 import json
@@ -86,27 +88,31 @@ from .pov import pov_win_pct
 log = logging.getLogger("classify")
 SACRIFICE_PLIES = 8     # how far along the engine's line a sacrifice has to stay a sacrifice to be brilliant
 
-SCHEMA = pa.schema([
-    ("game_id", pa.string()),
-    ("ply", pa.int32()),
-    ("side_to_move", pa.string()),
-    ("is_mine", pa.bool_()),
-    ("move_played", pa.string()),
-    ("san", pa.string()),
-    ("best_move", pa.string()),
-    ("best_san", pa.string()),
-    ("n_legal", pa.int32()),
-    ("is_forced", pa.bool_()),
-    ("in_book", pa.bool_()),
-    ("wp_before", pa.float64()),      # mover POV, 0-100
-    ("wp_after", pa.float64()),
-    ("wp_loss", pa.float64()),        # max(0, before - after)
-    ("accuracy", pa.float64()),       # lichess per-move accuracy, 0-100
-    ("label", pa.string()),
-    ("only_move", pa.bool_()),        # MultiPV says #1 was the only good move (NULL without MultiPV)
-    ("clock_remaining", pa.int32()),
-    ("time_spent", pa.int32()),
-])
+@lru_cache(maxsize=None)
+def moves_schema() -> pa.Schema:
+    """moves.parquet's columns. Built on first use, not at import: the browser
+    version imports this module before pyarrow has loaded (web/py/chess_web/later.py)."""
+    return pa.schema([
+        ("game_id", pa.string()),
+        ("ply", pa.int32()),
+        ("side_to_move", pa.string()),
+        ("is_mine", pa.bool_()),
+        ("move_played", pa.string()),
+        ("san", pa.string()),
+        ("best_move", pa.string()),
+        ("best_san", pa.string()),
+        ("n_legal", pa.int32()),
+        ("is_forced", pa.bool_()),
+        ("in_book", pa.bool_()),
+        ("wp_before", pa.float64()),      # mover POV, 0-100
+        ("wp_after", pa.float64()),
+        ("wp_loss", pa.float64()),        # max(0, before - after)
+        ("accuracy", pa.float64()),       # lichess per-move accuracy, 0-100
+        ("label", pa.string()),
+        ("only_move", pa.bool_()),        # MultiPV says #1 was the only good move (NULL without MultiPV)
+        ("clock_remaining", pa.int32()),
+        ("time_spent", pa.int32()),
+    ])
 
 
 def label_for(wp_loss: float) -> str:
@@ -411,7 +417,7 @@ def build(profile: Profile) -> dict:
     con = connect(profile)
     out, fps = classify_all(con, _previous_moves(profile))
     profile.moves_parquet.parent.mkdir(parents=True, exist_ok=True)
-    pq.write_table(pa.Table.from_pylist(out, schema=SCHEMA), profile.moves_parquet)
+    pq.write_table(pa.Table.from_pylist(out, schema=moves_schema()), profile.moves_parquet)
     profile.moves_parquet.with_suffix(".fp.json").write_text(json.dumps(fps), encoding="utf-8")
     con = connect(profile)
     dist = con.execute("""

@@ -7,7 +7,8 @@ web-dist/
                         web/account.js tags
   privacy.html, terms.html   from web/pages/
   themes/               the page's pieces, boards and sounds
-  app.zip               chess_review (minus static/) + web/py/chess_web + book_keys.txt, unpacked into Pyodide
+  app.zip               chess_review (minus static/ and the puzzle pack's parquet) + web/py/chess_web + book_keys.txt
+                        + puzzles.json (the same pack, readable before pyarrow has loaded), unpacked into Pyodide
   web/                  shim.js, py-worker.js, engines.js, config.js, the python-chess wheel, engine/ (Stockfish 19)
 
 Downloads (cached in data/web-cache): python-chess's wheel (PyPI has only its sdist) and npm stockfish@19.0.1.
@@ -34,7 +35,7 @@ sys.path.insert(0, str(ROOT))
 
 import chess.svg  # noqa: E402
 
-from chess_review import book  # noqa: E402
+from chess_review import book, puzzles  # noqa: E402
 
 OUT = ROOT / "web-dist"
 CACHE = ROOT / "data" / "web-cache"
@@ -104,12 +105,13 @@ def app_zip(dst: Path) -> None:
         pkg = ROOT / "chess_review"
         for f in sorted(pkg.rglob("*")):
             rel = f.relative_to(pkg)
-            if f.is_file() and rel.parts[0] != "static" and "__pycache__" not in rel.parts:
+            if f.is_file() and rel.parts[0] != "static" and "__pycache__" not in rel.parts and f != puzzles.PACK:
                 z.write(f, "chess_review/" + rel.as_posix())
         web = ROOT / "web" / "py"
         for f in sorted(web.rglob("*.py")):
             z.write(f, f.relative_to(web).as_posix())
         z.writestr("book_keys.txt", "\n".join(keys))
+        z.writestr("puzzles.json", json.dumps(puzzles.PACK_INSTANCE._read(), separators=(",", ":")))
 
 
 def build(engine_wasm: str | None) -> None:

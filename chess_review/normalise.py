@@ -8,7 +8,10 @@ i.e. the mover's clock immediately AFTER making that move. time_spent is
 derived downstream as the delta between consecutive same-side readings.
 """
 
+from __future__ import annotations
+
 import argparse
+import functools
 import io
 import json
 import logging
@@ -28,30 +31,38 @@ log = logging.getLogger("normalise")
 
 DRAW_CODES = {"agreed", "repetition", "stalemate", "insufficient", "50move", "timevsinsufficient"}
 
-GAMES_SCHEMA = pa.schema([
-    ("game_id", pa.string()),
-    ("played_at", pa.timestamp("us")),
-    ("time_control", pa.string()),
-    ("time_class", pa.string()),
-    ("my_colour", pa.string()),
-    ("my_rating", pa.int32()),
-    ("opponent_rating", pa.int32()),
-    ("result", pa.string()),
-    ("termination", pa.string()),
-    ("eco", pa.string()),
-    ("opening_name", pa.string()),
-    ("opponent", pa.string()),      # not in the spec schema; needed to label games in the UI
-    ("my_name", pa.string()),       # the profile's username for chess.com games; the PGN header name for pasted ones
-])
+@functools.cache
+def games_schema() -> pa.Schema:
+    """games.parquet's columns. Built on first use, not at import: the browser
+    version imports this module before pyarrow has loaded (web/py/chess_web/later.py)."""
+    return pa.schema([
+        ("game_id", pa.string()),
+        ("played_at", pa.timestamp("us")),
+        ("time_control", pa.string()),
+        ("time_class", pa.string()),
+        ("my_colour", pa.string()),
+        ("my_rating", pa.int32()),
+        ("opponent_rating", pa.int32()),
+        ("result", pa.string()),
+        ("termination", pa.string()),
+        ("eco", pa.string()),
+        ("opening_name", pa.string()),
+        ("opponent", pa.string()),      # not in the spec schema; needed to label games in the UI
+        ("my_name", pa.string()),       # the profile's username for chess.com games; the PGN header name for pasted ones
+    ])
 
-POSITIONS_SCHEMA = pa.schema([
-    ("game_id", pa.string()),
-    ("ply", pa.int32()),
-    ("fen", pa.string()),
-    ("move_played", pa.string()),
-    ("side_to_move", pa.string()),
-    ("clock_remaining", pa.int32()),
-])
+@functools.cache
+def positions_schema() -> pa.Schema:
+    """positions.parquet's columns. Built on first use, not at import: the browser
+    version imports this module before pyarrow has loaded (web/py/chess_web/later.py)."""
+    return pa.schema([
+        ("game_id", pa.string()),
+        ("ply", pa.int32()),
+        ("fen", pa.string()),
+        ("move_played", pa.string()),
+        ("side_to_move", pa.string()),
+        ("clock_remaining", pa.int32()),
+    ])
 
 
 def extract_positions(game: chess.pgn.Game, game_id: str) -> list[dict]:
@@ -324,8 +335,8 @@ def build(profile: Profile) -> dict:
             positions.extend(pos)
 
     profile.dir.mkdir(parents=True, exist_ok=True)
-    pq.write_table(pa.Table.from_pylist(list(games.values()), schema=GAMES_SCHEMA), profile.games_parquet)
-    pq.write_table(pa.Table.from_pylist(positions, schema=POSITIONS_SCHEMA), profile.positions_parquet)
+    pq.write_table(pa.Table.from_pylist(list(games.values()), schema=games_schema()), profile.games_parquet)
+    pq.write_table(pa.Table.from_pylist(positions, schema=positions_schema()), profile.positions_parquet)
     stats["games"] = len(games)
     stats["positions"] = len(positions)
     return stats
