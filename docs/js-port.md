@@ -83,3 +83,16 @@ ends in commits on `main` with its tests passing.
    (`build_puzzle_pack.py`, the sound synth) may stay Python.
 
 Steps 1, 2 and 3 can partly run side by side (different modules); step 4 needs them, and 5 and 6 need 4.
+
+## Status
+
+**Steps 0 and 1 are done (2026-10-23).** chessops 0.15.1 is vendored as `js/vendor/chessops.js` by
+`scripts/vendor_chessops.sh`. `npm test` replays the parity dumps, `tests/golden/clocks.json` and (when dumped
+with `--local`) all 249 of the local games: the JS matches Python field for field. Floats are compared at 1e-9
+relative, because V8's `Math.exp` and `Math.log` differ from libm in the last bits; everything else matches
+exactly.
+
+`js/core/chess.js` puts python-chess's semantics on top of chessops where they differ: moves are generated in
+python-chess's order, castling is written king-to-square (`e1g1`, not chessops' king-takes-rook `e1h1`), and an en
+passant square only counts on the rank python-chess accepts (chessops allows it from the wrong rank on a board
+whose turn was flipped; a regression case for that is in `scripts/dump_parity.py`'s `EXTRA_LINES`).

@@ -1,0 +1,12 @@
+{
+  "name": "chess-review",
+  "private": true,
+  "description": "Blundr's JavaScript port: plain ES modules under js/, no build step (docs/js-port.md)",
+  "type": "module",
+  "scripts": {
+    "test": "node js/run-tests.js"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
