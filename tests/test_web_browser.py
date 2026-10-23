@@ -1,16 +1,25 @@
-"""The browser version end to end: web-dist/ served on localhost, Pyodide from its CDN, in headless Chromium
-(Playwright), with chess.com and lichess answered by fakes routed inside the browser. What the CPython bridge tests
-can't reach: the real pyfetch and stream reading in chess_web.runner.js_fetch, what a dropped connection raises
-there, and the page around it (adding a profile, "Load older games", a site's "slow down", the errors).
+"""The browser version end to end: web-dist/ served on localhost in headless Chromium (Playwright), the JS server in
+the tabs' worker (js/web/worker.js), with chess.com and lichess answered by fakes routed inside the browser. What the
+Node tests can't reach: the real fetch and stream reading from a worker, OPFS, the page around it (adding a profile,
+"Load older games", a site's "slow down", the errors), several tabs on one database, the one-time move from the
+Python build's IndexedDB (which needs the network for Pyodide), and a review with WASM Stockfish against the desktop's.
 
 Needs `pip install playwright` and a Chromium it can launch (`playwright install chromium`, plus its system libraries:
-`playwright install-deps chromium`), and the network for Pyodide. Skips without them. Slow (a minute or so): Python
-loads in the page first.
+`playwright install-deps chromium`). Skips without them.
+
+Chromium runs with the GPU off: under WSL it finds WSLg's GPU (/dev/dxg) and then never draws a frame, so
+requestAnimationFrame and HTMLImageElement.decode() never resolve, and the page (which decodes the board's image
+before its first route) waits forever on "Loading your profiles".
 """
 
+import base64
 import functools
 import json
+import os
 import re
+import shutil
+import subprocess
+import sys
 import threading
 import urllib.request
 from http.server import ThreadingHTTPServer
@@ -20,6 +29,10 @@ import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
 pw = pytest.importorskip("playwright.sync_api")
+DESKTOP = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0 Safari/537.36"
+STOCKFISH = ROOT / "bin" / ("stockfish.exe" if sys.platform == "win32" else "stockfish")
+CHROMIUM_ARGS = ["--disable-gpu", "--disable-software-rasterizer"]
+READY = "document.querySelector('#profiles .card.profile, #profiles .empty') && !/Loading/.test(document.querySelector('#profiles').textContent)"
 
 PGN = (ROOT / "tests" / "fixtures" / "clocks.pgn").read_text().split("\n\n[Event")[0]
 CHESSCOM = "https://api.chess.com/pub/player/"
@@ -92,11 +105,7 @@ def site():
     import subprocess
     import sys
     sys.path.insert(0, str(ROOT / "scripts"))
-    from build_web import OUT, PYODIDE, _Handler
-    try:
-        urllib.request.urlopen(PYODIDE + "pyodide.mjs", timeout=10).close()
-    except Exception as e:  # noqa: BLE001
-        pytest.skip(f"no network for Pyodide: {e}")
+    from build_web import OUT, _Handler
     subprocess.run([sys.executable, str(ROOT / "scripts" / "build_web.py")], check=True, capture_output=True)
     quiet = type("Quiet", (_Handler,), {"log_message": lambda *_: None})
     srv = ThreadingHTTPServer(("127.0.0.1", 0), functools.partial(quiet, directory=str(OUT)))
@@ -109,7 +118,7 @@ def site():
 def browser():
     with pw.sync_playwright() as p:
         try:
-            b = p.chromium.launch()
+            b = p.chromium.launch(args=CHROMIUM_ARGS)
         except Exception as e:  # noqa: BLE001
             pytest.skip(f"no Chromium to launch: {str(e).splitlines()[0]}")
         yield b
@@ -125,9 +134,26 @@ def app(site, browser):
     page.on("console", lambda m: m.type == "error" and print("console:", m.text))
     page.goto(site)
     page.wait_for_function("document.querySelector('#profiles .empty') && !/Loading/.test(document.querySelector('#profiles').textContent)",
-                           timeout=180_000)
+                           timeout=60_000)
     yield page, sites
     ctx.close()
+
+
+def api(page, path: str, body=None):
+    """The page's own fetch (through web/shim.js to the worker): (status, JSON)."""
+    return page.evaluate("""async ([path, body]) => {
+        const r = await fetch(path, body === null ? {} : { method: 'POST', body: JSON.stringify(body) });
+        return [r.status, await r.json()];
+    }""", [path, body])
+
+
+def wait_job(page, timeout_s=600) -> dict:
+    """api/status polled until the job and the queue are done."""
+    page.wait_for_function("""async () => {
+        const s = await (await fetch('api/status')).json();
+        return !(s.job && ['queued', 'running', 'finishing'].includes(s.job.status)) && !(s.queue || []).length;
+    }""", timeout=timeout_s * 1000, polling=1000)
+    return api(page, "api/status")[1]
 
 
 def add(page, source: str, user: str) -> None:
@@ -202,9 +228,8 @@ def test_a_reload_keeps_the_games_and_the_count_played(app):
     page.wait_for_url(re.compile(r"#/p/chesscom-kept$"), timeout=60_000)
     page.wait_for_function("/22 of 22 games · 1,334 played in all/.test(document.getElementById('liststat').textContent)")
     asked = len(sites.asked)
-    page.wait_for_timeout(2000)                         # IndexedDB is written half a second after the last change
-    page.goto(page.url.split("#")[0])
-    page.wait_for_function("document.querySelector('#profiles .card.profile[data-id=chesscom-kept]')", timeout=180_000)
+    page.goto(page.url.split("#")[0])                   # OPFS is written as the server writes: nothing to wait for
+    page.wait_for_function("document.querySelector('#profiles .card.profile[data-id=chesscom-kept]')", timeout=60_000)
     assert "1,334 games" in page.text_content("#profiles .card.profile[data-id=chesscom-kept] .meta")
     page.click("#profiles .card.profile[data-id=chesscom-kept]")
     page.wait_for_function("/22 of 22 games/.test(document.getElementById('liststat').textContent)", timeout=60_000)

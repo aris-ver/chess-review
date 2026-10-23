@@ -4,8 +4,9 @@
 
 import { loadBook } from '../core/book.js';
 import { DEFAULT_NODES } from '../core/config.js';
+import { build as buildAggregates } from '../server/aggregates.js';
+import { build as classify } from '../server/classify.js';
 import { Store } from '../server/db.js';
-import { rebuild } from '../server/games.js';
 import { Packs } from '../server/packs.js';
 import { Profiles } from '../server/profiles.js';
 import { Pack } from '../server/puzzles.js';
@@ -14,24 +15,31 @@ import { build as buildSite } from '../server/site.js';
 
 const enc = new TextEncoder();
 
-/** A logger with the desktop's methods, onto the console. */
-export const consoleLog = {
-  debug: () => {},
-  info: (...a) => console.info(...a),
-  warn: (...a) => console.warn(...a),
-  error: (...a) => console.error(...a),
-};
+/** A logger onto the console, both ways js/server calls one: log.info/warn/error(...) (the router, the jobs) and
+ * log(level, message) (ingest.js's ctx.log, which games.js hands env.log). */
+export const consoleLog = Object.assign(
+  (level, message) => (console[level] ?? console.log)(message),
+  {
+    debug: () => {},
+    info: (...a) => console.info(...a),
+    warn: (...a) => console.warn(...a),
+    error: (...a) => console.error(...a),
+  },
+);
 
 export class NotLoaded extends Error {}
 
-/** Every game of every profile classified again from the cached evals, and its site rebuilt: what the first start
- * after the move from Python does once (the JS fingerprints games its own way, docs/js-port.md). */
+/** Every game of every profile classified again from the cached evals, and its review files written again: what the
+ * first start after the move from Python does once (the JS fingerprints games its own way, docs/js-port.md).
+ * games.js's rebuild minus normalise: the positions came over as they were. */
 export async function reclassifyAll(env, log = consoleLog) {
-  const withSite = { site: (db, p) => buildSite(db, env.files, p), ...env };
   const done = [];
   for (const p of await env.profiles.list()) {
     try {
-      await rebuild(withSite, p);
+      const db = await env.store.profile(p);
+      await buildSite(db, env.files, p);
+      classify(db);
+      await buildAggregates(db, env.files, p);
       done.push(p.id);
     } catch (e) {
       log.error(`reclassifying ${p.id} failed`, e);
