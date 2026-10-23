@@ -1115,6 +1115,8 @@ def main(argv=None) -> None:
     p.add_argument("--workers", type=int, default=None, help="engine processes for game analysis (default: physical cores)")
     args = p.parse_args(argv)
     profiles.migrate_legacy()
+    from . import migrate_sqlite    # here, not at the top: the web build imports serve before DuckDB and sqlite3 load
+    migrate_sqlite.on_start()   # the JS port's SQLite files, once: off unless the bridge release switches it on
     profiles.expire_shown()  # "new" flags the list displayed in an earlier run: seen
     site.write_static()     # index.html is a pure copy of static/, so it is always current after a restart
     Handler.runner = Runner(args.nodes, args.workers, builds_file=DATA / "puzzle_builds.json")
