@@ -139,4 +139,26 @@ whose turn was flipped; a regression case for that is in `scripts/dump_parity.py
 - **The JS fingerprints games its own way**, so every game is reclassified once after the switch. That's
   classification only, from cached evals.
 
-**Round 2 started (2026-10-23):** `aggregates`, `site`, `puzzles`, `migration`.
+**Round 2 is done and merged (2026-10-23).** `npm test` and `pytest` pass on `main`. Everything matches Python on the
+fixtures and on the two local profiles.
+- `aggregates`: `js/server/aggregates.js`, `export.js` (CSV byte for byte as DuckDB's `COPY`), and `games.js`, the
+  fetch-to-rows functions round 3 calls (`fetchProfile`, `refreshProfile`, `addPgn`, …). `profiles.js` gained
+  `resolve` and `migrateLegacy`. Where SQLite differs from DuckDB (rounding done in JS, `NULLS LAST`, `any_value`), the
+  code says so.
+- `site`: `js/server/site.js` (games.json and the review files; `JSON.stringify` output, so `50` where Python wrote
+  `50.0`, and the page reads both the same) and `explore.js` (`Explorer`, with `position(fen)` for `/api/eval`).
+- `puzzles`: `js/server/puzzles.js`, `packs.js`, `own-puzzles.js`. Packs are read through `read` functions.
+- `migration`: `chess_review/migrate_sqlite.py` (off by default: `ENABLED` or `CHESS_REVIEW_SQLITE_EXPORT=1`),
+  `js/web/migrate.js` (`migratePyodide`) and `js/server/migrate.js` (`readMarker`, `verify`). Not yet run in a real
+  browser.
+
+Open, for the sessions named:
+- `router`: the live analysis stream needs an infinite search in both engine pools (`pool.stream(fen, multipv)`,
+  whose `return()` sends `stop`); `analyseStream` takes raw lines meanwhile. The job runner's bookkeeping (progress,
+  the new-games badge, removing a profile that doesn't exist) and `/api/pgn` around `addPgn`. `js/desktop/pieces.json`
+  for `/*__PIECES__*/` in the page.
+- `desktop-switch`: `puzzles.json` and `packs.json` for the desktop build; turn the export on in the bridge release and
+  run it once more before the "electron" update; Electron accepts the data only when `verify` passes; sync moves the
+  SQLite files into `.accounts/<who>/`.
+- `web-switch`: call `migratePyodide` before the `Store` opens anything (old data shows as an IndexedDB database named
+  `/data`), keeping a legacy `app.zip` and the Pyodide CDN for that one load; test it in a real browser.

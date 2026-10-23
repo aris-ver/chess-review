@@ -24,6 +24,7 @@ import { cachedLines } from './analyse.js';
 import { sha1 } from './classify.js';
 import { ATTEMPTS_SCHEMA } from './db.js';
 import { archive, attempts as attemptRows, choice, line } from './puzzles.js';
+import { slug } from './site.js';
 
 export const INTERVALS = [1, 3, 7];   // days until the next showing, after a miss and then each review found
 export const DAY = 86400;
@@ -48,12 +49,7 @@ export const puzzleId = (gameId, ply) => 'm' + sha1(`${gameId}:${ply}`).slice(0,
 
 export const isOwnId = pid => typeof pid === 'string' && pid.length === 11 && pid.startsWith('m');
 
-// SEAM (site): site.slug, until the `site` session's js/server/site.js lands; then import it from there and drop this
-// copy. Pass { slug } to Pool to use another one meanwhile.
-export function slug(gameId) {
-  const tail = gameId.replace(/\/+$/, '').split('/').pop();
-  return /^[0-9]+$/.test(tail) ? tail : sha1(gameId).slice(0, 12);
-}
+export { slug };
 
 /** chess.Move.from_uci, null where python-chess raises ValueError. */
 function parse(u) {
