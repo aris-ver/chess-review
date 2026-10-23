@@ -2362,9 +2362,9 @@ function shareMarks() {
   return out;
 }
 // The result: drawn as a card in the coach's bubble, and copied as text with emoji squares (what chat apps show) and
-// a link to the app, so whoever it's sent to can get it and try the same puzzle.
+// a link to the day's puzzle on blundr.gr, so whoever it's sent to can try the same one (from the desktop app too).
 const SHARE_SQ = { ok: '🟩', miss: '🟨', hint: '💡', shown: '⬛' };
-const APP_URL = 'https://github.com/aris-ver/chess-review/releases/latest';
+const DAILY_URL = 'https://blundr.gr/#/daily';
 const fmtTime = ms => ms ? `${Math.floor(ms / 60000)}:${String(Math.round(ms / 1000) % 60).padStart(2, '0')}` : '';
 function resultWords(r) {
   if (!r.solved) return 'Not solved';
@@ -2375,7 +2375,7 @@ function resultWords(r) {
 function shareText(r, streak) {
   const t = fmtTime(r.ms);
   return `Blundr puzzle of the day #${r.n} · ${fmtDay(r.date)}\n${r.clean ? '✅' : r.solved ? '☑️' : '❌'} ${resultWords(r)}${t ? ' · ' + t : ''}\n` +
-    (r.marks || []).map(m => SHARE_SQ[m] || '⬜').join('') + (streak ? `\n🔥 ${streak}-day streak` : '') + `\nTry it yourself: ${APP_URL}`;
+    (r.marks || []).map(m => SHARE_SQ[m] || '⬜').join('') + (streak ? `\n🔥 ${streak}-day streak` : '') + `\nTry it yourself: ${DAILY_URL}`;
 }
 const SQ_TITLE = { ok: 'Found first time', miss: 'Found after a miss', hint: 'Found with a hint', shown: 'Shown the solution' };
 function resultCard(r, streak) {
