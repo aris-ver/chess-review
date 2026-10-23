@@ -160,14 +160,31 @@ fixtures and on the two local profiles.
   desktop answers through the router (`js/desktop/server.js`, `main.js`). `scripts/dump_router_parity.py` →
   `tests/parity/router.json`: 68 requests answer as `serve.Handler` does.
 
-**Round 3b's files.** Before round 3b, the coordinator moved the shared helpers into `js/server/http.js` and gave
-each 3b session its own route module, which `router.js` asks first (`ROUTES`), with a `work` table merged into the
-Runner's. So `routes-puzzles` owns `js/server/routes-puzzles.js` and `routes-rest` owns `js/server/routes-rest.js`;
-neither edits `router.js`, `http.js` or the other's module. Each writes its own parity dump and test.
+**Round 3b is done and merged (2026-10-23); step 4 is done.** No route answers 501 any more. `npm test` and
+`pytest` pass on `main`. The routes beyond `router.js` live in their own modules, which `router.js` asks first
+(`ROUTES`), each with a `work` table of job kinds merged into the Runner's; the helpers they share are in
+`js/server/http.js`.
+- `routes-puzzles`: `js/server/routes-puzzles.js`, every `/api/puzzles/*` route and the `build` and `puzzles` jobs
+  (`extendPuzzles`). `scripts/dump_routes_puzzles_parity.py` → `tests/parity/routes-puzzles.json` (95 steps, with a
+  frozen clock and a library sample). A non-object JSON body reads as missing keys (Python: a 500).
+- `routes-rest`: `js/server/routes-rest.js` with `account.js`, `sync.js`, `settings.js` and `updater.js`: `/account/*`,
+  `/api/sync/*`, `/api/fetch_image`, `/api/settings`, `/api/update*`. `scripts/dump_routes_rest_parity.py` →
+  `tests/parity/routes-rest.json` (131 steps, every outside service faked). Sync files are stored as rows and written
+  out as Python's `json.dumps` lines; `.accounts/<who>/` holds DATA's own SQLite layout. The account's Host/Origin
+  check is in `js/desktop/server.js` (the router doesn't see headers). A sync switch clears the own-puzzle cache
+  (`serve()` wraps `env.onSwitch`).
+
+What the apps must pass in `env` (desktop-switch, web-switch): `pack` (`new Pack(read puzzles.json)`), `packs`
+(`new Packs(read packs.json)`), optionally `ownPuzzles` and `rng`; `account` (the desktop already does); `updater`
+(desktop only; disabled until given); `onSwitch` if the app keeps caches of its own.
 
 Open, for the sessions named:
-- `routes-puzzles`: `extend_puzzles` (the "puzzles" job that `/api/puzzles/sources` and `next?source=mine` start)
-  isn't ported; nor are the `build` and `puzzles` jobs, which plug in through `work`.
+- `desktop-switch`: the updater, `env.updater = new Updater({ installed, platform, assets: ELECTRON_ASSETS, apply,
+  unpack })`, where `apply` writes the PowerShell swap script (`write_apply_script`) and quits once the answer is out,
+  and the download streams to disk instead of being buffered; migrating Python's `.accounts/<who>/` workspaces (jsonl,
+  parquet) to the SQLite layout; a real provider sign-in through the system browser back to `/account/callback`.
+- `web-switch`: sync's table-by-table database copy is tested only on `node:sqlite`; check it on SQLite WASM in OPFS.
+  The account routes aren't needed there (the page calls the Worker itself).
 - `desktop-switch`: the opening book (the JS desktop reads only `DATA/book_keys.txt`; ship or build it, as
   `scripts/build_web.py` does); `reap_idle` (idle engines are never closed); Python's explorer interrupts a running
   stream when a new search comes, while the JS pool queues it (one engine per open stream).

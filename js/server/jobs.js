@@ -4,9 +4,9 @@
 // gives way to anything the user asks for.
 //
 // Jobs here: analyse (one game, its review rewritten as results come in), analyse_all, and the fetches ingest,
-// older and refresh. The puzzle jobs (build, puzzles) are round 3b's: their bookkeeping is here (builds, status,
-// cancelBuild), and their work plugs in through `work` (kind → async (runner, job) => void). Until it does, a
-// leftover build in puzzle_builds.json just waits, untouched.
+// older and refresh. The puzzle jobs (build, puzzles) are routes-puzzles.js's: their bookkeeping is here (builds,
+// status, cancelBuild), and their work plugs in through `work` (kind → async (runner, job) => void). Without a build
+// job (a Runner made on its own), a leftover build in puzzle_builds.json just waits, untouched.
 
 import { boardFromKey } from '../core/fen.js';
 import { isBook } from '../core/book.js';
@@ -185,7 +185,7 @@ export class NewGames {
 
 export class Runner {
   /** env: games.js's env (store, files, profiles, fetch, …); pool: the EnginePool; nodes: per position;
-   * work: extra job kinds (round 3b's build and puzzles); now: seconds, for the job clock. */
+   * work: extra job kinds (routes-puzzles.js's build and puzzles); now: seconds, for the job clock. */
   constructor(env, { pool, nodes, work = {}, newGames = null, now = seconds } = {}) {
     this.env = { site: (db, p) => buildSite(db, env.files, p), ...env };
     this.analyser = new Analyser(pool, nodes);
@@ -326,7 +326,7 @@ export class Runner {
       this._start(this.queue.shift());
       return;
     }
-    if (!this.work.build) return;     // round 3b: builds wait until their job is in
+    if (!this.work.build) return;     // no build job given: builds wait
     while (this.builds.length) {
       const p = await this.env.profiles.load(this.builds[0]);
       if (p !== null && await this.env.files.exists(`${p.siteDir}/games.json`)) {

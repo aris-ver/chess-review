@@ -42,6 +42,11 @@ export function library(env) {
   return { pack: env.pack ?? lib.pack, packs: env.packs ?? lib.packs, pool: env.ownPuzzles ?? lib.pool };
 }
 
+/** sync._invalidate: the own-puzzle pool forgets every profile, which have just changed hands (a sync switch). */
+export function forget(env) {
+  library(env).pool.cache.clear();
+}
+
 const linesTried = new WeakMap();   // Runner → Map(profile id → the classified moves' stamp the puzzles job last ran for)
 
 function tried(runner) {

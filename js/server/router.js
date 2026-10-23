@@ -302,6 +302,11 @@ export class Router {
 export async function serve({ env, pool, nodes, log = null, scan = true, work = {} }) {
   await env.profiles.migrateLegacy();
   await env.profiles.expireShown();     // "new" flags the list displayed in an earlier run: seen
+  const onSwitch = env.onSwitch;     // a sync switch or release: the own puzzles' cache goes, then the app's own hook
+  env.onSwitch = async () => {
+    puzzleRoutes.forget(env);
+    await onSwitch?.();
+  };
   const runner = new Runner(env, { pool, nodes, work: Object.assign({}, ...ROUTES.map(r => r.work), work) });
   await runner.loadBuilds();
   await runner.kick();

@@ -8,8 +8,6 @@ export const ID = '[A-Za-z0-9_.-]+';
 
 export const json = (obj, status = 200) => ({ status, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(obj) });
 export const notFound = () => ({ status: 404, headers: { 'Content-Type': 'text/html;charset=utf-8' }, body: 'File not found' });
-/** A route that round 3b hasn't ported yet. */
-export const notYet = (method, url) => json({ error: `not in this version yet: ${method} ${url.pathname}` }, 501);
 
 /** Python's repr() of a str, for the messages that quote one. */
 export const pyRepr = s => (s.includes("'") && !s.includes('"') ? `"${s}"` : `'${s.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`);
