@@ -29,6 +29,17 @@ export function routerApi(router) {
 
 const DYNAMIC = /^\/(api|account|p)\//;
 
+/** serve.Handler._account's check: account/* only from the app's own page, on this port and by its own address (no
+ * other site's page, nor one that DNS-rebinds a name of its own to 127.0.0.1, can act for the account). headers:
+ * lower-cased, as node:http gives them. */
+export function crossSite(headers, port) {
+  const ours = new Set([`127.0.0.1:${port}`, `localhost:${port}`]);
+  const origin = headers.origin;
+  return !ours.has(headers.host) || !!(origin && !ours.has(origin.split('://').slice(1).join('://') || origin));
+}
+
+export const CROSS_SITE = { status: 403, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ error: 'cross-site request' }) };
+
 /** index.html as site.write_static writes it: the board's pieces (python-chess's chess.svg.PIECES, kept in
  * pieces.json) in place of its placeholder. */
 export function indexHtml(staticDir) {
@@ -46,7 +57,9 @@ export function makeServer({ staticDir, api = placeholder, log }) {
       // themes (pieces, boards, sounds) may be cached and revalidated; everything else is fetched fresh (serve.py)
       const cache = path.startsWith('/themes/') ? 'no-cache' : 'no-store';
       let out;
-      if (DYNAMIC.test(path)) {
+      if (path.startsWith('/account/') && crossSite(req.headers, req.socket.localPort)) {
+        out = CROSS_SITE;
+      } else if (DYNAMIC.test(path)) {
         const chunks = [];
         for await (const c of req) chunks.push(c);
         out = await api(req.method, req.url, Buffer.concat(chunks), req.headers);
