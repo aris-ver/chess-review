@@ -195,6 +195,13 @@ Chrome has none) and relay over a BroadcastChannel; `js/web/legacy.js` moves the
 real phone yet; a job running in a leader tab that closes is lost (builds resume); `retire` must keep the frozen
 `legacy/app.zip` or drop the migration.
 
+**After the web deploy (2026-10-24).** Two browsers stayed on "Loading Blundr". One had a frozen tab holding the
+leader's lock; the other's ad blocker blocked `/js/core/analyse.js` (privacy lists block any `analyse.js`), so the
+worker never loaded. Fixed: start-up never waits silently any more (a tab that hears no leader in 8 s, storage that
+doesn't open in 30 s, a move step over 180 s, a worker that doesn't start: each says why, naming a file that didn't
+load); the modules are `js/core/evals.js` and `js/server/eval-cache.js` now, and `build_web.py` refuses `js/` file names
+those lists match. The site also serves `/favicon.ico` (the dark-green knight, which stays Blundr's icon).
+
 **v0.7.0, the bridge, is released (2026-10-24).** Its runtime fingerprint moved (it bundles `sqlite3`), so v0.6.1
 installs take it as a full download; v0.6.1 installs still on it when v1.0.0 comes out must download by hand, so
 v1.0.0 waits a few days.
