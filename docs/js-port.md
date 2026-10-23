@@ -178,6 +178,12 @@ What the apps must pass in `env` (desktop-switch, web-switch): `pack` (`new Pack
 (`new Packs(read packs.json)`), optionally `ownPuzzles` and `rng`; `account` (the desktop already does); `updater`
 (desktop only; disabled until given); `onSwitch` if the app keeps caches of its own.
 
+**Decided for round 4 (2026-10-23):** the coordinator pushes `main` (which deploys blundr.gr) once `web-switch` is
+merged and its checks and phone bench pass. The bridge Python release is v0.7.0 (v0.6.0 and v0.6.1 exist already)
+and the first Electron release v1.0.0; the coordinator tags each one, alone, after asking the user. Tests run headless
+Playwright in WSL and the Electron build on the Windows PC, with a temp data folder or a copy of the real one, never
+the real `%LOCALAPPDATA%\chess-review`.
+
 Open, for the sessions named:
 - `desktop-switch`: the updater, `env.updater = new Updater({ installed, platform, assets: ELECTRON_ASSETS, apply,
   unpack })`, where `apply` writes the PowerShell swap script (`write_apply_script`) and quits once the answer is out,
