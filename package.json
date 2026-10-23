@@ -3,10 +3,17 @@
   "private": true,
   "description": "Blundr's JavaScript port: plain ES modules under js/, no build step (docs/js-port.md)",
   "type": "module",
+  "main": "js/desktop/main.js",
   "scripts": {
-    "test": "node js/run-tests.js"
+    "test": "node js/run-tests.js",
+    "desktop": "electron .",
+    "build:windows": "node js/desktop/build.js"
   },
   "engines": {
     "node": ">=20"
+  },
+  "devDependencies": {
+    "@electron/packager": "20.3.0",
+    "electron": "44.9.3"
   }
 }
