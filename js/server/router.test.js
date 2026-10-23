@@ -135,3 +135,25 @@ test('eval_stream: snapshots from the pool stream, closed when the client goes',
 test('fillPieces', () => {
   same(fillPieces('a /*__PIECES__*/ b', { K: '<svg/>' }), 'a {"K":"<svg/>"} b');
 });
+
+test('analyse_all: every game not fully analysed, then the profile rebuilt', async () => {
+  const d = load('router.json');
+  const scholar = d.steps.find(s => s.method === 'POST' && s.path === '/api/pgn' && s.body?.review_as === 'black').body;
+  const dir = mkdtempSync(join(tmpdir(), 'blundr-router-'));
+  setBook([]);
+  const store = new Store(nodeSqlite(dir)), files = memoryFiles();
+  try {
+    const router = await serve({ env: { store, files, profiles: new Profiles(files, store) }, pool: replayPool(d), nodes: d.nodes, scan: false });
+    const pasted = JSON.parse((await router.handle('POST', '/api/pgn', JSON.stringify(scholar))).body);
+    const start = JSON.parse((await router.handle('POST', '/api/p/pgn-pasted-games/analyse_all', '')).body);
+    same([start.job.kind, start.job.status], ['analyse_all', 'queued'], 'started');
+    await router.runner.idle();
+    const { job } = JSON.parse((await router.handle('GET', '/api/status', '')).body);
+    same([job.status, job.done, job.total, job.game, job.game_done], ['done', 1, 1, pasted.games[0], job.game_total], 'done');
+    const index = JSON.parse(new TextDecoder().decode((await router.handle('GET', '/p/pgn-pasted-games/games.json', '')).body));
+    same(index.games[0].analysed, 1, 'analysed');
+  } finally {
+    await store.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
