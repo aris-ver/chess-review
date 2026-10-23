@@ -1,0 +1,32 @@
+# Builds the Electron desktop app (js/desktop) for Windows and keeps the zip as a workflow artifact. Manual only
+# (Actions -> Electron Windows build -> Run workflow): it publishes nothing and never touches tags or releases;
+# windows-release.yml still ships the Python app.
+name: Electron Windows build
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0    # git describe names the build after the nearest tag
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npm test
+      - name: Build the app
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node js/desktop/build.js
+      - uses: actions/upload-artifact@v4
+        with:
+          name: blundr-electron-windows
+          path: packaging/dist/Blundr-electron-windows.zip
