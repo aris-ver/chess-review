@@ -1,11 +1,13 @@
 // The desktop app's HTTP server on 127.0.0.1, which the window loads. It serves the page (chess_review/static) the way
-// serve.Handler does and hands everything else to `api`: until js/server exists (docs/js-port.md, round 3) that is
-// a placeholder that answers 503, so the page loads and says what it can't do yet.
+// serve.Handler does and hands everything else to `api`: js/server's router (routerApi), or a placeholder that
+// answers 503 so the page loads and says what it can't do.
 
 import { readFileSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { extname, join, normalize, sep } from 'node:path';
+
+import { fillPieces } from '../server/router.js';
 
 const TYPES = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8',
@@ -14,10 +16,15 @@ const TYPES = {
   '.ico': 'image/x-icon', '.txt': 'text/plain; charset=utf-8',
 };
 
-/** What answers api/…, account/… and p/… until js/server's handle(method, path, body) takes over. */
+/** What answers api/…, account/… and p/… when there is no router. */
 export async function placeholder(method, path) {
   const body = JSON.stringify({ error: `Not in this build yet: ${method} ${path} needs the JS server (docs/js-port.md, round 3).` });
   return { status: 503, headers: { 'Content-Type': 'application/json' }, body };
+}
+
+/** `api` for makeServer over js/server's Router (or a promise of one, while it starts). */
+export function routerApi(router) {
+  return async (method, url, body, headers) => (await router).handle(method, url, body, headers['content-type'] ?? null);
 }
 
 const DYNAMIC = /^\/(api|account|p)\//;
@@ -26,7 +33,7 @@ const DYNAMIC = /^\/(api|account|p)\//;
  * pieces.json) in place of its placeholder. */
 export function indexHtml(staticDir) {
   const pieces = JSON.parse(readFileSync(new URL('./pieces.json', import.meta.url), 'utf8'));
-  return readFileSync(join(staticDir, 'index.html'), 'utf8').replace('/*__PIECES__*/', JSON.stringify(pieces));
+  return fillPieces(readFileSync(join(staticDir, 'index.html'), 'utf8'), pieces);
 }
 
 /** An http.Server for the page in `staticDir`; requests to api/, account/ and p/ go to `api`. */
@@ -58,6 +65,7 @@ export function makeServer({ staticDir, api = placeholder, log }) {
           }
         }
       }
+      if (out.body && typeof out.body[Symbol.asyncIterator] === 'function') return await stream(req, res, out, cache);
       const body = typeof out.body === 'string' ? Buffer.from(out.body) : out.body ?? Buffer.alloc(0);
       res.writeHead(out.status, { 'Cache-Control': cache, 'Content-Length': body.length, ...out.headers });
       res.end(req.method === 'HEAD' ? undefined : body);
@@ -67,6 +75,29 @@ export function makeServer({ staticDir, api = placeholder, log }) {
       res.end(JSON.stringify({ error: String(err.message || err) }));
     }
   });
+}
+
+/** An answer whose body is an async iterable (/api/eval_stream's NDJSON): each piece written as it comes, the body
+ * ended by the connection closing, as serve.py's HTTP/1.0 does. The client going away closes the iterable, which
+ * stops the engine. */
+async function stream(req, res, out, cache) {
+  const it = out.body[Symbol.asyncIterator]();
+  let gone = false;
+  res.on('close', () => {
+    gone = true;
+    it.return?.().catch(() => {});
+  });
+  res.writeHead(out.status, { 'Cache-Control': cache, Connection: 'close', ...out.headers });
+  try {
+    while (!gone) {
+      const { value, done } = await it.next();
+      if (done || gone) break;
+      res.write(value);
+    }
+  } finally {
+    if (!gone) await it.return?.();
+    res.end();
+  }
 }
 
 /** Listen on host:preferred, or on any free port if that one is taken (a second copy of the app, or something else

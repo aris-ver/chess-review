@@ -47,6 +47,7 @@ class Engine {
     this.worker.onmessage = e => {
       const line = String(e.data);
       this.lines.push(line);
+      this.tap?.(line);
       if (this.waiter && this.waiter.re.test(line)) { const w = this.waiter; this.waiter = null; w.resolve(this.lines.splice(0)); }
     };
     this.worker.onerror = e => {   // the engine died (a WASM trap): fail the search in hand, start a fresh one
@@ -76,6 +77,37 @@ class Engine {
     const out = await this.until(/^bestmove/, [`position fen ${fen}`, `go nodes ${nodes}`]);
     return out.filter(l => l.startsWith('info '));
   }
+  // An infinite search (`go infinite`, like an analysis board) of `fen` with `multipv` lines: its `info` lines as they
+  // come. Closing the iterator (return(), or leaving a for-await) sends `stop` and waits for the engine's bestmove.
+  async *stream(fen, multipv) {
+    await this.ready;
+    await this.until(/^readyok/, ['ucinewgame', `setoption name MultiPV value ${multipv}`, 'isready']);
+    const buf = [];
+    let wake = null, end = null;
+    const finished = this.until(/^bestmove/, [`position fen ${fen}`, 'go infinite']);
+    finished.then(() => { end = {}; wake?.(); }, err => { end = { err }; wake?.(); });
+    this.tap = line => {    // the search's lines go here instead of piling up for until()
+      this.lines.length = 0;
+      if (line.startsWith('info ')) { buf.push(line); wake?.(); }
+    };
+    try {
+      for (;;) {
+        while (buf.length) yield buf.shift();
+        if (end) {
+          if (end.err) throw end.err;
+          return;
+        }
+        await new Promise(resolve => { wake = resolve; });
+        wake = null;
+      }
+    } finally {
+      this.tap = null;
+      if (!end) {
+        this.worker.postMessage('stop');
+        await finished.catch(() => {});
+      }
+    }
+  }
 }
 
 export class EnginePool {
@@ -104,6 +136,11 @@ export class EnginePool {
   async search(fen, nodes, multipv = 3) {
     const engine = await this.acquire();
     try { return await engine.search(fen, nodes, multipv); } finally { this.release(engine); }
+  }
+  // Engine.stream on a free engine, which goes back to the pool once the stream is closed.
+  async *stream(fen, multipv = 3) {
+    const engine = await this.acquire();
+    try { yield* engine.stream(fen, multipv); } finally { this.release(engine); }
   }
 }
 
