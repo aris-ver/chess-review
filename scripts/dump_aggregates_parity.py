@@ -200,6 +200,13 @@ def pipeline() -> dict:
         users = [c["username"] for c in cases]
         user = max(sorted(set(users)), key=users.count)
         gs = [c["g"] for c in cases if c["username"] == user]
+        # the cases are variations of one game: each its own id here (and on lichess its own day, a month apart),
+        # as on the site, whose fetch skips an id it already has
+        if source == "chesscom":
+            gs = [{**g, "url": f"{g['url']}{i}"} if g.get("url") else g for i, g in enumerate(gs)]
+        else:
+            gs = [{**g, "id": f"{g['id'][:6]}{i:02d}", "createdAt": g["createdAt"] - i * 31 * 86_400_000} if "createdAt" in g else g
+                  for i, g in enumerate(gs)]
         p = profiles.create(source, user)
         p.raw_dir.mkdir(parents=True, exist_ok=True)
         raw = {}
