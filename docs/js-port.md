@@ -152,11 +152,25 @@ fixtures and on the two local profiles.
   `js/web/migrate.js` (`migratePyodide`) and `js/server/migrate.js` (`readMarker`, `verify`). Not yet run in a real
   browser.
 
+**Round 3a is done and merged (2026-10-23).** `npm test` and `pytest` pass on `main` (the Playwright tests in
+`tests/test_web_browser.py` time out in WSL on `main` too, before and after the merge, so they're the environment).
+- `router`: `js/server/jobs.js` (the job runner: queue, `api/status`, progress, the new-games badge, builds
+  bookkeeping, analyse, analyse_all, ingest, older, refresh) and `js/server/router.js` (`Router.handle`, `serve()`,
+  `fillPieces`). `stream(fen, multipv)` in both engine pools runs `go infinite`; its `return()` sends `stop`. The
+  desktop answers through the router (`js/desktop/server.js`, `main.js`). `scripts/dump_router_parity.py` →
+  `tests/parity/router.json`: 68 requests answer as `serve.Handler` does.
+
+**Round 3b's files.** Before round 3b, the coordinator moved the shared helpers into `js/server/http.js` and gave
+each 3b session its own route module, which `router.js` asks first (`ROUTES`), with a `work` table merged into the
+Runner's. So `routes-puzzles` owns `js/server/routes-puzzles.js` and `routes-rest` owns `js/server/routes-rest.js`;
+neither edits `router.js`, `http.js` or the other's module. Each writes its own parity dump and test.
+
 Open, for the sessions named:
-- `router`: the live analysis stream needs an infinite search in both engine pools (`pool.stream(fen, multipv)`,
-  whose `return()` sends `stop`); `analyseStream` takes raw lines meanwhile. The job runner's bookkeeping (progress,
-  the new-games badge, removing a profile that doesn't exist) and `/api/pgn` around `addPgn`. `js/desktop/pieces.json`
-  for `/*__PIECES__*/` in the page.
+- `routes-puzzles`: `extend_puzzles` (the "puzzles" job that `/api/puzzles/sources` and `next?source=mine` start)
+  isn't ported; nor are the `build` and `puzzles` jobs, which plug in through `work`.
+- `desktop-switch`: the opening book (the JS desktop reads only `DATA/book_keys.txt`; ship or build it, as
+  `scripts/build_web.py` does); `reap_idle` (idle engines are never closed); Python's explorer interrupts a running
+  stream when a new search comes, while the JS pool queues it (one engine per open stream).
 - `desktop-switch`: `puzzles.json` and `packs.json` for the desktop build; turn the export on in the bridge release and
   run it once more before the "electron" update; Electron accepts the data only when `verify` passes; sync moves the
   SQLite files into `.accounts/<who>/`.

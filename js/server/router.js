@@ -3,20 +3,25 @@
 // body is a string, a Uint8Array, or for /api/eval_stream an async iterable of NDJSON lines (whoever sends it calls
 // its return() when the client goes away, which stops the engine).
 //
-// Round 3a has the profiles, games and analysis; the rest answers 501 until round 3b ports it (NOT_YET below).
+// This file has the profiles, games and analysis. The other routes live in their own modules (ROUTES below), each
+// asked first with handle(router, method, url, body, contentType) → an answer, or null when the path isn't its own.
 
 import { boardFromFen, fen } from '../core/chess.js';
 import { MULTIPV_N } from '../core/config.js';
-import { Explorer, IllegalMoveError, NoEvalError } from './explore.js';
+import { Explorer, NoEvalError } from './explore.js';
 import { addPgn, rebuild } from './games.js';
+import { BadRequest, ID, badInput, json, jsonBody, notFound, pyInt, pyRepr, truthy } from './http.js';
 import { Runner } from './jobs.js';
 import { profileId } from './profiles.js';
+import * as puzzleRoutes from './routes-puzzles.js';
+import * as restRoutes from './routes-rest.js';
 import { slug as gameSlug } from './site.js';
-import { InvalidMoveError, IllegalMoveError as IllegalUciError } from '../core/chess.js';
 
 export const PGN_PROFILE_NAME = 'Pasted games';   // every pasted PGN lands in profile pgn-pasted-games
 
-const ID = '[A-Za-z0-9_.-]+';
+/** The route modules: handle() answers their paths; work holds the job kinds they add to the Runner. */
+const ROUTES = [puzzleRoutes, restRoutes];
+
 const PROFILE_PATH = new RegExp(`^/p/(${ID})/(.*)$`);
 
 // serve.Handler.extensions_map, the types the page's files come in
@@ -26,45 +31,11 @@ const TYPES = {
   '.txt': 'text/plain', '.csv': 'text/csv',
 };
 
-/** Round 3b's routes, answered 501 meanwhile: [method, path regex]. */
-export const NOT_YET = [
-  ['*', /^\/account\//],
-  ['POST', /^\/api\/sync\//],
-  ['GET', /^\/api\/fetch_image$/],
-  ['*', /^\/api\/settings$/],
-  ['*', /^\/api\/puzzles\//],
-  ['*', /^\/api\/update(\/|$)/],
-];
-
 /** index.html's /*__PIECES__*\/ placeholder filled with the board's pieces (python-chess's chess.svg.PIECES, kept in
  * js/desktop/pieces.json), as site.write_static does. */
 export function fillPieces(html, pieces) {
   return html.replace('/*__PIECES__*/', JSON.stringify(pieces));
 }
-
-const json = (obj, status = 200) => ({ status, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(obj) });
-const notFound = () => ({ status: 404, headers: { 'Content-Type': 'text/html;charset=utf-8' }, body: 'File not found' });
-
-/** Python's repr() of a str, for the messages that quote one. */
-const pyRepr = s => (s.includes("'") && !s.includes('"') ? `"${s}"` : `'${s.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`);
-
-/** Python's int() of a JSON value: ints, floats (truncated) and numeric strings; anything else is a ValueError. */
-function pyInt(v) {
-  if (typeof v === 'number' && Number.isFinite(v)) return Math.trunc(v);
-  if (typeof v === 'boolean') return v ? 1 : 0;
-  if (typeof v === 'string' && /^\s*[-+]?\d+\s*$/.test(v)) return parseInt(v, 10);
-  throw new BadRequest(`invalid literal for int() with base 10: ${pyRepr(String(v))}`);
-}
-
-/** Python's truthiness, for bool(b.get(...)). */
-const truthy = v => !(v === undefined || v === null || v === false || v === 0 || v === '' ||
-  (Array.isArray(v) && !v.length) || (typeof v === 'object' && !Array.isArray(v) && !Object.keys(v).length));
-
-/** A request the handler refuses with 400 (Python's ValueError or KeyError). */
-class BadRequest extends Error {}
-
-const badInput = e => e instanceof BadRequest || e instanceof IllegalMoveError || e instanceof InvalidMoveError ||
-  e instanceof IllegalUciError || e?.name === 'FenError' || e instanceof TypeError;
 
 function parseBoard(fenStr) {
   try {
@@ -83,9 +54,6 @@ async function sideOfSavedPlayer(profiles, pgn) {
   }
   return 'white';
 }
-
-const decoder = new TextDecoder();
-const text = body => (body == null ? '' : typeof body === 'string' ? body : decoder.decode(body));
 
 /** posixpath.normpath('/' + rel).lstrip('/'): '.' and '..' resolved, never above the root. */
 function normRel(rel) {
@@ -108,10 +76,9 @@ export class Router {
   async handle(method, path, body = null, contentType = null) {
     try {
       const url = new URL(path, 'http://x');
-      for (const [m, re] of NOT_YET) {
-        if ((m === '*' || m === method) && re.test(url.pathname)) {
-          return json({ error: `not in this version yet: ${method} ${url.pathname}` }, 501);
-        }
+      for (const routes of ROUTES) {
+        const out = await routes.handle(this, method, url, body, contentType);
+        if (out) return out;
       }
       if (method === 'GET' || method === 'HEAD') return await this.get(url);
       if (method === 'POST') return await this.post(url.pathname, body);
@@ -124,8 +91,7 @@ export class Router {
 
   /** The JSON body, {} when there is none (serve.Handler._body). */
   body(raw) {
-    const t = text(raw);
-    return t ? JSON.parse(t) : {};
+    return jsonBody(raw);
   }
 
   async start(job, thenBuild = false) {
@@ -336,7 +302,7 @@ export class Router {
 export async function serve({ env, pool, nodes, log = null, scan = true, work = {} }) {
   await env.profiles.migrateLegacy();
   await env.profiles.expireShown();     // "new" flags the list displayed in an earlier run: seen
-  const runner = new Runner(env, { pool, nodes, work });
+  const runner = new Runner(env, { pool, nodes, work: Object.assign({}, ...ROUTES.map(r => r.work), work) });
   await runner.loadBuilds();
   await runner.kick();
   const explorer = new Explorer(pool, { nodes, evals: await env.store.evals() });
