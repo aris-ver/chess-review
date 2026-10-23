@@ -17,6 +17,7 @@ import { profileDb } from './db.js';
 
 export const SOURCES = ['chesscom', 'lichess', 'pgn'];
 export const PROFILES_DIR = 'profiles';
+export const SITE_DIR = 'site';         // the static app (config.SITE_DIR); before profiles, also the one user's pages
 const ID_RE = /^[a-z0-9][a-z0-9_.-]{0,80}$/;
 const DAY_MS = 86_400_000;
 
@@ -181,6 +182,44 @@ export class Profiles {
       if (p !== null) out.push(p);
     }
     return out;
+  }
+
+  /** CLI helper: the named profile, or the only one when there is exactly one. Python exits with these messages;
+   * this throws them. */
+  async resolve(pid = null, now = Date.now()) {
+    await this.migrateLegacy(now);
+    if (pid) {
+      const p = await this.load(pid);
+      if (p === null) {
+        throw new Error(`no such profile: ${pid} (have: ${(await this.list()).map(x => x.id).join(', ') || 'none'})`);
+      }
+      return p;
+    }
+    const ps = await this.list();
+    if (ps.length === 1) return ps[0];
+    throw new Error('--profile required' + (ps.length ? ` (one of: ${ps.map(p => p.id).join(', ')})`
+      : ' (none exist yet; create one from the UI or with `ingest --username`)'));
+  }
+
+  /** Move a pre-profiles data/ layout (one user, tables at the top level) into profiles/<id>/. Nothing is
+   * re-analysed: the engine cache stays where it is. The parquet files move as they are (the DuckDB → SQLite
+   * migration reads them from the profile's folder). */
+  async migrateLegacy(now = Date.now()) {
+    const text = await this.files.readText('meta.json');
+    if (text === null) return null;
+    const username = JSON.parse(text).username || 'me';
+    const p = await this.create('chesscom', username, now);
+    const moves = [['raw', p.rawDir], ['pgn', p.pgnDir],
+      ['games.parquet', `${p.dir}/games.parquet`], ['positions.parquet', `${p.dir}/positions.parquet`],
+      ['moves.parquet', `${p.dir}/moves.parquet`],
+      [`${SITE_DIR}/games`, `${p.siteDir}/games`], [`${SITE_DIR}/games.json`, `${p.siteDir}/games.json`],
+      [`${SITE_DIR}/insights.html`, `${p.siteDir}/insights.html`]];
+    await this.files.mkdir(p.siteDir);
+    for (const [src, dst] of moves) {
+      if (await this.files.exists(src) && !(await this.files.exists(dst))) await this.files.rename(src, dst);
+    }
+    await this.files.remove('meta.json');
+    return p;
   }
 
   async gameIds(p) {
