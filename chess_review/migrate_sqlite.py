@@ -18,8 +18,9 @@ when complete, then DATA/sqlite-export.json says it is done, with what the files
 does nothing while the old files are as they were; once the Python app has written to them since, it is made again,
 unless the JS app has written to the SQLite files in between (then the JS's are newer and are kept).
 
-Off by default. The desktop bridge release switches ENABLED on (or CHESS_REVIEW_SQLITE_EXPORT=1), and serve.main
-runs on_start(). In the browser, web/py-worker.js runs migrate("/data", out) into Pyodide's memory file system
+On since the desktop bridge release (ENABLED; CHESS_REVIEW_SQLITE_EXPORT=1 forces it where ENABLED is off): serve.main
+runs on_start(), and updater.py runs migrate() once more right before it applies the Electron build. In the browser,
+web/py-worker.js runs migrate("/data", out) into Pyodide's memory file system
 after loading the sqlite3 package and hands the files to js/web/migrate.js.
 
     python -m chess_review.migrate_sqlite [--data DIR] [--out DIR] [--force] [--dump FILE]
@@ -44,7 +45,7 @@ from .fen import fen_key
 
 log = logging.getLogger("migrate_sqlite")
 
-ENABLED = False                 # the bridge release turns this on
+ENABLED = True                  # on from the bridge release (v0.7.0), the last Python one, which hands over to Electron
 ENV = "CHESS_REVIEW_SQLITE_EXPORT"
 MARKER = "sqlite-export.json"
 STAGING = ".sqlite-export"

@@ -181,9 +181,15 @@ def test_a_half_done_export_is_done_again(tmp_path, monkeypatch):
     assert not (tmp_path / M.STAGING).exists()
 
 
-def test_off_by_default(tmp_path, monkeypatch):
+def test_on_in_the_bridge_release(tmp_path, monkeypatch):
     monkeypatch.delenv(M.ENV, raising=False)
-    assert M.ENABLED is False and M.on_start(tmp_path) is None and list(tmp_path.iterdir()) == []
+    assert M.ENABLED is True and M.on_start(tmp_path)["status"] == "done"
+
+
+def test_the_switch(tmp_path, monkeypatch):
+    monkeypatch.delenv(M.ENV, raising=False)
+    monkeypatch.setattr(M, "ENABLED", False)
+    assert M.on_start(tmp_path) is None and list(tmp_path.iterdir()) == []
     monkeypatch.setenv(M.ENV, "1")
     assert M.on_start(tmp_path)["status"] == "done"
 

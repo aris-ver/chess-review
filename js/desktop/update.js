@@ -172,6 +172,7 @@ export function applyScript({ pid, stage, install, kind, logfile }) {
       "    Log ('copying the new files in failed, restoring the old ones: ' + $_)",
       `    Get-ChildItem -LiteralPath $install -Force | Where-Object { $_.Name -ne ${q(ASIDE)} } | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue`,
       '    Get-ChildItem -LiteralPath $aside -Force | ForEach-Object { Move-Item -LiteralPath $_.FullName -Destination $install -Force }',
+      '    Remove-Item -LiteralPath $aside -Recurse -Force -ErrorAction SilentlyContinue',
       '    throw',
       '  }',
       '  Remove-Item -LiteralPath $aside -Recurse -Force -ErrorAction SilentlyContinue',
