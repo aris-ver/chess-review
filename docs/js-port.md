@@ -121,4 +121,22 @@ python-chess's order, castling is written king-to-square (`e1g1`, not chessops' 
 passant square only counts on the rank python-chess accepts (chessops allows it from the wrong rank on a board
 whose turn was flipped; a regression case for that is in `scripts/dump_parity.py`'s `EXTRA_LINES`).
 
-**Round 1 started (2026-10-23):** `storage`, `games-in`, `electron`.
+**Round 1 is done and merged (2026-10-23).** `npm test` (Node ≥ 22.13) and `pytest` pass on `main`.
+- `storage`: `js/server/db.js` (`Store`, drivers `nodeSqlite` in `db-node.js` and `webSqlite` in `js/web/db.js`),
+  `profiles.js`, the database halves of analyse and classify. Matches Python row for row (`dump_storage_parity.py`).
+  Not ported yet: `migrate_legacy` and the CLI's `resolve`.
+- `games-in`: `js/core/normalise.js` (rows, no writes) and `js/server/ingest.js` over an injected `fetch`. Two
+  deliberate differences: a standard game with an unreadable FEN tag is skipped (Python fails the whole build), and a
+  `Retry-After` that isn't whole seconds falls back to the normal backoff. `export.py` is DuckDB `COPY` SQL only.
+- `electron`: `js/desktop/` (window, `makeServer({ api })`, the native pool), the engine interface in
+  `js/core/engine.js` (which `web/engines.js` already matches), a manual-only Windows zip workflow (not run yet) and the
+  updater plan in `js/desktop/README.md`. Still to port from `launcher.py`: seeding the book, removing old exe names,
+  clearing the downloaded-file mark. The last Python release needs an "electron" update type.
+
+**Decided 2026-10-23:**
+- **Several tabs on the web share one worker:** the databases are opened once (a SharedWorker, or a leader tab
+  elected with Web Locks), and every tab works fully. That's for `web-switch`.
+- **The JS fingerprints games its own way**, so every game is reclassified once after the switch. That's
+  classification only, from cached evals.
+
+**Round 2 started (2026-10-23):** `aggregates`, `site`, `puzzles`, `migration`.
