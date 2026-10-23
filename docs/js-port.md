@@ -184,8 +184,19 @@ and the first Electron release v1.0.0; the coordinator tags each one, alone, aft
 Playwright in WSL and the Electron build on the Windows PC, with a temp data folder or a copy of the real one, never
 the real `%LOCALAPPDATA%\chess-review`.
 
+**`desktop-switch` is done and merged (2026-10-23); step 6 waits only for its two tags.** `npm test` and `pytest`
+pass on `main`. Electron has everything the Python app had (puzzles and packs, the book as `book_keys.txt` in the
+asar, idle engines reaped, one Stockfish per core, the updater with small `.asar` and full-zip updates, the data
+check in `js/desktop/handover.js`). The bridge (`migrate_sqlite` on; an `electron` update kind in `updater.py`) and
+one release workflow (`windows-release.yml`: tags v0.x build Python, v1+ Electron with the bridge's zips attached
+again; manual runs publish nothing). Checked on the Windows PC from the built zip with temp data and a copy of the
+real data, including both update kinds and the bridge swapping a Python install for Electron. Release steps and
+what to check after each: `js/desktop/README.md`. Still open: a real provider sign-in through the system browser, a
+frozen-exe bridge run (it was tested from source), the first CI run; v0.6.1 installs whose runtime differs from the
+bridge's have to download Electron by hand.
+
 Open, for the sessions named:
-- `desktop-switch`: the updater, `env.updater = new Updater({ installed, platform, assets: ELECTRON_ASSETS, apply,
+- `desktop-switch` (the parts above that are done are kept for the record): the updater, `env.updater = new Updater({ installed, platform, assets: ELECTRON_ASSETS, apply,
   unpack })`, where `apply` writes the PowerShell swap script (`write_apply_script`) and quits once the answer is out,
   and the download streams to disk instead of being buffered; migrating Python's `.accounts/<who>/` workspaces (jsonl,
   parquet) to the SQLite layout; a real provider sign-in through the system browser back to `/account/callback`.
