@@ -1,12 +1,12 @@
 // The native Stockfish pool against bin/stockfish (or $STOCKFISH); skipped when there is none. Its info lines have to
-// read with js/core/analyse.js, and a fixed node count after `ucinewgame` has to give the same answer on any engine.
+// read with js/core/evals.js, and a fixed node count after `ucinewgame` has to give the same answer on any engine.
 import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
 import { after, test } from 'node:test';
 import { isDeepStrictEqual } from 'node:util';
 
 import { load } from '../parity.js';
-import { evaluateMultipv } from '../core/analyse.js';
+import { evaluateMultipv } from '../core/evals.js';
 import { boardFromFen } from '../core/chess.js';
 import { EnginePool } from './engines.js';
 import { stockfishPath } from './paths.js';
