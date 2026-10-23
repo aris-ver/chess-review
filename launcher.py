@@ -9,9 +9,11 @@ import multiprocessing
 import os
 import shutil
 import socket
+import subprocess
 import sys
 import threading
 import time
+from pathlib import Path
 
 multiprocessing.freeze_support()
 
@@ -50,6 +52,44 @@ def _unblock_bundle(bundle_root, frozen: bool) -> None:
             pass
     if dropped:
         log.info("cleared the downloaded-file mark from %d bundled binaries", dropped)
+
+
+def _retire_old_exes(exe, frozen: bool) -> bool:
+    """The exe's old names ship beside Blundr.exe for updaters from before it (packaging/pack.py), and such an
+    updater starts the app again under its own name. Started under an old name: start Blundr.exe instead, and
+    True says this process should exit. Started as Blundr.exe: delete the old ones, in the background, retrying
+    while the copy that handed over is still exiting."""
+    if not frozen or sys.platform != "win32":
+        return False
+    from chess_review.updater import EXE_NAME, LEGACY_EXE_NAMES
+    new = exe.with_name(EXE_NAME)
+    if exe.name.lower() in (n.lower() for n in LEGACY_EXE_NAMES):
+        if not new.is_file():
+            return False
+        log.info("started as %s: handing over to %s", exe.name, EXE_NAME)
+        subprocess.Popen([str(new)], cwd=str(exe.parent), close_fds=True)
+        return True
+    old = [exe.with_name(n) for n in LEGACY_EXE_NAMES if exe.with_name(n).is_file()]
+    if exe.name.lower() == EXE_NAME.lower() and old:
+        threading.Thread(target=_delete, args=(old,), daemon=True, name="old-exes").start()
+    return False
+
+
+def _delete(paths, tries: int = 20, wait: float = 0.5) -> None:
+    for _ in range(tries):
+        for p in list(paths):
+            try:
+                p.unlink()
+                log.info("removed the old %s", p.name)
+            except FileNotFoundError:
+                pass
+            except OSError:
+                continue        # still running: the next round
+            paths.remove(p)
+        if not paths:
+            return
+        time.sleep(wait)
+    log.warning("could not remove %s", ", ".join(p.name for p in paths))
 
 
 def _message_box(title: str, text: str) -> None:
@@ -102,6 +142,8 @@ def main() -> None:
 
     _setup_logging(DATA)
     log.info("starting; data in %s", DATA)
+    if _retire_old_exes(Path(sys.executable), FROZEN):
+        return
     if not STOCKFISH.exists():
         log.error("Stockfish not found at %s - analysis will fail", STOCKFISH)
     _unblock_bundle(BUNDLE_ROOT, FROZEN)   # before anything can try to load a .NET assembly

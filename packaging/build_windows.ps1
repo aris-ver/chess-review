@@ -1,9 +1,10 @@
-# Builds the Windows desktop app and zips it twice into packaging\dist:
+# Builds the Windows desktop app and zips it three ways into packaging\dist:
 #
-#   chess-review-windows.zip            the whole app: what a new user downloads
+#   Blundr-windows.zip                  the whole app: what a new user downloads
+#   chess-review-windows.zip            the same for updaters up to v0.6.0
 #   chess-review-update-<runtime>.zip   the exe + _internal\chess_review (+ assets): what the in-app updater
 #                                       fetches when the install's runtime fingerprint matches (a few MB
-#                                       instead of ~100). pack.py explains <runtime>; both zips carry it in
+#                                       instead of ~100). pack.py explains <runtime>; every zip carries it in
 #                                       _internal\build.json next to the version (the git tag; -Version overrides).
 #
 # Run from a Windows terminal (PowerShell), from anywhere:
@@ -93,8 +94,8 @@ if (-not $Version) {
     if (-not $Version) { $Version = "dev" }
 }
 & $Py "$Packaging\pack.py" $App --version $Version --out "$Packaging\dist"
-$Zip = Join-Path $Packaging "dist\chess-review-windows.zip"
+$Zip = Join-Path $Packaging "dist\Blundr-windows.zip"
 
 Write-Host ""
 Write-Host "App folder: $App\Blundr.exe"
-Write-Host "Share this: $Zip (new users); the chess-review-update-*.zip next to it is what the in-app updater takes"
+Write-Host "Share this: $Zip (new users); the chess-review-*.zip next to it are what in-app updaters take"

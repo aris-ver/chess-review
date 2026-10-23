@@ -27,7 +27,7 @@
   // "Download the app" in the header, lit in the notice's accent colour (no flashing) for as long as the note is
   // up, so the two read as one: the note says the browser is slower, the button is where the faster app is.
   // It downloads the zip itself: GitHub's latest-asset link follows each release, so it never needs changing.
-  const DOWNLOAD = 'https://github.com/aris-ver/chess-review/releases/latest/download/chess-review-windows.zip';
+  const DOWNLOAD = 'https://github.com/aris-ver/chess-review/releases/latest/download/Blundr-windows.zip';
   const style = document.createElement('style');
   style.textContent =
     'header .right a#web-dl{color:var(--text);background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:6px 10px;' +

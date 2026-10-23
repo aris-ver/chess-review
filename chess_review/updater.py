@@ -36,9 +36,10 @@ log = logging.getLogger("updater")
 EXE_NAME = "Blundr.exe"
 # up to v0.5.6 and v0.1.11; builds still ship all three (packaging/pack.py), so any may be the one here
 LEGACY_EXE_NAMES = ("Chess Review.exe", "chess-review.exe")
-FULL_ASSET = "chess-review-windows.zip"
+FULL_ASSET = "Blundr-windows.zip"
+LEGACY_FULL_ASSET = "chess-review-windows.zip"     # the only full zip up to v0.6.0
 UPDATE_ASSET = "chess-review-update-{runtime}.zip"
-ZIP_ROOT = "chess-review"       # both zips wrap the app folder
+ZIP_ROOTS = ("Blundr", "chess-review")      # the zips wrap the app folder: Blundr-windows.zip's, then the others'
 CHECK_TTL = 3600                # a launch re-checks GitHub at most once an hour (unauthenticated API: 60 req/h)
 UPDATE_DIR = DATA / "update"
 
@@ -65,7 +66,7 @@ def pick_asset(release: dict, runtime: Optional[str]) -> Optional[dict]:
     """The small update zip built for this install's runtime if the release has one, else the full zip."""
     assets = {a["name"]: a for a in release.get("assets", [])}
     small = assets.get(UPDATE_ASSET.format(runtime=runtime)) if runtime else None
-    a = small or assets.get(FULL_ASSET)
+    a = small or assets.get(FULL_ASSET) or assets.get(LEGACY_FULL_ASSET)
     if not a:
         return None
     return {"name": a["name"], "url": a["browser_download_url"], "size": a.get("size"),
@@ -210,16 +211,18 @@ class Updater:
 
 
 def unpack(zip_path: Path, dest: Path, kind: str) -> Path:
-    """Extract the zip's chess-review/ folder into dest and sanity-check it. Returns that folder.
+    """Extract the zip's app folder (Blundr/ or chess-review/) into dest and sanity-check it. Returns that folder.
     Which runtime an update zip fits is said by its name (pick_asset matched it), not re-checked here: a
     release may publish one zip under several fingerprints when those runtimes are byte-identical."""
     shutil.rmtree(dest, ignore_errors=True)
     dest.mkdir(parents=True)
+    root = None
     with zipfile.ZipFile(zip_path) as z:
         for info in z.infolist():
             name = info.filename.replace("\\", "/")     # Compress-Archive on older PowerShell writes backslashes
             rel = Path(*[p for p in name.split("/") if p])
-            if not rel.parts or rel.parts[0] != ZIP_ROOT or ".." in rel.parts:
+            root = root or (rel.parts[0] if rel.parts and rel.parts[0] in ZIP_ROOTS else None)
+            if not rel.parts or rel.parts[0] != root or ".." in rel.parts:
                 raise ValueError(f"unexpected entry in {zip_path.name}: {info.filename}")
             target = dest / rel
             if name.endswith("/"):
@@ -228,7 +231,7 @@ def unpack(zip_path: Path, dest: Path, kind: str) -> Path:
             target.parent.mkdir(parents=True, exist_ok=True)
             with z.open(info) as src, open(target, "wb") as dst:
                 shutil.copyfileobj(src, dst)
-    app = dest / ZIP_ROOT
+    app = dest / (root or ZIP_ROOTS[0])
     if not any((app / n).is_file() for n in (EXE_NAME, *LEGACY_EXE_NAMES)) or not (app / "_internal" / "chess_review").is_dir():
         raise ValueError("the downloaded zip does not look like a chess-review build")
     if kind == "update":
@@ -244,8 +247,8 @@ def write_apply_script(path: Path, pid: int, stage: Path, install: Path, kind: s
 
     'update': copy the staged files over the install, file by file (each through a .new rename, so a file is
     either old or new, never truncated). 'full': rename _internal aside, move the new one in, replace the exes,
-    delete the old runtime; if moving the new _internal fails the old one is put back. Either way the app is
-    started again at the end, and whatever happened is in DATA/update.log."""
+    delete the old runtime; if moving the new _internal fails the old one is put back. Then the exe's old names
+    go. Either way the app is started again at the end, and whatever happened is in DATA/update.log."""
     q = lambda p: "'" + str(p).replace("'", "''") + "'"  # noqa: E731
     lines = [
         "$ErrorActionPreference = 'Stop'",
@@ -296,7 +299,8 @@ def write_apply_script(path: Path, pid: int, stage: Path, install: Path, kind: s
             "  Retry 'replace exe' { Get-ChildItem -LiteralPath $stage -Filter *.exe -File | ForEach-Object { Replace-File $_.FullName (Join-Path $install $_.Name) } }",
             "  Remove-Item -LiteralPath $old -Recurse -Force -ErrorAction SilentlyContinue",
         ]
-    lines += [
+    lines += [      # the old names ship for older updaters only (packaging/pack.py): this install starts as EXE_NAME
+        f"  foreach ($n in @({', '.join(q(n) for n in LEGACY_EXE_NAMES)})) {{ $p = Join-Path $install $n; if (Test-Path -LiteralPath $p) {{ Remove-Item -LiteralPath $p -Force -ErrorAction SilentlyContinue }} }}",
         "  Log 'applied'",
         "  Remove-Item -LiteralPath (Split-Path -Parent $stage) -Recurse -Force -ErrorAction SilentlyContinue",
         "} catch {",

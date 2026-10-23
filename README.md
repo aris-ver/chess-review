@@ -12,7 +12,7 @@ The original build spec is kept in `docs/original-spec.md`.
 WebAssembly; reviews and the engine cache stay in the browser. An optional account syncs puzzle progress and the
 profile list across browsers and the desktop app. See *Blundr* below.
 
-**Windows app:** [latest release](https://github.com/aris-ver/chess-review/releases/latest) → `chess-review-windows.zip`,
+**Windows app:** [latest release](https://github.com/aris-ver/chess-review/releases/latest) → `Blundr-windows.zip`,
 unzip anywhere, run `Blundr.exe` (details under *Windows app* below). From a checkout, the same server runs as
 
 ```
@@ -119,8 +119,9 @@ crowd them, create the release as a draft with desktop-only notes right after pu
 only uploads the zips) and publish it once both zips are attached.
 
 **Updates** happen inside the app: the home screen checks the latest release once per launch (and on *Check for
-updates* at the bottom) and offers a *Download update* → *Restart to update* banner. A release carries two zips:
-`chess-review-windows.zip` (everything) and `chess-review-update-<runtime>.zip` (the exe and the web UI, ~6 MB),
+updates* at the bottom) and offers a *Download update* → *Restart to update* banner. A release carries
+`Blundr-windows.zip` (everything; `chess-review-windows.zip` is the same for updaters up to v0.6.0) and
+`chess-review-update-<runtime>.zip` (the exe and the web UI, ~6 MB),
 where `<runtime>` fingerprints the bundled Python/DLL layer (`packaging/pack.py`). An install whose fingerprint matches
 takes the small zip; otherwise it downloads the full one and swaps its whole `_internal` folder. Either way a small
 PowerShell script (`chess_review/updater.py`) waits for the app to exit, copies the files in and relaunches it;

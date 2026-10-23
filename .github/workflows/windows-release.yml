@@ -1,7 +1,8 @@
 # Builds the Windows desktop zips on a clean Windows runner. On a version tag (v0.1.0, ...) they are attached
-# to that tag's GitHub Release: chess-review-windows.zip (the whole app; the README's download link points at
-# the latest release) and chess-review-update-<runtime>.zip (what installed copies fetch through the in-app
-# updater, see chess_review/updater.py). Run manually (Actions -> Windows release -> Run workflow) to get the
+# to that tag's GitHub Release: Blundr-windows.zip (the whole app; the README's and blundr.gr's download links
+# point at the latest release), chess-review-windows.zip (the same for updaters up to v0.6.0) and
+# chess-review-update-<runtime>.zip (what installed copies fetch through the in-app updater, see
+# chess_review/updater.py). Run manually (Actions -> Windows release -> Run workflow) to get the
 # zips as a workflow artifact without publishing a release.
 name: Windows release
 
@@ -32,7 +33,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: chess-review-windows
-          path: packaging/dist/chess-review-*.zip
+          path: packaging/dist/*.zip
       - name: Attach to the release
         if: startsWith(github.ref, 'refs/tags/')
         env:
@@ -45,13 +46,13 @@ jobs:
             prev=$(git describe --tags --abbrev=0 "$GITHUB_REF_NAME^" 2>/dev/null || true)
             {
               printf '## Download\n\n'
-              printf '**[chess-review-windows.zip](https://github.com/%s/releases/download/%s/chess-review-windows.zip)** - this is the app. Unzip it anywhere and run **Blundr.exe**.\n\n' "$GITHUB_REPOSITORY" "$GITHUB_REF_NAME"
+              printf '**[Blundr-windows.zip](https://github.com/%s/releases/download/%s/Blundr-windows.zip)** - this is the app. Unzip it anywhere and run **Blundr.exe**.\n\n' "$GITHUB_REPOSITORY" "$GITHUB_REF_NAME"
               printf '> If the app does not open, Windows has marked the zip as downloaded: right-click it, Properties, tick **Unblock**, then extract it again.\n\n'
-              printf 'The `chess-review-update-*.zip` is not meant to be downloaded by hand - the app fetches it itself when it updates.\n\n'
+              printf 'The `chess-review-*.zip` files are not meant to be downloaded by hand - older copies of the app fetch them when they update.\n\n'
               printf "## What's new\n\n"
               git log --no-merges --pretty='* %s' ${prev:+$prev..}"$GITHUB_REF_NAME"
               if [ -n "$prev" ]; then printf '\n**Full changelog**: https://github.com/%s/compare/%s...%s\n' "$GITHUB_REPOSITORY" "$prev" "$GITHUB_REF_NAME"; fi
             } > notes.md
             gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --notes-file notes.md
           fi
-          gh release upload "$GITHUB_REF_NAME" packaging/dist/chess-review-*.zip --clobber
+          gh release upload "$GITHUB_REF_NAME" packaging/dist/*.zip --clobber

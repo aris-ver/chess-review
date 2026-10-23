@@ -56,3 +56,29 @@ def test_a_file_we_cannot_clear_does_not_stop_the_app(tmp_path, monkeypatch, err
     monkeypatch.setattr(launcher.sys, "platform", "win32")
     monkeypatch.setattr(launcher.os, "remove", lambda p: (_ for _ in ()).throw(err(p)))
     launcher._unblock_bundle(tmp_path, frozen=True)
+
+
+# --- the exe's old names (_retire_old_exes) ---
+
+def test_started_under_an_old_name_it_hands_over_to_blundr(tmp_path, monkeypatch):
+    _tree(tmp_path, ["Blundr.exe", "Chess Review.exe"])
+    started = []
+    monkeypatch.setattr(launcher.sys, "platform", "win32")
+    monkeypatch.setattr(launcher.subprocess, "Popen", lambda args, **kw: started.append(args))
+    assert launcher._retire_old_exes(tmp_path / "Chess Review.exe", frozen=True) is True
+    assert started == [[str(tmp_path / "Blundr.exe")]]
+
+
+def test_started_as_blundr_it_deletes_the_old_names(tmp_path, monkeypatch):
+    _tree(tmp_path, ["Blundr.exe", "Chess Review.exe", "chess-review.exe"])
+    monkeypatch.setattr(launcher.sys, "platform", "win32")
+    monkeypatch.setattr(launcher.threading, "Thread", lambda target, args, **kw: type("T", (), {"start": lambda s: target(*args)})())
+    assert launcher._retire_old_exes(tmp_path / "Blundr.exe", frozen=True) is False
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["Blundr.exe"]
+
+
+def test_an_old_name_without_blundr_beside_it_just_runs(tmp_path, monkeypatch):
+    _tree(tmp_path, ["Chess Review.exe"])
+    monkeypatch.setattr(launcher.sys, "platform", "win32")
+    assert launcher._retire_old_exes(tmp_path / "Chess Review.exe", frozen=True) is False
+    assert launcher._retire_old_exes(tmp_path / "Blundr.exe", frozen=False) is False

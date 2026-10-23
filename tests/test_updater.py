@@ -156,11 +156,26 @@ def _pack(app: Path, out: Path, version: str) -> tuple[Path, Path, str]:
     (app / "_internal" / pack.STAMP).write_text(json.dumps({"version": version, "runtime": runtime}))
     for name in pack.LEGACY_EXES:                           # what pack.main() does: the transitional copies
         shutil.copy2(app / pack.EXE, app / name)
-    out.mkdir()
-    full, small = out / "chess-review-windows.zip", out / f"chess-review-update-{runtime}.zip"
-    pack.write_zip(full, app, (f for f in app.rglob("*") if f.is_file()))
-    pack.write_zip(small, app, pack.update_files(app))
+    full, _, small = pack.write_zips(app, out, runtime)
     return full, small, runtime
+
+
+def test_the_new_users_zip_is_blundr_without_the_old_exes(tmp_path):
+    app = _fake_app(tmp_path / "build")
+    full, small, _ = _pack(app, tmp_path / "out", "v0.2.0")
+    assert full.name == "Blundr-windows.zip"
+    names = set(zipfile.ZipFile(full).namelist())
+    assert "Blundr/Blundr.exe" in names and "Blundr/_internal/python312.dll" in names
+    assert not any(n.endswith(("Chess Review.exe", "/chess-review.exe")) for n in names)
+    staged = updater.unpack(full, tmp_path / "stage", "full")              # an updater from now on takes it too
+    assert staged == tmp_path / "stage" / "Blundr" and (staged / "Blundr.exe").is_file()
+
+
+def test_pick_asset_takes_the_old_full_zip_from_an_older_release():
+    old = {"assets": [{"name": "chess-review-windows.zip", "browser_download_url": "u", "size": 1}]}
+    assert updater.pick_asset(old, "rt")["name"] == "chess-review-windows.zip"
+    both = {"assets": [*old["assets"], {"name": "Blundr-windows.zip", "browser_download_url": "v", "size": 1}]}
+    assert updater.pick_asset(both, "rt")["name"] == "Blundr-windows.zip"
 
 
 def test_update_zip_holds_only_the_app_layer(tmp_path):
@@ -170,8 +185,8 @@ def test_update_zip_holds_only_the_app_layer(tmp_path):
     assert names == {"chess-review/Blundr.exe", "chess-review/Chess Review.exe", "chess-review/chess-review.exe",
                      "chess-review/_internal/build.json", "chess-review/_internal/base_library.zip",
                      "chess-review/_internal/chess_review/static/index.html", "chess-review/_internal/assets/book/a.tsv"}
-    assert "chess-review/_internal/python312.dll" in zipfile.ZipFile(full).namelist()
-    assert "chess-review/_internal/bin/stockfish.exe" in zipfile.ZipFile(full).namelist()
+    assert "Blundr/_internal/python312.dll" in zipfile.ZipFile(full).namelist()
+    assert "Blundr/_internal/bin/stockfish.exe" in zipfile.ZipFile(full).namelist()
 
 
 def test_unpack_update(tmp_path):
@@ -187,8 +202,8 @@ def test_both_exe_names_ship_so_an_older_updater_still_takes_the_zip(tmp_path):
     """Up to v0.1.11 the exe was chess-review.exe, up to v0.5.6 "Chess Review.exe", and such an install's updater
     -- the one that reads the zip -- rejects a build without its name. All three ship until those installs are gone."""
     app = _fake_app(tmp_path / "build")
-    full, small, _ = _pack(app, tmp_path / "out", "v0.2.0")
-    for z in (full, small):
+    _, small, _ = _pack(app, tmp_path / "out", "v0.2.0")
+    for z in (tmp_path / "out" / pack.LEGACY_FULL_ZIP, small):
         names = set(zipfile.ZipFile(z).namelist())
         assert {"chess-review/Blundr.exe", "chess-review/Chess Review.exe", "chess-review/chess-review.exe"} <= names
     staged = updater.unpack(small, tmp_path / "stage", "update")
@@ -233,6 +248,7 @@ def test_apply_script_names_every_path_and_kind(tmp_path):
     s = updater.write_apply_script(tmp_path / "apply.ps1", 1, tmp_path / "s", tmp_path / "i", "full",
                                    tmp_path / "log").read_text(encoding="utf-8-sig")
     assert "_internal.old" in s and "Start-Process" in s
+    assert "'Chess Review.exe', 'chess-review.exe')) {" in s and "Remove-Item -LiteralPath $p" in s   # the old names go
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="runs the generated PowerShell for real")
@@ -244,12 +260,12 @@ def test_apply_script_swaps_the_install(tmp_path, kind):
     old = _fake_app(tmp_path / "old", version="v0.1.0", runtime_bytes=b"old dll")
     new = _fake_app(tmp_path / "new", version="v0.2.0", runtime_bytes=b"old dll" if kind == "update" else b"new dll")
     # real (harmless, instantly exiting) exes so the script's final Start-Process has something to run
-    shutil.copy(system32 / "where.exe", old / "chess-review.exe")
-    shutil.copy(system32 / "whoami.exe", new / "chess-review.exe")
+    shutil.copy(system32 / "where.exe", old / "Blundr.exe")
+    shutil.copy(system32 / "where.exe", old / "Chess Review.exe")      # an install updated by an older updater
+    shutil.copy(system32 / "whoami.exe", new / "Blundr.exe")
     (old / "_internal" / "leftover.pyd").write_bytes(b"gone after a full update")
-    _, small, runtime = _pack(new, tmp_path / "out", "v0.2.0")
+    full, small, runtime = _pack(new, tmp_path / "out", "v0.2.0")
     (new / "_internal" / "leftover.pyd").unlink(missing_ok=True)
-    full = tmp_path / "out" / "chess-review-windows.zip"
     stage = updater.unpack(small if kind == "update" else full, tmp_path / "stage", kind)
 
     gone = subprocess.Popen(["cmd", "/c", "exit"])   # a pid that has already exited: nothing to wait for
@@ -260,7 +276,8 @@ def test_apply_script_swaps_the_install(tmp_path, kind):
                    timeout=120, capture_output=True)
 
     assert "applied" in log.read_text(), log.read_text()
-    assert (old / "chess-review.exe").read_bytes() == (system32 / "whoami.exe").read_bytes()
+    assert (old / "Blundr.exe").read_bytes() == (system32 / "whoami.exe").read_bytes()
+    assert not (old / "Chess Review.exe").exists() and not (old / "chess-review.exe").exists()
     assert (old / "_internal" / "chess_review" / "static" / "index.html").read_text() == "<html>v0.2.0</html>"
     assert json.loads((old / "_internal" / "build.json").read_text())["version"] == "v0.2.0"
     assert not (old / "_internal.old").exists() and not list(old.rglob("*.new"))
