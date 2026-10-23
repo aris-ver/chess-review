@@ -84,6 +84,30 @@ ends in commits on `main` with its tests passing.
 
 Steps 1, 2 and 3 can partly run side by side (different modules); step 4 needs them, and 5 and 6 need 4.
 
+## Who does what
+
+Almost every Python module imports `db` and `profiles`, so storage comes first and the rest is grouped around it.
+Each line below is one session. Sessions in a round run side by side, each in its own worktree and branch
+(`js-port/<name>`), and touch only their own files. The coordinating session checks each branch (`npm test`,
+`pytest`), merges it into `main` and then starts the sessions that waited for it. A session doesn't edit this file;
+it reports what it did, and the coordinator updates **Status**.
+
+| round | session        | what                                                                                 | needs        |
+|-------|----------------|--------------------------------------------------------------------------------------|--------------|
+| 1     | `storage`      | SQLite schema, the `db` interface (`node:sqlite`, SQLite WASM in OPFS), profiles, the database halves of analyse and classify | steps 0–1 |
+| 1     | `games-in`     | normalise as rows (no writes yet), ingest over an injected `fetch`, export            | steps 0–1    |
+| 1     | `electron`     | Electron shell, native Stockfish pool, the engine interface, a CI zip build           | steps 0–1    |
+| 2     | `aggregates`   | aggregates; normalise and ingest wired to the database                                | storage, games-in |
+| 2     | `site`         | site (review files), explore                                                          | storage      |
+| 2     | `puzzles`      | puzzles, packs, own_puzzles                                                           | storage      |
+| 2     | `migration`    | desktop DuckDB/Parquet → SQLite (bridge release), Pyodide IndexedDB → SQLite          | storage      |
+| 3a    | `router`       | router, job runner, route parity test, profile/game/analysis routes                   | round 2      |
+| 3b    | `routes-puzzles` | puzzle and own-puzzle routes                                                        | router       |
+| 3b    | `routes-rest`  | account, sync, settings and the rest of `serve.py`                                    | router       |
+| 4     | `web-switch`   | step 5                                                                                | round 3      |
+| 4     | `desktop-switch` | step 6                                                                              | round 3, electron |
+| 5     | `retire`       | step 7                                                                                | round 4      |
+
 ## Status
 
 **Steps 0 and 1 are done (2026-10-23).** chessops 0.15.1 is vendored as `js/vendor/chessops.js` by
@@ -96,3 +120,5 @@ exactly.
 python-chess's order, castling is written king-to-square (`e1g1`, not chessops' king-takes-rook `e1h1`), and an en
 passant square only counts on the rank python-chess accepts (chessops allows it from the wrong rank on a board
 whose turn was flipped; a regression case for that is in `scripts/dump_parity.py`'s `EXTRA_LINES`).
+
+**Round 1 started (2026-10-23):** `storage`, `games-in`, `electron`.
