@@ -192,3 +192,20 @@ def test_failures_say_why_and_only_an_unknown_player_is_removed(app):
     add(page, "chesscom", "dropped")
     toast(page, "Couldn't fetch dropped's games: couldn't reach api.chess.com")
     assert page.locator("#profiles .card.profile[data-id=chesscom-dropped]").count() == 1
+
+
+def test_a_reload_keeps_the_games_and_the_count_played(app):
+    page, sites = app
+    sites.chesscom.update(chesscom_months("kept", {"2026-08": 12, "2026-09": 10}))
+    sites.chesscom[f"{CHESSCOM}kept/stats"] = {"chess_blitz": {"record": {"win": 700, "loss": 600, "draw": 34}}}
+    add(page, "chesscom", "kept")
+    page.wait_for_url(re.compile(r"#/p/chesscom-kept$"), timeout=60_000)
+    page.wait_for_function("/22 of 22 games · 1,334 played in all/.test(document.getElementById('liststat').textContent)")
+    asked = len(sites.asked)
+    page.wait_for_timeout(2000)                         # IndexedDB is written half a second after the last change
+    page.goto(page.url.split("#")[0])
+    page.wait_for_function("document.querySelector('#profiles .card.profile[data-id=chesscom-kept]')", timeout=180_000)
+    assert "1,334 games" in page.text_content("#profiles .card.profile[data-id=chesscom-kept] .meta")
+    page.click("#profiles .card.profile[data-id=chesscom-kept]")
+    page.wait_for_function("/22 of 22 games/.test(document.getElementById('liststat').textContent)", timeout=60_000)
+    assert sites.asked[asked:] == []                    # all from this browser: nothing asked of chess.com again

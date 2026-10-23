@@ -1523,7 +1523,7 @@ async function renderProfiles() {
       ${ratingsHTML(p.ratings)}
       <div class="progress hidden"><div></div></div>
       ${p.new_games ? `<div class="banner"><span class="txt">${p.new_games} new game${p.new_games === 1 ? '' : 's'} on ${SOURCE_NAME[p.source]}</span><button class="fetch" title="Open the profile and fetch them">Fetch</button><span class="dismiss" title="Dismiss">✕</span></div>` : ''}
-      <span class="meta">${p.games} games · ${p.analysed} analysed${p.unseen && p.unseen.length ? ` · <b style="color:var(--accent)">${p.unseen.length} not opened yet</b>` : ''}</span>
+      <span class="meta" title="${p.played ? `${p.games.toLocaleString()} of them loaded here` : ''}">${(p.played || p.games).toLocaleString()} games · ${p.analysed} analysed${p.unseen && p.unseen.length ? ` · <b style="color:var(--accent)">${p.unseen.length} not opened yet</b>` : ''}</span>
       <span class="pin" title="${p.pinned ? 'Unpin' : 'Pin to the top'}">${p.pinned ? '★' : '☆'}</span>
       <span class="x" title="Remove this profile (the engine cache is kept)">✕</span>
     </div>`).join('') || `<div class="empty">No profiles yet — add a chess.com or lichess username to review its games.</div>`;
@@ -1605,10 +1605,12 @@ async function showList() {
   let games;
   try {
     const unseen = fetch(`api/profiles/${state.profile}/unseen`).then(r => r.json()).then(d => new Set(d.unseen || [])).catch(() => new Set());
-    const older = fetch('api/profiles').then(r => r.json()).then(d => !!((d.profiles || []).find(p => p.id === state.profile) || {}).older).catch(() => false);
+    const summary = fetch('api/profiles').then(r => r.json()).then(d => (d.profiles || []).find(p => p.id === state.profile) || {}).catch(() => ({}));
     games = await loadGames(true);
     state.unseen = await unseen;
-    state.older = await older;
+    const s = await summary;
+    state.older = !!s.older;
+    state.played = s.played || null;
   } catch (e) {
     const id = state.profile;
     location.hash = '#/';
@@ -1621,7 +1623,9 @@ async function showList() {
   const rows = games.filter(g => (!f.result || g.result === f.result) && (!f.colour || g.my_colour === f.colour) &&
     (f.analysed === '' || (f.analysed === '1' ? g.analysed >= 0.999 : g.analysed < 0.999)) &&
     (f.brilliant === '' || (f.brilliant === 'mine' ? g.brilliants > 0 : g.brilliants_any > 0)));
-  $('liststat').textContent = `${rows.length} of ${games.length} games` + (state.older ? ' (the newest; older ones not loaded yet)' : '');
+  $('liststat').textContent = `${rows.length} of ${games.length} games` +
+    (state.played > games.length ? ` · ${state.played.toLocaleString()} played in all` : '') +
+    (state.older ? ' (the newest; older ones not loaded yet)' : '');
   markOlder();
   const eloDelta = {};   // games[] is newest-first, so the previous chronological game sits right after
   games.forEach((g, i) => {

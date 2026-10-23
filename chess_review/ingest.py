@@ -37,6 +37,8 @@ from .profiles import Profile
 
 log = logging.getLogger("ingest")
 API = "https://api.chess.com/pub/player/{username}/games/archives"
+STATS = "https://api.chess.com/pub/player/{username}/stats"
+CHESSCOM_KINDS = ("chess_bullet", "chess_blitz", "chess_rapid", "chess_daily")     # standard chess, as on its profile
 LICHESS_USER = "https://lichess.org/api/user/{username}"
 LICHESS_GAMES = "https://lichess.org/api/games/user/{username}"
 # Standard chess only: the speeds, not the variants (chess960, atomic, ...), which this app can't review.
@@ -197,6 +199,19 @@ def _archive_page(profile: Profile, older: bool = False, delay: float = 1.0, on_
     return stats
 
 
+def _chesscom_played(profile: Profile):
+    """The player's games on chess.com in all (its stats' win/loss/draw records), into the profile's "played". Only
+    a count for the screen: if the stats don't come, the fetch goes on without it."""
+    try:
+        stats = (yield from _get(STATS.format(username=profile.username), max_retries=1)).json()
+        played = sum(stats.get(k, {}).get("record", {}).get(r, 0) for k in CHESSCOM_KINDS for r in ("win", "loss", "draw"))
+    except Exception as e:  # noqa: BLE001 - offline, a 404 or 429, an odd body: the count waits for the next fetch
+        log.info("no chess.com stats for %s: %s", profile.username, e)
+        return
+    if played:
+        profiles.set_played(profile.id, played)
+
+
 def fetch_archives(profile: Profile, **kw) -> dict:
     return run(_archives(profile, **kw))
 
@@ -277,6 +292,8 @@ def _lichess(profile: Profile, on_progress=None, page: str | None = None):
     user = r.json()
     if user.get("disabled"):
         raise NoSuchPlayer(f"lichess account {profile.username} is closed")
+    if user.get("count", {}).get("all"):
+        profiles.set_played(profile.id, user["count"]["all"])
     newest, oldest, had = _lichess_on_disk(profile)
     params = {"clocks": "true", "opening": "true", "pgnInJson": "true", "sort": "dateAsc"}
     if page:
@@ -348,8 +365,11 @@ def fetch_steps(profile: Profile, refresh: bool = False, on_progress=None, older
         have = _months_on_disk(profile)
         if refresh and have:
             # the latest month again and any newer. chess.com only rate-limits parallel requests: no pause
-            return (yield from _archives(profile, refresh_latest=True, since=have[-1], delay=0))
-        return (yield from _archive_page(profile, older=older, on_progress=on_progress))
+            stats = yield from _archives(profile, refresh_latest=True, since=have[-1], delay=0)
+        else:
+            stats = yield from _archive_page(profile, older=older, on_progress=on_progress)
+        yield from _chesscom_played(profile)    # after the games: a player who isn't there is told by the archives
+        return stats
     if profile.source == "lichess":
         if refresh and _lichess_on_disk(profile)[2]:
             return (yield from _lichess(profile))

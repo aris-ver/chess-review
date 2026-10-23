@@ -19,8 +19,9 @@ def chesscom(tmp_path, monkeypatch):
     return profiles.create("chesscom", "me")
 
 
-def _site(monkeypatch, months: dict, statuses=()):
-    """chess.com with `months` {'2026-08': n games}; `statuses` are answered first (429s, say). Returns the URLs asked."""
+def _site(monkeypatch, months: dict, statuses=(), played=None):
+    """chess.com with `months` {'2026-08': n games}; `statuses` are answered first (429s, say); `played` the games its
+    stats count (None: no stats, a 404). Returns the URLs asked."""
     asked, statuses = [], list(statuses)
 
     def get(self, url, **_):
@@ -28,7 +29,12 @@ def _site(monkeypatch, months: dict, statuses=()):
         if statuses:
             status, headers = statuses.pop(0)
             return SimpleNamespace(status_code=status, headers=headers)
-        if url.endswith("/archives"):
+        if url.endswith("/stats"):
+            if played is None:
+                return SimpleNamespace(status_code=404, headers={})
+            body = {"chess_blitz": {"record": {"win": played - 3, "loss": 2, "draw": 1}},
+                    "chess960_daily": {"record": {"win": 9}}}       # not standard chess: not counted
+        elif url.endswith("/archives"):
             body = {"archives": [BASE + k.replace("-", "/") for k in sorted(months)]}
         else:
             key = "-".join(url.rstrip("/").split("/")[-2:])
@@ -50,12 +56,22 @@ def test_chesscom_newest_months_first_until_a_page(chesscom, monkeypatch):
     assert _months(chesscom) == ["2026-07", "2026-08", "2026-09"]     # 8 + 5 + 12 >= 20: June waits
     assert stats["games"] == 25 and stats["older"] is True
     assert chesscom.summary()["older"] is True
-    assert len(asked) == 4                                              # the list and three months
+    assert len(asked) == 5                                              # the list, three months and the stats
+    assert chesscom.summary()["played"] is None                         # no stats there: just the games fetched
 
     stats = ingest.fetch(chesscom, older=True)
     assert _months(chesscom) == ["2026-06", "2026-07", "2026-08", "2026-09"]
     assert stats == {"listed": 4, "fetched": 1, "skipped": 0, "games": 30, "older": False}
     assert chesscom.summary()["older"] is False
+
+
+def test_chesscom_counts_every_game_played_from_its_stats(chesscom, monkeypatch):
+    _site(monkeypatch, {"2026-08": 5, "2026-09": 8}, played=1234)
+    ingest.fetch(chesscom)
+    assert chesscom.summary()["played"] == 1234                         # blitz's 1231 + 2 + 1, not chess960's
+    _site(monkeypatch, {"2026-08": 5, "2026-09": 9}, played=1235)
+    ingest.fetch(chesscom, refresh=True)
+    assert chesscom.summary()["played"] == 1235
 
 
 def test_chesscom_first_fetch_cut_short_picks_up_where_it_stopped(chesscom, monkeypatch):
@@ -133,6 +149,7 @@ def test_lichess_pages_back_from_the_newest(lichess, monkeypatch):
     assert ingest.fetch(lichess)["older"] is True
     assert _ids(lichess) == [f"g{i:03}" for i in range(25, 45)]
     assert asked[-1]["max"] == ingest.PAGE and asked[-1]["sort"] == "dateDesc" and "until" not in asked[-1]
+    assert (lichess.summary()["games"], lichess.summary()["played"]) == (0, 45)    # (no site built: none listed yet)
 
     ingest.fetch(lichess, older=True)
     assert asked[-1]["until"] == games[25]["createdAt"] - 1

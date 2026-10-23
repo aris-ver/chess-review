@@ -90,7 +90,8 @@ class Profile:
             return set()
 
     def summary(self) -> dict:
-        """What the home screen shows: id, source, username, game counts, and per time class (bullet, blitz,
+        """What the home screen shows: id, source, username, game counts (`games` fetched, `played` on the site in
+        all, None until a fetch has asked), and per time class (bullet, blitz,
         rapid, daily) the current rating with its net change over the last 7 days. `rating`/`rating_delta_7d`
         are the most recently played class's."""
         games, analysed = 0, 0
@@ -124,7 +125,8 @@ class Profile:
         return {"id": self.id, "source": self.source, "username": self.username, "games": games,
                 "analysed": analysed, "created": meta.get("created"), "pinned": meta.get("pinned"),
                 "rating": rating, "rating_delta_7d": rating_delta_7d, "ratings": ratings,
-                "unseen": meta.get("unseen", []), "older": bool(meta.get("older"))}
+                "unseen": meta.get("unseen", []), "older": bool(meta.get("older")),
+                "played": max(meta["played"], games) if meta.get("played") else None}
 
 
 def profile_id(source: str, username: str) -> str:
@@ -180,6 +182,12 @@ def set_older(pid: str, older: bool) -> None:
     """Whether the site has games older than the oldest fetched (a profile is fetched a page at a time, newest
     first). Profiles fetched whole before paging have no flag: nothing older."""
     _update_meta(pid, lambda meta: meta.__setitem__("older", older))
+
+
+def set_played(pid: str, played: int) -> None:
+    """How many games the player has on the site in all, as the site counts them (a page at a time, the profile
+    has only some of them)."""
+    _update_meta(pid, lambda meta: meta.__setitem__("played", played))
 
 
 def mark_seen(pid: str, game_id: str) -> None:
