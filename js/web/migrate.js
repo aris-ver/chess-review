@@ -95,13 +95,18 @@ export async function copyFiles(FS, files, { data = '/data', skip = () => false 
   return copied;
 }
 
-/** All of it: the export in Pyodide, the SQLite files into the pool, the marker into files. The memory copy is
- * removed afterwards. Returns importExport()'s result with the export's report; problems not empty means the
- * files are not to be trusted (the marker isn't written, so the switch can try again). */
-export async function migratePyodide(py, driver, files, { data = '/data', out = OUT } = {}) {
+/** All of it: the export in Pyodide, the SQLite files into the pool, the other files into files (copyFiles, with
+ * skip), and last the marker, so that a marker means everything is there. The memory copy is removed afterwards.
+ * Returns importExport()'s result with the export's report and the files copied; problems not empty means the
+ * SQLite files are not to be trusted (no marker is written, so the switch can try again). */
+export async function migratePyodide(py, driver, files, { data = '/data', out = OUT, skip = () => false } = {}) {
   const report = await exportInPyodide(py, { data, out });
   try {
-    return { report, ...(await importExport(py.FS, driver, files, out)) };
+    const res = await importExport(py.FS, driver, null, out);
+    if (res.problems.length) return { report, ...res, copied: [] };
+    const copied = await copyFiles(py.FS, files, { data, skip });
+    await files.writeText(MARKER, JSON.stringify(res.marker));
+    return { report, ...res, copied };
   } finally {
     rmTree(py.FS, out);
   }

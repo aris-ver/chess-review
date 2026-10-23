@@ -11,7 +11,7 @@ import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 import { same } from '../parity.js';
-import { copyFiles, importExport, walk } from '../web/migrate.js';
+import { copyFiles, importExport, migratePyodide, walk } from '../web/migrate.js';
 import { nodeSqlite } from './db-node.js';
 import { ATTEMPTS_SCHEMA, DAILY_SCHEMA, EVALS, EVALS_MULTIPV_SCHEMA, EVALS_SCHEMA, GAMES_SCHEMA, MOVES_SCHEMA, POSITIONS_SCHEMA,
   PROGRESS, SCHEMA_VERSION, SOLVED_SCHEMA, Store } from './db.js';
@@ -165,6 +165,40 @@ test('migrate: the browser half puts the export into a pool and the rest into fi
     const copied = await copyFiles(pyFS(data), files, { data: '', skip: p => p.startsWith('.accounts/') });
     same(copied, ['profiles/pgn-fuzz/meta.json', 'profiles/pgn-fuzz/site/games.json', 'profiles/pgn-testuser/meta.json', 'settings.json'], 'copied');
     same(await files.readText('settings.json'), '{"theme": "dark"}', 'settings');
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('migrate: migratePyodide end to end, with Python standing in for Pyodide', { skip: SKIP }, async () => {
+  const tmp = mkdtempSync(join(tmpdir(), 'migrate-py-'));
+  try {
+    const data = join(tmp, 'data'), out = join(tmp, 'out'), pool = join(tmp, 'pool');
+    mkdirSync(data);
+    run(['tests/test_migrate_sqlite.py', data], data);
+    const FS = { ...pyFS(''), rmdir: p => rmSync(p, { recursive: true }), unlink: p => rmSync(p) };
+    const loaded = [];
+    const py = {
+      FS,
+      loadPackage: async names => void loaded.push(...names),
+      runPython(code) {      // the last line is the value, as in Pyodide
+        const lines = code.trim().split('\n');
+        const last = lines.pop();
+        return run(['-c', [...lines, `print(${last})`].join('\n')], data);
+      },
+    };
+    const driver = { ...nodeSqlite(pool), importFile: (name, bytes) => {
+      mkdirSync(dirname(join(pool, name)), { recursive: true });
+      writeFileSync(join(pool, name), bytes);
+    } };
+    const files = memoryFiles();
+    const res = await migratePyodide(py, driver, files, { data, out, skip: p => p.startsWith('.accounts/') });
+    same(loaded, ['duckdb', 'sqlite3'], 'packages');
+    same(res.report.status, 'done', 'report');
+    same(res.problems, [], 'problems');
+    same(res.copied, ['profiles/pgn-fuzz/meta.json', 'profiles/pgn-testuser/meta.json'], 'copied');
+    same(JSON.parse(await files.readText(MARKER)).files, res.report.files, 'marker');
+    same(existsSync(out), false, 'memory copy removed');
   } finally {
     rmSync(tmp, { recursive: true, force: true });
   }
