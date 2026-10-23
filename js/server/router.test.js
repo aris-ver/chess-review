@@ -85,7 +85,7 @@ test('round 3b routes answer 501', async () => {
   const store = new Store(nodeSqlite(dir));
   try {
     const router = await serve({ env: { store, files, profiles: new Profiles(files, store) }, pool: replayPool({ lines: {} }), nodes: 1, scan: false });
-    for (const [m, p] of [['GET', '/api/settings'], ['POST', '/api/settings'], ['GET', '/api/puzzles/next'], ['POST', '/api/puzzles/attempt'],
+    for (const [m, p] of [['GET', '/api/settings'], ['POST', '/api/settings'],
       ['POST', '/api/sync/state'], ['GET', '/account/me'], ['GET', '/api/update'], ['POST', '/api/update/apply'], ['GET', '/api/fetch_image?url=x']]) {
       same((await router.handle(m, p, '')).status, 501, `${m} ${p}`);
     }
