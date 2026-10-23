@@ -163,7 +163,9 @@ async function pause(ctx, seconds, note = '') {
   if (note) ctx.onWait?.(null);
 }
 
-const log = (ctx, level, message) => ctx.log?.(level, message);
+/** ctx.log is log(level, message), or a logger object with info/warn/error as the rest of js/server passes. */
+const log = (ctx, level, message) => (typeof ctx.log === 'function' ? ctx.log(level, message)
+  : ctx.log?.[level === 'warning' ? 'warn' : level]?.(message));
 
 /** Retry-After in whole seconds; 0 when absent (or not a number of seconds, where Python would raise). */
 function retryAfter(r) {

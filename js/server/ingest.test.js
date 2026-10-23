@@ -128,6 +128,18 @@ test('chess.com: says while it waits out a 429', async () => {
     'chess.com asked to slow down: trying again in 7 s', null]);
 });
 
+test('chess.com: logs to a log(level, message) function or a logger object alike', async () => {
+  for (const kind of ['function', 'object']) {
+    const { profile, ctx } = setup('chesscom');
+    const lines = [];
+    ctx.log = kind === 'function' ? (level, message) => lines.push(level)
+      : { info: () => lines.push('info'), warn: () => lines.push('warning'), error: () => lines.push('error') };
+    site(ctx, { '2026-09': 3 }, { statuses: [[429, {}]] });
+    await fetchGames(ctx, profile);
+    assert.ok(lines.includes('warning') && lines.includes('info'), kind);
+  }
+});
+
 test('chess.com: gives up after too many 429s', async () => {
   const { profile, ctx } = setup('chesscom');
   site(ctx, { '2026-09': 3 }, { statuses: Array(6).fill([429, {}]) });
