@@ -94,3 +94,14 @@ test('engines: stream() deepens until closed, then the engine is free again', { 
   const lines = await Promise.all([pool.search(START, NODES), pool.search(TACTIC, NODES)]);   // both engines answer
   assert.ok(lines.every(ls => ls.length));
 });
+
+test('engines: aborting a stream\'s signal stops the search and ends a read in hand', { skip }, async () => {
+  const ac = new AbortController();
+  const it = pool.stream(START, 1, ac.signal)[Symbol.asyncIterator]();
+  assert.ok(!(await it.next()).done);
+  ac.abort();
+  let n = 0;
+  while (!(await it.next()).done) n++;       // the lines already printed, then the bestmove ends it
+  assert.ok(n < 1000, `${n} lines after stop`);
+  assert.ok((await pool.search(START, NODES)).length, 'the engine is free again');
+});

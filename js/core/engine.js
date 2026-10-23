@@ -16,6 +16,9 @@
  *   for `nodes` nodes with `multipv` lines (default 3): the `info …` lines the engine printed, in order, without
  *   the `bestmove`. Searches beyond `size` wait for a free engine. Rejects if the engine died during the search
  *   (it is restarted for the next one): retrying with fewer nodes is the caller's call, as in analyse.py.
+ * @property {(fen: string, multipv?: number, signal?: AbortSignal) => AsyncIterable<string>} stream  an infinite
+ *   search (`go infinite`) on a free engine: its `info …` lines as they come. Closing the iterator, or `signal`
+ *   aborting (which takes effect at once, even while the engine is quiet), sends `stop` and frees the engine.
  * @property {() => Promise<void>} [close]  stop every engine (the desktop's idle shutdown and quit). A later
  *   load() or search() starts them again. Only the native pool has it so far.
  */

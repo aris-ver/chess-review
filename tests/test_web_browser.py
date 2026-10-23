@@ -237,6 +237,28 @@ def test_a_reload_keeps_the_games_and_the_count_played(app):
     assert sites.asked[asked:] == []                    # all from this browser: nothing asked of chess.com again
 
 
+def test_an_account_switch_moves_a_profiles_database_and_back(app):
+    """sync's switch and release on SQLite WASM in OPFS: the databases aren't files there, so a profile's games.sqlite
+    goes into .accounts/<who>/ table by table (Sync.copyDb) and comes back the same way."""
+    page, sites = app
+    sites.chesscom.update(chesscom_months("moved", {"2026-09": 4}))
+    add(page, "chesscom", "moved")
+    page.wait_for_url(re.compile(r"#/p/chesscom-moved$"), timeout=60_000)
+    page.wait_for_function("/4 of 4 games/.test(document.getElementById('liststat').textContent)")
+    wait_job(page)
+
+    status, r = api(page, "api/sync/switch", {"user": "someone-else"})
+    assert status == 200 and r.get("switched"), r
+    assert "chesscom-moved" not in profile_ids(page)                 # set aside in .accounts/guest/ (the owner is
+                                                                     # written by the first sync, not here)
+
+    status, r = api(page, "api/sync/release", {})
+    assert status == 200 and r.get("released"), r
+    assert "chesscom-moved" in profile_ids(page)
+    page.goto(page.url.split("#")[0] + "#/p/chesscom-moved")         # the games came back with their database
+    page.wait_for_function("/4 of 4 games/.test(document.getElementById('liststat').textContent)", timeout=60_000)
+
+
 def ready(page, timeout=60_000) -> None:
     page.wait_for_function(READY, timeout=timeout)
 

@@ -117,6 +117,37 @@ test('eval_stream: snapshots from the pool stream, closed when the client goes',
   }
 });
 
+test('eval_stream: closing while the engine is quiet stops its search at once (explore.interrupt)', async () => {
+  const files = memoryFiles(), dir = mkdtempSync(join(tmpdir(), 'blundr-router-'));
+  const store = new Store(nodeSqlite(dir));
+  const start = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+  let stop = null;
+  const pool = {
+    size: 1, name: 'fake', async load() {},
+    async search() { return ['info depth 1 seldepth 1 multipv 1 score cp 20 nodes 10 pv e2e4']; },
+    async *stream(fen, multipv, signal) {    // one line, then silence until `stop` (an engine deep in a search)
+      yield 'info depth 30 seldepth 40 multipv 1 score cp 30 nodes 100 pv d2d4 d7d5';
+      await new Promise(resolve => { stop = resolve; signal.addEventListener('abort', resolve, { once: true }); });
+    },
+  };
+  try {
+    const router = await serve({ env: { store, files, profiles: new Profiles(files, store) }, pool, nodes: 10, scan: false });
+    const out = await router.handle('GET', `/api/eval_stream?fen=${encodeURIComponent(start)}`, '');
+    const it = out.body[Symbol.asyncIterator]();
+    await it.next();
+    const pending = it.next();                 // waiting on the quiet engine
+    await new Promise(r => setTimeout(r, 10));
+    const closed = it.return();
+    same(await Promise.race([closed.then(() => 'closed'), new Promise(r => setTimeout(() => r('still searching'), 500))]),
+      'closed', 'return() did not wait for another line');
+    same((await pending).done, true, 'the pending read ends');
+    assert.ok(stop, 'the pool was searching');
+  } finally {
+    await store.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('fillPieces', () => {
   same(fillPieces('a /*__PIECES__*/ b', { K: '<svg/>' }), 'a {"K":"<svg/>"} b');
 });

@@ -168,9 +168,25 @@ export class Router {
     return notFound();
   }
 
-  /** serve.Handler._stream_eval: a snapshot per line as the engine deepens, until the client goes away. */
-  async *stream(board, multipv) {
-    const gen = this.explorer.analyseStream(board, this.pool.stream(fen(board), multipv));
+  /** serve.Handler._stream_eval: a snapshot per line as the engine deepens, until the client goes away. Closing the
+   * stream stops its search at once, as explore.interrupt does, rather than at the engine's next line: the page closes
+   * it before it plays a move or opens another position, which need that engine. (Python's one sandbox also stopped
+   * a stream when another began; here tabs share the server, so each stream is stopped only by its own client.) */
+  stream(board, multipv) {
+    const ac = new AbortController();
+    const gen = this.snapshots(board, multipv, ac.signal);
+    return {
+      [Symbol.asyncIterator]() { return this; },
+      next: () => gen.next(),
+      return: value => {
+        ac.abort();
+        return gen.return(value);
+      },
+    };
+  }
+
+  async *snapshots(board, multipv, signal) {
+    const gen = this.explorer.analyseStream(board, this.pool.stream(fen(board), multipv, signal));
     try {
       for await (const snapshot of gen) yield JSON.stringify(snapshot) + '\n';
     } catch (e) {
