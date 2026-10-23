@@ -8,10 +8,14 @@ web-dist/
   privacy.html, terms.html   from web/pages/
   manifest.json, icons/ what "Add to Home Screen" installs (icons from web/icons/, rendered from packaging/chess-review.ico)
   themes/               the page's pieces, boards and sounds
-  app.zip               chess_review (minus static/, sound_packs/ and the puzzle pack's parquet) + web/py/chess_web
-                        + book_keys.txt, unpacked into Pyodide (240 KB)
-  puzzles.json          the same puzzle pack, readable before DuckDB has loaded; fetched alongside Python
-  web/                  shim.js, py-worker.js, engines.js, config.js, the python-chess wheel, engine/ (Stockfish 19)
+  js/                   the JS server as the desktop runs it: js/core, js/server (minus the Node adapters), js/web (the
+                        worker, its tabs, the browser adapters), js/vendor (chessops, SQLite WASM); no tests
+  web/                  shim.js, engines.js, config.js, engine/ (Stockfish 19)
+  book_keys.txt         the opening book's positions, one fen_key a line (js/core/book.js)
+  puzzles.json          the Lichess puzzle pack, fetched alongside the app; packs.json, the puzzle packs
+  legacy/               the one-time move from the Python build's data (js/web/legacy.js): app.zip (only what
+                        chess_review/migrate_sqlite.py needs) and python-chess's wheel, with Pyodide from its CDN.
+                        Fetched only by a browser that still has the Python build's IndexedDB, and only once.
 
 Downloads (cached in data/web-cache): python-chess's wheel (PyPI has only its sdist) and npm stockfish@19.0.1.
 --engine-wasm points the full engine at another host (the Worker refuses files over 25 MiB); `--engine-wasm cdn` is
@@ -41,8 +45,15 @@ from chess_review import book, puzzles  # noqa: E402
 
 OUT = ROOT / "web-dist"
 CACHE = ROOT / "data" / "web-cache"
-PYODIDE = "https://cdn.jsdelivr.net/pyodide/v314.0.7/full/"
+# Pyodide and python-chess only for the one-time move from the Python build's data (legacy/, js/web/legacy.js): the
+# Pyodide that wrote that IndexedDB, so its IDBFS layout reads back as it was written
+LEGACY_PYODIDE = "https://cdn.jsdelivr.net/pyodide/v314.0.7/full/"
 CHESS_VERSION = "1.11.2"
+# what chess_review/migrate_sqlite.py imports: all the legacy app.zip holds
+LEGACY_MODULES = ("__init__.py", "config.py", "fen.py", "migrate_sqlite.py")
+# js/ as the browser gets it: no tests, no Node adapters, no Electron
+JS_DIRS = ("core", "server", "web", "vendor")
+JS_SKIP = (".test.js", "-node.js", ".md")
 STOCKFISH_VERSION = "19.0.1"      # the same Stockfish as the desktop's bin/: change both together, or reviews stop matching
 STOCKFISH_NPM = f"https://registry.npmjs.org/stockfish/-/stockfish-{STOCKFISH_VERSION}.tgz"
 # the full engine (95 MB) as visitors download it: unpkg serves npm files of any size, with CORS and a year's cache
@@ -111,25 +122,43 @@ def page() -> str:
     return html[:i] + '<script src="web/shim.js"></script>\n' + html[i:]
 
 
-def app_zip(dst: Path) -> None:
+def data_files(out: Path) -> None:
+    """What the JS server reads besides its code: the opening book's keys, the Lichess puzzle pack and the packs."""
     keys = sorted(book.load())
     if not keys:
         raise SystemExit(f"no opening book in {book.BOOK_DIR} (scripts/fetch_book.sh)")
-    with zipfile.ZipFile(dst, "w", zipfile.ZIP_DEFLATED) as z:
-        pkg = ROOT / "chess_review"
-        for f in sorted(pkg.rglob("*")):
-            rel = f.relative_to(pkg)
-            # static/ is the site itself, sound_packs/ only a source for the themes' sounds
-            if (f.is_file() and rel.parts[0] not in ("static", "sound_packs") and "__pycache__" not in rel.parts
-                    and f != puzzles.PACK):
-                z.write(f, "chess_review/" + rel.as_posix())
-        web = ROOT / "web" / "py"
-        for f in sorted(web.rglob("*.py")):
-            z.write(f, f.relative_to(web).as_posix())
-        z.writestr("book_keys.txt", "\n".join(keys))
-    # the puzzle pack beside it, not in it: the worker fetches it alongside Python (the Worker sends it compressed)
-    (dst.parent / "puzzles.json").write_text(json.dumps(puzzles.PACK_INSTANCE._read(), separators=(",", ":")),
-                                             encoding="utf-8")
+    (out / "book_keys.txt").write_text("\n".join(keys), encoding="utf-8")
+    # beside the code, fetched alongside it (the Worker sends it compressed: 8 MB of JSON, about 2 MB as sent)
+    (out / "puzzles.json").write_text(json.dumps(puzzles.PACK_INSTANCE._read(), separators=(",", ":")), encoding="utf-8")
+    copy_if_changed(ROOT / "chess_review" / "puzzle_packs" / "packs.json", out / "packs.json")
+
+
+def js_tree(out: Path) -> None:
+    """js/ as the browser imports it, and nothing left from a build before (a module removed from js/)."""
+    want = set()
+    for d in JS_DIRS:
+        for f in sorted((ROOT / "js" / d).rglob("*")):
+            if f.is_file() and not f.name.endswith(JS_SKIP):
+                rel = f.relative_to(ROOT / "js")
+                want.add(rel)
+                copy_if_changed(f, out / "js" / rel)
+    if (out / "js").exists():
+        for f in (out / "js").rglob("*"):
+            if f.is_file() and f.relative_to(out / "js") not in want:
+                f.unlink()
+
+
+def legacy(out: Path) -> dict:
+    """The one-time move from the Python build's IndexedDB (js/web/legacy.js): migrate_sqlite and what it imports,
+    python-chess's wheel, and Pyodide's URL. Returns config.js's `legacy` entry."""
+    dst = out / "legacy"
+    dst.mkdir(exist_ok=True)
+    with zipfile.ZipFile(dst / "app.zip", "w", zipfile.ZIP_DEFLATED) as z:
+        for name in LEGACY_MODULES:
+            z.write(ROOT / "chess_review" / name, "chess_review/" + name)
+    whl = chess_wheel()
+    copy_if_changed(whl, dst / whl.name)
+    return {"pyodide": LEGACY_PYODIDE, "wheel": f"legacy/{whl.name}", "app": "legacy/app.zip"}
 
 
 def build(engine_wasm: str | None) -> None:
@@ -150,8 +179,11 @@ def build(engine_wasm: str | None) -> None:
     (OUT / "manifest.json").write_text(json.dumps(MANIFEST, indent=1), encoding="utf-8")
     for f in (ROOT / "web").glob("*.js"):
         copy_if_changed(f, OUT / "web" / f.name)
-    whl = chess_wheel()
-    copy_if_changed(whl, OUT / "web" / whl.name)
+    # what the Python builds shipped: Pyodide's worker, the app's zip, python-chess's wheel
+    for old in [OUT / "app.zip", OUT / "web" / "py-worker.js", *(OUT / "web").glob("chess-*.whl")]:
+        old.unlink(missing_ok=True)
+    js_tree(OUT)
+    data_files(OUT)
     engines = engine_files()
     for name, src in engines.items():
         dst = OUT / "web" / "engine" / name
@@ -161,9 +193,8 @@ def build(engine_wasm: str | None) -> None:
         copy_if_changed(src, dst)
     # The Worker (worker/, wrangler) serves web-dist/ but refuses files over 25 MiB: the full engine comes from unpkg.
     (OUT / ".assetsignore").write_text("web/engine/stockfish-19-single.wasm\n", encoding="utf-8")
-    app_zip(OUT / "app.zip")
     # engineBytes: the progress bar's total, as unpkg sends no Content-Length; engineName: what the notice says it is
-    config = {"pyodide": PYODIDE, "chessWheel": whl.name, "engineWasm": engine_wasm or "engine/stockfish-19-single.wasm",
+    config = {"legacy": legacy(OUT), "engineWasm": engine_wasm or "engine/stockfish-19-single.wasm",
               "engineBytes": engines["stockfish-19-single.wasm"].stat().st_size,
               "engineLiteWasm": "engine/stockfish-19-lite-single.wasm",
               "engineLiteBytes": engines["stockfish-19-lite-single.wasm"].stat().st_size,
@@ -174,6 +205,7 @@ def build(engine_wasm: str | None) -> None:
 
 class _Handler(SimpleHTTPRequestHandler):
     extensions_map = {**SimpleHTTPRequestHandler.extensions_map, ".wasm": "application/wasm", ".js": "text/javascript",
+                      ".mjs": "text/javascript",
                       ".svg": "image/svg+xml", ".mp3": "audio/mpeg", ".webp": "image/webp"}
 
     def end_headers(self):

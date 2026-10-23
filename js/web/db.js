@@ -89,6 +89,16 @@ export async function webSqlite({ memory = false, root = '', wasmBinary = null }
     async remove(name) {
       names.delete(name);
       if (pool) for (const f of [path(name), `${path(name)}-journal`]) pool.unlink(f);
+      else {      // a memdb database outlives its connections: empty it, so that opening the name again starts afresh
+        const db = new sqlite3.oo1.DB(uri(name), 'c');
+        try {
+          const all = db.selectObjects("SELECT type, name FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' AND type IN ('table', 'view')");
+          for (const o of all) db.exec(`DROP ${o.type.toUpperCase()} IF EXISTS "${o.name.replace(/"/g, '""')}"`);
+          db.exec('PRAGMA user_version = 0');
+        } finally {
+          db.close();
+        }
+      }
     },
     async exists(name) {
       return pool ? pool.getFileNames().includes(path(name)) : names.has(name);
@@ -96,6 +106,10 @@ export async function webSqlite({ memory = false, root = '', wasmBinary = null }
     /** One database's bytes (a backup; the hand-over of the migration). Close it in the Store first. */
     exportFile: name => pool?.exportFile(path(name)),
     /** Put a database file in place, the other side of exportFile. */
-    importFile: (name, bytes) => pool?.importDb(path(name), bytes),
+    async importFile(name, bytes) {
+      if (!pool) return;
+      await pool.reserveMinimumCapacity(pool.getFileCount() + POOL_SPARE);     // each file takes a slot of its own
+      await pool.importDb(path(name), bytes);
+    },
   };
 }

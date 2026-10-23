@@ -1,16 +1,25 @@
-"""The browser version end to end: web-dist/ served on localhost, Pyodide from its CDN, in headless Chromium
-(Playwright), with chess.com and lichess answered by fakes routed inside the browser. What the CPython bridge tests
-can't reach: the real pyfetch and stream reading in chess_web.runner.js_fetch, what a dropped connection raises
-there, and the page around it (adding a profile, "Load older games", a site's "slow down", the errors).
+"""The browser version end to end: web-dist/ served on localhost in headless Chromium (Playwright), the JS server in
+the tabs' worker (js/web/worker.js), with chess.com and lichess answered by fakes routed inside the browser. What the
+Node tests can't reach: the real fetch and stream reading from a worker, OPFS, the page around it (adding a profile,
+"Load older games", a site's "slow down", the errors), several tabs on one database, the one-time move from the
+Python build's IndexedDB (which needs the network for Pyodide), and a review with WASM Stockfish against the desktop's.
 
 Needs `pip install playwright` and a Chromium it can launch (`playwright install chromium`, plus its system libraries:
-`playwright install-deps chromium`), and the network for Pyodide. Skips without them. Slow (a minute or so): Python
-loads in the page first.
+`playwright install-deps chromium`). Skips without them.
+
+Chromium runs with the GPU off: under WSL it finds WSLg's GPU (/dev/dxg) and then never draws a frame, so
+requestAnimationFrame and HTMLImageElement.decode() never resolve, and the page (which decodes the board's image
+before its first route) waits forever on "Loading your profiles".
 """
 
+import base64
 import functools
 import json
+import os
 import re
+import shutil
+import subprocess
+import sys
 import threading
 import urllib.request
 from http.server import ThreadingHTTPServer
@@ -20,6 +29,10 @@ import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
 pw = pytest.importorskip("playwright.sync_api")
+DESKTOP = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0 Safari/537.36"
+STOCKFISH = ROOT / "bin" / ("stockfish.exe" if sys.platform == "win32" else "stockfish")
+CHROMIUM_ARGS = ["--disable-gpu", "--disable-software-rasterizer"]
+READY = "document.querySelector('#profiles .card.profile, #profiles .empty') && !/Loading/.test(document.querySelector('#profiles').textContent)"
 
 PGN = (ROOT / "tests" / "fixtures" / "clocks.pgn").read_text().split("\n\n[Event")[0]
 CHESSCOM = "https://api.chess.com/pub/player/"
@@ -92,11 +105,7 @@ def site():
     import subprocess
     import sys
     sys.path.insert(0, str(ROOT / "scripts"))
-    from build_web import OUT, PYODIDE, _Handler
-    try:
-        urllib.request.urlopen(PYODIDE + "pyodide.mjs", timeout=10).close()
-    except Exception as e:  # noqa: BLE001
-        pytest.skip(f"no network for Pyodide: {e}")
+    from build_web import OUT, _Handler
     subprocess.run([sys.executable, str(ROOT / "scripts" / "build_web.py")], check=True, capture_output=True)
     quiet = type("Quiet", (_Handler,), {"log_message": lambda *_: None})
     srv = ThreadingHTTPServer(("127.0.0.1", 0), functools.partial(quiet, directory=str(OUT)))
@@ -109,7 +118,7 @@ def site():
 def browser():
     with pw.sync_playwright() as p:
         try:
-            b = p.chromium.launch()
+            b = p.chromium.launch(args=CHROMIUM_ARGS)
         except Exception as e:  # noqa: BLE001
             pytest.skip(f"no Chromium to launch: {str(e).splitlines()[0]}")
         yield b
@@ -125,9 +134,27 @@ def app(site, browser):
     page.on("console", lambda m: m.type == "error" and print("console:", m.text))
     page.goto(site)
     page.wait_for_function("document.querySelector('#profiles .empty') && !/Loading/.test(document.querySelector('#profiles').textContent)",
-                           timeout=180_000)
+                           timeout=60_000)
     yield page, sites
     ctx.close()
+
+
+def api(page, path: str, body=None):
+    """The page's own fetch (through web/shim.js to the worker): (status, JSON)."""
+    return page.evaluate("""async ([path, body]) => {
+        const r = await fetch(path, body === null ? {} : { method: 'POST', body: JSON.stringify(body) });
+        return [r.status, await r.json()];
+    }""", [path, body])
+
+
+def wait_job(page, timeout_s=600) -> dict:
+    """api/status polled until the job and the queue are done."""
+    for _ in range(timeout_s):
+        s = api(page, "api/status")[1]
+        if not (s.get("job") and s["job"]["status"] in ("queued", "running", "finishing")) and not s.get("queue"):
+            return s
+        page.wait_for_timeout(1000)
+    raise TimeoutError(f"job still going after {timeout_s} s: {s}")
 
 
 def add(page, source: str, user: str) -> None:
@@ -202,10 +229,273 @@ def test_a_reload_keeps_the_games_and_the_count_played(app):
     page.wait_for_url(re.compile(r"#/p/chesscom-kept$"), timeout=60_000)
     page.wait_for_function("/22 of 22 games · 1,334 played in all/.test(document.getElementById('liststat').textContent)")
     asked = len(sites.asked)
-    page.wait_for_timeout(2000)                         # IndexedDB is written half a second after the last change
-    page.goto(page.url.split("#")[0])
-    page.wait_for_function("document.querySelector('#profiles .card.profile[data-id=chesscom-kept]')", timeout=180_000)
+    page.goto(page.url.split("#")[0])                   # OPFS is written as the server writes: nothing to wait for
+    page.wait_for_function("document.querySelector('#profiles .card.profile[data-id=chesscom-kept]')", timeout=60_000)
     assert "1,334 games" in page.text_content("#profiles .card.profile[data-id=chesscom-kept] .meta")
     page.click("#profiles .card.profile[data-id=chesscom-kept]")
     page.wait_for_function("/22 of 22 games/.test(document.getElementById('liststat').textContent)", timeout=60_000)
     assert sites.asked[asked:] == []                    # all from this browser: nothing asked of chess.com again
+
+
+def ready(page, timeout=60_000) -> None:
+    page.wait_for_function(READY, timeout=timeout)
+
+
+def profile_ids(page) -> list[str]:
+    return sorted(p["id"] for p in api(page, "api/profiles")[1]["profiles"])
+
+
+def test_two_tabs_work_on_one_database_and_the_second_takes_over(site, browser):
+    ctx = browser.new_context(user_agent=LITE)
+    try:
+        a = ctx.new_page()
+        a.goto(site)
+        ready(a)
+        b = ctx.new_page()
+        b.goto(site)
+        ready(b)
+        status, d = api(b, "api/pgn", {"pgn": PGN})              # written by the leader (tab a) for tab b
+        assert status == 200, d
+        slug = d["games"][0]
+        assert profile_ids(a) == ["pgn-pasted-games"]
+        b.goto(site + f"#/p/pgn-pasted-games/game/{slug}")       # tab b's page draws the review, answered by tab a
+        b.wait_for_function("document.getElementById('crumb').textContent.length > 0", timeout=60_000)
+        a.close()                                               # the leader goes: tab b opens the database itself
+        assert profile_ids(b) == ["pgn-pasted-games"]
+        status, d = api(b, f"p/pgn-pasted-games/games/{slug}.json")
+        assert status == 200 and len(d["moves"]) > 10
+        c = ctx.new_page()                                      # a tab opened later is answered by b
+        c.goto(site)
+        c.wait_for_function("document.querySelector('#profiles .card.profile[data-id=pgn-pasted-games]')", timeout=60_000)
+        assert api(c, "api/pgn", {"pgn": PGN})[0] == 200
+    finally:
+        ctx.close()
+
+
+def node22():
+    """A Node that has node:sqlite (>= 22.13), for the desktop's server: $NODE, the PATH's, or nvm's."""
+    cands = [os.environ.get("NODE"), shutil.which("node"),
+             *sorted(map(str, Path.home().glob(".nvm/versions/node/*/bin/node")), reverse=True)]
+    for c in filter(None, cands):
+        try:
+            v = subprocess.run([c, "-p", "process.versions.node"], capture_output=True, text=True, timeout=20).stdout.strip()
+            if tuple(map(int, v.split(".")[:2])) >= (22, 13):
+                return c
+        except (OSError, ValueError):
+            continue
+    return None
+
+
+NATIVE_REVIEW = r"""
+// the desktop's server (js/server over node:sqlite and native Stockfish) reviews the PGN at NODES
+import { mkdtempSync, readFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
+const [root, stockfish, pgnFile, bookFile, nodes] = process.argv.slice(2);
+const imp = p => import(pathToFileURL(join(root, p)).href);
+const { loadBook } = await imp('js/core/book.js');
+const { nodeSqlite } = await imp('js/server/db-node.js');
+const { Store } = await imp('js/server/db.js');
+const { nodeFiles } = await imp('js/server/profiles-files-node.js');
+const { Profiles } = await imp('js/server/profiles.js');
+const { serve } = await imp('js/server/router.js');
+const { EnginePool } = await imp('js/desktop/engines.js');
+loadBook(readFileSync(bookFile, 'utf8'));
+const dir = mkdtempSync(join(tmpdir(), 'blundr-native-'));
+const store = new Store(nodeSqlite(dir)), files = nodeFiles(dir);
+const pool = new EnginePool({ path: stockfish });
+const log = Object.assign(() => {}, { info() {}, warn() {}, error: (...a) => console.error(...a), debug() {} });
+const router = await serve({ env: { store, files, profiles: new Profiles(files, store), fetch, log }, pool, nodes: +nodes, scan: false });
+const call = async (m, p, b) => {
+  const body = (await router.handle(m, p, b ? JSON.stringify(b) : null)).body;
+  return JSON.parse(typeof body === 'string' ? body : new TextDecoder().decode(body));
+};
+const d = await call('POST', '/api/pgn', { pgn: readFileSync(pgnFile, 'utf8') });
+const slug = d.games[0];
+await call('POST', `/api/p/pgn-pasted-games/analyse/${slug}`);
+await new Promise(r => setTimeout(r, 200));
+for (;;) {
+  const s = await call('GET', '/api/status');
+  if (!(s.job && ['queued', 'running', 'finishing'].includes(s.job.status))) break;
+  await new Promise(r => setTimeout(r, 200));
+}
+const game = await call('GET', `/p/pgn-pasted-games/games/${slug}.json`);
+console.log('RESULT' + JSON.stringify(game.moves.map(m => [m.san, m.label, m.best_san ?? null])));
+await pool.close?.();
+process.exit(0);
+"""
+
+
+def test_a_review_with_wasm_stockfish_has_the_desktops_labels(site, browser, tmp_path):
+    node = node22()
+    if node is None or not STOCKFISH.exists():
+        pytest.skip("needs Node >= 22.13 and bin/stockfish for the desktop's side")
+    nodes = 50_000
+    pgn = tmp_path / "game.pgn"
+    pgn.write_text(PGN, encoding="utf-8")
+    script = tmp_path / "native.mjs"
+    script.write_text(NATIVE_REVIEW, encoding="utf-8")
+    run = subprocess.run([node, str(script), str(ROOT), str(STOCKFISH), str(pgn), str(ROOT / "web-dist" / "book_keys.txt"),
+                          str(nodes)], capture_output=True, text=True, timeout=600)
+    line = next((x for x in run.stdout.splitlines() if x.startswith("RESULT")), None)
+    assert line, run.stdout + run.stderr
+    desktop = json.loads(line[6:])
+
+    ctx = browser.new_context(user_agent=DESKTOP)      # a computer: the full engine, as the desktop's
+    # the desktop side's node count, through config.js (CR_CONFIG.nodes is for tests only)
+    ctx.route(re.compile(r".*/web/config\.js$"), lambda route: route.fulfill(
+        status=200, content_type="text/javascript", body=route.fetch().text() + f"\nself.CR_CONFIG.nodes = {nodes};\n"))
+    try:
+        page = ctx.new_page()
+        page.on("console", lambda m: m.type in ("error", "warning") and print("console:", m.text[:500]))
+        page.goto(site)
+        ready(page)
+        status, d = api(page, "api/pgn", {"pgn": PGN})
+        assert status == 200, d
+        slug = d["games"][0]
+        status, d = api(page, f"api/p/pgn-pasted-games/analyse/{slug}", {})
+        assert status == 200, d
+        page.wait_for_timeout(500)
+        st = wait_job(page, timeout_s=900)
+        assert st["job"]["status"] == "done", st["job"]
+        status, game = api(page, f"p/pgn-pasted-games/games/{slug}.json")
+        web = [[m["san"], m["label"], m.get("best_san")] for m in game["moves"]]
+        assert all(m[1] for m in web)
+        assert web == desktop
+    finally:
+        ctx.close()
+
+
+PYTHON_DATA = r"""
+# A data folder as the Python build leaves it: the migration fixture (two profiles, the eval cache, puzzle progress,
+# an account set aside) and a pasted game reviewed by serve.Handler with native Stockfish.
+import asyncio, json, sys
+sys.path[:0] = [ROOT, ROOT + "/web/py", ROOT + "/tests"]
+from test_migrate_sqlite import make_fixture
+from chess_review.config import DATA
+make_fixture(DATA)
+from chess_web import bridge
+
+class Lines(list):
+    def to_py(self):
+        return list(self)
+
+class Pool:
+    size, name = 1, "Stockfish (test)"
+    async def search(self, fen, nodes, multipv):
+        p = await asyncio.create_subprocess_exec(STOCKFISH, stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE)
+        p.stdin.write(f"uci\nsetoption name Threads value 1\nsetoption name Hash value 16\nsetoption name MultiPV value {multipv}\n"
+                      f"ucinewgame\nposition fen {fen}\ngo nodes {nodes}\n".encode())
+        out = Lines()
+        while True:
+            line = (await p.stdout.readline()).decode().strip()
+            if line.startswith("info "):
+                out.append(line)
+            if line.startswith("bestmove"):
+                break
+        p.stdin.write(b"quit\n")
+        await p.wait()
+        return out
+
+def call(method, path, body=None):
+    status, headers, payload = bridge.handle(method, path, json.dumps(body).encode() if body is not None else b"")
+    return status, json.loads(payload)
+
+async def main():
+    open(APP + "/book_keys.txt", "w").write(open(BOOK).read())
+    bridge.setup(APP, Pool())
+    bridge.serve.Handler.runner.analyser.nodes = 20000
+    _, d = call("POST", "/api/pgn", {"pgn": PGN})
+    slug = d["games"][0]
+    call("POST", f"/api/p/pgn-pasted-games/analyse/{slug}")
+    for _ in range(2400):
+        _, st = call("GET", "/api/status")
+        if st["job"]["status"] not in ("queued", "running", "finishing"):
+            break
+        await asyncio.sleep(0.05)
+    _, game = call("GET", f"/p/pgn-pasted-games/games/{slug}.json")
+    print("RESULT" + json.dumps({"slug": slug, "labels": [[m["san"], m["label"]] for m in game["moves"]]}))
+
+asyncio.run(main())
+"""
+
+SEED_IDBFS = """async ({ files, pyodide }) => {
+    // Pyodide's IDBFS at /data, as the Python build mounted it, filled with the Python data folder
+    const { loadPyodide } = await import(pyodide + 'pyodide.mjs');
+    const py = await loadPyodide({ indexURL: pyodide });
+    py.FS.mkdirTree('/data');
+    py.FS.mount(py.FS.filesystems.IDBFS, {}, '/data');
+    const sync = populate => new Promise((res, rej) => py.FS.syncfs(populate, e => (e ? rej(e) : res())));
+    await sync(true);
+    for (const [path, b64] of Object.entries(files)) {
+        py.FS.mkdirTree('/data/' + path.split('/').slice(0, -1).join('/'));
+        py.FS.writeFile('/data/' + path, Uint8Array.from(atob(b64), c => c.charCodeAt(0)));
+    }
+    await sync(false);
+    return (await indexedDB.databases()).map(d => d.name);
+}"""
+
+OPFS_TEXT = """async path => {
+    let d = await navigator.storage.getDirectory();
+    const ps = path.split('/');
+    try {
+        for (const p of ps.slice(0, -1)) d = await d.getDirectoryHandle(p);
+        return await (await (await d.getFileHandle(ps.at(-1))).getFile()).text();
+    } catch (e) { return null; }
+}"""
+
+
+def test_the_python_builds_data_moves_to_sqlite_once(site, browser, tmp_path):
+    from build_web import LEGACY_PYODIDE
+    try:
+        urllib.request.urlopen(LEGACY_PYODIDE + "pyodide.mjs", timeout=10).close()
+    except Exception as e:  # noqa: BLE001
+        pytest.skip(f"no network for Pyodide: {e}")
+    if not STOCKFISH.exists():
+        pytest.skip("no bin/stockfish")
+    data, app = tmp_path / "data", tmp_path / "app"
+    app.mkdir()
+    script = (f"ROOT, APP, STOCKFISH, BOOK = {str(ROOT)!r}, {str(app)!r}, {str(STOCKFISH)!r}, "
+              f"{str(ROOT / 'web-dist' / 'book_keys.txt')!r}\nPGN = {PGN!r}\n" + PYTHON_DATA)
+    run = subprocess.run([sys.executable, "-c", script], env={**os.environ, "CHESS_REVIEW_DATA": str(data)},
+                         capture_output=True, text=True, timeout=600)
+    line = next((x for x in run.stdout.splitlines() if x.startswith("RESULT")), None)
+    assert line, run.stdout + run.stderr
+    python = json.loads(line[6:])
+    assert all(label for _, label in python["labels"])
+    files = {f.relative_to(data).as_posix(): base64.b64encode(f.read_bytes()).decode()
+             for f in sorted(data.rglob("*")) if f.is_file()}
+    assert "evals.duckdb" in files and "profiles/pgn-pasted-games/games.parquet" in files
+
+    ctx = browser.new_context(user_agent=LITE)
+    asked = []
+    ctx.on("request", lambda r: asked.append(r.url))
+    try:
+        page = ctx.new_page()
+        page.on("console", lambda m: m.type in ("error", "warning") and print("console:", m.text[:500]))
+        page.goto(site + "privacy.html")                     # the site's origin, without the app
+        assert "/data" in page.evaluate(SEED_IDBFS, {"files": files, "pyodide": LEGACY_PYODIDE})
+        asked.clear()
+        page.goto(site)
+        page.wait_for_function("document.querySelector('#profiles .card.profile[data-id=pgn-pasted-games]')", timeout=300_000)
+        assert any("/pyodide/" in u for u in asked) and any(u.endswith("legacy/app.zip") for u in asked)
+        assert profile_ids(page) == ["pgn-fuzz", "pgn-pasted-games", "pgn-testuser"]
+        done = json.loads(page.evaluate(OPFS_TEXT, "data/pyodide-migration.json"))
+        assert done["status"] == "done", done
+        assert done["files"]["evals.sqlite"]["evals"] > 0
+        assert page.evaluate(OPFS_TEXT, "data/sqlite-export.json") is not None
+        # every game classified again by the JS from the cached evals: the labels are Python's
+        status, game = api(page, f"p/pgn-pasted-games/games/{python['slug']}.json")
+        assert status == 200
+        assert [[m["san"], m["label"]] for m in game["moves"]] == python["labels"]
+        status, d = api(page, "p/pgn-fuzz/games.json")
+        assert status == 200 and len(d["games"]) > 0
+
+        asked.clear()                                       # a reload: the data stays, Python never loads again
+        page.reload()
+        page.wait_for_function("document.querySelector('#profiles .card.profile[data-id=pgn-fuzz]')", timeout=60_000)
+        assert not any("/pyodide/" in u or "/legacy/" in u for u in asked)
+        assert profile_ids(page) == ["pgn-fuzz", "pgn-pasted-games", "pgn-testuser"]
+    finally:
+        ctx.close()
