@@ -1,8 +1,13 @@
-// Builds the Electron app for Windows and zips it: packaging/dist/Blundr-electron-windows.zip, a portable folder
-// (Blundr/Blundr.exe, resources/app.asar, resources/bin/stockfish.exe), no installer. Run on Windows from the repo
-// root after `npm ci`:
+// Builds the Electron app for Windows: packaging/dist/Blundr-windows.zip, a portable folder (Blundr/Blundr.exe,
+// resources/app.asar, resources/bin/stockfish.exe, resources/build.json), no installer, and
+// packaging/dist/blundr-app-<runtime>.asar, the same app.asar on its own: the small in-app update (update.js). Run on
+// Windows from the repo root after `npm ci`:
 //
-//   node js/desktop/build.js [--version v0.8.0]
+//   node js/desktop/build.js [--version v1.0.0]
+//
+// app.asar also holds the puzzle pack (puzzle_packs/puzzles.json, from packaging/build/puzzles.json, which
+// packaging/puzzles_json.py writes when it is missing: $PYTHON, else python, with requirements.txt installed),
+// packs.json and the opening book (book_keys.txt, made here from packaging/assets/book, data/book or lichess's TSVs).
 //
 // Stockfish comes from packaging/bin/stockfish.exe, which packaging/build_windows.ps1 downloads too; if it isn't there
 // the latest official release is fetched into it ($GH_TOKEN, if set, against the API's rate limit). The app is
@@ -15,11 +20,13 @@ import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { parseArgs } from 'node:util';
 
+import { bookKeysFromDir } from './book.js';
 import { ROOT } from './paths.js';
 
 const { values: args } = parseArgs({ options: { version: { type: 'string', default: '' } } });
 const NAME = 'Blundr';
-const ZIP = 'Blundr-electron-windows.zip';
+const ZIP = 'Blundr-windows.zip';
+const BOOK_URL = 'https://raw.githubusercontent.com/lichess-org/chess-openings/master';
 const HOME = process.platform === 'win32'
   ? join(process.env.LOCALAPPDATA || homedir(), 'chess-review-build', 'electron')
   : join(tmpdir(), 'chess-review-build', 'electron');
@@ -50,12 +57,45 @@ async function fetchStockfish() {
   rmSync(tmp, { recursive: true, force: true });
 }
 
-// What goes into app.asar: the JS (no tests), the page and a package.json that starts js/desktop/main.js.
-function stage(ver) {
+// puzzles.json: built once by Python from the parquet pack (the same rows the web build ships)
+function puzzlesJson() {
+  const out = join(ROOT, 'packaging', 'build', 'puzzles.json');
+  if (!existsSync(out)) {
+    console.log('Writing the puzzle pack as JSON...');
+    execFileSync(process.env.PYTHON || 'python', [join(ROOT, 'packaging', 'puzzles_json.py'), out], { stdio: 'inherit' });
+  }
+  return out;
+}
+
+// the opening book's keys, from the TSVs build_windows.ps1 stages, a checkout's data/book, or lichess
+async function bookKeys() {
+  for (const dir of [join(ROOT, 'packaging', 'assets', 'book'), join(ROOT, 'data', 'book')]) {
+    const keys = bookKeysFromDir(dir);
+    if (keys.length) return keys;
+  }
+  console.log('Downloading the opening book...');
+  const dir = join(ROOT, 'packaging', 'assets', 'book');
+  mkdirSync(dir, { recursive: true });
+  for (const f of ['a', 'b', 'c', 'd', 'e']) {
+    const r = await fetch(`${BOOK_URL}/${f}.tsv`);
+    if (!r.ok) throw new Error(`opening book ${f}.tsv: HTTP ${r.status}`);
+    writeFileSync(join(dir, `${f}.tsv`), await r.text());
+  }
+  return bookKeysFromDir(dir);
+}
+
+// What goes into app.asar: the JS (no tests), the page, the puzzles, the book and a package.json that starts
+// js/desktop/main.js.
+async function stage(ver) {
   rmSync(STAGE, { recursive: true, force: true });
   const notTest = src => !/\.test\.js$/.test(src) && !/[\\/]js[\\/](run-tests|parity)\.js$/.test(src);
   cpSync(join(ROOT, 'js'), join(STAGE, 'js'), { recursive: true, filter: src => notTest(src) && src !== join(ROOT, 'js', 'desktop', 'build.js') });
   cpSync(join(ROOT, 'chess_review', 'static'), join(STAGE, 'chess_review', 'static'), { recursive: true });
+  cpSync(puzzlesJson(), join(STAGE, 'puzzle_packs', 'puzzles.json'));
+  cpSync(join(ROOT, 'chess_review', 'puzzle_packs', 'packs.json'), join(STAGE, 'puzzle_packs', 'packs.json'));
+  const keys = await bookKeys();
+  if (keys.length < 1000) throw new Error(`the opening book has only ${keys.length} positions`);
+  writeFileSync(join(STAGE, 'book_keys.txt'), keys.join('\n'));
   const pkg = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8'));
   writeFileSync(join(STAGE, 'package.json'), JSON.stringify({
     name: 'blundr', productName: NAME, version: numeric(ver), description: 'Blundr: chess game review',
@@ -73,7 +113,7 @@ async function main() {
   const ver = version();
   const electronVersion = JSON.parse(readFileSync(join(ROOT, 'node_modules', 'electron', 'package.json'), 'utf8')).version;
   await fetchStockfish();
-  stage(ver);
+  await stage(ver);
   rmSync(OUT, { recursive: true, force: true });
   mkdirSync(join(HOME, 'bin'), { recursive: true });
   cpSync(STOCKFISH, join(HOME, 'bin', 'stockfish.exe'));
@@ -89,17 +129,23 @@ async function main() {
   });
   // build.json beside app.asar: what the updater (README.md) compares; `runtime` is the Electron version, the part
   // that only a full download can change
-  writeFileSync(join(built, 'resources', 'build.json'), JSON.stringify({ version: ver, runtime: `electron-${electronVersion}` }));
+  const runtime = `electron-${electronVersion}`;
+  writeFileSync(join(built, 'resources', 'build.json'), JSON.stringify({ version: ver, runtime }));
   const app = join(OUT, NAME);
   renameSync(built, app);
 
   mkdirSync(DIST, { recursive: true });
   const zip = join(DIST, ZIP);
   rmSync(zip, { force: true });
+  // the small update: app.asar alone, named for the runtime it fits (js/server/updater.js ELECTRON_ASSETS)
+  const asar = join(DIST, `blundr-app-${runtime}.asar`);
+  for (const f of readdirSync(DIST)) if (/^blundr-app-.*\.asar$/.test(f)) rmSync(join(DIST, f));
+  cpSync(join(app, 'resources', 'app.asar'), asar);
   // the zip wraps the app folder, as Blundr-windows.zip does (updater.ZIP_ROOTS)
   if (process.platform === 'win32') execFileSync('tar', ['-a', '-c', '-f', zip, '-C', OUT, NAME]);
   else execFileSync('zip', ['-qr', zip, NAME], { cwd: OUT });
-  console.log(`\nversion ${ver}, Electron ${electronVersion}\nApp folder: ${join(app, NAME + '.exe')}\nZip: ${zip}`);
+  console.log(`\nversion ${ver}, Electron ${electronVersion}\nApp folder: ${join(app, NAME + '.exe')}\nZip: ${zip}
+Small update: ${asar}`);
 }
 
 main().catch(err => { console.error(err); process.exit(1); });

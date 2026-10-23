@@ -173,21 +173,30 @@ export class Updater {
       const r = await this.fetch(asset.url, { headers: { 'User-Agent': USER_AGENT } });
       raiseForStatus(r, asset.url);
       this.total = parseInt(r.headers.get('Content-Length') || '', 10) || this.total;
+      // to disk as it comes when the files adapter can (openWrite(path) → {write(bytes), close()}), else in memory
+      const out = this.files.openWrite ? await this.files.openWrite(path) : null;
       const chunks = [];
       const reader = r.body.getReader();
-      for (;;) {
-        const { value, done } = await reader.read();
-        if (done) break;
-        chunks.push(value);
-        this.done += value.length;
+      try {
+        for (;;) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          if (out) await out.write(value);
+          else chunks.push(value);
+          this.done += value.length;
+        }
+      } finally {
+        await out?.close();
       }
-      const bytes = new Uint8Array(this.done);
-      let at = 0;
-      for (const c of chunks) {
-        bytes.set(c, at);
-        at += c.length;
+      if (!out) {
+        const bytes = new Uint8Array(this.done);
+        let at = 0;
+        for (const c of chunks) {
+          bytes.set(c, at);
+          at += c.length;
+        }
+        await this.files.writeBytes(path, bytes);
       }
-      await this.files.writeBytes(path, bytes);
       if (this.unpack) {
         this.stage = await this.unpack(path, `${UPDATE_DIR}/stage`, asset.kind);
         await this.files.remove(path);
