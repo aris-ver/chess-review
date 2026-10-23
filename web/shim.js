@@ -217,7 +217,39 @@
     state.app = `Blundr failed to start: ${esc(why)}. Reload the page; if it keeps happening, update the browser.`;
     update();
   };
-  worker.onerror = e => { e.preventDefault?.(); failed(e.message || 'its code did not load'); };
+  // The browser gives no reason when a module worker's code doesn't load: find the file that didn't (blocked by an
+  // extension or an antivirus' web shield, say) by walking the worker's imports, and name the browser.
+  const browser = () => {
+    const b = (nav.userAgentData && nav.userAgentData.brands || []).find(x => !/not.?a.?brand|chromium/i.test(x.brand));
+    if (b) return `${b.brand} ${b.version}`;
+    const m = /(Firefox|Edg|Chrome|Version)\/(\d+)/.exec(nav.userAgent || '');
+    return m ? `${m[1] === 'Version' ? 'Safari' : m[1] === 'Edg' ? 'Edge' : m[1]} ${m[2]}` : 'this browser';
+  };
+  const unloadable = async () => {
+    const seen = new Set(), todo = [new URL('js/web/worker.js', location.href).href];
+    while (todo.length && seen.size < 80) {
+      const url = todo.shift();
+      if (seen.has(url)) continue;
+      seen.add(url);
+      let text;
+      try {
+        const r = await realFetch(url, { cache: 'no-store' });
+        if (!r.ok) return `${url.slice(location.origin.length)}: HTTP ${r.status}`;
+        text = await r.text();
+      } catch (err) {
+        return `${url.slice(location.origin.length)} was blocked`;
+      }
+      for (const m of text.matchAll(/^\s*(?:import|export)\b[^'"]*?['"](\.{1,2}\/[^'"]+)['"]/gm)) todo.push(new URL(m[1], url).href);
+    }
+    return null;
+  };
+  worker.onerror = async e => {
+    e.preventDefault && e.preventDefault();
+    if (e.message) return failed(e.message);
+    failed('checking why…');
+    const why = await unloadable().catch(() => null);
+    failed(`${why || 'its code did not run'} (${browser()})`);
+  };
   setTimeout(() => { if (!heard) failed("the app hasn't answered in 20 s"); }, 20000);
 
   worker.onmessage = e => {
