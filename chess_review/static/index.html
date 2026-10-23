@@ -338,10 +338,12 @@ body.puzzle .evalbar { visibility: hidden; }
 .pzinfo a { color: var(--accent); text-decoration: none; }
 .pzfoot { display: flex; gap: 8px; align-items: center; padding-top: 12px; }
 .pzfoot select { flex: 1; font: inherit; color: var(--text); background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; min-width: 0; }
-/* the end of a puzzle, or a miss: the board greys out under a card with what's next; its × puts it away to study the board.
-   A light grey, so the position still reads round the card on light and dark boards alike */
-.pzover { position: absolute; inset: 0; z-index: 6; display: grid; place-items: center; border-radius: 4px; background: rgba(30, 29, 27, .12);
-  -webkit-backdrop-filter: grayscale(.85) brightness(.92); backdrop-filter: grayscale(.85) brightness(.92); animation: pzfade .2s ease-out; }
+/* the end of a puzzle, or a miss: a card over the board with what's next; its × puts it away to study the board.
+   Solved, the board stays as it is. A miss (or the solution shown) dims it a little, colours kept, so the eye goes
+   to the card without the position going grey round it */
+.pzover { position: absolute; inset: 0; z-index: 6; display: grid; place-items: center; border-radius: 4px; background: transparent;
+  transition: background .2s ease-out; animation: pzfade .2s ease-out; }
+.pzover.dim { background: rgba(0, 0, 0, .22); }
 body:not(.puzzle) .pzover { display: none; }
 @keyframes pzfade { from { opacity: 0; } }
 .pzcard { position: relative; width: min(300px, 84%); background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 18px 18px 16px; text-align: center; box-shadow: 0 10px 30px rgba(0,0,0,.5); }
@@ -1897,7 +1899,7 @@ function finishPuzzle() {
   pzOverSoon('done', 450);
 }
 // The card over the board once a puzzle is over (Next) or a move missed (Retry, or the solution). It waits a moment,
-// so the move is seen first, and only shows if nothing moved on meanwhile. Its ×, a tap on the grey or Esc put it
+// so the move is seen first, and only shows if nothing moved on meanwhile. Its ×, a tap beside the card or Esc put it
 // away to study the position; the box under the board has the same buttons, so nothing needs it back.
 function pzOverSoon(kind, ms) {
   const tok = pz.token, at = state.ply;
@@ -1908,6 +1910,7 @@ function showPzOver(kind) {
   const el = $('pzover');
   pz.over = kind || null;
   el.classList.toggle('hidden', !kind);
+  el.classList.toggle('dim', kind === 'miss' || !!pz.shown);
   if (!kind) { el.innerHTML = ''; return; }
   const card = (h, p, btns) => `<div class="pzcard"><button class="x" data-act="close" title="Close (Esc)" aria-label="Close">✕</button>` +
     `<h3>${h}</h3><p>${p}</p><div class="btns">${btns}</div></div>`;
