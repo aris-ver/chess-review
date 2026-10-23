@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { Tabs } from './tabs.js';
+import { STUCK, Tabs } from './tabs.js';
 
 const tick = () => new Promise(r => setTimeout(r, 0));
 const settle = async (n = 10) => { for (let i = 0; i < n; i++) await tick(); };
@@ -52,7 +52,7 @@ function bus() {
 }
 
 /** A tab: its Tabs over a locks manager whose locks it can drop when the tab closes. */
-function tab(name, b, locks, answer) {
+function tab(name, b, locks, answer, { waitMs } = {}) {
   const page = [];
   const kills = [];
   const scoped = {     // the tab's own view of the lock manager: what it holds goes when it closes
@@ -63,11 +63,12 @@ function tab(name, b, locks, answer) {
     }),
   };
   const ch = b.channel();
-  const tabs = new Tabs({ toPage: m => page.push(m), channel: ch, locks: scoped, id: name, log: { error() {} } });
+  const tabs = new Tabs({ toPage: m => page.push(m), channel: ch, locks: scoped, id: name, log: { error() {} }, waitMs });
   return {
     tabs, page,
     start: () => tabs.start(async () => answer(name)),
     close() { ch.closed = true; kills.forEach(k => k()); },
+    freeze() { ch.closed = true; },      // a frozen background tab: hears nothing, says nothing, keeps its locks
   };
 }
 
@@ -116,6 +117,23 @@ test('the leader goes: the next tab leads and what was unanswered is asked again
   assert.deepEqual(c.page.filter(m => m.type === 'response').map(m => m.body), ['c answers /after']);
   assert.deepEqual(d.page.filter(m => m.type === 'response').map(m => m.body), ['c answers /post']);
   assert.equal(log.filter(l => l === 'c /post').length, 1);
+});
+
+test("a leader that doesn't answer (frozen, still holding the lock): the new tab says so instead of loading", async () => {
+  const b = bus(), locks = fakeLocks(), log = [];
+  const a = tab('a', b, locks, answerer(log));
+  await a.start();
+  await settle();
+  const live = tab('live', b, locks, answerer(log), { waitMs: 30 });
+  await live.start();
+  await new Promise(r => setTimeout(r, 60));
+  assert.ok(!live.page.some(m => m.text === STUCK), 'a live leader, even one with nothing to say yet, is no stuck one');
+  a.freeze();
+  const c = tab('c', b, locks, answerer(log), { waitMs: 30 });
+  await c.start();
+  await new Promise(r => setTimeout(r, 60));
+  assert.ok(!c.tabs.leading);
+  assert.deepEqual(c.page.filter(m => m.type === 'progress').map(m => m.text), [STUCK]);
 });
 
 test('progress reaches every tab, and a tab that opens later gets what was said so far', async () => {

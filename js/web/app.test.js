@@ -139,6 +139,19 @@ test('a migration that fails is tried again, three times at most', async () => {
   assert.equal(await migrateOnce({ driver: null, files, legacy: {}, idb: some, load: fail, log: quiet }), null);
 });
 
+test('a migration step that never ends is given up for this visit, naming the step, and the progress says each step', async () => {
+  const files = memoryFiles(), some = { databases: async () => [{ name: '/data' }] };
+  const said = [];
+  const hang = async (legacy, step) => { step('reading your old data'); return new Promise(() => {}); };
+  const out = await migrateOnce({ driver: null, files, legacy: {}, idb: some, load: hang, log: { error() {}, info() {} },
+                                  progress: t => said.push(t), stepS: 0.05 });
+  assert.equal(out.status, 'retry');
+  assert.equal(out.step, 'reading your old data');
+  assert.match(out.error, /reading your old data: no answer in 0.05 s/);
+  assert.deepEqual(said, ['Moving your data to the new Blundr (once): starting…',
+    'Moving your data to the new Blundr (once): reading your old data…']);
+});
+
 /** Pyodide's FS calls migrate.js makes (readdir, stat, isDir, analyzePath, readFile) over {path: text}. */
 function fakeFS(tree) {
   const enc = new TextEncoder();

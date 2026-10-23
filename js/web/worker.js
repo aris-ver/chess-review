@@ -8,7 +8,7 @@ import { EnginePool, physicalCores } from '../../web/engines.js';
 import { opfsFiles, memoryFiles } from '../server/profiles-files.js';
 import { answer, consoleLog as log, reclassifyAll, startApp } from './app.js';
 import { webSqlite } from './db.js';
-import { migrateOnce } from './legacy.js';
+import { migrateOnce, within } from './legacy.js';
 import { Tabs } from './tabs.js';
 
 const CR_CONFIG = self.CR_CONFIG;
@@ -45,9 +45,13 @@ function lead() {
   const ready = (async () => {
     let driver, files;
     try {
-      driver = await webSqlite();
+      // another worker still holding the pool's files (a tab that hasn't let go) would make this wait for good
+      driver = await within(webSqlite(), 'opening the browser storage', 30);
       files = await opfsFiles('data');
     } catch (e) {     // no OPFS (a private window in some browsers): run, but nothing is kept
+      if (e?.name === 'TimeoutError') {
+        throw new Error("the browser storage didn't open. Close the other Blundr tabs, then reload this one.");
+      }
       log.error('no OPFS: the data stays in memory for this visit', e);
       driver = await webSqlite({ memory: true });
       files = memoryFiles();

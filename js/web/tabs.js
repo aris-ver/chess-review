@@ -28,12 +28,15 @@ const randomId = () => Math.random().toString(36).slice(2) + Date.now().toString
 
 export const LEADER_LOCK = 'blundr-leader';
 export const TAB_LOCK = 'blundr-tab:';
+export const WAIT_MS = 8000;    // a follower that hears nothing from the leader this long says so instead of "Loading"
+export const STUCK = "Blundr is open in another tab that isn't answering. Close the other Blundr tabs (or reload them), then reload this one.";
 
 export class Tabs {
   /** toPage(msg): to this tab's page. channel: a BroadcastChannel (or anything with postMessage and onmessage);
    * locks: navigator.locks, or null to lead at once. */
-  constructor({ toPage, channel, locks = globalThis.navigator?.locks ?? null, id = randomId(), log = console }) {
-    Object.assign(this, { toPage, channel, locks, id, log });
+  constructor({ toPage, channel, locks = globalThis.navigator?.locks ?? null, id = randomId(), log = console, waitMs = WAIT_MS }) {
+    Object.assign(this, { toPage, channel, locks, id, log, waitMs });
+    this.heard = false;          // anything from a leader yet (its loading lines, an answer)
     this.answer = null;          // once leading: answer(req, emit, signal) → Promise
     this.pending = new Map();    // own requests sent to the leader: id → {req, streaming}
     this.local = new Map();      // own requests answered here: id → AbortController
@@ -57,6 +60,11 @@ export class Tabs {
     }
     await new Promise(granted => this.locks.request(TAB_LOCK + this.id, () => { granted(); return forever(); }));
     this.channel.postMessage({ type: 'hello', from: this.id });
+    // a live leader answers the hello with its loading lines at once; one that doesn't (a frozen background tab still
+    // holding the lock) would otherwise leave this tab on "Loading" for good
+    setTimeout(() => {
+      if (!this.leading && !this.heard) this.toPage({ type: 'progress', what: 'app', done: 0, total: 0, text: STUCK });
+    }, this.waitMs).unref?.();
     this.locks.request(LEADER_LOCK, async () => {
       await this.elected(becomeLeader);
       return forever();
@@ -130,6 +138,9 @@ export class Tabs {
 
   onChannel(m) {
     if (!m || typeof m !== 'object') return;
+    if (m.type === 'leader' || (['progress', 'here', 'res'].includes(m.type) && (!m.to || m.to === this.id))) {
+      this.heard = true;
+    }
     switch (m.type) {
       case 'req':
         if (this.leading) this.serveRemote(m);
@@ -156,7 +167,11 @@ export class Tabs {
         }
         return;
       case 'hello':
-        if (this.leading) for (const msg of this.progressSoFar.values()) this.channel.postMessage({ ...msg, to: m.from });
+        if (!this.leading) return;
+        this.channel.postMessage({ type: 'here', to: m.from });     // alive, even before it has anything to say
+        for (const msg of this.progressSoFar.values()) this.channel.postMessage({ ...msg, to: m.from });
+        return;
+      case 'here':
         return;
       case 'progress': {
         if (m.to && m.to !== this.id) return;
