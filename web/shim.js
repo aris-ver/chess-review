@@ -1,21 +1,23 @@
 // Loaded first by the web build of index.html (scripts/build_web.py adds the tag). The page asks for api/... and
-// p/<id>/... as it does from the desktop server; here those go to the Python worker, which answers them with the
-// desktop's own serve.Handler. Everything else (themes, sounds) is a static file and goes to the network.
+// p/<id>/... as it does from the desktop server; here those go to the app worker (js/web/worker.js), which answers
+// them with the same JS server the desktop runs. Everything else (themes, sounds) is a static file and goes to the network.
 (() => {
   const base = new URL('.', location.href).pathname;
-  // Phones and tablets get the lite engine (web/py-worker.js says why). Every iOS browser is WebKit, the home-screen
+  // Phones and tablets get the lite engine (js/web/worker.js says why). Every iOS browser is WebKit, the home-screen
   // app too, so this is the device, not the browser; iPadOS says it is a Mac, its touch screen gives it away.
   const nav = window.navigator || {};
   const ios = /iPhone|iPad|iPod/.test(nav.userAgent || '') || (nav.platform === 'MacIntel' && nav.maxTouchPoints > 1);
   const lite = ios || /Android|Mobi/.test(nav.userAgent || '');
   // Opened from the home screen: already the app, nothing to offer
   const standalone = nav.standalone === true || !!(window.matchMedia && matchMedia('(display-mode: standalone)').matches);
-  const worker = new Worker('web/py-worker.js' + (lite ? '?lite' : ''), { type: 'module' });
+  // One worker per tab; the tabs' workers share one database between them (js/web/tabs.js)
+  const worker = new Worker('js/web/worker.js' + (lite ? '?lite' : ''), { type: 'module' });
   const pending = new Map();
+  const streams = new Map();      // id → { ctl } of an answer still streaming
   let seq = 0;
   const realFetch = window.fetch.bind(window);
 
-  // The notice bar: Python loading first (the page waits for it), then the engine (95 MB, 2 MB on phones) with a progress bar, and the
+  // The notice bar: the app loading first (the page waits for it), then the engine (95 MB, 2 MB on phones) with a progress bar, and the
   // note that the desktop app analyses faster. The note stays up while a game is being analysed or waits to be.
   // Its × closes the bar for this visit and drops the note (and the lit button) for good: later visits still show
   // the loading lines, as those say why the page isn't answering yet.
@@ -109,11 +111,11 @@
   const NOTE_OFF = lite ? 'webHomeScreenNoteShown' : 'webSpeedNoteDismissed';
   let noteOff = lite && standalone, closed = false;
   try { noteOff = noteOff || localStorage.getItem(NOTE_OFF) === '1'; if (lite) localStorage.setItem(NOTE_OFF, '1'); } catch (e) {}
-  const state = { python: 'Loading Python', engine: null };    // engine: { done, total, name } once it starts
+  const state = { app: 'Loading Blundr', engine: null };    // engine: { done, total, name } once it starts
   const mb = b => (b / 1048576).toFixed(0);
-  let pythonReady = false, engineReady = false, analysing = false, hideT = null;
+  let appReady = false, engineReady = false, analysing = false, hideT = null;
   const render = () => {
-    let loading = pythonReady ? '' : `<div>${state.python}</div>`;
+    let loading = appReady ? '' : `<div>${state.app}</div>`;
     // the engine by name and version ("Stockfish 19"), so a 95 MB download says what it is
     if (engineReady) { if (!analysing) loading += `<div>${state.engine.name} ready</div>`; }   // old news by then
     else if (state.engine) {
@@ -149,7 +151,7 @@
     dl.classList.toggle('lit', !noteOff);
     if (closed || !render()) { bar.remove(); return; }
     if (!bar.isConnected) document.body.appendChild(bar);
-    if (pythonReady && engineReady && !analysing) hideT = setTimeout(() => { bar.remove(); dl.classList.remove('lit'); }, 4000);
+    if (appReady && engineReady && !analysing) hideT = setTimeout(() => { bar.remove(); dl.classList.remove('lit'); }, 4000);
   };
   // The page polls api/status while a game is analysed (or queued): read the answer on its way back.
   const ANALYSING = ['analyse', 'analyse_all', 'build'];
@@ -161,10 +163,10 @@
     if (now !== analysing) { analysing = now; update(); }
   };
 
-  // Answers from the last visit, handed back at once while Python loads (about 4 s on a reload): the home screen's
+  // Answers from the last visit, handed back at once while the app loads: the home screen's
   // (profiles, puzzle tiles) and a profile's: its games.json, which of them are new, and each game's review, so those
-  // open straight away too. The request still goes to Python; when its answer differs from the one
-  // shown, or is gone (a deleted profile), the screen is drawn again. Only answers Python gave are kept: no logic is
+  // open straight away too. The request still goes to the worker; when its answer differs from the one
+  // shown, or is gone (a deleted profile), the screen is drawn again. Only answers the server gave are kept: no logic is
   // copied here. Not the puzzles themselves, which change with the date or at random. In Cache Storage, as games.json
   // is 150 KB a profile.
   const KEEP = /^(api\/(profiles(\/[^/]+\/unseen)?|puzzles\/(packs|themes|sources))|p\/[^/]+\/games(\.json|\/[^/]+\.json))$/;
@@ -215,12 +217,30 @@
       if (p.path === '/api/status' && m.status === 200) watchStatus(m.body);
       if (p.keep) keep(p.rel, m, p.shown, p.hash, p.owner);
       if (/^\/api\/sync\/(switch|release)$/.test(p.path) && m.status === 200) forget(m.body);
+      if (m.stream) {     // /api/eval_stream: NDJSON lines as the engine deepens, until the page lets go
+        let ctl;
+        const body = new ReadableStream({
+          start: c => { ctl = c; },
+          cancel: () => { streams.delete(m.id); worker.postMessage({ type: 'abort', id: m.id }); },
+        });
+        streams.set(m.id, { ctl });
+        p.resolve(new Response(body, { status: m.status, headers: m.headers }));
+        return;
+      }
       const empty = m.status === 204 || m.status === 304;
       p.resolve(new Response(empty ? null : m.body, { status: m.status, headers: m.headers }));
+    } else if (m.type === 'chunk' || m.type === 'end') {
+      const s = streams.get(m.id);
+      if (!s) return;
+      if (m.type === 'chunk') s.ctl.enqueue(m.body);
+      else {
+        streams.delete(m.id);
+        s.ctl.close();
+      }
     } else if (m.type === 'progress') {
-      if (m.what === 'python') {
-        state.python = m.text;
-        pythonReady = m.total > 0 && m.done === m.total;
+      if (m.what === 'app') {
+        state.app = m.text;
+        appReady = m.total > 0 && m.done === m.total;
       } else {
         engineReady = m.total > 0 && m.done >= m.total;
         state.engine = { done: m.done, total: m.total, name: m.text };
@@ -241,15 +261,25 @@
     const id = ++seq;
     const keepIt = method === 'GET' && !url.search && KEEP.test(rel);
     const hash = location.hash;
-    const shown = keepIt && !pythonReady ? await kept(rel) : null;
+    const shown = keepIt && !appReady ? await kept(rel) : null;
     return new Promise((resolve, reject) => {
       const path = '/' + rel + url.search;     // the desktop server's paths are absolute (/api/..., /p/...)
-      if (shown != null) {     // last visit's answer now; Python's, when it comes, only updates what's kept
+      if (shown != null) {     // last visit's answer now; the server's, when it comes, only updates what's kept
         resolve(new Response(shown.text, { status: 200, headers: { 'Content-Type': shown.type || 'application/json' } }));
         resolve = () => {};
       }
       pending.set(id, { resolve, reject, path: '/' + rel, rel, keep: keepIt, shown, hash, owner: owners });
-      if (init.signal) init.signal.addEventListener('abort', () => { pending.delete(id); reject(new DOMException('Aborted', 'AbortError')); });
+      if (init.signal) init.signal.addEventListener('abort', () => {
+        const aborted = new DOMException('Aborted', 'AbortError');
+        pending.delete(id);
+        reject(aborted);
+        const s = streams.get(id);
+        if (s) {
+          streams.delete(id);
+          try { s.ctl.error(aborted); } catch (e) { /* already closed */ }
+        }
+        worker.postMessage({ type: 'abort', id });     // the worker stops what it was doing (an engine's search)
+      });
       worker.postMessage({ id, method, path, body, contentType: 'application/json' }, body ? [body.buffer] : []);
     });
   };

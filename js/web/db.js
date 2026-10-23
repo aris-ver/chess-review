@@ -89,6 +89,16 @@ export async function webSqlite({ memory = false, root = '', wasmBinary = null }
     async remove(name) {
       names.delete(name);
       if (pool) for (const f of [path(name), `${path(name)}-journal`]) pool.unlink(f);
+      else {      // a memdb database outlives its connections: empty it, so that opening the name again starts afresh
+        const db = new sqlite3.oo1.DB(uri(name), 'c');
+        try {
+          const all = db.selectObjects("SELECT type, name FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' AND type IN ('table', 'view')");
+          for (const o of all) db.exec(`DROP ${o.type.toUpperCase()} IF EXISTS "${o.name.replace(/"/g, '""')}"`);
+          db.exec('PRAGMA user_version = 0');
+        } finally {
+          db.close();
+        }
+      }
     },
     async exists(name) {
       return pool ? pool.getFileNames().includes(path(name)) : names.has(name);
