@@ -207,9 +207,13 @@ export function makeApply({ dataDir, install, pid = process.pid, quit, fs = rawF
   };
 }
 
+// Through `start`: a child must be detached to outlive the app (libuv puts the others in a job that dies with it), and
+// a detached PowerShell has no console and quits without running anything; `start` gives it one, minimised and then
+// hidden by -WindowStyle.
 function startScript(script) {
-  spawn('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', script],
-        { detached: true, stdio: 'ignore', windowsHide: true }).unref();
+  const cmd = `start "" /min powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "${script}"`;
+  spawn('cmd.exe', ['/d', '/s', '/c', `"${cmd}"`], { detached: true, stdio: 'ignore', windowsHide: true, windowsVerbatimArguments: true })
+    .unref();
 }
 
 /** fetch with GitHub's releases API for this repo (…/repos/<repo>/releases) served from `base` instead
