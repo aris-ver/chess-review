@@ -184,6 +184,21 @@ and the first Electron release v1.0.0; the coordinator tags each one, alone, aft
 Playwright in WSL and the Electron build on the Windows PC, with a temp data folder or a copy of the real one, never
 the real `%LOCALAPPDATA%\chess-review`.
 
+**`web-switch` is done and merged (2026-10-24); step 5 is done once blundr.gr is deployed.** `npm test` and the
+full `pytest` pass on `main`, the browser tests included: they hung in WSL because Chromium found WSLg's GPU and never
+drew a frame, and run with `--disable-gpu --disable-software-rasterizer` now. `js/web/worker.js` replaces Pyodide;
+tabs elect a leader with Web Locks (`js/web/tabs.js`; a SharedWorker can't open OPFS sync handles, and Android
+Chrome has none) and relay over a BroadcastChannel; `js/web/legacy.js` moves the old Pyodide data once, loading a
+4-file `legacy/app.zip` and Pyodide from the CDN that one time, then reclassifies every game. Phone bench
+(`scripts/bench_web_startup.py`, medians of 5 cached reloads): first answer 0.39 s, Analyse accepted 0.73 s, against
+4.15 s and 7.72 s for the Python build of today (the ~14/20 s above were before its own tuning). Not checked on a
+real phone yet; a job running in a leader tab that closes is lost (builds resume); `retire` must keep the frozen
+`legacy/app.zip` or drop the migration.
+
+**v0.7.0, the bridge, is released (2026-10-24).** Its runtime fingerprint moved (it bundles `sqlite3`), so v0.6.1
+installs take it as a full download; v0.6.1 installs still on it when v1.0.0 comes out must download by hand, so
+v1.0.0 waits a few days.
+
 **`desktop-switch` is done and merged (2026-10-23); step 6 waits only for its two tags.** `npm test` and `pytest`
 pass on `main`. Electron has everything the Python app had (puzzles and packs, the book as `book_keys.txt` in the
 asar, idle engines reaped, one Stockfish per core, the updater with small `.asar` and full-zip updates, the data
