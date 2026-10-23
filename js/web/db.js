@@ -106,6 +106,10 @@ export async function webSqlite({ memory = false, root = '', wasmBinary = null }
     /** One database's bytes (a backup; the hand-over of the migration). Close it in the Store first. */
     exportFile: name => pool?.exportFile(path(name)),
     /** Put a database file in place, the other side of exportFile. */
-    importFile: (name, bytes) => pool?.importDb(path(name), bytes),
+    async importFile(name, bytes) {
+      if (!pool) return;
+      await pool.reserveMinimumCapacity(pool.getFileCount() + POOL_SPARE);     // each file takes a slot of its own
+      await pool.importDb(path(name), bytes);
+    },
   };
 }

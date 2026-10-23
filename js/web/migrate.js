@@ -51,9 +51,14 @@ export function hasPythonData(FS, data = '/data') {
 }
 
 /** Runs the Python export in Pyodide (data → out, in its file system) and returns its report: { status, files, ... }.
- * Loads the sqlite3 package (Pyodide ships Python's sqlite3 apart from the standard library) and DuckDB if needed. */
+ * Loads DuckDB, and the sqlite3 package where Pyodide ships Python's sqlite3 apart from the standard library. */
 export async function exportInPyodide(py, { data = '/data', out = OUT } = {}) {
-  await py.loadPackage(['duckdb', 'sqlite3']);
+  await py.loadPackage(['duckdb']);
+  try {     // in the standard library of some Pyodide versions (314 among them), a package of its own in others
+    py.pyimport('sqlite3');
+  } catch {
+    await py.loadPackage(['sqlite3']);
+  }
   rmTree(py.FS, out);
   const text = py.runPython(`
 import json
