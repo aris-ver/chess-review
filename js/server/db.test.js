@@ -17,7 +17,6 @@ const cases = load('games.json');
 const EVAL = ['eval_cp', 'mate_in', 'best_move', 'pv'];
 
 async function roundTrip(makeDriver) {
-
   for (const [i, c] of cases.entries()) {
     const store = new Store(await makeDriver(i));     // a cache of its own: the cases share positions
     setBook(c.book);
@@ -34,7 +33,6 @@ async function roundTrip(makeDriver) {
     same(db.all('SELECT * FROM moves ORDER BY ply'), c.moves.map(m => ({ ...m })), `${c.name}.stored`);
     await store.close();
   }
-
 }
 
 test('storage: node:sqlite round trip classifies as Python', async () => {
@@ -46,10 +44,9 @@ test('storage: node:sqlite round trip classifies as Python', async () => {
   }
 });
 
-// TODO: the memdb cache outlives Store.close() here, so the second case reads the first's evals
-test('storage: SQLite WASM (memdb) round trip classifies as Python', { todo: 'memdb cache survives close' }, async () => {
+test('storage: SQLite WASM (memdb) round trip classifies as Python', async () => {
   const wasm = readFileSync(new URL('../vendor/sqlite-wasm/sqlite3.wasm', import.meta.url));
-  await roundTrip(() => webSqlite({ memory: true, wasmBinary: wasm }));
+  await roundTrip(i => webSqlite({ memory: true, root: `case-${i}`, wasmBinary: wasm }));
 });
 
 test('storage: sha1', () => {

@@ -22,10 +22,9 @@ function load(wasmBinary) {
 }
 
 const quote = s => `'${String(s).replace(/'/g, "''")}'`;
-const path = name => '/' + name.replace(/^\/+/, '');
-const uri = (name, vfs) => `file:${path(name)}?vfs=${vfs}`;
+const trim = s => s.replace(/^\/+|\/+$/g, '');
 
-function wrap(sqlite3, db, vfs) {
+function wrap(sqlite3, db, uri) {
   const { capi } = sqlite3;
   return {
     prepare(sql) {
@@ -62,26 +61,30 @@ function wrap(sqlite3, db, vfs) {
       };
     },
     exec: sql => void db.exec(sql),
-    attach: (name, as) => void db.exec(`ATTACH ${quote(uri(name, vfs))} AS ${as}`),
+    attach: (name, as) => void db.exec(`ATTACH ${quote(uri(name))} AS ${as}`),
     close: () => db.close(),
   };
 }
 
-/** The driver for db.js's Store. opts.memory: the memdb VFS instead of OPFS; opts.wasmBinary: see load(). */
-export async function webSqlite({ memory = false, wasmBinary = null } = {}) {
+/** The driver for db.js's Store. opts.memory: the memdb VFS instead of OPFS; opts.root: a directory every name is
+ * under, so that separate stores don't meet (a memdb database stays for the life of the module, closed or not);
+ * opts.wasmBinary: see load(). */
+export async function webSqlite({ memory = false, root = '', wasmBinary = null } = {}) {
   const sqlite3 = await load(wasmBinary);
   const pool = memory ? null : await sqlite3.installOpfsSAHPoolVfs({ name: VFS });
   const vfs = memory ? 'memdb' : VFS;
-  const names = new Set();       // memdb: a database lives while a connection to it is open
+  const path = name => '/' + [trim(root), trim(name)].filter(Boolean).join('/');
+  const uri = name => `file:${path(name)}?vfs=${vfs}`;
+  const names = new Set();
   return {
     sqlite3,
     async open(name) {
       if (pool) await pool.reserveMinimumCapacity(pool.getFileCount() + POOL_SPARE);
-      const db = new sqlite3.oo1.DB(uri(name, vfs), 'c');
+      const db = new sqlite3.oo1.DB(uri(name), 'c');
       names.add(name);
       // no WAL: the pool has no shared memory, and one worker runs everything, so a rollback journal does
       if (pool) db.exec('PRAGMA journal_mode = TRUNCATE');
-      return wrap(sqlite3, db, vfs);
+      return wrap(sqlite3, db, uri);
     },
     async remove(name) {
       names.delete(name);
