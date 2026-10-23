@@ -104,6 +104,8 @@ export class EnginePool {
   // first search).
   constructor({ size = physicalCores(), path, hash = 64 }) {
     Object.assign(this, { size, path, hash, name: 'Stockfish', free: [], waiting: [], engines: [], loaded: null });
+    this.inUse = 0;            // searches and streams under way, or waiting for an engine
+    this.lastUsed = Date.now();
   }
   load() {
     if (!this.loaded) {
@@ -117,11 +119,20 @@ export class EnginePool {
     return this.loaded;
   }
   async acquire() {
-    await this.load();
+    this.inUse++;
+    this.lastUsed = Date.now();
+    try {
+      await this.load();
+    } catch (e) {
+      this.inUse--;
+      throw e;
+    }
     if (this.free.length) return this.free.pop();
     return new Promise(resolve => this.waiting.push(resolve));
   }
   release(engine) {
+    this.inUse--;
+    this.lastUsed = Date.now();
     if (engine.closed) return;
     const next = this.waiting.shift();
     if (next) next(engine); else this.free.push(engine);
@@ -134,6 +145,13 @@ export class EnginePool {
   async *stream(fen, multipv = 3) {
     const engine = await this.acquire();
     try { yield* engine.stream(fen, multipv); } finally { this.release(engine); }
+  }
+  // Serve.Runner.reap_idle: the engines quit when nothing has used them for idleMs (they start again, in about a
+  // second, with the next search). True if it closed them.
+  async reapIdle(idleMs, now = Date.now()) {
+    if (!this.loaded || this.inUse > 0 || now - this.lastUsed <= idleMs) return false;
+    await this.close();
+    return true;
   }
   // Every engine quits (killed if it doesn't within 2 s); the next search starts a fresh set. Call it between jobs:
   // a search in hand fails.

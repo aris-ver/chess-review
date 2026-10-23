@@ -9,6 +9,11 @@ A release carries two zips (packaging/pack.py builds them):
 <runtime> hashes the rest of _internal (the DLL/.pyd layer the exe's code was compiled against). An install can
 take the small zip only when its own fingerprint (in _internal/build.json) matches; otherwise the whole _internal
 folder is replaced from the full zip.
+From v1.0.0 the app is Electron (js/desktop): such a release carries blundr-app-<runtime>.asar beside its
+Blundr-windows.zip, and this, the last Python release (the bridge), takes its zip as an "electron" update: the data
+is exported to SQLite once more (migrate_sqlite.py, which the Electron app checks before it opens anything), then
+the install folder's whole contents are replaced (the old _internal and exe names go) and Blundr.exe starts.
+
 The update is downloaded and unpacked under DATA/update while the app runs; applying it means writing a small
 PowerShell script that waits for this process to exit, copies the files in (Windows won't let a running exe be
 overwritten) and starts the new exe. The launcher closes the window once the script is spawned.
@@ -39,6 +44,8 @@ LEGACY_EXE_NAMES = ("Chess Review.exe", "chess-review.exe")
 FULL_ASSET = "Blundr-windows.zip"
 LEGACY_FULL_ASSET = "chess-review-windows.zip"     # the only full zip up to v0.6.0
 UPDATE_ASSET = "chess-review-update-{runtime}.zip"
+ELECTRON_MARK = re.compile(r"^blundr-app-.+.asar$")     # only an Electron release (v1.0.0 on) has one
+ELECTRON_ASIDE = ".blundr-old"      # where an "electron" update keeps the old files until the new ones are in
 ZIP_ROOTS = ("Blundr", "chess-review")      # the zips wrap the app folder: Blundr-windows.zip's, then the others'
 CHECK_TTL = 3600                # a launch re-checks GitHub at most once an hour (unauthenticated API: 60 req/h)
 UPDATE_DIR = DATA / "update"
@@ -63,8 +70,14 @@ def installed() -> dict:
 
 
 def pick_asset(release: dict, runtime: Optional[str]) -> Optional[dict]:
-    """The small update zip built for this install's runtime if the release has one, else the full zip."""
+    """The small update zip built for this install's runtime if the release has one, else the full zip. From an
+    Electron release, its full zip, marked "electron" (status() still calls it a full download): any
+    chess-review-update zip it carries is for older Pythons, not for this one."""
     assets = {a["name"]: a for a in release.get("assets", [])}
+    if FULL_ASSET in assets and any(ELECTRON_MARK.match(n) for n in assets):
+        a = assets[FULL_ASSET]
+        return {"name": a["name"], "url": a["browser_download_url"], "size": a.get("size"), "kind": "full",
+                "electron": True}
     small = assets.get(UPDATE_ASSET.format(runtime=runtime)) if runtime else None
     a = small or assets.get(FULL_ASSET) or assets.get(LEGACY_FULL_ASSET)
     if not a:
@@ -187,7 +200,7 @@ class Updater:
                     for chunk in r.iter_content(1 << 16):
                         f.write(chunk)
                         self.done += len(chunk)
-            self.stage = unpack(zip_path, UPDATE_DIR / "stage", asset["kind"])
+            self.stage = unpack(zip_path, UPDATE_DIR / "stage", "electron" if asset.get("electron") else asset["kind"])
             zip_path.unlink()
             self.state = "ready"
         except Exception as e:  # noqa: BLE001 - whatever went wrong, the UI shows it and the install is untouched
@@ -199,7 +212,11 @@ class Updater:
         if self.state != "ready" or not self.stage:
             raise RuntimeError("no update ready")
         exe = Path(sys.executable)
-        kind = "update" if self.latest["asset"]["kind"] == "update" else "full"
+        if self.latest["asset"].get("electron"):
+            kind = "electron"
+            export_for_electron()       # before anything is swapped: the Electron app opens only exported data
+        else:
+            kind = "update" if self.latest["asset"]["kind"] == "update" else "full"
         script = write_apply_script(UPDATE_DIR / "apply.ps1", os.getpid(), self.stage, exe.parent, kind,
                                     DATA / "update.log")
         subprocess.Popen(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(script)],
@@ -208,6 +225,23 @@ class Updater:
         log.info("update %s -> %s: apply script started, exiting", self.installed["version"], self.latest["version"])
         if exit_app:
             threading.Timer(0.5, exit_app).start()     # let the HTTP response go out first
+
+
+def export_for_electron(data: Path = DATA) -> dict:
+    """migrate_sqlite once more, right before the Electron build replaces this one: whatever was written since the
+    start-up export goes along. RuntimeError (the page shows it, nothing changes) unless the export is done."""
+    from . import migrate_sqlite
+    try:
+        res = migrate_sqlite.migrate(data)
+    except Exception as e:  # noqa: BLE001 - a locked evals.duckdb (a job still on it), a full disk...
+        log.error("export before the Electron update failed: %s", e)
+        raise RuntimeError(f"Your data could not be converted for the new version ({str(e).splitlines()[0]}). "
+                           "Nothing has changed; try again in a minute.") from e
+    # "sqlite in use": the Electron app has opened the export already, so its files are the newer ones
+    if res["status"] != "done" and res.get("reason") not in ("done already", "sqlite in use"):
+        raise RuntimeError(f"Your data could not be converted for the new version ({res}).")
+    log.info("data exported for the Electron build: %s %s", res["status"], res.get("reason", ""))
+    return res
 
 
 def unpack(zip_path: Path, dest: Path, kind: str) -> Path:
@@ -232,6 +266,10 @@ def unpack(zip_path: Path, dest: Path, kind: str) -> Path:
             with z.open(info) as src, open(target, "wb") as dst:
                 shutil.copyfileobj(src, dst)
     app = dest / (root or ZIP_ROOTS[0])
+    if kind == "electron":      # js/desktop/build.js's zip: Blundr/Blundr.exe and Blundr/resources/app.asar
+        if root != ZIP_ROOTS[0] or not (app / EXE_NAME).is_file() or not (app / "resources" / "app.asar").is_file():
+            raise ValueError("the downloaded zip does not look like a Blundr build")
+        return app
     if not any((app / n).is_file() for n in (EXE_NAME, *LEGACY_EXE_NAMES)) or not (app / "_internal" / "chess_review").is_dir():
         raise ValueError("the downloaded zip does not look like a chess-review build")
     if kind == "update":
@@ -247,8 +285,9 @@ def write_apply_script(path: Path, pid: int, stage: Path, install: Path, kind: s
 
     'update': copy the staged files over the install, file by file (each through a .new rename, so a file is
     either old or new, never truncated). 'full': rename _internal aside, move the new one in, replace the exes,
-    delete the old runtime; if moving the new _internal fails the old one is put back. Then the exe's old names
-    go. Either way the app is started again at the end, and whatever happened is in DATA/update.log."""
+    delete the old runtime; if moving the new _internal fails the old one is put back. 'electron': move the whole
+    install folder's contents aside, copy the Electron build's in (the old ones put back if that fails), delete the
+    old ones, _internal and all. Then the exe's old names go. Either way the app is started again at the end, and whatever happened is in DATA/update.log."""
     q = lambda p: "'" + str(p).replace("'", "''") + "'"  # noqa: E731
     lines = [
         "$ErrorActionPreference = 'Stop'",
@@ -282,6 +321,25 @@ def write_apply_script(path: Path, pid: int, stage: Path, install: Path, kind: s
             "      Replace-File $_.FullName (Join-Path $install $rel)",
             "    }",
             "  }",
+        ]
+    elif kind == "electron":
+        lines += [
+            f"  $aside = Join-Path $install {q(ELECTRON_ASIDE)}",
+            "  if (Test-Path -LiteralPath $aside) { Remove-Item -LiteralPath $aside -Recurse -Force }",
+            "  New-Item -ItemType Directory -Force -Path $aside | Out-Null",
+            "  Retry 'move the old files aside' {",
+            f"    Get-ChildItem -LiteralPath $install -Force | Where-Object {{ $_.Name -ne {q(ELECTRON_ASIDE)} }} | ForEach-Object {{ Move-Item -LiteralPath $_.FullName -Destination $aside -Force }}",
+            "  }",
+            "  try {",
+            "    Get-ChildItem -LiteralPath $stage -Force | ForEach-Object { Copy-Item -LiteralPath $_.FullName -Destination $install -Recurse -Force }",
+            "  } catch {",
+            "    Log ('copying the new files in failed, restoring the old ones: ' + $_)",
+            f"    Get-ChildItem -LiteralPath $install -Force | Where-Object {{ $_.Name -ne {q(ELECTRON_ASIDE)} }} | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue",
+            "    Get-ChildItem -LiteralPath $aside -Force | ForEach-Object { Move-Item -LiteralPath $_.FullName -Destination $install -Force }",
+            "    Remove-Item -LiteralPath $aside -Recurse -Force -ErrorAction SilentlyContinue",
+            "    throw",
+            "  }",
+            "  Remove-Item -LiteralPath $aside -Recurse -Force -ErrorAction SilentlyContinue",
         ]
     else:
         lines += [

@@ -1,21 +1,59 @@
-# Builds the Windows desktop zips on a clean Windows runner. On a version tag (v0.1.0, ...) they are attached
-# to that tag's GitHub Release: Blundr-windows.zip (the whole app; the README's and blundr.gr's download links
-# point at the latest release), chess-review-windows.zip (the same for updaters up to v0.6.0) and
-# chess-review-update-<runtime>.zip (what installed copies fetch through the in-app updater, see
-# chess_review/updater.py). Run manually (Actions -> Windows release -> Run workflow) to get the
-# zips as a workflow artifact without publishing a release.
+# Builds the Windows desktop app on a clean Windows runner and, on a version tag, attaches it to that tag's GitHub
+# Release. Which app a tag builds is decided by its version, so a tag always builds exactly one:
+#
+#   v0.x   the Python app (PyInstaller, packaging/build_windows.ps1): Blundr-windows.zip (the whole app; the README's
+#          and blundr.gr's download links point at the latest release), chess-review-windows.zip (the same for
+#          updaters up to v0.6.0) and chess-review-update-<runtime>.zip (the in-app update, chess_review/updater.py).
+#          v0.7.0 is the last one: the bridge, which exports the data to SQLite and takes the Electron zip.
+#   v1+    the Electron app (js/desktop/build.js): Blundr-windows.zip (the whole app, under Blundr/) and
+#          blundr-app-<runtime>.asar (the small in-app update, js/desktop/update.js). The bridge release's
+#          chess-review-*.zip are attached again, so that older Python installs, whose updaters only know those
+#          names, update to the bridge first and from there to Electron.
+#
+# Run manually (Actions -> Windows release -> Run workflow, choosing the app) to get the files as a workflow artifact:
+# a manual run never creates or changes a release.
 name: Windows release
 
 on:
   push:
     tags: ["v*"]
   workflow_dispatch:
+    inputs:
+      app:
+        description: "Which app to build (a manual run publishes nothing)"
+        type: choice
+        options: [electron, python]
+        default: electron
 
 permissions:
   contents: write
 
+env:
+  BRIDGE_TAG: v0.7.0    # the last Python release: its chess-review-*.zip ride along with every Electron release
+
 jobs:
-  build:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      app: ${{ steps.pick.outputs.app }}
+    steps:
+      - id: pick
+        env:
+          INPUT: ${{ github.event.inputs.app }}
+        run: |
+          if [ "$GITHUB_REF_TYPE" = tag ]; then
+            major=$(printf '%s' "$GITHUB_REF_NAME" | sed -E 's/^v([0-9]+).*/\1/')
+            case "$major" in ''|*[!0-9]*) echo "tag $GITHUB_REF_NAME is not a version" >&2; exit 1;; esac
+            if [ "$major" -ge 1 ]; then app=electron; else app=python; fi
+          else
+            app=${INPUT:-electron}
+          fi
+          echo "app=$app" >> "$GITHUB_OUTPUT"
+          echo "builds the $app app"
+
+  python:
+    needs: plan
+    if: needs.plan.outputs.app == 'python'
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -28,14 +66,14 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           # on a tag push the version is the tag; a manual run gets git describe's v0.1.4-3-gabc123
-          VERSION: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || '' }}
+          VERSION: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
         run: powershell -ExecutionPolicy Bypass -File packaging\build_windows.ps1 -Version "$env:VERSION"
       - uses: actions/upload-artifact@v4
         with:
           name: chess-review-windows
           path: packaging/dist/*.zip
       - name: Attach to the release
-        if: startsWith(github.ref, 'refs/tags/')
+        if: github.ref_type == 'tag'
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
@@ -56,3 +94,62 @@ jobs:
             gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --notes-file notes.md
           fi
           gh release upload "$GITHUB_REF_NAME" packaging/dist/*.zip --clobber
+
+  electron:
+    needs: plan
+    if: needs.plan.outputs.app == 'electron'
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0    # git describe names a manual build after the nearest tag
+      - name: The bridge release's zips (older Python installs update through them)
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          mkdir -p bridge
+          gh release download "$BRIDGE_TAG" --dir bridge --pattern 'chess-review-*.zip'
+          ls bridge/chess-review-windows.zip bridge/chess-review-update-*.zip
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - uses: actions/setup-python@v5     # packaging/puzzles_json.py: the puzzle pack as JSON, from its parquet
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+      - run: npm ci --no-audit --no-fund
+      - run: npm test
+      - name: Build the app
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
+        shell: bash
+        run: node js/desktop/build.js ${VERSION:+--version "$VERSION"}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: blundr-electron-windows
+          path: |
+            packaging/dist/Blundr-windows.zip
+            packaging/dist/blundr-app-*.asar
+      - name: Attach to the release
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          if ! gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            prev=$(git describe --tags --abbrev=0 "$GITHUB_REF_NAME^" 2>/dev/null || true)
+            {
+              printf '## Download\n\n'
+              printf '**[Blundr-windows.zip](https://github.com/%s/releases/download/%s/Blundr-windows.zip)** - this is the app. Unzip it anywhere and run **Blundr.exe**.\n\n' "$GITHUB_REPOSITORY" "$GITHUB_REF_NAME"
+              printf 'The other files are not meant to be downloaded by hand - installed copies of the app fetch them when they update.\n\n'
+              printf "## What's new\n\n"
+              git log --no-merges --pretty='* %s' ${prev:+$prev..}"$GITHUB_REF_NAME"
+              if [ -n "$prev" ]; then printf '\n**Full changelog**: https://github.com/%s/compare/%s...%s\n' "$GITHUB_REPOSITORY" "$prev" "$GITHUB_REF_NAME"; fi
+            } > notes.md
+            gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --notes-file notes.md
+          fi
+          gh release upload "$GITHUB_REF_NAME" packaging/dist/Blundr-windows.zip packaging/dist/blundr-app-*.asar bridge/chess-review-*.zip --clobber

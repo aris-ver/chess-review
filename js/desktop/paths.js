@@ -26,3 +26,15 @@ export function stockfishPath({ packaged, resources = process.resourcesPath, env
 
 /** The page: chess_review/static (index.html, account.js, themes/), inside app.asar when packaged. */
 export const STATIC_DIR = join(ROOT, 'chess_review', 'static');
+
+/** What app.asar carries beside the code (build.js): the puzzle pack, the packs and the opening book's keys. From a
+ * checkout: packs.json where Python keeps it, puzzles.json where packaging/puzzles_json.py writes it, no book keys
+ * (main.js reads DATA/book's TSVs instead). */
+export function bundled({ packaged }) {
+  if (packaged) {
+    return { puzzles: join(ROOT, 'puzzle_packs', 'puzzles.json'), packs: join(ROOT, 'puzzle_packs', 'packs.json'),
+             book: join(ROOT, 'book_keys.txt') };
+  }
+  return { puzzles: join(ROOT, 'packaging', 'build', 'puzzles.json'),
+           packs: join(ROOT, 'chess_review', 'puzzle_packs', 'packs.json'), book: null };
+}
