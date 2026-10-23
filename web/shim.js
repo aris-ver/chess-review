@@ -208,8 +208,21 @@
     redrawT = setTimeout(() => { if (location.hash === hash) dispatchEvent(new HashChangeEvent('hashchange')); }, 100);
   };
 
+  // A worker that doesn't start (its code failed to load, or the browser can't run it) sends nothing at all: say so
+  // instead of "Loading" for good.
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  let heard = false;
+  const failed = why => {
+    if (appReady) return;
+    state.app = `Blundr failed to start: ${esc(why)}. Reload the page; if it keeps happening, update the browser.`;
+    update();
+  };
+  worker.onerror = e => { e.preventDefault?.(); failed(e.message || 'its code did not load'); };
+  setTimeout(() => { if (!heard) failed("the app hasn't answered in 20 s"); }, 20000);
+
   worker.onmessage = e => {
     const m = e.data;
+    heard = true;
     if (m.type === 'response') {
       const p = pending.get(m.id);
       if (!p) return;

@@ -176,6 +176,8 @@ def build(engine_wasm: str | None) -> None:
             print(f"warning: {f.relative_to(ROOT)} still has placeholders (class=fill) to fill in before going live")
     for f in (ROOT / "web" / "icons").iterdir():
         copy_if_changed(f, OUT / "icons" / f.name)
+    # browsers ask for /favicon.ico on their own (address-bar suggestions, history), whatever the page links
+    copy_if_changed(ROOT / "packaging" / "chess-review.ico", OUT / "favicon.ico")
     (OUT / "manifest.json").write_text(json.dumps(MANIFEST, indent=1), encoding="utf-8")
     for f in (ROOT / "web").glob("*.js"):
         copy_if_changed(f, OUT / "web" / f.name)
