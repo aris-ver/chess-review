@@ -264,7 +264,7 @@ export class Runner {
 
   async _run(job, before) {
     if (before) await before.catch(() => {});
-    else await null;      // off the request: the answer goes out with the job still queued, as Python's thread
+    else await new Promise(r => setTimeout(r, 0));   // off the request: it answers with the job still queued, as Python does
     try {
       job.status = 'running';
       await this._work(job);
