@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 import { load, same } from '../parity.js';
-import { parseInfo } from '../core/analyse.js';
+import { parseInfo } from '../core/evals.js';
 import { setBook } from '../core/book.js';
 import { boardFromFen } from '../core/chess.js';
 import { fenKey } from '../core/fen.js';

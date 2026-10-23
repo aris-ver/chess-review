@@ -12,7 +12,7 @@ import { boardFromKey } from '../core/fen.js';
 import { isBook } from '../core/book.js';
 import { pyRound } from '../core/py.js';
 import { build as buildAggregates } from './aggregates.js';
-import { pendingKeys, writeResults } from './analyse.js';
+import { pendingKeys, writeResults } from './eval-cache.js';
 import { build as classify } from './classify.js';
 import { robustMultipv } from './explore.js';
 import { countNew, fetchProfile, gameIds, rebuild } from './games.js';

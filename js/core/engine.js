@@ -4,7 +4,7 @@
 //
 // Every pool runs its engines the way chess_review/analyse.py does: Threads=1, a fixed Hash, `ucinewgame` (hash
 // cleared) and MultiPV set before every position, then `go nodes N`. So a search gives the same lines whichever
-// engine of the pool gets it, and js/core/analyse.js's evaluateMultipv(board, lines) turns them into the evals rows.
+// engine of the pool gets it, and js/core/evals.js's evaluateMultipv(board, lines) turns them into the evals rows.
 
 /**
  * @typedef {object} EnginePool

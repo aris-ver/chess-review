@@ -20,7 +20,7 @@ import { boardFromFen, fen, isGameOver, isLegal, moveFromUci, push, san, Invalid
 import { onlyMove } from '../core/classify.js';
 import { MISTAKE } from '../core/config.js';
 import { fenKey } from '../core/fen.js';
-import { cachedLines } from './analyse.js';
+import { cachedLines } from './eval-cache.js';
 import { sha1 } from './classify.js';
 import { ATTEMPTS_SCHEMA } from './db.js';
 import { archive, attempts as attemptRows, choice, line } from './puzzles.js';

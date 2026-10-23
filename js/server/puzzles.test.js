@@ -8,7 +8,7 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 
 import { load, PARITY, same } from '../parity.js';
-import { writeResults } from './analyse.js';
+import { writeResults } from './eval-cache.js';
 import { nodeSqlite } from './db-node.js';
 import { EVALS_MULTIPV_SCHEMA, EVALS_SCHEMA, MOVES_SCHEMA, Store, writeGames } from './db.js';
 import * as O from './own-puzzles.js';

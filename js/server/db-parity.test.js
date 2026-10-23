@@ -9,7 +9,7 @@ import { test } from 'node:test';
 import { PARITY, load, same } from '../parity.js';
 import { setBook } from '../core/book.js';
 import { webSqlite } from '../web/db.js';
-import { pendingKeys, writeResults } from './analyse.js';
+import { pendingKeys, writeResults } from './eval-cache.js';
 import { build, loadMultipv } from './classify.js';
 import { nodeSqlite } from './db-node.js';
 import { EVALS_MULTIPV_SCHEMA, EVALS_SCHEMA, Store, writeGames } from './db.js';

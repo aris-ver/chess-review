@@ -8,7 +8,7 @@ import { test } from 'node:test';
 import { load, same } from '../parity.js';
 import { setBook } from '../core/book.js';
 import { webSqlite } from '../web/db.js';
-import { pendingKeys, writeResults } from './analyse.js';
+import { pendingKeys, writeResults } from './eval-cache.js';
 import { build, classifyAll, sha1 } from './classify.js';
 import { nodeSqlite } from './db-node.js';
 import { Store, writeGames } from './db.js';

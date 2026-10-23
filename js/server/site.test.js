@@ -11,7 +11,7 @@ import { test } from 'node:test';
 
 import { PARITY, load, same } from '../parity.js';
 import { setBook } from '../core/book.js';
-import { writeResults } from './analyse.js';
+import { writeResults } from './eval-cache.js';
 import { nodeSqlite } from './db-node.js';
 import { EVALS_MULTIPV_SCHEMA, EVALS_SCHEMA, Store, writeGames } from './db.js';
 import { memoryFiles } from './profiles-files.js';

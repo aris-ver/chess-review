@@ -3,7 +3,7 @@
 import { test } from 'node:test';
 
 import { load, same } from '../parity.js';
-import { evaluate, evaluateMultipv } from './analyse.js';
+import { evaluate, evaluateMultipv } from './evals.js';
 import { boardFromFen } from './chess.js';
 
 const CASES = load('engine.json');

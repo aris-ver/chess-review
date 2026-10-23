@@ -27,6 +27,7 @@ import argparse
 import functools
 import io
 import json
+import re
 import shutil
 import subprocess
 import sys
@@ -54,6 +55,10 @@ LEGACY_MODULES = ("__init__.py", "config.py", "fen.py", "migrate_sqlite.py")
 # js/ as the browser gets it: no tests, no Node adapters, no Electron
 JS_DIRS = ("core", "server", "web", "vendor")
 JS_SKIP = (".test.js", "-node.js", ".md")
+# File names that ad blockers' privacy lists block on sight (EasyPrivacy has /analyse.js, /stats.js, /track.js ...):
+# a module of the worker with such a name doesn't load where one is installed, and Blundr never starts there.
+BLOCKED_NAME = re.compile(r"analy[sz]|track|stats?\b|statistic|metric|telemetr|beacon|pixel|advert|(^|[-_.])ads?([-_.]|$)"
+                          r"|counter|collect|insight|fingerprint", re.I)
 STOCKFISH_VERSION = "19.0.1"      # the same Stockfish as the desktop's bin/: change both together, or reviews stop matching
 STOCKFISH_NPM = f"https://registry.npmjs.org/stockfish/-/stockfish-{STOCKFISH_VERSION}.tgz"
 # the full engine (95 MB) as visitors download it: unpkg serves npm files of any size, with CORS and a year's cache
@@ -140,6 +145,9 @@ def js_tree(out: Path) -> None:
         for f in sorted((ROOT / "js" / d).rglob("*")):
             if f.is_file() and not f.name.endswith(JS_SKIP):
                 rel = f.relative_to(ROOT / "js")
+                if BLOCKED_NAME.search(f.name):
+                    sys.exit(f"js/{rel}: ad blockers block a file of that name, so the worker would not load "
+                             "where one is installed. Rename it.")
                 want.add(rel)
                 copy_if_changed(f, out / "js" / rel)
     if (out / "js").exists():

@@ -3,10 +3,10 @@
 // puzzle's "why not").
 //
 // Searches go through the engine pool (js/core/engine.js) at the batch's node count, and their `info` lines become
-// evals rows in js/core/analyse.js, so a move is graded from the same kind of search as the game's moves. Results
+// evals rows in js/core/evals.js, so a move is graded from the same kind of search as the game's moves. Results
 // are kept in memory only; the evals cache is read (when given) but never written.
 
-import { evaluateMultipv, parseInfo } from '../core/analyse.js';
+import { evaluateMultipv, parseInfo } from '../core/evals.js';
 import { boardFromFen, copy, fen, isCheckmate, isGameOver, legalMoves, moveFromUci, parseUci, push, san, uci } from '../core/chess.js';
 import { classifyGame } from '../core/classify.js';
 import { DEFAULT_NODES, MULTIPV_N } from '../core/config.js';

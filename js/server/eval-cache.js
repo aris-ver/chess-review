@@ -1,5 +1,5 @@
 // The database half of chess_review/analyse.py: which positions still need the engine, and the engine cache's
-// reads and writes. The search itself (js/core/analyse.js parses its output) runs in the engine pool.
+// reads and writes. The search itself (js/core/evals.js parses its output) runs in the engine pool.
 //
 // `db` is a db.js connection that has evals and evals_multipv: Store.evals(), or a profile's (Store.profile(p)),
 // which also has the positions pending_keys asks about.
