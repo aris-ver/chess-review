@@ -3,7 +3,7 @@
     tests/parity/site.json      site.build, write_game and update_index over the profiles of tests/parity/storage.json:
                                 the same games, positions and cache rows the storage dump has, its outputs here
                                 (the review files, parsed, without their fingerprint, which the JS makes its own way)
-    tests/parity/explore.json   Explorer.legal and Explorer.move on positions of the fixture and odd FENs, with the
+    tests/parity/explore.json   Explorer.legal, Explorer.move and serve's /api/eval answer on positions of the fixture and odd FENs, with the
                                 engine output each search printed, and the sandbox's snapshots (_lines_snapshot,
                                 _lines_rows) along recorded searches
 
@@ -48,6 +48,7 @@ from chess_review import analyse, book, explore, normalise, profiles, site  # no
 from chess_review.config import MULTIPV_N, STOCKFISH  # noqa: E402
 from chess_review.db import connect, write_parquet  # noqa: E402
 from chess_review.fen import fen_key  # noqa: E402
+from chess_review.pov import pov_win_pct  # noqa: E402
 from dump_parity import SPECIAL_FENS, SYNTHETIC_LINES, Recorder, Replay  # noqa: E402
 
 book.BOOK_DIR = ARGS.data.resolve() / "book"
@@ -124,7 +125,33 @@ def explorer(rec: Recorder):
     return ex, searches
 
 
-def move_cases(rec: Recorder) -> list[dict]:
+def eval_answer(ex, board: chess.Board) -> dict:
+    """serve.py's GET /api/eval, as it is there: the eval, the best move and the line in SAN (a puzzle's "why not")."""
+    main, _ = ex.evaluate(board)
+    best_uci, best_san = main.get("best_move"), None
+    if best_uci:
+        try:
+            best_san = board.san(chess.Move.from_uci(best_uci))
+        except ValueError:
+            best_san = None
+    side = "white" if board.turn else "black"
+    has_eval = main["eval_cp"] is not None or main["mate_in"] is not None
+    wp = pov_win_pct(main["eval_cp"], main["mate_in"], side, "white") if has_eval else None
+    pv_san, b = [], board.copy(stack=False)
+    for u in (main.get("pv") or [])[:6]:
+        try:
+            mv = chess.Move.from_uci(u)
+            pv_san.append(b.san(mv))
+            b.push(mv)
+        except (ValueError, AssertionError):
+            break
+    return {"eval": site.eval_text(main["eval_cp"], main["mate_in"], side),
+            "wp_white": round(wp, 1) if wp is not None else None,
+            "best_uci": best_uci, "best_san": best_san, "pv_san": pv_san,
+            "mate_in": main["mate_in"], "eval_cp": main["eval_cp"]}
+
+
+def move_cases(rec: Recorder) -> tuple[list[dict], list[dict]]:
     rng = random.Random(SEED)
     storage = json.loads((OUT / "storage.json").read_text(encoding="utf-8"))
     fixture = [r for r in storage[0]["positions"] if r["move_played"]]
@@ -132,7 +159,7 @@ def move_cases(rec: Recorder) -> list[dict]:
     fens.append(("4k3/8/8/8/8/8/4P3/4K3 w - - 149 120", 30))      # the 75-move rule: over after any move
     ratings = [None, {"white": 1200, "black": 1800}, {"white": None, "black": 2500}, {"white": 3100, "black": 600}]
     ex, searches = explorer(rec)
-    cases = []
+    cases, evals = [], []
     try:
         for i, (fen, ply) in enumerate(fens):
             board = chess.Board(fen)
@@ -142,7 +169,7 @@ def move_cases(rec: Recorder) -> list[dict]:
             tries = [rng.choice(legal)]
             ex._cache.clear()
             searches.clear()
-            ex.evaluate(board)
+            evals.append({"fen": fen, "answer": eval_answer(ex, board), "searches": dict(searches)})
             ranks = ex._cache[fen_key(fen)][1]
             tries += [r["move"] for r in ranks if r["move"] not in tries]
             for j, u in enumerate(tries):
@@ -166,7 +193,7 @@ def move_cases(rec: Recorder) -> list[dict]:
                           "error": str(e), "searches": {}})
     finally:
         ex.close()
-    return cases
+    return cases, evals
 
 
 def stream_case(fen: str, lines: list[str]) -> dict:
@@ -227,8 +254,8 @@ def explore_dump() -> dict:
     log = logging.getLogger("chess.engine")
     log.setLevel(logging.DEBUG)
     log.addHandler(rec)
-    moves = move_cases(rec)
-    return {"nodes": EXPLORE_NODES, "multipv": MULTIPV_N, "legal": legal_cases(), "moves": moves,
+    moves, evals = move_cases(rec)
+    return {"nodes": EXPLORE_NODES, "multipv": MULTIPV_N, "legal": legal_cases(), "moves": moves, "evals": evals,
             "streams": stream_cases(moves), "after": after_cases()}
 
 
