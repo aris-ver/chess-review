@@ -82,3 +82,15 @@ test('engines: a missing executable fails load() with its path', async () => {
   await assert.rejects(none.load(), /nonexistent\/stockfish/);
   assert.equal(none.engines.length, 0);
 });
+
+test('engines: stream() deepens until closed, then the engine is free again', { skip }, async () => {
+  const seen = [];
+  for await (const line of pool.stream(START, 2)) {
+    seen.push(line);
+    if (/ depth 8 .* multipv 2 /.test(line)) break;     // leaving the loop sends `stop`
+  }
+  assert.ok(seen.every(l => l.startsWith('info ')));
+  assert.ok(seen.some(l => / multipv 2 /.test(l)), 'two lines');
+  const lines = await Promise.all([pool.search(START, NODES), pool.search(TACTIC, NODES)]);   // both engines answer
+  assert.ok(lines.every(ls => ls.length));
+});

@@ -2,13 +2,20 @@
 // "Blundr" window, a failure page if the server doesn't come up. Closing the window shuts everything down.
 
 import { app, BrowserWindow, Menu, dialog, shell } from 'electron';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
+import { loadBook } from '../core/book.js';
+import { DEFAULT_NODES } from '../core/config.js';
+import { nodeSqlite } from '../server/db-node.js';
+import { Store } from '../server/db.js';
+import { nodeFiles } from '../server/profiles-files-node.js';
+import { Profiles } from '../server/profiles.js';
+import { serve } from '../server/router.js';
 import { EnginePool } from './engines.js';
 import { logger, setupLogging } from './log.js';
 import { STATIC_DIR, dataDir, stockfishPath } from './paths.js';
-import { listen, makeServer } from './server.js';
+import { listen, makeServer, routerApi } from './server.js';
 
 const HOST = '127.0.0.1', PREFERRED_PORT = 8123;
 const log = logger('launcher');
@@ -23,8 +30,19 @@ process.on('unhandledRejection', err => log.error('unhandled rejection', err));
 app.setPath('userData', join(DATA, 'electron'));
 
 const STOCKFISH = stockfishPath({ packaged });
-// The job runner (round 3) takes this; nothing starts until its first search.
+// Nothing starts until the first search.
 export const engines = new EnginePool({ path: STOCKFISH });
+
+/** js/server over the data folder: the router with its job runner (serve.main's start-up). */
+function startServer() {
+  // the opening book's positions, one fen_key a line (scripts/build_web.py writes them from data/book)
+  const book = join(DATA, 'book_keys.txt');
+  if (existsSync(book)) loadBook(readFileSync(book, 'utf8'));
+  else log.warn(`no ${book}: no move is labelled book`);
+  const store = new Store(nodeSqlite(DATA)), files = nodeFiles(DATA);
+  const env = { store, files, profiles: new Profiles(files, store), fetch: globalThis.fetch, log };
+  return serve({ env, pool: engines, nodes: DEFAULT_NODES, log });
+}
 
 function failurePage(win, detail) {
   const html = `<!doctype html><meta charset="utf-8"><title>Blundr</title><body style="font-family:system-ui;margin:2em">
@@ -47,7 +65,9 @@ async function main() {
     return { action: 'deny' };
   });
 
-  const server = makeServer({ staticDir: STATIC_DIR, log });
+  const router = startServer();
+  router.catch(err => log.error('the server failed to start', err));
+  const server = makeServer({ staticDir: STATIC_DIR, api: routerApi(router), log });
   app.on('window-all-closed', async () => {
     log.info('window closed: shutting down');
     server.close();
