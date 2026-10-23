@@ -2,7 +2,7 @@
 // "Blundr" window, a failure page if the server doesn't come up. Closing the window shuts everything down.
 
 import { app, BrowserWindow, Menu, dialog, shell } from 'electron';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { loadBook } from '../core/book.js';
@@ -12,6 +12,7 @@ import { Store } from '../server/db.js';
 import { nodeFiles } from '../server/profiles-files-node.js';
 import { Profiles } from '../server/profiles.js';
 import { serve } from '../server/router.js';
+import { Account } from '../server/account.js';
 import { EnginePool } from './engines.js';
 import { logger, setupLogging } from './log.js';
 import { STATIC_DIR, dataDir, stockfishPath } from './paths.js';
@@ -32,6 +33,7 @@ app.setPath('userData', join(DATA, 'electron'));
 const STOCKFISH = stockfishPath({ packaged });
 // Nothing starts until the first search.
 export const engines = new EnginePool({ path: STOCKFISH });
+let serverPort = null;
 
 /** js/server over the data folder: the router with its job runner (serve.main's start-up). */
 function startServer() {
@@ -40,7 +42,19 @@ function startServer() {
   if (existsSync(book)) loadBook(readFileSync(book, 'utf8'));
   else log.warn(`no ${book}: no move is labelled book`);
   const store = new Store(nodeSqlite(DATA)), files = nodeFiles(DATA);
-  const env = { store, files, profiles: new Profiles(files, store), fetch: globalThis.fetch, log };
+  // the Blundr account (account.py's): a provider sign-in runs in the system browser, which the Worker sends back to
+  // this server's port; the export lands in Downloads (DATA when there is none)
+  const account = new Account({
+    fetch: globalThis.fetch, files, site: process.env.BLUNDR_URL || undefined, port: () => serverPort, log,
+    openBrowser: url => shell.openExternal(url),
+    saveExport: async bytes => {
+      const downloads = app.getPath('downloads');
+      const dst = join(existsSync(downloads) ? downloads : DATA, 'blundr-account.json');
+      writeFileSync(dst, bytes);
+      return dst;
+    },
+  });
+  const env = { store, files, profiles: new Profiles(files, store), fetch: globalThis.fetch, log, account };
   return serve({ env, pool: engines, nodes: DEFAULT_NODES, log });
 }
 
@@ -75,9 +89,9 @@ async function main() {
     app.quit();
   });
 
-  let port;
+  let port;     // serverPort too, once listening (the account's sign-in comes back to it)
   try {
-    port = await listen(server, HOST, PREFERRED_PORT);
+    port = serverPort = await listen(server, HOST, PREFERRED_PORT);
   } catch (err) {
     log.error(`server did not come up on ${HOST}:${PREFERRED_PORT}`, err);
     return failurePage(win, 'Its local server could not start.');
