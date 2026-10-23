@@ -98,7 +98,7 @@ import chess
 import duckdb
 import requests
 
-from . import account, aggregates, book, classify, ingest, migrate_sqlite, normalise, own_puzzles, packs, profiles, puzzles, site, sync, updater
+from . import account, aggregates, book, classify, ingest, normalise, own_puzzles, packs, profiles, puzzles, site, sync, updater
 from .analyse import Analyser, LivePace, export_parquet, open_db, pending_keys
 from .config import DATA, DEFAULT_NODES, ENGINE_IDLE_SECONDS, MULTIPV_N, SITE_DIR, USER_AGENT
 from .db import base_views
@@ -1115,6 +1115,7 @@ def main(argv=None) -> None:
     p.add_argument("--workers", type=int, default=None, help="engine processes for game analysis (default: physical cores)")
     args = p.parse_args(argv)
     profiles.migrate_legacy()
+    from . import migrate_sqlite    # here, not at the top: the web build imports serve before DuckDB and sqlite3 load
     migrate_sqlite.on_start()   # the JS port's SQLite files, once: off unless the bridge release switches it on
     profiles.expire_shown()  # "new" flags the list displayed in an earlier run: seen
     site.write_static()     # index.html is a pure copy of static/, so it is always current after a restart
