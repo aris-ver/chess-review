@@ -205,3 +205,81 @@ test('the JS routes answer as serve.Handler does: files and databases in one fol
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+// ---------- what the dump can't reach ----------
+
+async function bare(fetch = async () => { throw new TypeError('offline'); }) {
+  const dir = mkdtempSync(join(tmpdir(), 'blundr-rest-'));
+  const store = new Store(nodeSqlite(dir)), files = memoryFiles();
+  const env = { store, files, profiles: new Profiles(files, store), fetch };
+  const pool = { size: 1, name: 'none', async load() {}, async search() { throw new Error('no engine here'); } };
+  const router = await serve({ env, pool, nodes: 1000, scan: false });
+  const done = async () => {
+    await store.close();
+    rmSync(dir, { recursive: true, force: true });
+  };
+  return { router, env, files, done };
+}
+
+test('routes-rest: apply waits for a job the user asked for, not for a background one', async () => {
+  const { router, env, done } = await bare();
+  try {
+    const u = env.updater = new Updater({ installed: { version: 'v1' }, platform: 'win32', apply: async () => {} });
+    Object.assign(u, { state: 'ready', stage: 'update/x', latest: { version: 'v2', asset: { kind: 'update' } } });
+    router.runner.job = { kind: 'analyse', status: 'running', profile: { id: 'p' }, toDict: () => ({ kind: 'analyse' }) };
+    const busy = await router.handle('POST', '/api/update/apply');
+    assert.deepEqual([busy.status, JSON.parse(busy.body)], [409, { error: 'busy', job: { kind: 'analyse' } }]);
+    router.runner.job.kind = 'build';
+    assert.equal((await router.handle('POST', '/api/update/apply')).status, 200);
+    router.runner.job = null;
+    u.applyHook = null;
+    const no = await router.handle('POST', '/api/update/apply');
+    assert.deepEqual([no.status, JSON.parse(no.body)], [400, { error: 'this build cannot apply updates' }]);
+  } finally {
+    await done();
+  }
+});
+
+test('routes-rest: an image with no length is cut off past 10 MB; settings saved at once all land', async () => {
+  const chunk = new Uint8Array(1 << 20);
+  let pulled = 0;
+  const fetch = async () => new Response(new ReadableStream({
+    pull(c) {
+      pulled++;
+      c.enqueue(chunk);
+    },
+  }), { headers: { 'Content-Type': 'image/png' } });
+  const { router, files, done } = await bare(fetch);
+  try {
+    const out = await router.handle('GET', '/api/fetch_image?url=https://x/y.png');
+    assert.deepEqual([out.status, JSON.parse(out.body)], [413, { error: 'image larger than 10 MB' }]);
+    assert.ok(pulled <= 13, 'stopped reading');
+    await Promise.all(['a', 'b', 'c'].map(k => router.handle('POST', '/api/settings', JSON.stringify({ [k]: k }))));
+    assert.equal(await files.readText('settings.json'), '{\n "a": "a",\n "b": "b",\n "c": "c"\n}');
+  } finally {
+    await done();
+  }
+});
+
+test('routes-rest: the desktop server answers account/* from another site with a 403', async () => {
+  const { request } = await import('node:http');
+  const { STATIC_DIR } = await import('../desktop/paths.js');
+  const { listen, makeServer } = await import('../desktop/server.js');
+  const server = makeServer({ staticDir: STATIC_DIR, api: async () => ({ status: 200, headers: { 'Content-Type': 'application/json' }, body: '{"ok": 1}' }) });
+  const port = await listen(server, '127.0.0.1', 0);
+  const get = (path, headers) => new Promise((resolve, reject) => {
+    request({ host: '127.0.0.1', port, path, headers }, res => {
+      let body = '';
+      res.on('data', c => { body += c; }).on('end', () => resolve([res.statusCode, body]));
+    }).on('error', reject).end();
+  });
+  try {
+    assert.deepEqual(await get('/account/me', {}), [200, '{"ok": 1}']);
+    assert.deepEqual(await get('/account/me', { Host: `localhost:${port}`, Origin: `http://localhost:${port}` }), [200, '{"ok": 1}']);
+    assert.deepEqual(await get('/account/me', { Host: `blundr.example:${port}` }), [403, '{"error":"cross-site request"}']);
+    assert.deepEqual(await get('/account/me', { Origin: 'https://evil.example' }), [403, '{"error":"cross-site request"}']);
+    assert.deepEqual(await get('/api/status', { Host: `blundr.example:${port}` }), [200, '{"ok": 1}']);
+  } finally {
+    server.close();
+  }
+});
