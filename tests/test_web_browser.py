@@ -304,8 +304,10 @@ OPEN_STAGE_TWO = """async () => {
 FOCUS = "(document.querySelector('.scard.sel') || {dataset: {}}).dataset.n"
 
 
-def ladder(browser, site, **kw):
+def ladder(browser, site, init=None, **kw):
     ctx = browser.new_context(**kw)
+    if init:
+        ctx.add_init_script(init)
     page = ctx.new_page()
     page.goto(site)
     ready(page)
@@ -362,22 +364,32 @@ def test_only_the_stage_in_focus_opens_its_puzzles(site, browser):
         ctx.close()
 
 
-def test_a_swiped_stage_takes_the_focus_once_it_comes_to_rest(site, browser):
-    """On a phone (a slow one: the CPU throttled) a fling goes on for a while after the finger lifts; the stage swiped
-    away greys as it goes, and the stage swiped to stays grey while it slides in, lighting a short beat after the
-    track has stopped with it in the middle: not on the way, and not long after."""
-    ctx, page = ladder(browser, site, viewport={"width": 412, "height": 915}, device_scale_factor=2.6, is_mobile=True,
-                       has_touch=True, user_agent=LITE)
+# Safari has no scrollsnapchanging: a page without it, to try the way the ladder does without
+NO_SNAP_EVENT = ("const add = EventTarget.prototype.addEventListener; EventTarget.prototype.addEventListener = "
+                 "function (t, ...r) { if (t !== 'scrollsnapchanging') return add.call(this, t, ...r); };")
+
+
+@pytest.mark.parametrize("snap_event", [True, False], ids=["scrollsnapchanging", "without it, as Safari"])
+def test_a_swiped_stage_lights_once_it_is_sure_to_stop_there(site, browser, snap_event):
+    """On a phone (a slow one: the CPU throttled) a fling goes on after the finger lifts, and the browser's snap takes
+    a while to bring the stage in. The stage swiped to lights as soon as it is sure to stop there: where the browser
+    says where the snap goes, just after the finger lifts; without that, once it's near the middle and down to a
+    crawl, before the track stops. Never a stage passed on the way; the one swiped away greys as it goes."""
+    ctx, page = ladder(browser, site, init=None if snap_event else NO_SNAP_EVENT, viewport={"width": 412, "height": 915},
+                       device_scale_factor=2.6, is_mobile=True, has_touch=True, user_agent=LITE)
     try:
         settled(page)
         page.evaluate("""() => {
-            const tr = document.querySelector('.sttrack'), one = tr.querySelector('.scard[data-n="1"]'), two = tr.querySelector('.scard[data-n="2"]');
-            window.swipe = { scrolls: [] };
+            const tr = document.querySelector('.sttrack'), two = tr.querySelector('.scard[data-n="2"]');
+            const off = c => { const r = c.getBoundingClientRect(), t = tr.getBoundingClientRect(); return Math.abs(r.left + r.width / 2 - (t.left + t.width / 2)) / r.width; };
+            window.swipe = { scrolls: [], lit: [] };
             tr.addEventListener('scroll', () => window.swipe.scrolls.push(performance.now()), { passive: true });
-            new MutationObserver(() => {
-                if (one.classList.contains('sel') && !window.swipe.lit) window.swipe.lit = performance.now();
+            tr.addEventListener('touchend', () => { window.swipe.lift = performance.now(); }, { passive: true });
+            new MutationObserver(ms => {
+                for (const m of ms) if (m.target.classList.contains('scard') && m.target.classList.contains('sel') && !m.oldValue.includes('sel'))
+                    window.swipe.lit.push([m.target.dataset.n, performance.now(), off(m.target)]);
                 if (!two.classList.contains('sel') && !window.swipe.dimmed) window.swipe.dimmed = performance.now();
-            }).observe(tr, { subtree: true, attributes: true, attributeFilter: ['class'] });
+            }).observe(tr, { subtree: true, attributes: true, attributeFilter: ['class'], attributeOldValue: true });
         }""")
         cdp = ctx.new_cdp_session(page)
         cdp.send("Emulation.setCPUThrottlingRate", {"rate": 4})
@@ -389,11 +401,17 @@ def test_a_swiped_stage_takes_the_focus_once_it_comes_to_rest(site, browser):
         page.wait_for_function(f"{FOCUS} === '1'", timeout=10_000)
         settled(page)
         s = page.evaluate("window.swipe")
-        beat = s["lit"] - s["scrolls"][-1]
-        print(f"phone: stage 1 lit {beat:.0f} ms after the track stopped")
-        assert s["dimmed"] < s["scrolls"][-1], "stage 2 stayed lit till the track stopped"
-        assert beat > 0, f"stage 1 took the focus {-beat:.0f} ms before the track stopped"
-        assert beat < 110, f"stage 1 took the focus {beat:.0f} ms after the track stopped"   # 22 ms, then a 65 ms fade
+        stop = s["scrolls"][-1]
+        assert [n for n, _, _ in s["lit"]] == ["1"], f"lit on the way: {s['lit']}"
+        _, lit, off = s["lit"][0]
+        print(f"phone ({'scrollsnapchanging' if snap_event else 'no scrollsnapchanging'}): stage 1 lit {lit - s['lift']:.0f} ms "
+              f"after the finger lifted, {stop - lit:.0f} ms before the track stopped, {off:.0%} of a card from the middle")
+        assert s["dimmed"] < stop, "stage 2 stayed lit till the track stopped"
+        assert lit < stop, f"stage 1 lit only {lit - stop:.0f} ms after the track stopped"
+        if snap_event:
+            assert lit - s["lift"] < 80, f"stage 1 lit {lit - s['lift']:.0f} ms after the finger lifted"
+        else:
+            assert off < .15, f"stage 1 lit {off:.0%} of a card from the middle"
     finally:
         ctx.close()
 

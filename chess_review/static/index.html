@@ -2418,9 +2418,12 @@ function drawLadder(id, k, fx, want) {
     tr.scrollTo({ left: c.offsetLeft - (tr.clientWidth - c.offsetWidth) / 2, behavior: smooth && !reducedMotion() ? 'smooth' : 'auto' });   // (Safari before 15.4 throws on 'instant')
     mark(n);
   };
-  // swiping: the stage is the card that comes to rest in the middle. It lights a beat after the track has stopped there
-  // (22 ms after scrollend, or after the last scroll event where there's none; then a 65 ms fade), not as it slides past on the way; the
-  // stage swiped away greys as it leaves the middle line (an observer: no work per scroll event)
+  // swiping: the stage is the card the track comes to rest on. It lights as soon as that is certain, not as cards slide
+  // past on the way: where the browser says where the snap is going (scrollsnapchanging, Chromium), once the finger is
+  // off; elsewhere (Safari) once a card is within 15% of its width of the middle and the track is down to a crawl
+  // (under 0.5 px/ms, too slow to carry it to the next card); and at the latest 22 ms after the track stops. Waiting
+  // for the stop alone took the length of the browser's own snap animation (about 0.2 s here, longer with Safari's
+  // momentum). The stage swiped away greys as it leaves the middle line (an observer: no work per scroll event)
   const settle = () => {
     clearTimeout(still);
     if (touching) return;                                     // a finger still on the track: the snap is yet to come
@@ -2432,9 +2435,22 @@ function drawLadder(id, k, fx, want) {
     mark(n);
   };
   const later = () => { clearTimeout(still); still = setTimeout(settle, 22); };
+  const light = c => { if (c && !c.classList.contains('sel')) mark(+c.dataset.n); };
+  let lastX = tr.scrollLeft, lastT = 0, snapTo = null;
+  const arriving = () => {       // near the middle and slowing to a stop there
+    const now = performance.now(), x = tr.scrollLeft, speed = lastT && now > lastT ? Math.abs(x - lastX) / (now - lastT) : Infinity;
+    lastX = x; lastT = now;
+    if (touching || target !== null || speed >= 0.5) return;
+    const r = tr.getBoundingClientRect(), mid = r.left + r.width / 2;
+    for (const c of cards) { const b = c.getBoundingClientRect(); if (Math.abs(b.left + b.width / 2 - mid) < b.width * .15) light(c); }
+  };
   const scrollEnd = 'onscrollend' in tr;
-  tr.addEventListener('scroll', () => { scrollEnd ? clearTimeout(still) : later(); }, { passive: true });
+  tr.addEventListener('scroll', () => { scrollEnd ? clearTimeout(still) : later(); arriving(); }, { passive: true });
   if (scrollEnd) tr.addEventListener('scrollend', later);
+  tr.addEventListener('scrollsnapchanging', e => {
+    snapTo = e.snapTargetInline;
+    if (!touching && target === null) light(snapTo);
+  });
   if (ladderIO) ladderIO.disconnect();
   ladderIO = new IntersectionObserver(es => {
     if (target !== null) return;
@@ -2443,7 +2459,13 @@ function drawLadder(id, k, fx, want) {
   cards.forEach(c => ladderIO.observe(c));
   for (const ev of ['pointerdown', 'touchstart', 'wheel']) tr.addEventListener(ev, () => { target = null; }, { passive: true });
   tr.addEventListener('touchstart', () => { touching = true; clearTimeout(still); }, { passive: true });
-  for (const ev of ['touchend', 'touchcancel']) tr.addEventListener(ev, e => { if (!e.touches.length) { touching = false; later(); } }, { passive: true });
+  tr.addEventListener('touchstart', () => { snapTo = null; }, { passive: true });
+  // let go: where the snap goes, if the browser has said (it says again in a moment if the fling changes it)
+  for (const ev of ['touchend', 'touchcancel']) tr.addEventListener(ev, e => {
+    if (e.touches.length) return;
+    touching = false; later();
+    requestAnimationFrame(() => requestAnimationFrame(() => { if (!touching && target === null && snapTo) light(snapTo); }));
+  }, { passive: true });
   cards.forEach(c => c.onclick = () => { if (+c.dataset.n !== sel) go(+c.dataset.n); });
   tr.addEventListener('focusin', e => { const c = e.target.closest('.scard'); if (c && +c.dataset.n !== sel) go(+c.dataset.n); });   // tabbing into a stage
   box.querySelectorAll('.stcar .arrow').forEach(b => b.onclick = () => go(sel + +b.dataset.d));
