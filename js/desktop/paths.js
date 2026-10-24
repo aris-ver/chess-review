@@ -1,5 +1,5 @@
-// Where the desktop app finds its files: the same places chess_review/config.py uses, so the Electron build and the
-// Python one share a data folder.
+// Where the desktop app finds its files: the same places the Python app (chess_review/config.py) used, so the
+// Electron build takes over its data folder.
 
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -28,13 +28,12 @@ export function stockfishPath({ packaged, resources = process.resourcesPath, env
 export const STATIC_DIR = join(ROOT, 'chess_review', 'static');
 
 /** What app.asar carries beside the code (build.js): the puzzle pack, the packs and the opening book's keys. From a
- * checkout: packs.json where Python keeps it, puzzles.json where packaging/puzzles_json.py writes it, no book keys
- * (main.js reads DATA/book's TSVs instead). */
+ * checkout: both from chess_review/puzzle_packs, no book keys (main.js reads DATA/book's TSVs instead). */
 export function bundled({ packaged }) {
   if (packaged) {
     return { puzzles: join(ROOT, 'puzzle_packs', 'puzzles.json'), packs: join(ROOT, 'puzzle_packs', 'packs.json'),
              book: join(ROOT, 'book_keys.txt') };
   }
-  return { puzzles: join(ROOT, 'packaging', 'build', 'puzzles.json'),
+  return { puzzles: join(ROOT, 'chess_review', 'puzzle_packs', 'puzzles.json'),
            packs: join(ROOT, 'chess_review', 'puzzle_packs', 'packs.json'), book: null };
 }

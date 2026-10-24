@@ -5,8 +5,8 @@
 // in `moves` is that move (the setup), played by the board before the solver's turn. Every other move after it is
 // the solver's, answered by the opponent's reply.
 //
-// The pack is puzzles.json (scripts/build_web.py writes it from puzzle_packs/lichess.parquet: rows {id, fen, moves,
-// rating, popularity, plays, themes, game_url, opening}, themes space-separated), so no Parquet reader is needed.
+// The pack is puzzles.json (chess_review/puzzle_packs/puzzles.json, scripts/build_puzzle_pack.py: rows {id, fen, moves,
+// rating, popularity, plays, themes, game_url, opening}, themes space-separated).
 // The record is progress.sqlite's puzzle_attempts table (db.js), one row per former puzzle_attempts.jsonl line:
 // {id, ts, solved, ms, hinted, rating}. Only the first try at a puzzle counts, the way Lichess does it, and the
 // rating is Glicko-1 replayed from the record. Resetting the rating moves the record aside (archive = 'reset-<when>',
