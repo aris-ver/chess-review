@@ -240,13 +240,11 @@ body.hasbar #toast { bottom: 72px; }
 .card.profile .who { padding-right: 52px; display: flex; align-items: baseline; gap: 8px; }
 table.games tr.unseen td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
 .newtag { display: inline-block; margin-left: 6px; background: var(--accent); color: #1b1b1b; font-size: 10px; font-weight: 700; padding: 1px 5px; border-radius: 8px; vertical-align: 1px; }
-/* the new-games banner: a strip across the card with the count, a Fetch button and a dismiss x */
-.card .banner { margin-top: 6px; display: flex; align-items: center; gap: 8px; background: rgba(129, 182, 76, .14); border: 1px solid var(--accent); border-radius: 6px; padding: 5px 6px 5px 10px; font-size: 12px; }
-.card .banner .txt { flex: 1; min-width: 0; }
-.card .banner button { padding: 2px 10px; font-size: 12px; background: var(--accent); color: #1b1b1b; border-color: var(--accent); font-weight: 600; }
-.card .banner .dismiss { color: var(--muted); padding: 2px 6px; border-radius: 4px; font-size: 13px; line-height: 1; }
-@media (hover: hover) { .card .banner .dismiss:hover { background: var(--panel2); color: var(--text); } }
-.card .banner + .meta { margin-top: 6px; }
+/* new games being fetched into a profile (a refresh): a light sweeping along the card's bottom edge, over it, so
+   nothing on the card moves; the counts change once they're in */
+.card.profile.refreshing::after { content: ""; position: absolute; left: 12px; right: 12px; bottom: 0; height: 2px; border-radius: 1px;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent) 0 0 / 40% 100% no-repeat; animation: sweep 1.4s linear infinite, pzfade .4s; }
+@keyframes sweep { from { background-position: -70% 0; } to { background-position: 170% 0; } }
 /* ratings per time class: icon + number (+ 7-day change) */
 .card .ratings { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 2px; }
 .card .rc { display: inline-flex; align-items: center; gap: 5px; font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; }
@@ -480,9 +478,8 @@ table.games button.an { padding: 3px 9px; font-size: 12px; font-weight: 600; whi
   table.games td:nth-child(5), table.games td:nth-child(8), table.games td:nth-child(9), table.games td:nth-child(10) { display: none; }
   .opening { max-width: none; }
   /* small buttons grown to a finger's size */
-  .home .hhead button, .card.pzp .btns button, .card .banner button, .panel .stepchip button, .tpanel .tsounds .row button { padding: 8px 14px; }
+  .home .hhead button, .card.pzp .btns button, .panel .stepchip button, .tpanel .tsounds .row button { padding: 8px 14px; }
   .panel .phead .pbtn { padding: 8px 12px; }
-  .card .banner .dismiss { padding: 8px 10px; }
   table.games button.an { padding: 7px 10px; }
   /* setup editor: the board over its tools, not beside them */
   .setup { grid-template-columns: minmax(0, 1fr); gap: 12px; margin-top: 4px; }
@@ -1557,6 +1554,26 @@ $('pgnform').onsubmit = async e => {
   f.pgn.value = ''; openDrawer('pgncard', false);
   location.hash = d.games.length === 1 ? `#/p/${d.profile.id}/game/${d.games[0]}` : `#/p/${d.profile.id}`;
 };
+// New games on a profile's site (the launch-time scan's new_games) are fetched with no click: the same refresh as the
+// list's "Refresh games", which analyses nothing. One profile at a time, as the server runs one fetch at a time; each
+// profile once per visit. While something else runs (an analysis), it waits its turn.
+const autoFetched = new Set();
+let autoFetchT = null;
+async function autoFetch(ps) {
+  clearTimeout(autoFetchT);
+  const p = ps.find(p => p.new_games && !autoFetched.has(p.id));
+  if (!p) return;
+  if (jobsNow.some(j => ['ingest', 'refresh', 'older'].includes(j.kind) && ACTIVE(j.status))) { autoFetchT = setTimeout(() => autoFetch(ps), 3000); return; }
+  let r, d;
+  try { r = await fetch(`api/p/${p.id}/refresh`, { method: 'POST' }); d = await r.json(); } catch (e) { return; }
+  if (r.status === 409) { autoFetchT = setTimeout(() => autoFetch(ps), 5000); return; }     // busy: try again
+  autoFetched.add(p.id);
+  if (!r.ok) { autoFetch(ps); return; }
+  fetches.add(d.job.id);
+  jobsNow = [d.job, ...jobsNow];
+  markFetching();
+  pollStatus();
+}
 let profilesScanT = null;
 async function renderProfiles() {
   let d; try { d = await (await fetch('api/profiles')).json(); } catch (e) { d = { profiles: [] }; }
@@ -1574,24 +1591,16 @@ async function renderProfiles() {
       <span class="who" title="${esc(p.username)}"><span class="name">${esc(p.username)}</span></span>
       ${ratingsHTML(p.ratings)}
       <div class="progress hidden"><div></div></div>
-      ${p.new_games ? `<div class="banner"><span class="txt">${p.new_games} new game${p.new_games === 1 ? '' : 's'} on ${SOURCE_NAME[p.source]}</span><button class="fetch" title="Open the profile and fetch them">Fetch</button><span class="dismiss" title="Dismiss">✕</span></div>` : ''}
       <span class="meta" title="${p.played ? `${p.games.toLocaleString()} of them loaded here` : ''}">${(p.played || p.games).toLocaleString()} games · ${p.analysed} analysed${p.unseen && p.unseen.length ? ` · <b style="color:var(--accent)">${p.unseen.length} not opened yet</b>` : ''}</span>
       <span class="pin" title="${p.pinned ? 'Unpin' : 'Pin to the top'}">${p.pinned ? '★' : '☆'}</span>
       <span class="x" title="Remove this profile (the engine cache is kept)">✕</span>
     </div>`).join('') || `<div class="empty">No profiles yet — add a chess.com or lichess username to review its games.</div>`;
   if (!ps.length) openDrawer('addcard', true, false);     // nothing to show yet: the form is the first thing to use
   $('profiles').querySelectorAll('.card.profile').forEach(c => {
-    const seen = () => fetch(`api/profiles/${c.dataset.id}/seen`, { method: 'POST' });   // banner shown, job done
     c.onclick = () => {
       if (c.classList.contains('loading')) { toast(`Still fetching ${c.dataset.name}'s games: the profile opens by itself when they're in`, 5000); return; }
-      if (c.querySelector('.banner')) seen();
       location.hash = '#/p/' + c.dataset.id;
     };
-    const banner = c.querySelector('.banner');
-    if (banner) {
-      banner.querySelector('.dismiss').onclick = async e => { e.stopPropagation(); await seen(); banner.remove(); };
-      banner.querySelector('.fetch').onclick = e => { e.stopPropagation(); seen(); state.pendingRefresh = c.dataset.id; location.hash = '#/p/' + c.dataset.id; };
-    }
     c.querySelector('.pin').onclick = async e => {
       e.stopPropagation();
       await fetch(`api/profiles/${c.dataset.id}/pin`, { method: 'POST', body: JSON.stringify({ pinned: !c.classList.contains('pinned') }) });
@@ -1607,6 +1616,7 @@ async function renderProfiles() {
     };
   });
   markFetching();
+  autoFetch(ps);
   // Enter in the username box adds the profile. Browsers submit a form on Enter by themselves, but not every
   // webview does, so it's handled here (preventDefault keeps it from submitting twice where they do).
   $('addform').username.onkeydown = e => {
@@ -1670,7 +1680,6 @@ async function showList() {
     return;
   }
   $('crumb').textContent = state.username || '';
-  if (state.pendingRefresh === state.profile) { state.pendingRefresh = null; $('b-refresh').onclick(); }   // "Fetch" on the home card
   const f = state.filters;
   const rows = games.filter(g => (!f.result || g.result === f.result) && (!f.colour || g.my_colour === f.colour) &&
     (f.analysed === '' || (f.analysed === '1' ? g.analysed >= 0.999 : g.analysed < 0.999)) &&
@@ -3220,6 +3229,9 @@ const jobProgress = j => j.kind === 'analyse' ? [j.done, j.total] : [j.game_done
 function markFetching() {
   for (const c of $('profiles') ? $('profiles').querySelectorAll('.card.profile') : []) {
     const j = jobsNow.find(x => x.kind === 'ingest' && x.profile === c.dataset.id && ACTIVE(x.status));
+    const fresh = jobsNow.find(x => x.kind === 'refresh' && x.profile === c.dataset.id && ACTIVE(x.status));
+    c.classList.toggle('refreshing', !!fresh);
+    c.title = fresh ? (fresh.note || `Fetching new games from ${sourceName(c.dataset.id)}…`) : '';
     const meta = c.querySelector('.meta'), prog = c.querySelector('.progress');
     if (j && !c.classList.contains('loading')) c.dataset.meta = meta.innerHTML;
     else if (!j && c.classList.contains('loading')) meta.innerHTML = c.dataset.meta;
@@ -3270,7 +3282,7 @@ async function pollStatus() {
       } else if (e.profile === state.profile) {
         toast(e.status === 'done' ? 'Games refreshed' : 'Refresh failed: ' + e.error);
         if (!state.game) showList(); else reloadGame();
-      }
+      } else if (!$('home').classList.contains('hidden')) renderProfiles();     // an auto-fetch: its card's counts, the next one's turn
     }
     if (j && j.kind === 'analyse_all' && mine) {
       if (!active && lastJobStatus && lastJobStatus !== j.status) { toast(j.status === 'done' ? 'All games analysed' : `Batch ${j.status}` + (j.error ? ': ' + j.error : '')); if (!state.game) showList(); }

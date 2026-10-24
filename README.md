@@ -34,9 +34,9 @@ lines and best-move arrows update live as it searches. Open a profile → its ga
 not fully analysed has an **Analyse** button right in the list; open a game → **Analyse game**
 (≈1-2 min for a rapid game on the desktop: MultiPV=3, 1M nodes/position, one engine per core). The board, graph,
 move list and key moments fill in while it runs. **⟳ Refresh games** re-fetches the newest games; nothing is
-analysed unless you ask. On launch the app also asks chess.com, in the background, whether each saved
-profile has newer games than it holds; the home screen's profile card shows *N new games* until you open it or
-refresh.
+analysed unless you ask. On launch the app also asks chess.com and lichess, in the background, whether each
+saved profile has newer games than it holds, and fetches them as **⟳ Refresh games** would, one profile at a time
+(a light sweeps along the bottom of its home-screen card meanwhile); new games are flagged in the list until opened.
 
 Data layout (`js/server/db.js`): each player's games, positions and classified moves are in
 `profiles/<source>-<username>/games.sqlite` under the data folder; the Stockfish cache `evals.sqlite` is shared

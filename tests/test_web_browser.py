@@ -251,6 +251,22 @@ def test_a_reload_keeps_the_games_and_the_count_played(app):
     assert sites.asked[asked:] == []                    # all from this browser: nothing asked of chess.com again
 
 
+def test_new_games_are_fetched_on_opening_with_no_click(app):
+    page, sites = app
+    sites.chesscom.update(chesscom_months("busy", {"2026-09": 3}))
+    add(page, "chesscom", "busy")
+    page.wait_for_url(re.compile(r"#/p/chesscom-busy$"), timeout=60_000)
+    page.wait_for_function("/3 of 3 games/.test(document.getElementById('liststat').textContent)")
+    wait_job(page)
+    sites.chesscom.update(chesscom_months("busy", {"2026-09": 5}))     # two more played since
+    page.goto(page.url.split("#")[0])
+    card = "#profiles .card.profile[data-id=chesscom-busy]"
+    page.wait_for_function(f"/5 games/.test(document.querySelector('{card} .meta')?.textContent)", timeout=60_000)
+    assert page.locator(f"{card} .banner, {card} button").count() == 0     # no Fetch to press
+    assert "2 not opened yet" in page.text_content(f"{card} .meta")
+    s = wait_job(page)
+    assert not any(j["kind"].startswith("analyse") for j in [s.get("job") or {"kind": ""}, *s.get("queue", [])])
+
 
 def test_an_account_switch_moves_a_profiles_database_and_back(app):
     """sync's switch and release on SQLite WASM in OPFS: the databases aren't files there, so a profile's games.sqlite

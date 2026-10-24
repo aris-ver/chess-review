@@ -151,7 +151,7 @@ export function liveOrder(db, gameId, keys) {
 }
 
 /** serve.NewGames: once per launch, how many games each chess.com or lichess profile's site has that aren't on disk
- * yet (the home screen's badge). */
+ * yet (the home screen fetches them: index.html autoFetch). */
 export class NewGames {
   constructor(env) {
     this.env = env;
