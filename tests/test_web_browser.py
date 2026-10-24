@@ -362,19 +362,22 @@ def test_only_the_stage_in_focus_opens_its_puzzles(site, browser):
         ctx.close()
 
 
-def test_a_swiped_stage_takes_the_focus_as_it_gets_to_the_middle(site, browser):
+def test_a_swiped_stage_takes_the_focus_once_it_comes_to_rest(site, browser):
     """On a phone (a slow one: the CPU throttled) a fling goes on for a while after the finger lifts; the stage swiped
-    to must be in focus before that's over, not only once the track has stopped."""
+    away greys as it goes, and the stage swiped to stays grey while it slides in, lighting a short beat after the
+    track has stopped with it in the middle: not on the way, and not long after."""
     ctx, page = ladder(browser, site, viewport={"width": 412, "height": 915}, device_scale_factor=2.6, is_mobile=True,
                        has_touch=True, user_agent=LITE)
     try:
         settled(page)
         page.evaluate("""() => {
-            const tr = document.querySelector('.sttrack'), c = tr.querySelector('.scard[data-n="1"]');
+            const tr = document.querySelector('.sttrack'), one = tr.querySelector('.scard[data-n="1"]'), two = tr.querySelector('.scard[data-n="2"]');
             window.swipe = { scrolls: [] };
             tr.addEventListener('scroll', () => window.swipe.scrolls.push(performance.now()), { passive: true });
-            new MutationObserver(() => { if (c.classList.contains('sel') && !window.swipe.lit) window.swipe.lit = performance.now(); })
-                .observe(c, { attributes: true, attributeFilter: ['class'] });
+            new MutationObserver(() => {
+                if (one.classList.contains('sel') && !window.swipe.lit) window.swipe.lit = performance.now();
+                if (!two.classList.contains('sel') && !window.swipe.dimmed) window.swipe.dimmed = performance.now();
+            }).observe(tr, { subtree: true, attributes: true, attributeFilter: ['class'] });
         }""")
         cdp = ctx.new_cdp_session(page)
         cdp.send("Emulation.setCPUThrottlingRate", {"rate": 4})
@@ -386,7 +389,11 @@ def test_a_swiped_stage_takes_the_focus_as_it_gets_to_the_middle(site, browser):
         page.wait_for_function(f"{FOCUS} === '1'", timeout=10_000)
         settled(page)
         s = page.evaluate("window.swipe")
-        assert s["lit"] < s["scrolls"][-1], f"stage 1 took the focus {s['lit'] - s['scrolls'][-1]:.0f} ms after the swipe stopped"
+        beat = s["lit"] - s["scrolls"][-1]
+        print(f"phone: stage 1 lit {beat:.0f} ms after the track stopped")
+        assert s["dimmed"] < s["scrolls"][-1], "stage 2 stayed lit till the track stopped"
+        assert beat > 0, f"stage 1 took the focus {-beat:.0f} ms before the track stopped"
+        assert beat < 300, f"stage 1 took the focus {beat:.0f} ms after the track stopped"
     finally:
         ctx.close()
 

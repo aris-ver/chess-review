@@ -1816,6 +1816,7 @@ async function showPuzzle(id, source = 'lichess') {
     return;
   }
   let d, r;
+  const h = location.hash;
   if (!id) { pz.source = source; pz.sources = null; }    // the dealing URL says where from; the counts may have moved
   if (id && pz.pending && pz.pending.puzzle.id === id) { d = pz.pending; r = { ok: true }; }
   else {
@@ -1823,6 +1824,7 @@ async function showPuzzle(id, source = 'lichess') {
     const q = id ? `get?id=${encodeURIComponent(id)}` : pz.source.startsWith('mine:') ? `next?source=${encodeURIComponent(pz.source)}${skip}`
       : `next?themes=${encodeURIComponent(pz.theme)}${skip}`;
     try { r = await fetch('api/puzzles/' + q); d = await r.json(); } catch (e) { d = { error: String(e) }; r = { ok: false }; }
+    if (location.hash !== h) return;    // gone elsewhere meanwhile (Back at once, say): don't put the puzzle over that screen
   }
   pz.pending = null;
   if (!r.ok) {
@@ -2309,24 +2311,39 @@ async function showLadder(id) {
   };
   // going to a stage (a click, the arrows, the dots, the keys): the stages scrolled past on the way don't take the focus
   let target = null;
+  let still, touching = false;
   const go = (n, smooth = true) => {
     const c = cards.find(x => +x.dataset.n === n); if (!c) return;
-    target = n;
+    target = n; clearTimeout(still);
     tr.scrollTo({ left: c.offsetLeft - (tr.clientWidth - c.offsetWidth) / 2, behavior: smooth && !reducedMotion() ? 'smooth' : 'instant' });
     mark(n);
   };
-  // swiping: the stage is the card on the track's middle line, from the moment it gets there (not once the swipe has
-  // settled, which on a phone's fling is a second away), seen by an observer: no work per scroll event
+  // swiping: the stage is the card that comes to rest in the middle. It lights a beat after the track has stopped there
+  // (70 ms after scrollend, or after the last scroll event where there's none), not as it slides past on the way; the
+  // stage swiped away greys as it leaves the middle line (an observer: no work per scroll event)
+  const settle = () => {
+    clearTimeout(still);
+    if (touching) return;                                     // a finger still on the track: the snap is yet to come
+    const r = tr.getBoundingClientRect(), mid = r.left + r.width / 2, off = x => { const b = x.getBoundingClientRect(); return Math.abs(b.left + b.width / 2 - mid); };
+    const c = cards.reduce((a, b) => off(b) < off(a) ? b : a);
+    const n = +c.dataset.n;
+    if (off(c) > 4 || (target !== null && n !== target)) return;   // not at rest in the middle, or on the way to a stage
+    target = null;
+    mark(n);
+  };
+  const later = () => { clearTimeout(still); still = setTimeout(settle, 70); };
+  const scrollEnd = 'onscrollend' in tr;
+  tr.addEventListener('scroll', () => { scrollEnd ? clearTimeout(still) : later(); }, { passive: true });
+  if (scrollEnd) tr.addEventListener('scrollend', later);
   if (ladderIO) ladderIO.disconnect();
   ladderIO = new IntersectionObserver(es => {
-    const e = es.filter(x => x.isIntersecting).pop(); if (!e) return;
-    const n = +e.target.dataset.n;
-    if (target !== null && n !== target) return;
-    target = null;
-    if (n !== sel) mark(n);
+    if (target !== null) return;
+    for (const e of es) if (!e.isIntersecting && +e.target.dataset.n === sel) e.target.classList.remove('sel');
   }, { root: tr, rootMargin: '0px -49% 0px -49%' });
   cards.forEach(c => ladderIO.observe(c));
   for (const ev of ['pointerdown', 'touchstart', 'wheel']) tr.addEventListener(ev, () => { target = null; }, { passive: true });
+  tr.addEventListener('touchstart', () => { touching = true; clearTimeout(still); }, { passive: true });
+  for (const ev of ['touchend', 'touchcancel']) tr.addEventListener(ev, e => { if (!e.touches.length) { touching = false; later(); } }, { passive: true });
   cards.forEach(c => c.onclick = () => { if (+c.dataset.n !== sel) go(+c.dataset.n); });
   tr.addEventListener('focusin', e => { const c = e.target.closest('.scard'); if (c && +c.dataset.n !== sel) go(+c.dataset.n); });   // tabbing into a stage
   box.querySelectorAll('.stcar .arrow').forEach(b => b.onclick = () => go(sel + +b.dataset.d));
@@ -2383,7 +2400,8 @@ function confetti(colour) {
 }
 async function playPack(id, stage, n) {
   let k = packCache[id];
-  if (!k) { try { k = (await loadPack(id)).pack; } catch (e) { k = null; } }
+  const h = location.hash;
+  if (!k) { try { k = (await loadPack(id)).pack; } catch (e) { k = null; } if (location.hash !== h) return; }
   const s = k && k.stages.find(x => x.n === stage), c = s && s.puzzles[n - 1];
   if (!c) { toast('No such puzzle'); location.replace(k ? '#/packs/' + id : '#/packs'); return; }
   if (!s.open) { toast(`Stage ${stage} isn't open yet`); location.replace('#/packs/' + id); return; }
@@ -2392,7 +2410,9 @@ async function playPack(id, stage, n) {
   return showPuzzle(c.id);
 }
 async function playDaily() {
+  const h = location.hash;
   let d; try { d = await (await fetch('api/puzzles/daily')).json(); } catch (e) { d = {}; }
+  if (location.hash !== h) return;
   if (!d.id) { toast('No puzzle of the day'); location.replace('#/'); return; }
   const was = pz.ctx, same = was && was.kind === 'daily' && was.date === d.date && pz.p && pz.p.id === d.id && pz.game;
   if (!(same && was.played)) {     // (a go played here, back from the sandbox, say, stays where it was left)
