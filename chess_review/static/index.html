@@ -430,7 +430,9 @@ table.games button.an { padding: 3px 9px; font-size: 12px; font-weight: 600; whi
   header .t, header #jobstat { display: none; }
   header h1 { white-space: nowrap; }
   /* away from home on a phone the mark alone is the Home button: a finger-sized app icon, no words beside it */
-  header h1 a.away { padding: 0; margin: 0 2px 0 0; background: none; border: 0; }
+  /* (its border stays, transparent: a "border: 0" here made it currentColor, the text's white, and going home the
+     border's 1px came back at once and faded from white to transparent: the white ring after a tap) */
+  header h1 a.away { padding: 0; margin: 0 2px 0 0; background: none; border-color: transparent; }
   header h1 a.away #home-t { display: none; }
   header h1 a.away .mark { width: 36px; height: 36px; border-radius: 9px; }
   .evalbar .lbl { display: none; }
