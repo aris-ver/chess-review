@@ -311,7 +311,13 @@ async function route(req, env, url) {
 export default {
   async fetch(req, env) {
     const url = new URL(req.url);
-    if (!url.pathname.startsWith('/account/')) return env.ASSETS.fetch(req);
+    if (!url.pathname.startsWith('/account/')) {
+      // A file the site doesn't have comes here. Under /v/ (the code, kept a year: _headers) that is a version gone
+      // with a deploy, and its 404 would carry the year too; asked for again it may be there (a deploy in between)
+      const res = await env.ASSETS.fetch(req);
+      if (res.status !== 404 || !url.pathname.startsWith('/v/')) return res;
+      return new Response('not found', { status: 404, headers: { 'Content-Type': 'text/plain', 'Cache-Control': 'no-store' } });
+    }
     try {
       return await route(req, env, url);
     } catch (e) {

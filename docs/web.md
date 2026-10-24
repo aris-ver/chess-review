@@ -50,7 +50,7 @@ dropping pyarrow and loading DuckDB late.)
                                       OPFS files, fetch, web/engines.js    ucinewgame per position
 ```
 
-- **The page** is `chess_review/static/index.html`, as the desktop serves it, plus one `<script src="web/shim.js">`.
+- **The page** is `chess_review/static/index.html`, as the desktop serves it, plus one `<script src="v/<version>/web/shim.js">`.
   The shim wraps `window.fetch` so the page's relative `api/…` and `p/…` requests become messages to the tab's worker
   (`js/web/worker.js`, a module worker). Everything else (themes, sounds) is a static file.
 - **The server** is `js/server` unchanged: `serve()` builds the router and job runner over an `env` that
@@ -142,10 +142,21 @@ npm `stockfish@19.0.1`, run by the leader as a pool of Web Workers (`web/engines
 - The 99 MB engine comes from **unpkg**, the npm CDN: `https://unpkg.com/stockfish@19.0.1/bin/stockfish-19-single.wasm`
   (`build_web.js --engine-wasm cdn`). unpkg serves npm files of any size, with `Access-Control-Allow-Origin: *` and a
   year's `Cache-Control`; jsDelivr refuses a file that big (403).
-- `scripts/build_web.js` assembles `web-dist/`: the page with the shim tag, `web/` (shim, engines, config, engine/),
-  `js/` (core, server minus the Node adapters, web, vendor: chessops and SQLite WASM; no tests), `book_keys.txt`,
-  `puzzles.json`, `packs.json` and `legacy/`. `node scripts/build_web.js --serve` serves it locally on port 8200.
-  The modules load as they are, with no bundler (about 45 files; on a reload they come back as 304s).
+- `scripts/build_web.js` assembles `web-dist/`: the page with the shim tag, `v/<version>/` (the code: `web/` shim,
+  engines and config, and `js/` core, server minus the Node adapters, web, vendor: chessops and SQLite WASM; no
+  tests), `web/engine/`, `book_keys.txt`, `puzzles.json`, `packs.json` and `legacy/`. `node scripts/build_web.js
+  --serve` serves it locally on port 8200 with the headers blundr.gr sends (`_headers`, ETags, gzip; `--log` prints
+  each request).
+- **The code loads as it is, with no bundler** (about 45 modules), and fast: `<version>` is a hash of the code, so
+  `_headers` lets browsers keep `/v/*` a year (`immutable`) and a returning visitor asks for none of it; only
+  `index.html` (and the other files outside `v/`) is asked again every visit, so a deploy shows at once. The build
+  also lists every module the worker fetches as it starts (its static imports, SQLite's `import()` and WASM), and the
+  page's head asks for them all at once: on a first visit they arrive together instead of one round trip per level of
+  imports. On a phone (Slow 4G, 4× CPU) the worker's first word came after 5.4 s on a first visit and 4.4 s on a
+  return (47 revalidations), now after 2.7 s and 1.2 s (none).
+- **A tab open across a deploy** keeps its worker, which has loaded all its code. The site keeps only the latest
+  version, so if such a page's worker fails to start (its version is gone, 404), the shim reloads the page once,
+  which brings the new version.
 - The page says that the browser analyses about 2× slower than the desktop app and links the Windows download
   (GitHub Releases). The notice shows while the app and the engine load, and again while a game is analysed or waits
   to be; its × turns the speed note off for good (localStorage).

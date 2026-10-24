@@ -12,16 +12,17 @@ import { migrateOnce, within } from './legacy.js';
 import { Tabs } from './tabs.js';
 
 const CR_CONFIG = self.CR_CONFIG;
-const site = path => new URL('../../' + path, import.meta.url).href;      // the site's root, from js/web/
+// the site's root: config.js says where it is from the code's (scripts/build_web.js serves the code under v/<version>/)
+const site = path => new URL((CR_CONFIG.site ?? '') + path, new URL('../../', import.meta.url)).href;
 const web = path => new URL(path, site('web/')).href;                      // config.js's URLs are relative to web/
 
 const tabs = new Tabs({ toPage: msg => postMessage(msg), channel: new BroadcastChannel('blundr'), log });
 const progress = (what, done, total, text) => tabs.progress({ what, done, total, text });
 
-// Phones (?lite, web/shim.js decides): the 95 MB engine compiled once per core is more memory than iOS gives a tab,
-// which it then kills and reloads, over and over. One lite engine (2 MB, a smaller net: evals differ a little from the
+// Phones (a worker named "lite": web/shim.js decides): the 95 MB engine compiled once per core is more memory than iOS
+// gives a tab, which it then kills and reloads, over and over. One lite engine (2 MB, a smaller net: evals differ a little from the
 // full engine's) with a small hash instead. Evals never leave the browser, so the two engines' never mix.
-const LITE = new URLSearchParams(location.search).has('lite');
+const LITE = self.name === 'lite';
 const engineName = (CR_CONFIG.engineName || 'Stockfish') + (LITE ? ' lite' : '');
 const pool = () => new EnginePool({
   ...(LITE ? { size: 1, hash: 16, script: web('engine/stockfish-19-lite-single.js'),

@@ -9,9 +9,12 @@
 //   privacy.html, terms.html   from web/pages/
 //   manifest.json, icons/ what "Add to Home Screen" installs (icons from web/icons/, rendered from packaging/chess-review.ico)
 //   themes/               the page's pieces, boards and sounds
-//   js/                   the JS server as the desktop runs it: js/core, js/server (minus the Node adapters), js/web (the
+//   v/<version>/          the code, under a name of its own each build (a hash of what is in it), so that browsers keep it
+//                         for good (_headers: a year, immutable) and ask for none of it again until a deploy changes it:
+//     js/                 the JS server as the desktop runs it: js/core, js/server (minus the Node adapters), js/web (the
 //                         worker, its tabs, the browser adapters), js/vendor (chessops, SQLite WASM); no tests
-//   web/                  shim.js, engines.js, config.js, engine/ (Stockfish 19)
+//     web/                shim.js, engines.js, config.js
+//   web/engine/           Stockfish 19, outside v/: the same files every build
 //   book_keys.txt         the opening book's positions, one fen_key a line (js/core/book.js), from data/book
 //                         (scripts/fetch_book.sh)
 //   puzzles.json          the Lichess puzzle pack, fetched alongside the app; packs.json, the puzzle packs
@@ -59,6 +62,10 @@ const BLOCKED_NAME = new RegExp('analy[sz]|track|stats?\\b|statistic|metric|tele
 // again every time: on a phone each of those questions is a round trip, and the home screen's covers waited seconds for
 // their pieces. A set changed in place reaches a returning visitor within a day.
 const THEMES_CACHE = 'public, max-age=86400, stale-while-revalidate=604800';
+// v/<version>/: a file there never changes (a change is a new version), so a browser keeps it without asking. On a phone
+// the worker's imports, asked again on every visit, were one round trip per level of imports: seconds before the app
+// worker said a word. index.html, the one way in to a version, is asked for every time, so a deploy shows at once.
+const CODE_CACHE = 'public, max-age=31536000, immutable';
 const STOCKFISH_VERSION = '19.0.1';   // the same Stockfish as the desktop's bin/: change both together, or reviews stop matching
 const STOCKFISH_NPM = `https://registry.npmjs.org/stockfish/-/stockfish-${STOCKFISH_VERSION}.tgz`;
 // the full engine (95 MB) as visitors download it: unpkg serves npm files of any size, with CORS and a year's cache
@@ -126,14 +133,24 @@ async function engineFiles() {
   return out;
 }
 
-function page() {
+/** The app worker's code asked for all at once, the moment the page's head arrives: left to itself, the worker (which
+ * web/shim.js starts later, as the page's scripts run) learns of a module only once the one importing it has
+ * arrived, a round trip per level of imports (on a phone, seconds). Its own requests then find these in the HTTP
+ * cache, or join them on their way; a warm visit finds them all kept (CODE_CACHE) and asks for none. */
+const WARM_UP = (code, modules) => `<script>for (const m of ${JSON.stringify(modules)}) `
+  + `fetch(${JSON.stringify(code)} + m).then(r => r.arrayBuffer()).catch(() => {});</script>\n`;
+
+/** index.html as served. code: 'v/<version>/'; modules: what the app worker fetches as it starts, in code (warmUp). */
+function page(code, modules) {
   const pieces = JSON.parse(readFileSync(join(ROOT, 'js', 'desktop', 'pieces.json'), 'utf8'));
   // the page as served has LF line ends whatever the checkout's are (the file is CRLF)
   let html = fillPieces(readFileSync(join(STATIC, 'index.html'), 'utf8').replace(/\r\n/g, '\n'), pieces);
   const t = html.indexOf('</title>') + '</title>\n'.length;
   html = html.slice(0, t) + HEAD + html.slice(t);
   const i = html.indexOf('<script');    // before the page's own scripts (account.js first): the first fetch must already be redirected
-  return html.slice(0, i) + '<script src="web/shim.js"></script>\n' + html.slice(i);
+  html = html.slice(0, i) + `<script src="${code}web/shim.js"></script>\n` + html.slice(i);
+  const h = html.indexOf('<style');     // first in the head: before the page's style, its body, its scripts
+  return html.slice(0, h) + WARM_UP(code, modules) + html.slice(h);
 }
 
 /** What the JS server reads besides its code: the opening book's keys, the Lichess puzzle pack and the packs. */
@@ -148,22 +165,75 @@ function dataFiles(out) {
   copyIfChanged(join(packs, 'packs.json'), join(out, 'packs.json'));
 }
 
-/** js/ as the browser imports it, and nothing left from a build before (a module removed from js/). */
-function jsTree(out) {
-  const want = new Set();
+/** The code as the browser imports it, as { 'js/core/fen.js': bytes, ..., 'web/shim.js': ..., 'web/config.js': ... }:
+ * js/ without tests and Node adapters, and web/'s scripts; config.js's text is given. */
+function codeFiles(config) {
+  const out = {};
+  const check = rel => {
+    if (BLOCKED_NAME.test(basename(rel))) {
+      throw new Error(`${rel}: ad blockers block a file of that name, so the worker would not load where one is installed. Rename it.`);
+    }
+  };
   for (const d of JS_DIRS) {
     for (const f of files(join(ROOT, 'js', d))) {
       const name = basename(f);
       if (JS_SKIP.some(s => name.endsWith(s))) continue;
-      const rel = relative(join(ROOT, 'js'), f);
-      if (BLOCKED_NAME.test(name)) {
-        throw new Error(`js/${rel}: ad blockers block a file of that name, so the worker would not load where one is installed. Rename it.`);
-      }
-      want.add(rel);
-      copyIfChanged(f, join(out, 'js', rel));
+      const rel = relative(ROOT, f).split(sep).join('/');
+      check(rel);
+      out[rel] = readFileSync(f);
     }
   }
-  for (const f of files(join(out, 'js'))) if (!want.has(relative(join(out, 'js'), f))) unlinkSync(f);
+  for (const f of readdirSync(join(ROOT, 'web')).filter(f => f.endsWith('.js')).sort()) {
+    check(`web/${f}`);
+    out[`web/${f}`] = readFileSync(join(ROOT, 'web', f));
+  }
+  out['web/config.js'] = Buffer.from(config);
+  return out;
+}
+
+/** The version: a hash of every file's path and bytes. Hex, so it never spells a name an ad blocker knows. */
+function version(code) {
+  const h = createHash('sha256');
+  for (const rel of Object.keys(code).sort()) h.update(`${rel}\0${code[rel].length}\0`).update(code[rel]);
+  return h.digest('hex').slice(0, 12);
+}
+
+// what a module names that is fetched with it: static imports and re-exports, import('...') of a literal, and
+// new URL('x.wasm', import.meta.url) (SQLite's WASM)
+const IMPORTS = [/(?:^|[;}\s])(?:import|export)\s[^'"`;()]*?\sfrom\s*['"]([^'"]+)['"]/g, /(?:^|[;\s])import\s*['"]([^'"]+)['"]/g,
+  /\bimport\(\s*['"]([^'"]+)['"]\s*\)/g, /new URL\(\s*['"]([^'"]+\.wasm)['"]\s*,\s*import\.meta\.url\s*\)/g];
+
+/** Every file of code the app worker fetches as it starts, worker.js first: what the page asks for all at once
+ * (WARM_UP) instead of the worker finding them one level of imports at a time. */
+function warmUp(code, entry = 'js/web/worker.js') {
+  const seen = new Set(), todo = [entry];
+  while (todo.length) {
+    const rel = todo.shift();
+    if (seen.has(rel) || !(rel in code)) continue;
+    seen.add(rel);
+    if (!/\.m?js$/.test(rel)) continue;
+    for (const re of IMPORTS) {
+      for (const m of code[rel].toString('utf8').matchAll(re)) {
+        if (!/^\/|:/.test(m[1])) todo.push(new URL(m[1], `http://x/${rel}`).pathname.slice(1));     // relative: one of ours
+      }
+    }
+  }
+  return [...seen];
+}
+
+/** v/<version>/ written, and nothing left from a build before: the versions before it, and where the code was before
+ * there were versions (js/, web/*.js). */
+function codeTree(out, code, ver) {
+  const dir = join(out, 'v', ver);
+  for (const [rel, data] of Object.entries(code)) {
+    const dst = join(dir, rel);
+    if (existsSync(dst) && readFileSync(dst).equals(data)) continue;
+    mkdirSync(dirname(dst), { recursive: true });
+    writeFileSync(dst, data);
+  }
+  for (const v of readdirSync(join(out, 'v'))) if (v !== ver) rmSync(join(out, 'v', v), { recursive: true });
+  rmSync(join(out, 'js'), { recursive: true, force: true });
+  for (const f of readdirSync(join(out, 'web')).filter(f => f.endsWith('.js'))) rmSync(join(out, 'web', f));
 }
 
 /** A zip of entries [{ name, data }], deflated: what Pyodide's unpackArchive reads. */
@@ -205,8 +275,7 @@ function legacy(out) {
 }
 
 async function build(engineWasm) {
-  mkdirSync(OUT, { recursive: true });
-  writeFileSync(join(OUT, 'index.html'), page());
+  mkdirSync(join(OUT, 'web'), { recursive: true });
   copyIfChanged(join(STATIC, 'account.js'), join(OUT, 'account.js'));
   rmSync(join(OUT, 'web', 'account.js'), { force: true });      // where builds before the desktop app had it
   for (const f of files(join(STATIC, 'themes'))) copyIfChanged(f, join(OUT, 'themes', relative(join(STATIC, 'themes'), f)));
@@ -220,12 +289,10 @@ async function build(engineWasm) {
   // browsers ask for /favicon.ico on their own (address-bar suggestions, history), whatever the page links
   copyIfChanged(join(ROOT, 'packaging', 'chess-review.ico'), join(OUT, 'favicon.ico'));
   writeFileSync(join(OUT, 'manifest.json'), JSON.stringify(MANIFEST, null, 1));
-  for (const f of readdirSync(join(ROOT, 'web')).filter(f => f.endsWith('.js'))) copyIfChanged(join(ROOT, 'web', f), join(OUT, 'web', f));
   // what the Python builds shipped: Pyodide's worker, the app's zip, python-chess's wheel
   rmSync(join(OUT, 'app.zip'), { force: true });
   rmSync(join(OUT, 'web', 'py-worker.js'), { force: true });
   for (const f of readdirSync(join(OUT, 'web')).filter(f => /^chess-.*\.whl$/.test(f))) rmSync(join(OUT, 'web', f));
-  jsTree(OUT);
   dataFiles(OUT);
   const engines = await engineFiles();
   for (const [name, src] of Object.entries(engines)) {
@@ -239,17 +306,23 @@ async function build(engineWasm) {
   // The Worker (worker/, wrangler) serves web-dist/ but refuses files over 25 MiB: the full engine comes from unpkg.
   writeFileSync(join(OUT, '.assetsignore'), 'web/engine/stockfish-19-single.wasm\n');
   // Rules the Worker applies to its static files (themes/ never reaches its code: wrangler.jsonc run_worker_first)
-  writeFileSync(join(OUT, '_headers'), `/themes/*\n  Cache-Control: ${THEMES_CACHE}\n`);
-  // engineBytes: the progress bar's total, as unpkg sends no Content-Length; engineName: what the notice says it is
+  writeFileSync(join(OUT, '_headers'), `/themes/*\n  Cache-Control: ${THEMES_CACHE}\n/v/*\n  Cache-Control: ${CODE_CACHE}\n`);
+  // engineBytes: the progress bar's total, as unpkg sends no Content-Length; engineName: what the notice says it is;
+  // site: the site's root from the code's (v/<version>/), which the other paths here are relative to
   const config = {
     legacy: legacy(OUT), engineWasm: engineWasm || 'engine/stockfish-19-single.wasm',
     engineBytes: statSync(engines['stockfish-19-single.wasm']).size,
     engineLiteWasm: 'engine/stockfish-19-lite-single.wasm',
     engineLiteBytes: statSync(engines['stockfish-19-lite-single.wasm']).size,
     engineName: `Stockfish ${STOCKFISH_VERSION.split('.')[0]}`,
+    site: '../../',
   };
-  writeFileSync(join(OUT, 'web', 'config.js'), `self.CR_CONFIG = ${JSON.stringify(config, null, 1)};\n`);
-  console.log('built', OUT);
+  const code = codeFiles(`self.CR_CONFIG = ${JSON.stringify(config, null, 1)};\n`);
+  const ver = version(code);
+  mkdirSync(join(OUT, 'v'), { recursive: true });
+  codeTree(OUT, code, ver);
+  writeFileSync(join(OUT, 'index.html'), page(`v/${ver}/`, warmUp(code)));
+  console.log('built', OUT, 'version', ver);
 }
 
 const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript', '.json': 'application/json',

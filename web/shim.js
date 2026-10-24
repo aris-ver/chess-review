@@ -10,12 +10,18 @@
   const lite = ios || /Android|Mobi/.test(nav.userAgent || '');
   // Opened from the home screen: already the app, nothing to offer
   const standalone = nav.standalone === true || !!(window.matchMedia && matchMedia('(display-mode: standalone)').matches);
-  // One worker per tab; the tabs' workers share one database between them (js/web/tabs.js)
-  const worker = new Worker('js/web/worker.js' + (lite ? '?lite' : ''), { type: 'module' });
+  const realFetch = window.fetch.bind(window);
+  // The code's folder: v/<version>/ (scripts/build_web.js), where this file is web/shim.js. Kept by the browser for good,
+  // as a version's files never change. Run some other way (no script tag: the tests), the site's own js/ and web/.
+  const src = document.currentScript && document.currentScript.src;
+  const code = src ? new URL('../', src).href : new URL('.', location.href).href;
+  const entry = code + 'js/web/worker.js';
+  // One worker per tab; the tabs' workers share one database between them (js/web/tabs.js). Its name says which engine:
+  // a query would make it another URL than the one the page has already asked for (scripts/build_web.js WARM_UP).
+  const worker = new Worker(entry, { type: 'module', name: lite ? 'lite' : 'full' });
   const pending = new Map();
   const streams = new Map();      // id → { ctl } of an answer still streaming
   let seq = 0;
-  const realFetch = window.fetch.bind(window);
 
   // The notice bar: the app loading first (the page waits for it), then the engine (95 MB, 2 MB on phones) with a progress bar, and the
   // note that the desktop app analyses faster. The note stays up while a game is being analysed or waits to be.
@@ -232,7 +238,7 @@
     return m ? `${m[1] === 'Version' ? 'Safari' : m[1] === 'Edg' ? 'Edge' : m[1]} ${m[2]}` : 'this browser';
   };
   const unloadable = async () => {
-    const seen = new Set(), todo = [new URL('js/web/worker.js', location.href).href];
+    const seen = new Set(), todo = [code + 'js/web/worker.js'];
     while (todo.length && seen.size < 80) {
       const url = todo.shift();
       if (seen.has(url)) continue;
@@ -249,8 +255,22 @@
     }
     return null;
   };
+  // A page from before a deploy, whose version the site no longer has (it keeps only the latest): loaded again, once,
+  // it comes with the version there is now. Whether that's why it failed: the worker's own file is gone.
+  const stale = async () => {
+    try {
+      if ((await realFetch(entry, { cache: 'no-store' })).status !== 404) return false;
+      if (sessionStorage.getItem('blundrReloaded') === code) return false;      // already tried: say it failed instead
+      sessionStorage.setItem('blundrReloaded', code);
+    } catch (e) {
+      return false;
+    }
+    location.reload();
+    return true;
+  };
   worker.onerror = async e => {
     e.preventDefault && e.preventDefault();
+    if (await stale()) return;
     if (e.message) return failed(e.message);
     failed('checking why…');
     const why = await unloadable().catch(() => null);
@@ -290,6 +310,7 @@
       }
     } else if (m.type === 'progress') {
       if (m.what === 'app') {
+        if (m.total === 0) stale();      // failed to load: a module imported late (SQLite's) may be what is gone
         state.app = m.text;
         appReady = m.total > 0 && m.done === m.total;
       } else {

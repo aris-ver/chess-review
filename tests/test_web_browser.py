@@ -635,7 +635,7 @@ OPFS_TEXT = """async path => {
 
 
 def test_the_python_builds_data_moves_to_sqlite_once(site, browser, tmp_path):
-    config = (OUT / "web" / "config.js").read_text(encoding="utf-8")
+    config = next(OUT.glob("v/*/web/config.js")).read_text(encoding="utf-8")     # the build's code version
     pyodide = json.loads(config[config.index("{"):config.rindex("}") + 1])["legacy"]["pyodide"]
     try:
         urllib.request.urlopen(pyodide + "pyodide.mjs", timeout=10).close()
