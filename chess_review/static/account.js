@@ -518,6 +518,9 @@ dialog#account .syncrow button { flex: none; padding: 4px 10px; }
     `<p class="muted">Nothing opened? <a href="${esc(view.waiting.url)}" target="_blank">Open the sign-in page</a>.</p>` +
     '<div class="col"><button data-act="stopwait">Cancel</button></div>';
 
+  // settled once the header's button shows what it will (or is hidden): the page's splash waits a moment for it
+  let shown;
+  window.accountReady = new Promise(r => { shown = r; });
   async function start() {
     document.head.appendChild(css);
     const right = document.querySelector('header .right');
@@ -535,6 +538,7 @@ dialog#account .syncrow button { flex: none; padding: 4px 10px; }
     } catch (e) {
       btn.classList.add('hidden');      // no account service (the plain static site), or the app offline: nothing to offer
       if (/HTTP 502/.test(e.message)) window.addEventListener('focus', () => { btn.remove(); dlg.remove(); start(); }, { once: true });
+      shown();
       return;
     }
     me = d.user;
@@ -543,6 +547,7 @@ dialog#account .syncrow button { flex: none; padding: 4px 10px; }
     app = Boolean(d.app);
     site = d.site || '';
     render();
+    shown();
     outcome();
     if (d.outcome) arrived(d);          // the app: a sign-in finished in the browser while no dialog waited for it
     else if (me) attach().catch(e => { syncError = String(e.message || e); console.error('account attach', e); renderDialog(); });

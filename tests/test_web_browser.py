@@ -34,7 +34,8 @@ DESKTOP = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko
 STOCKFISH = ROOT / "bin" / ("stockfish.exe" if sys.platform == "win32" else "stockfish")
 CHROMIUM_ARGS = ["--disable-gpu", "--disable-software-rasterizer"]
 OUT = ROOT / "web-dist"
-READY = "document.querySelector('#profiles .card.profile, #profiles .empty') && !/Loading/.test(document.querySelector('#profiles').textContent)"
+# the home screen drawn and shown: the splash (#boot) gone, which it waits for
+READY = "document.documentElement.classList.contains('booted') && document.querySelector('#profiles .card.profile, #profiles .empty') && !/Loading/.test(document.querySelector('#profiles').textContent)"
 
 PGN = (ROOT / "tests" / "fixtures" / "clocks.pgn").read_text().split("\n\n[Event")[0]
 CHESSCOM = "https://api.chess.com/pub/player/"
@@ -146,7 +147,7 @@ def app(site, browser):
     page = ctx.new_page()
     page.on("console", lambda m: m.type == "error" and print("console:", m.text))
     page.goto(site)
-    page.wait_for_function("document.querySelector('#profiles .empty') && !/Loading/.test(document.querySelector('#profiles').textContent)",
+    page.wait_for_function("document.documentElement.classList.contains('booted') && document.querySelector('#profiles .empty') && !/Loading/.test(document.querySelector('#profiles').textContent)",
                            timeout=60_000)
     yield page, sites
     ctx.close()
@@ -248,6 +249,7 @@ def test_a_reload_keeps_the_games_and_the_count_played(app):
     page.click("#profiles .card.profile[data-id=chesscom-kept]")
     page.wait_for_function("/22 of 22 games/.test(document.getElementById('liststat').textContent)", timeout=60_000)
     assert sites.asked[asked:] == []                    # all from this browser: nothing asked of chess.com again
+
 
 
 def test_an_account_switch_moves_a_profiles_database_and_back(app):

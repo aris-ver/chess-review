@@ -53,6 +53,10 @@ const JS_SKIP = ['.test.js', '-node.js', '.md'];
 // a module of the worker with such a name doesn't load where one is installed, and Blundr never starts there.
 const BLOCKED_NAME = new RegExp('analy[sz]|track|stats?\\b|statistic|metric|telemetr|beacon|pixel|advert|(^|[-_.])ads?([-_.]|$)'
   + '|counter|collect|insight|fingerprint', 'i');
+// The pieces, boards and sounds (themes/), kept a day (web-dist/_headers) instead of the Worker's default of asking
+// again every time: on a phone each of those questions is a round trip, and the home screen's covers waited seconds for
+// their pieces. A set changed in place reaches a returning visitor within a day.
+const THEMES_CACHE = 'public, max-age=86400, stale-while-revalidate=604800';
 const STOCKFISH_VERSION = '19.0.1';   // the same Stockfish as the desktop's bin/: change both together, or reviews stop matching
 const STOCKFISH_NPM = `https://registry.npmjs.org/stockfish/-/stockfish-${STOCKFISH_VERSION}.tgz`;
 // the full engine (95 MB) as visitors download it: unpkg serves npm files of any size, with CORS and a year's cache
@@ -232,6 +236,8 @@ async function build(engineWasm) {
   }
   // The Worker (worker/, wrangler) serves web-dist/ but refuses files over 25 MiB: the full engine comes from unpkg.
   writeFileSync(join(OUT, '.assetsignore'), 'web/engine/stockfish-19-single.wasm\n');
+  // Rules the Worker applies to its static files (themes/ never reaches its code: wrangler.jsonc run_worker_first)
+  writeFileSync(join(OUT, '_headers'), `/themes/*\n  Cache-Control: ${THEMES_CACHE}\n`);
   // engineBytes: the progress bar's total, as unpkg sends no Content-Length; engineName: what the notice says it is
   const config = {
     legacy: legacy(OUT), engineWasm: engineWasm || 'engine/stockfish-19-single.wasm',
@@ -249,7 +255,8 @@ const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/ja
   '.ogg': 'audio/ogg', '.webp': 'image/webp', '.css': 'text/css', '.txt': 'text/plain', '.zip': 'application/zip',
   '.whl': 'application/zip', '.woff2': 'font/woff2' };
 
-/** web-dist/ on localhost, never cached, as the Worker would serve it (index.html for a folder). */
+/** web-dist/ on localhost as the Worker would serve it (index.html for a folder): themes/ cached as _headers says,
+ * the rest never. */
 function serve(dir, port) {
   const root = normalize(dir + sep);
   return createServer((req, res) => {
@@ -260,7 +267,8 @@ function serve(dir, port) {
       res.writeHead(404, { 'Cache-Control': 'no-cache' }).end('not found');
       return;
     }
-    res.writeHead(200, { 'Content-Type': TYPES[extname(file).toLowerCase()] || 'application/octet-stream', 'Cache-Control': 'no-cache' });
+    res.writeHead(200, { 'Content-Type': TYPES[extname(file).toLowerCase()] || 'application/octet-stream',
+                         'Cache-Control': path.startsWith('/themes/') ? THEMES_CACHE : 'no-cache' });
     res.end(readFileSync(file));
   }).listen(port, '127.0.0.1');
 }

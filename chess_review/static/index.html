@@ -17,6 +17,17 @@
 html, button, a, svg.board, .movelist, .moments, .summary, .nav, .actions, .filters, table.games { touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
 button, .nav, .m, .moment, .varrow .v, .summary .click { user-select: none; -webkit-user-select: none; }
 html, body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.45 -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+/* The splash: up until the first screen is drawn in full (its data, the header's buttons, its pictures), then it fades
+   out once. The page behind it stays hidden till then, so nothing on it is seen filling in or moving. Its knight and
+   name come in only on a slow start, the line under them (web/shim.js: "Loading Blundr") later still. */
+#boot { position: fixed; inset: 0; z-index: 100000; display: flex; flex-direction: column; align-items: center; justify-content: center;
+        gap: 6px; background: var(--bg); transition: opacity .2s; }
+#boot > * { animation: bootin .3s .4s both; }
+#boot .k { font-size: 56px; line-height: 1; } #boot b { font-size: 22px; }
+#boot .st { min-height: 2.9em; max-width: min(360px, calc(100vw - 32px)); color: var(--muted); font-size: 13px; text-align: center; animation-delay: 1s; }
+#boot.out { opacity: 0; pointer-events: none; }
+@keyframes bootin { from { opacity: 0; } }
+html:not(.booted) body > :not(#boot) { visibility: hidden; }
 a { color: inherit; text-decoration: none; }
 button { font: inherit; color: inherit; background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; padding: 6px 10px; cursor: pointer; }
 /* hover looks only where something hovers (a mouse): on a touch screen :hover sticks to whatever a finger last touched, scrolling included */
@@ -755,6 +766,7 @@ svg.graph { width: 100%; height: 52px; display: block; cursor: pointer; backgrou
 </style>
 </head>
 <body>
+<div id="boot" aria-hidden="true"><span class="k">♞</span><b>Blundr</b><div class="st"></div></div>
 <header>
   <h1><a href="#/" id="b-home" title="Home"><span class="k">♞</span> <span id="home-t">Blundr</span></a></h1>
   <button id="b-back" class="back hidden" title="Back (Esc)">←<span class="t" id="back-t"> Back</span></button>
@@ -867,7 +879,7 @@ svg.graph { width: 100%; height: 52px; display: block; cursor: pointer; backgrou
     </div>
   </section>
   <div class="ghost-piece hidden" id="ghostpiece"></div>
-  <section id="list">
+  <section id="list" class="hidden">
     <div class="filters">
       <button class="fbtn" id="fbtn" title="Filters"><svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg></button>
       <div class="fbar">
@@ -1400,7 +1412,7 @@ function renderUpdate() {
     box.innerHTML = '<div class="msg">Restarting…</div>';
   };
 }
-checkUpdate();
+const updateChecked = checkUpdate();      // its banner sits at the top of home: given a moment before that shows (#boot)
 const fmtNodes = n => n >= 1e6 ? `${(n / 1e6).toFixed(n % 1e6 ? 1 : 0)}M nodes` : `${Math.round(n / 1e3)}k nodes`;
 const engineName = snap => (snap && snap.engine) || (state.engine && state.engine.name) || 'Engine';
 const SECTIONS = ['home', 'list', 'review', 'editor', 'imgpage', 'settings', 'pzpick', 'pzpacks'];
@@ -1410,8 +1422,7 @@ async function showHome() {
   document.body.classList.remove('sandbox', 'puzzle'); stopSandboxStream();
   state.game = null; state.profile = null; state.games = null; dropVariation(); stopPlay();
   setContext(false); $('crumb').textContent = '';
-  renderPuzzleCards();      // first: its covers are static, the profile list waits for the server (Python, on the web)
-  await renderProfiles();
+  await Promise.all([renderPuzzleCards(), renderProfiles()]);     // both drawn before the first screen shows (#boot)
   pollStatus();
 }
 // the add-profile form and the PGN box stay folded away until their button is clicked
@@ -2151,7 +2162,7 @@ function nextPuzzle() {
 // the home tiles: how the library is going once it's started; the puzzles from your games, and the reviews due
 async function renderPuzzleCards() {
   renderCovers($('home'));
-  fetch('api/puzzles/packs').then(r => r.json()).then(d => {
+  const packs = fetch('api/puzzles/packs').then(r => r.json()).then(d => {
     const dl = d.daily, r = dl.result, going = d.packs.filter(k => k.solved && !k.done);
     $('card-daily-desc').textContent = r ? `#${dl.n} ${r.clean ? 'solved without a mistake' : r.solved ? 'solved' : 'played'}.${dl.streak ? ` 🔥 ${dl.streak}-day streak.` : ''} Open it to share your result.`
       : `#${dl.n} is waiting: one tougher puzzle, the same for everyone today.${dl.streak ? ` 🔥 ${dl.streak}-day streak, keep it going.` : ''}`;
@@ -2159,7 +2170,7 @@ async function renderPuzzleCards() {
     if (going.length || done) $('card-packs-desc').textContent = (going.length ? `${going.slice(0, 2).map(k => `${k.name}: stage ${k.current} of ${k.n_stages}`).join(' · ')}.` : '') + (done ? ` ${done} pack${done > 1 ? 's' : ''} complete.` : '');
   }).catch(() => {});
   let st, srcs;
-  try { [st, srcs] = await Promise.all([fetch('api/puzzles/themes').then(r => r.json()).then(d => d.stats), puzzleSources()]); } catch (e) { return; }
+  try { [st, srcs] = await Promise.all([fetch('api/puzzles/themes').then(r => r.json()).then(d => d.stats), puzzleSources()]); } catch (e) { return packs; }
   $('card-library-desc').textContent = st && st.played ? `${st.solved} of ${st.played} solved. Pick a theme, or take them as they come.`
     : 'Tactics from Lichess, picked near your level, by theme if you like.';
   const mine = (srcs || []).filter(s => s.id !== 'lichess' && s.count);
@@ -2168,6 +2179,7 @@ async function renderPuzzleCards() {
   const names = mine.map(s => s.name).join(', ');
   $('card-mine-desc').textContent = total ? `${due ? `${due} review${due > 1 ? 's' : ''} due · ` : ''}${fresh} new · ${total} puzzle${total > 1 ? 's' : ''} from ${names}'s games.`
     : 'The moves you missed in a player\'s games, from a profile or any username, back until you find them.';
+  return packs;     // the daily's card says which one is waiting: in place before the home screen shows
 }
 
 // ---------- puzzle packs and the puzzle of the day (packs.py) ----------
@@ -4342,7 +4354,23 @@ function fmtClock(s) { const m = Math.floor(s / 60), r = s % 60; return `${m}:${
 function moveNo(ply) { const n = Math.floor(ply / 2) + 1; return ply % 2 === 0 ? `${n}.` : `${n}...`; }
 function moveLabel(ply, san) { return `${moveNo(ply)} ${san}`; }
 
-assetsReady.then(route);
+// The first screen is drawn behind the splash (#boot): its route with the data it waits for, then a moment for the
+// header's account button (account.js) and the update banner, and for the pictures on it to decode. Then the splash
+// fades out once, instead of the screen filling in piece by piece in front of the user. A route that never ends (a
+// server that doesn't answer) still shows the page after 20 s.
+(async () => {
+  const soon = (p, ms) => Promise.race([Promise.resolve(p).catch(() => {}), new Promise(r => setTimeout(r, ms))]);
+  const extras = Promise.all([window.accountReady, updateChecked]);
+  await soon(assetsReady.then(route), 20000);
+  await soon(extras, 500);
+  const imgs = [...document.querySelectorAll('header img, main > section:not(.hidden) img')].filter(i => !i.complete);
+  await soon(Promise.all(imgs.map(i => i.decode().catch(() => {}))), 1500);
+  document.documentElement.classList.add('booted');
+  window.dispatchEvent(new Event('blundrshown'));
+  const boot = $('boot');
+  boot.classList.add('out');
+  setTimeout(() => boot.remove(), 300);
+})();
 pollStatus();
 
 // The daily played on another browser: index.html?selftest=daily#/daily opens today's unplayed, then a sync brings a

@@ -133,7 +133,7 @@ async function main() {
   await app.whenReady();
   Menu.setApplicationMenu(null);    // pywebview's window had no menu bar either
 
-  const win = new BrowserWindow({ title: 'Blundr', width: 1400, height: 900, minWidth: 900, minHeight: 600, show: false,
+  const win = new BrowserWindow({ title: 'Blundr', width: 1400, height: 900, minWidth: 900, minHeight: 600, show: false, backgroundColor: '#302e2b',
                                   webPreferences: { contextIsolation: true, sandbox: true } });
   win.once('ready-to-show', () => win.show());
   // links that open a new window (chess.com, lichess, GitHub) go to the user's browser

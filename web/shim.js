@@ -149,6 +149,12 @@
     const right = document.querySelector('header .right');
     if (right && !dl.isConnected && !(lite && standalone)) right.prepend(dl);
     dl.classList.toggle('lit', !noteOff);
+    // While the page's splash (#boot) is up, the loading line is on it; the bar comes in as the page shows, not before
+    const boot = document.getElementById('boot');
+    if (boot && !document.documentElement.classList.contains('booted')) {
+      boot.querySelector('.st').innerHTML = appReady ? '' : state.app;
+      return;
+    }
     if (closed || !render()) { bar.remove(); return; }
     if (!bar.isConnected) document.body.appendChild(bar);
     if (appReady && engineReady && !analysing) hideT = setTimeout(() => { bar.remove(); dl.classList.remove('lit'); }, 4000);
@@ -164,12 +170,12 @@
   };
 
   // Answers from the last visit, handed back at once while the app loads: the home screen's
-  // (profiles, puzzle tiles) and a profile's: its games.json, which of them are new, and each game's review, so those
+  // (profiles, puzzle tiles, the updater's "nothing to update here", which the page waits on before it shows) and a profile's: its games.json, which of them are new, and each game's review, so those
   // open straight away too. The request still goes to the worker; when its answer differs from the one
   // shown, or is gone (a deleted profile), the screen is drawn again. Only answers the server gave are kept: no logic is
   // copied here. Not the puzzles themselves, which change with the date or at random. In Cache Storage, as games.json
   // is 150 KB a profile.
-  const KEEP = /^(api\/(profiles(\/[^/]+\/unseen)?|puzzles\/(packs|themes|sources))|p\/[^/]+\/games(\.json|\/[^/]+\.json))$/;
+  const KEEP = /^(api\/(update|profiles(\/[^/]+\/unseen)?|puzzles\/(packs|themes|sources))|p\/[^/]+\/games(\.json|\/[^/]+\.json))$/;
   const store = (self.caches ? caches.open('blundr-kept') : Promise.reject()).catch(() => null);   // none: every visit waits
   const keyOf = rel => location.origin + base + rel;
   try {     // where earlier builds kept the home screen's
@@ -338,4 +344,5 @@
     return xhrOpen.call(this, method, url, ...rest);
   };
   document.addEventListener('DOMContentLoaded', update);
+  addEventListener('blundrshown', update);
 })();
