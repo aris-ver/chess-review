@@ -12,8 +12,15 @@ export function setupLogging(dataDir) {
   return file;
 }
 
+/** logging's asctime: local time, "2026-10-24 10:03:56,123", as the Python app wrote the same file. */
+export function asctime(d = new Date()) {
+  const p = (n, w = 2) => String(n).padStart(w, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:` +
+    `${p(d.getSeconds())},${p(d.getMilliseconds(), 3)}`;
+}
+
 function write(name, msg) {
-  const line = `${new Date().toISOString().replace('T', ' ').replace('Z', '')} ${name} ${msg}\n`;
+  const line = `${asctime()} ${name} ${msg}\n`;
   if (!file) return void process.stderr.write(line);
   try { appendFileSync(file, line, 'utf8'); } catch { process.stderr.write(line); }
 }

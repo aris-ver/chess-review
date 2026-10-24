@@ -57,14 +57,20 @@ class Engine {
     return out.filter(l => l.startsWith('info '));
   }
   // An infinite search (`go infinite`, like an analysis board) of `fen` with `multipv` lines: its `info` lines as they
-  // come. Closing the iterator (return(), or leaving a for-await) sends `stop` and waits for the engine's bestmove.
-  async *stream(fen, multipv) {
+  // come. Closing the iterator (return(), or leaving a for-await) sends `stop` and waits for the engine's bestmove;
+  // so does `signal` aborting, at once (a return() waits for the next line, and a deep search can be quiet).
+  async *stream(fen, multipv, signal) {
     await this.ready;
     await this.until(/^readyok/, ['ucinewgame', `setoption name MultiPV value ${multipv}`, 'isready']);
+    if (signal?.aborted) return;
     const buf = [];
-    let wake = null, end = null;
+    let wake = null, end = null, stopped = false;
+    const stop = () => {
+      if (!end && !stopped) { stopped = true; this.proc.stdin.write('stop\n'); }
+    };
     const finished = this.until(/^bestmove/, [`position fen ${fen}`, 'go infinite']);
     finished.then(() => { end = {}; wake?.(); }, err => { end = { err }; wake?.(); });
+    signal?.addEventListener('abort', stop, { once: true });
     this.tap = line => {    // the search's lines go here instead of piling up for until()
       this.lines.length = 0;
       if (line.startsWith('info ')) { buf.push(line); wake?.(); }
@@ -80,9 +86,10 @@ class Engine {
         wake = null;
       }
     } finally {
+      signal?.removeEventListener('abort', stop);
       this.tap = null;
       if (!end) {
-        this.proc.stdin.write('stop\n');
+        stop();
         await finished.catch(() => {});
       }
     }
@@ -142,9 +149,9 @@ export class EnginePool {
     try { return await engine.search(fen, nodes, multipv); } finally { this.release(engine); }
   }
   // Engine.stream on a free engine, which goes back to the pool once the stream is closed.
-  async *stream(fen, multipv = 3) {
+  async *stream(fen, multipv = 3, signal) {
     const engine = await this.acquire();
-    try { yield* engine.stream(fen, multipv); } finally { this.release(engine); }
+    try { yield* engine.stream(fen, multipv, signal); } finally { this.release(engine); }
   }
   // Serve.Runner.reap_idle: the engines quit when nothing has used them for idleMs (they start again, in about a
   // second, with the next search). True if it closed them.
