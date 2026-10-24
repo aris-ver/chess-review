@@ -484,6 +484,58 @@ def test_on_a_phone_its_own_back_goes_where_the_back_button_did(site, browser):
         ctx.close()
 
 
+# every frame the ladder is seen in, which stage sits in the middle of the track (with "~" when one is only near it)
+FRAMES = """() => {
+    window.seen = []; window.recording = true;
+    const f = () => {
+        const box = document.getElementById('pzpacksbox'), tr = box && box.querySelector('.sttrack');
+        if (tr && box.offsetParent && getComputedStyle(box).visibility !== 'hidden') {
+            const t = tr.getBoundingClientRect(), mid = t.left + t.width / 2;
+            let best = null, gap = 1e9;
+            for (const c of tr.children) { const r = c.getBoundingClientRect(), d = Math.abs(r.left + r.width / 2 - mid); if (d < gap) { gap = d; best = c.dataset.n; } }
+            if (window.seen[window.seen.length - 1] !== best + (gap < 5 ? '' : '~')) window.seen.push(best + (gap < 5 ? '' : '~'));
+        }
+        if (window.recording) requestAnimationFrame(f);
+    };
+    requestAnimationFrame(f);
+}"""
+
+
+def test_a_ladder_opens_on_the_stage_you_are_at(site, browser):
+    """Back from a puzzle, the ladder faces that puzzle's stage; opened from the shelf or home, the stage being worked
+    on (here 2: 16 of stage 1 solved). From the first frame it's seen: no scroll there, no other stage on the way."""
+    ctx, page = ladder(browser, site, viewport={"width": 412, "height": 915}, device_scale_factor=2.6, is_mobile=True,
+                       has_touch=True, user_agent=LITE)
+    try:
+        ctx.new_cdp_session(page).send("Emulation.setCPUThrottlingRate", {"rate": 4})
+        settled(page)
+
+        def ladder_on(n, go):
+            page.evaluate("document.querySelector('.sttrack') && (document.querySelector('.sttrack').dataset.old = 1)")
+            page.evaluate(FRAMES)
+            go()
+            page.wait_for_function(f"location.hash === '#/packs/forks' && document.querySelector('.sttrack') && !document.querySelector('.sttrack').dataset.old && {FOCUS} === '{n}'", timeout=30_000)
+            page.wait_for_timeout(500)
+            seen = page.evaluate("window.recording = false, window.seen")
+            assert seen == [n], f"the ladder showed {seen} on its way to stage {n}"
+
+        def puzzle(h):
+            page.evaluate(f"location.hash = '{h}'")
+            page.wait_for_function("document.body.classList.contains('puzzle') && pz.hash === location.hash", timeout=30_000)
+
+        for stage in ("1", "2", "1"):
+            puzzle(f"#/packs/forks/{stage}/5")
+            ladder_on(stage, page.go_back)                    # the phone's back: to the stage the puzzle is in
+        page.evaluate("location.hash = '#/'")
+        page.wait_for_function(READY)
+        ladder_on("2", lambda: page.evaluate("location.hash = '#/packs/forks'"))   # from home: the stage being worked on
+        page.evaluate("location.hash = '#/packs'")
+        page.wait_for_selector(".card.pack[data-go='#/packs/forks']", timeout=30_000)
+        ladder_on("2", lambda: page.click(".card.pack[data-go='#/packs/forks']"))      # from the shelf: the same
+    finally:
+        ctx.close()
+
+
 def profile_ids(page) -> list[str]:
     return sorted(p["id"] for p in api(page, "api/profiles")[1]["profiles"])
 

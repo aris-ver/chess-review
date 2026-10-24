@@ -1235,7 +1235,9 @@ async function checkStale() {
 checkStale();
 // the pages visited in this app (for upTo(): where a screen reachable from several places was opened from)
 const visited = [];
+let fromHash = null, atHash = null;   // the screen before this one, and this one (showLadder: back from which puzzle)
 function noteVisit(h) {
+  if (h !== atHash) { fromHash = atHash; atHash = h; }
   if (visited.length > 1 && visited[visited.length - 2] === h) visited.pop();   // went back (browser, Alt+Left)
   else if (visited[visited.length - 1] !== h) visited.push(h);
   updateBack();
@@ -2317,23 +2319,38 @@ async function showShelf() {
   box.querySelectorAll('[data-go]').forEach(el => el.onclick = () => { location.hash = el.dataset.go; });
 }
 const fmtDay = iso => new Date(iso + 'T12:00:00').toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+// A pack's stages. It opens on the stage you're at: back from one of its puzzles, that puzzle's stage; else (from the
+// shelf, home, anywhere) the stage you're working on. Drawn at once from what was last read of the pack, already
+// facing that stage before it's seen, then again if the pack read now has changed (on the stage then in focus);
+// without one it waits unseen, rather than show the ladder left behind (scrolled back to its start while hidden).
 async function showLadder(id) {
   leavePuzzleScreen('pzpacks');
-  const box = $('pzpacksbox');
-  let d; try { d = await loadPack(id); } catch (e) { d = { error: String(e) }; }
-  if (!d.pack) { toast(d.error || 'No such pack'); location.replace('#/packs'); return; }
-  if (location.hash !== '#/packs/' + id) return;
-  const k = d.pack, fx = packFx && packFx.pack === id ? packFx : null;
+  const box = $('pzpacksbox'), h = location.hash;
+  const m = (fromHash || '').match(/^#\/packs\/([a-z0-9-]+)\/(\d+)\/\d+$/), back = m && m[1] === id ? +m[2] : null;
+  let fx = packFx && packFx.pack === id ? packFx : null, drawn = null;
   packFx = null;
+  if (packCache[id]) {
+    drawn = JSON.stringify(packCache[id]);
+    drawLadder(id, packCache[id], fx, back);
+    fx = null;
+  } else box.style.visibility = 'hidden';
+  let d; try { d = await loadPack(id); } catch (e) { d = { error: String(e) }; }
+  box.style.visibility = '';
+  if (location.hash !== h) return;
+  if (!d.pack) { if (!drawn) { toast(d.error || 'No such pack'); location.replace('#/packs'); } return; }
+  if (JSON.stringify(d.pack) !== drawn) drawLadder(id, d.pack, fx, drawn ? packStage[id] : back);
+}
+function drawLadder(id, k, fx, want) {
+  const box = $('pzpacksbox');
   $('crumb').textContent = `Puzzle packs · ${k.name}`;
-  // which stage to show: one just opened, else the one last played or looked at, else the furthest one open and unfinished
-  // that play got to (opened by the stage before, or started); stages open by rating alone count only before any play
+  // which stage to show: one just opened, else the one asked for, else the furthest one open and unfinished that play
+  // got to (opened by the stage before, or started); stages open by rating alone count only before any play
   const unfinished = [...k.stages].reverse().filter(s => s.open && s.solved < s.size);
   const tried = s => s.puzzles.some(c => c.state !== 'new');
   const reached = (s, i) => !i || tried(s) || k.stages[i - 1].solved >= k.stages[i - 1].need;
   const furthest = k.stages.filter((s, i) => s.open && s.solved < s.size && reached(s, i)).pop();
   const frontier = (k.stages.some(tried) && furthest) || unfinished[0] || k.stages[k.stages.length - 1];
-  let sel = (fx && fx.opened) || packStage[id] || frontier.n;
+  let sel = (fx && fx.opened) || want || frontier.n;
   if (!k.stages.some(s => s.n === sel)) sel = frontier.n;
   const cur = k.stages.find(s => s.n === sel);
   const done = k.stages.filter(s => s.open && s.solved < s.size).length ? '' : ' · every stage done';
@@ -2354,6 +2371,7 @@ async function showLadder(id) {
   });
   const tr = box.querySelector('.sttrack'), cards = [...tr.children];
   const mark = n => {
+    if (!tr.isConnected) return;     // a ladder drawn over since (its track scrolled back as it was hidden)
     sel = n; packStage[id] = n;
     cards.forEach(c => c.classList.toggle('sel', +c.dataset.n === n));
     box.querySelectorAll('.stdots i').forEach(d => d.classList.toggle('sel', +d.dataset.n === n));
@@ -2365,7 +2383,7 @@ async function showLadder(id) {
   const go = (n, smooth = true) => {
     const c = cards.find(x => +x.dataset.n === n); if (!c) return;
     target = n; clearTimeout(still);
-    tr.scrollTo({ left: c.offsetLeft - (tr.clientWidth - c.offsetWidth) / 2, behavior: smooth && !reducedMotion() ? 'smooth' : 'instant' });
+    tr.scrollTo({ left: c.offsetLeft - (tr.clientWidth - c.offsetWidth) / 2, behavior: smooth && !reducedMotion() ? 'smooth' : 'auto' });   // (Safari before 15.4 throws on 'instant')
     mark(n);
   };
   // swiping: the stage is the card that comes to rest in the middle. It lights a beat after the track has stopped there
@@ -2409,7 +2427,7 @@ async function showLadder(id) {
   if (fx.opened || fx.done) { card.classList.add('unlocking'); confetti(diffOf(cur.lo)[2]); toast(fx.done ? `✓ ${k.name} complete!` : `Stage ${fx.opened} is open!`); }
 }
 let packFx = null, ladderKeys = null, ladderIO = null;   // set by finishCtx for the next showLadder; the arrow keys and the focus watcher while a pack is open
-const packStage = {};                        // the stage last played or looked at, per pack
+const packStage = {};                        // the stage in focus on a pack's ladder (drawn again: stays on it)
 document.addEventListener('keydown', e => {
   if (ladderKeys && /^#\/packs\/[a-z0-9-]+$/.test(location.hash) && !(e.target.closest && e.target.closest('input, textarea, select'))) ladderKeys(e);
 });
