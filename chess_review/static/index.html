@@ -57,10 +57,17 @@ header h1 a.away:active { background: #46423d; }
 /* Back: one level up (a puzzle -> its pack, a game -> its list), never a replay of the history */
 header button.back { color: var(--text); white-space: nowrap; font-size: 15px; font-weight: 600; padding: 4px 10px; }
 @media (hover: hover) { header button.back:hover { border-color: var(--accent); } }
-/* a phone has a back of its own (the gesture, the button): no Back in the header there, and the history is kept
-   one level up at each step (goTo), so the phone's back goes where this one would. The desktop app has no back but
-   this one */
-@media (max-width: 900px) and (pointer: coarse) { header button.back { display: none !important; } }
+/* Back: on an iPhone or iPad the swipe right is the way back (Safari's from the edge, the page's own from anywhere:
+   swipeBack), so no button; Android has the button as well as its back gesture and the swipe; a desktop, the button.
+   The history is kept one level up at each step (goTo), so every one of them goes where this one would */
+html.pf-ios header button.back { display: none !important; }
+header h1 a { -webkit-touch-callout: none; }
+/* the swipe back's sign, following the finger along the left edge; green once letting go goes back */
+#swipeback { position: fixed; left: 0; top: 0; z-index: 99999;     /* over the notices and bars; under the splash */ width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center;
+  background: var(--panel2); border: 1px solid var(--line); color: var(--text); font-size: 26px; line-height: 1; box-shadow: 0 4px 12px rgba(0,0,0,.4);
+  pointer-events: none; opacity: 0; transform: translate(-50px, 0); will-change: transform, opacity; }
+#swipeback.go { background: var(--accent); border-color: var(--accent); color: #1b1b1b; }
+#swipeback.out { transition: opacity .15s, transform .15s; }
 header .crumb { color: var(--muted); }
 header .right { margin-left: auto; display: flex; gap: 10px; align-items: center; }
 header .right a { color: var(--muted); }
@@ -1131,6 +1138,15 @@ document.addEventListener('click', e => {
   const el = e.detail && e.target.closest && e.target.closest('a[href], button');
   if (el && document.activeElement === el) el.blur();
 });
+// The platform, for the ways back (html.pf-ios, pf-android, pf-desktop): the UA's client hints where there are some
+// (Chromium), else the user-agent string; an iPad's Safari says it's a Mac, but one with a touch screen
+const PLATFORM = (() => {
+  const ua = navigator.userAgent || '', hint = (navigator.userAgentData && navigator.userAgentData.platform) || '';
+  if (/iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1)) return 'ios';
+  if (/Android/i.test(hint) || /Android/.test(ua)) return 'android';
+  return 'desktop';
+})();
+document.documentElement.classList.add('pf-' + PLATFORM);
 const state = { profile: null, games: null, username: '', filters: { result:'', colour:'', analysed:'', brilliant:'' }, game: null, ply: 0, flipped: false,
                 sound: true, poll: null,
                 variation: null,      // { basePly, moves: [...] } - a "what if" line branching after basePly main-line moves
@@ -1319,6 +1335,58 @@ function goBack() {
   else location.hash = to;
 }
 $('b-back').onclick = goBack;
+// Swipe right to go back, from anywhere on a phone or tablet (the one way back on an iPhone: there's no button there).
+// Not from what a finger drags sideways itself (the stages, a board, anything that scrolls sideways, a slider), not
+// once it turns out a scroll (it never blocks one) or a pinch, and only where there is somewhere to go back to (on
+// Home there isn't). It needs 70 px to the right, within 30 degrees of level. In Safari the strip along the left edge
+// is left to Safari's own swipe back (so the two don't both go back); a home-screen app has none, and gets it all.
+(function swipeBack() {
+  if (PLATFORM === 'desktop') return;
+  const standalone = navigator.standalone === true || matchMedia('(display-mode: standalone)').matches;
+  const EDGE = PLATFORM === 'ios' && !standalone ? 24 : 0, TAN = Math.tan(30 * Math.PI / 180), FAR = 70;
+  const sign = document.createElement('div');
+  sign.id = 'swipeback'; sign.setAttribute('aria-hidden', 'true'); sign.textContent = '‹';
+  document.body.appendChild(sign);
+  const OWN = '.sttrack, svg.board, .boardbox, .setup-board, .palette, input, select, textarea, dialog, .vol';
+  const draggable = el => {
+    for (let e = el; e && e.nodeType === 1 && e !== document.body; e = e.parentElement) {
+      if (e.matches(OWN)) return true;
+      if (e.scrollWidth > e.clientWidth + 1 && /auto|scroll/.test(getComputedStyle(e).overflowX)) return true;
+    }
+    return false;
+  };
+  let sw = null;
+  const far = s => s.dx > FAR && Math.abs(s.dy) < s.dx * TAN;
+  const hide = () => { sign.classList.add('out'); sign.classList.remove('go'); sign.style.opacity = 0; sign.style.transform = `translate(-50px, ${sw ? sw.y - 22 : 0}px)`; sw = null; };
+  document.addEventListener('touchstart', e => {
+    if (sw) hide();
+    if (e.touches.length !== 1 || !upTo()) return;
+    const t = e.touches[0];
+    if (t.clientX < EDGE || draggable(e.target)) return;
+    sw = { x: t.clientX, y: t.clientY, dx: 0, dy: 0, on: false };
+  }, { passive: true });
+  document.addEventListener('touchmove', e => {
+    if (!sw) return;
+    if (e.touches.length !== 1) { hide(); return; }     // a pinch
+    const t = e.touches[0];
+    sw.dx = t.clientX - sw.x; sw.dy = t.clientY - sw.y;
+    if (!sw.on) {
+      if (Math.abs(sw.dy) > 12 && Math.abs(sw.dy) > Math.abs(sw.dx) * .8 || sw.dx < -12) { sw = null; return; }   // a scroll, or leftwards
+      if (sw.dx < 16 || Math.abs(sw.dy) > sw.dx * TAN) return;
+      sw.on = true; sign.classList.remove('out');
+    }
+    sign.style.transform = `translate(${Math.min(sw.dx, FAR + 20) * .7 - 40}px, ${t.clientY - 22}px)`;
+    sign.style.opacity = Math.min(1, sw.dx / FAR);
+    sign.classList.toggle('go', far(sw));
+  }, { passive: true });
+  document.addEventListener('touchend', e => {
+    if (!sw || e.touches.length) return;
+    const go = sw.on && far(sw);
+    hide();
+    if (go) goBack();
+  }, { passive: true });
+  document.addEventListener('touchcancel', () => { if (sw) hide(); }, { passive: true });
+})();
 // Moving on from a screen (Next, the end of a stage, the daily's way to the packs): to the screen above it, back in
 // the history when that is the screen before, else in its place; to one beside it (the next puzzle), in its place.
 // So the history keeps to the levels Back goes by, and the browser's or the phone's back goes where Back would.

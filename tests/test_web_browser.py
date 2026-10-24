@@ -464,10 +464,10 @@ def test_the_board_stays_still_as_a_puzzle_is_solved_on_a_phone(site, browser):
 
 
 def test_on_a_phone_its_own_back_goes_where_the_back_button_did(site, browser):
-    """A phone has no Back in the header (its gesture or button is the back), so the history keeps to the levels the
-    Back button goes by: Next and Skip take the puzzle's place, and back from any puzzle of a pack is its ladder. On
-    a desktop (the app has no back of its own) the button stays."""
-    ctx = browser.new_context(viewport={"width": 412, "height": 915}, device_scale_factor=2.6, is_mobile=True, has_touch=True, user_agent=LITE)
+    """An iPhone has no Back in the header (its swipe is the back), so the history keeps to the levels the Back button
+    goes by: Next and Skip take the puzzle's place, and back from any puzzle of a pack is its ladder. On a desktop (the
+    app has no back of its own) the button stays."""
+    ctx = browser.new_context(viewport={"width": 412, "height": 915}, device_scale_factor=2.6, is_mobile=True, has_touch=True, user_agent=IPHONE)
     page = ctx.new_page()
     hash_is = lambda h: page.wait_for_function("h => location.hash === h", arg=h, timeout=30_000)
     try:
@@ -550,6 +550,67 @@ def test_a_ladder_opens_on_the_stage_you_are_at(site, browser):
         page.evaluate("location.hash = '#/packs'")
         page.wait_for_selector(".card.pack[data-go='#/packs/forks']", timeout=30_000)
         ladder_on("2", lambda: page.click(".card.pack[data-go='#/packs/forks']"))      # from the shelf: the same
+    finally:
+        ctx.close()
+
+
+IPHONE = "Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1"
+PIXEL = "Mozilla/5.0 (Linux; Android 14; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0 Mobile Safari/537.36"
+
+
+SEEN = {}     # phone -> (header height, board box): the same on both
+
+
+@pytest.mark.parametrize("phone", ["iphone", "android"])
+def test_swiping_right_goes_back_and_android_keeps_the_button(site, browser, phone):
+    """A swipe right from anywhere goes back a level, as the phone's back does: not from the board, not from Safari's
+    own strip along the left edge on an iPhone, not when it's mostly up or down, not when short. An iPhone has no Back
+    button, Android has it as well; the header is the same height either way, and so the board sits in the same place."""
+    ctx = browser.new_context(viewport={"width": 390, "height": 844}, device_scale_factor=3, is_mobile=True, has_touch=True,
+                              user_agent=IPHONE if phone == "iphone" else PIXEL)
+    page = ctx.new_page()
+    try:
+        page.goto(site)
+        ready(page)
+        for h in ["#/packs", "#/packs/forks", "#/packs/forks/1/1"]:
+            page.evaluate(f"location.hash = '{h}'")
+            page.wait_for_function("h => location.hash === h", arg=h)
+        page.wait_for_function("document.body.classList.contains('puzzle') && pz.hash === location.hash && !state.exploring", timeout=30_000)
+        assert page.evaluate("document.documentElement.classList.contains('pf-' + (navigator.userAgent.includes('iPhone') ? 'ios' : 'android'))")
+        assert page.locator("#b-back").is_visible() == (phone == "android")
+        header = page.locator("header").bounding_box()["height"]
+        board = tuple(page.locator("#boardbox").bounding_box().values())
+        print(f"{phone}: header {header} px, board {board}")
+        SEEN[phone] = (header, board)
+        assert len(set(SEEN.values())) == 1, f"the header or the board differ: {SEEN}"
+        cdp = ctx.new_cdp_session(page)
+        y = page.locator("#now").bounding_box()["y"] + 20
+
+        def swipe(x0, y0, dx, dy, steps=8):
+            cdp.send("Input.dispatchTouchEvent", {"type": "touchStart", "touchPoints": [{"x": x0, "y": y0}]})
+            for i in range(1, steps + 1):
+                cdp.send("Input.dispatchTouchEvent", {"type": "touchMove", "touchPoints": [{"x": x0 + dx * i / steps, "y": y0 + dy * i / steps}]})
+                page.wait_for_timeout(12)
+            cdp.send("Input.dispatchTouchEvent", {"type": "touchEnd", "touchPoints": []})
+            page.wait_for_timeout(300)
+            return page.evaluate("location.hash")
+
+        here = "#/packs/forks/1/1"
+        assert swipe(60, y, 50, 0) == here                         # too short
+        assert swipe(60, y, 150, 120) == here                      # more down than across
+        b = page.locator("#boardbox").bounding_box()
+        assert swipe(b["x"] + 40, b["y"] + b["height"] / 2, 200, 0) == here     # on the board: a move, not a way back
+        if phone == "iphone":
+            assert swipe(8, y, 200, 0) == here                     # Safari's own edge swipe: left to Safari
+        assert swipe(60, y, 180, 20) == "#/packs/forks"            # back to the ladder
+        page.wait_for_selector(".scard.sel", timeout=30_000)
+        page.wait_for_timeout(500)
+        tr = page.locator(".sttrack").bounding_box()
+        assert swipe(60, tr["y"] + 120, 200, 0) == "#/packs/forks"  # on the stages: that's the stages' own swipe
+        legend = page.locator(".legend").bounding_box()
+        assert swipe(60, legend["y"] + 5, 200, 0) == "#/packs"     # off them: back to the shelf
+        assert swipe(60, 400, 200, 0) in ("", "#/")                 # and home
+        assert swipe(60, 400, 200, 0) in ("", "#/")                 # nowhere further: it stays
     finally:
         ctx.close()
 
