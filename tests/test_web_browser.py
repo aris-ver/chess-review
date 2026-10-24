@@ -241,6 +241,103 @@ def ready(page, timeout=60_000) -> None:
     page.wait_for_function(READY, timeout=timeout)
 
 
+# 16 of the forks pack's stage 1 solved, so stage 2 is open too and the ladder opens on it, stage 1 peeking in on the left
+OPEN_STAGE_TWO = """async () => {
+    const k = (await (await fetch('api/puzzles/pack?id=forks')).json()).pack;
+    for (const c of k.stages[0].puzzles.slice(0, 16))
+        await fetch('api/puzzles/attempt', { method: 'POST', body: JSON.stringify({ id: c.id, solved: true, hinted: false, ms: 5000 }) });
+    location.hash = '#/packs/forks';
+}"""
+FOCUS = "(document.querySelector('.scard.sel') || {dataset: {}}).dataset.n"
+
+
+def ladder(browser, site, **kw):
+    ctx = browser.new_context(**kw)
+    page = ctx.new_page()
+    page.goto(site)
+    ready(page)
+    page.evaluate(OPEN_STAGE_TWO)
+    page.wait_for_selector(".scard[data-n='2'].sel", timeout=30_000)
+    return ctx, page
+
+
+def settled(page) -> None:
+    """Until the track stops moving (a smooth scroll to a stage)."""
+    page.wait_for_function("""() => new Promise(done => {
+        const tr = document.querySelector('.sttrack'); let x = tr.scrollLeft, still = 0;
+        const f = () => { still = tr.scrollLeft === x ? still + 1 : 0; x = tr.scrollLeft; still > 5 ? done(true) : requestAnimationFrame(f); };
+        requestAnimationFrame(f);
+    })""")
+
+
+def back_to_ladder(page, n: str) -> None:
+    """Back from a puzzle, until the ladder is drawn again (the one left behind is still in the page till then)."""
+    page.evaluate("document.querySelector('.sttrack').dataset.old = 1")
+    page.go_back()
+    page.wait_for_function(f"!document.querySelector('.sttrack').dataset.old && {FOCUS} === '{n}'")
+
+
+def test_only_the_stage_in_focus_opens_its_puzzles(site, browser):
+    ctx, page = ladder(browser, site, viewport={"width": 1280, "height": 900})
+    try:
+        # a tile of stage 1, peeking in beside stage 2: the click brings stage 1 in and opens nothing
+        box = page.locator(".scard[data-n='1'] .tile").nth(5).bounding_box()
+        assert box["x"] > 0
+        page.mouse.click(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
+        page.wait_for_function(f"{FOCUS} === '1'")
+        assert page.evaluate("location.hash") == "#/packs/forks"
+        settled(page)
+        box = page.locator(".scard[data-n='1'] .tile").nth(5).bounding_box()
+        page.mouse.click(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
+        page.wait_for_function("location.hash === '#/packs/forks/1/6'")     # in focus now: it opens
+        back_to_ladder(page, "1")                                           # back on the stage looked at
+        # tabbing to the button of a stage not in focus scrolls that stage in, and Enter then opens its puzzle
+        page.focus(".scard[data-n='2'] .prog .primary")
+        page.wait_for_function(f"{FOCUS} === '2'")
+        assert page.evaluate("location.hash") == "#/packs/forks"
+        page.keyboard.press("Enter")
+        page.wait_for_function("location.hash === '#/packs/forks/2/1'")
+        back_to_ladder(page, "2")
+        # the arrow keys step a stage at a time, onto locked ones too, and stop at the ends
+        page.evaluate("document.activeElement.blur()")
+        for key, n in [("ArrowRight", "3"), ("ArrowRight", "4"), ("ArrowLeft", "3"), ("ArrowLeft", "2"), ("ArrowLeft", "1"), ("ArrowLeft", "1")]:
+            page.keyboard.press(key)
+            page.wait_for_function(f"{FOCUS} === '{n}'")
+        settled(page)
+        assert page.evaluate("location.hash") == "#/packs/forks"
+    finally:
+        ctx.close()
+
+
+def test_a_swiped_stage_takes_the_focus_as_it_gets_to_the_middle(site, browser):
+    """On a phone (a slow one: the CPU throttled) a fling goes on for a while after the finger lifts; the stage swiped
+    to must be in focus before that's over, not only once the track has stopped."""
+    ctx, page = ladder(browser, site, viewport={"width": 412, "height": 915}, device_scale_factor=2.6, is_mobile=True,
+                       has_touch=True, user_agent=LITE)
+    try:
+        settled(page)
+        page.evaluate("""() => {
+            const tr = document.querySelector('.sttrack'), c = tr.querySelector('.scard[data-n="1"]');
+            window.swipe = { scrolls: [] };
+            tr.addEventListener('scroll', () => window.swipe.scrolls.push(performance.now()), { passive: true });
+            new MutationObserver(() => { if (c.classList.contains('sel') && !window.swipe.lit) window.swipe.lit = performance.now(); })
+                .observe(c, { attributes: true, attributeFilter: ['class'] });
+        }""")
+        cdp = ctx.new_cdp_session(page)
+        cdp.send("Emulation.setCPUThrottlingRate", {"rate": 4})
+        cdp.send("Input.dispatchTouchEvent", {"type": "touchStart", "touchPoints": [{"x": 60, "y": 400}]})
+        for x in range(90, 360, 30):                    # a finger dragging right: the track scrolls back to stage 1
+            cdp.send("Input.dispatchTouchEvent", {"type": "touchMove", "touchPoints": [{"x": x, "y": 400}]})
+            page.wait_for_timeout(16)
+        cdp.send("Input.dispatchTouchEvent", {"type": "touchEnd", "touchPoints": []})
+        page.wait_for_function(f"{FOCUS} === '1'", timeout=10_000)
+        settled(page)
+        s = page.evaluate("window.swipe")
+        assert s["lit"] < s["scrolls"][-1], f"stage 1 took the focus {s['lit'] - s['scrolls'][-1]:.0f} ms after the swipe stopped"
+    finally:
+        ctx.close()
+
+
 def profile_ids(page) -> list[str]:
     return sorted(p["id"] for p in api(page, "api/profiles")[1]["profiles"])
 

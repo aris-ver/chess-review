@@ -125,9 +125,10 @@ main { padding: 16px 18px; max-width: 1800px; margin: 0 auto; }
 .sttrack { display: flex; gap: 14px; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; padding: 8px calc(50% - min(260px, 44vw)) 16px; }
 .sttrack::-webkit-scrollbar { display: none; }
 .scard { --dc: var(--accent); flex: 0 0 min(520px, 88vw); scroll-snap-align: center; background: var(--panel); border: 1px solid var(--line); border-top: 5px solid var(--dc);
-  border-radius: 16px; padding: 16px; opacity: .45; transform: scale(.94); transition: transform .3s, opacity .3s, box-shadow .3s; display: flex; flex-direction: column; }
+  border-radius: 16px; padding: 16px; opacity: .45; transform: scale(.94); transition: transform .2s, opacity .2s, box-shadow .2s; display: flex; flex-direction: column; }
 .scard.sel { opacity: 1; transform: none; box-shadow: 0 8px 30px rgba(0,0,0,.35); }
 .scard:not(.sel) { cursor: pointer; }
+.scard:not(.sel) .tiles, .scard:not(.sel) .prog { pointer-events: none; }   /* a stage not in focus is one target: a click brings it in */
 .scard .sh { display: flex; align-items: center; gap: 8px; }
 .scard .sh h2 { margin: 0; font-size: 20px; color: var(--dc); text-transform: none; letter-spacing: 0; }
 .scard .sh .r { margin-left: auto; color: var(--muted); font-size: 12px; }
@@ -2273,7 +2274,11 @@ async function showLadder(id) {
   html += `</div></div><div class="stdots">${k.stages.map(s => `<i class="${s.open ? 'open' : ''}" data-n="${s.n}" style="--dc:${diffOf(s.lo)[2]}" title="Stage ${s.n}${s.open ? '' : ' (locked)'}"></i>`).join('')}</div>` +
     `<p class="legend">Green: solved first try. Pale: solved after a miss or a hint. Red outline: not solved yet. ${LOCK_OPEN_SVG} is the one that opens the next stage.</p></div>`;
   box.innerHTML = html;
-  box.querySelectorAll('[data-go]').forEach(el => el.onclick = e => { e.stopPropagation(); location.hash = el.dataset.go; });
+  // a tile or button opens only on the stage in focus; on another one the click falls through to its card, which brings it in
+  box.querySelectorAll('[data-go]').forEach(el => el.onclick = e => {
+    if (+el.closest('.scard').dataset.n !== sel) return;
+    e.stopPropagation(); location.hash = el.dataset.go;
+  });
   const tr = box.querySelector('.sttrack'), cards = [...tr.children];
   const mark = n => {
     sel = n; packStage[id] = n;
@@ -2281,18 +2286,28 @@ async function showLadder(id) {
     box.querySelectorAll('.stdots i').forEach(d => d.classList.toggle('sel', +d.dataset.n === n));
     box.querySelector('.arrow.l').disabled = n === k.stages[0].n; box.querySelector('.arrow.r').disabled = n === k.stages[k.stages.length - 1].n;
   };
+  // going to a stage (a click, the arrows, the dots, the keys): the stages scrolled past on the way don't take the focus
+  let target = null;
   const go = (n, smooth = true) => {
     const c = cards.find(x => +x.dataset.n === n); if (!c) return;
+    target = n;
     tr.scrollTo({ left: c.offsetLeft - (tr.clientWidth - c.offsetWidth) / 2, behavior: smooth && !reducedMotion() ? 'smooth' : 'instant' });
     mark(n);
   };
-  // swiping: whichever card settles in the middle is the stage
-  let t; tr.onscroll = () => { clearTimeout(t); t = setTimeout(() => {
-    const mid = tr.scrollLeft + tr.clientWidth / 2;
-    const c = cards.reduce((a, b) => Math.abs(b.offsetLeft + b.offsetWidth / 2 - mid) < Math.abs(a.offsetLeft + a.offsetWidth / 2 - mid) ? b : a);
-    if (+c.dataset.n !== sel) mark(+c.dataset.n);
-  }, 90); };
+  // swiping: the stage is the card on the track's middle line, from the moment it gets there (not once the swipe has
+  // settled, which on a phone's fling is a second away), seen by an observer: no work per scroll event
+  if (ladderIO) ladderIO.disconnect();
+  ladderIO = new IntersectionObserver(es => {
+    const e = es.filter(x => x.isIntersecting).pop(); if (!e) return;
+    const n = +e.target.dataset.n;
+    if (target !== null && n !== target) return;
+    target = null;
+    if (n !== sel) mark(n);
+  }, { root: tr, rootMargin: '0px -49% 0px -49%' });
+  cards.forEach(c => ladderIO.observe(c));
+  for (const ev of ['pointerdown', 'touchstart', 'wheel']) tr.addEventListener(ev, () => { target = null; }, { passive: true });
   cards.forEach(c => c.onclick = () => { if (+c.dataset.n !== sel) go(+c.dataset.n); });
+  tr.addEventListener('focusin', e => { const c = e.target.closest('.scard'); if (c && +c.dataset.n !== sel) go(+c.dataset.n); });   // tabbing into a stage
   box.querySelectorAll('.stcar .arrow').forEach(b => b.onclick = () => go(sel + +b.dataset.d));
   box.querySelectorAll('.stdots i').forEach(d => d.onclick = () => go(+d.dataset.n));
   ladderKeys = e => { if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') { go(sel + (e.key === 'ArrowLeft' ? -1 : 1)); e.preventDefault(); } };
@@ -2305,7 +2320,7 @@ async function showLadder(id) {
   if (el && /clean|solved/.test(el.className)) el.classList.add('pop');
   if (fx.opened || fx.done) { card.classList.add('unlocking'); confetti(diffOf(cur.lo)[2]); toast(fx.done ? `✓ ${k.name} complete!` : `Stage ${fx.opened} is open!`); }
 }
-let packFx = null, ladderKeys = null;       // set by finishCtx for the next showLadder; the arrow keys while a pack is open
+let packFx = null, ladderKeys = null, ladderIO = null;   // set by finishCtx for the next showLadder; the arrow keys and the focus watcher while a pack is open
 const packStage = {};                        // the stage last played or looked at, per pack
 document.addEventListener('keydown', e => {
   if (ladderKeys && /^#\/packs\/[a-z0-9-]+$/.test(location.hash) && !(e.target.closest && e.target.closest('input, textarea, select'))) ladderKeys(e);
