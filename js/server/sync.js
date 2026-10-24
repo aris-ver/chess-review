@@ -20,7 +20,7 @@
 // over the same data directory), and `runner` (jobs.js: whether a job is on a profile, cancelling its build), and
 // `onSwitch` (called once the profiles changed hands: own puzzles' cache).
 
-import { EVALS, PROFILE_DDL, PROGRESS, PROGRESS_DDL, ATTEMPTS_SCHEMA, DAILY_SCHEMA, SOLVED_SCHEMA, profileDb } from './db.js';
+import { EVALS, PROFILE_DDL, PROGRESS, PROGRESS_DDL, ATTEMPTS_SCHEMA, DAILY_SCHEMA, SOLVED_ROW, profileDb } from './db.js';
 import { BadRequest, pyRepr, truthy } from './http.js';
 import { profileId, pyDumps, validId } from './profiles.js';
 
@@ -53,11 +53,11 @@ const DB_FILE = /\.sqlite(-wal|-shm|-journal)?$/;
  * except `ms`, which Python always wrote (null when unknown). */
 const KEYS = {
   puzzle_attempts: ['id', 'ts', 'solved', 'ms', 'hinted', 'rating'],
-  puzzle_solved: ['id', 'ts'],
+  puzzle_solved: ['id', 'ts', 'clean'],
   puzzle_daily: ['date', 'n', 'id', 'solved', 'clean', 'ms', 'marks'],
 };
 const ALWAYS = new Set(['ms']);
-const SCHEMAS = { puzzle_attempts: ATTEMPTS_SCHEMA, puzzle_solved: SOLVED_SCHEMA, puzzle_daily: DAILY_SCHEMA };
+const SCHEMAS = { puzzle_attempts: ATTEMPTS_SCHEMA, puzzle_solved: SOLVED_ROW, puzzle_daily: DAILY_SCHEMA };
 
 export function rowLine(table, row) {
   const o = {};
@@ -138,6 +138,23 @@ function oncePer(key, lines) {
   return out;
 }
 
+/** oncePer('id'), where a puzzle solved clean on one browser and with a miss on another keeps the clean line (in
+ * the place of the first): the best result wins, whichever came first. */
+function bestSolved(lines) {
+  const at = new Map(), out = [];
+  for (const ln of lines) {
+    const v = JSON.parse(ln), k = v.id ?? null;
+    const id = k === null ? null : `${typeof k}:${typeof k === 'object' ? JSON.stringify(k) : k}`;
+    if (id === null || !at.has(id)) {
+      if (id !== null) at.set(id, out.length);
+      out.push(ln);
+    } else if (v.clean === true && JSON.parse(out[at.get(id)]).clean !== true) {
+      out[at.get(id)] = ln;
+    }
+  }
+  return out;
+}
+
 /** A merged file in the order and with the uniqueness its reader expects (sync.tidy). */
 export function tidy(file, lines) {
   if (file === PROFILES) {
@@ -152,7 +169,7 @@ export function tidy(file, lines) {
   let out = unique(lines).map(ln => ({ ln, k: when(ln) })).sort(byWhen).map(x => x.ln);
   const name = file.split('/').at(-1);
   if (!file.includes('/') && name.startsWith('puzzle_attempts')) out = oncePer('id', out);
-  else if (name === 'puzzle_solved.jsonl') out = oncePer('id', out);
+  else if (name === 'puzzle_solved.jsonl') out = bestSolved(out);
   else if (name === 'puzzle_daily.jsonl') out = oncePer('date', out);
   return out;
 }

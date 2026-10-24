@@ -100,6 +100,16 @@ test('sync: lines as Python wrote them, and the merge', () => {
   assert.deepEqual(tidy('puzzle_solved.jsonl', [l('b', 2), l('a', 1), l('b', 3)]), [l('a', 1), l('b', 2)]);
   assert.deepEqual(merge({ 'puzzle_solved.jsonl': [l('a', 1)] }, { 'puzzle_solved.jsonl': [l('c', 3)] },
     { 'puzzle_solved.jsonl': [l('a', 1), l('b', 2)] }), { 'puzzle_solved.jsonl': [l('b', 2), l('c', 3)] });
+  // a puzzle solved clean on one browser and late on another: the clean line stays, whichever came first; a row
+  // without clean is the line Python wrote
+  const c = (id, ts) => `{"id": "${id}", "ts": ${ts}, "clean": true}`;
+  assert.equal(rowLine('puzzle_solved', { id: 'a', ts: 1, clean: null }), l('a', 1));
+  assert.equal(rowLine('puzzle_solved', { id: 'a', ts: 1, clean: true }), c('a', 1));
+  assert.deepEqual(tidy('puzzle_solved.jsonl', [l('a', 1), c('a', 4), l('b', 2), c('b', 3), c('c', 5), l('c', 6)]), [c('a', 4), c('b', 3), c('c', 5)]);
+  assert.deepEqual(merge({ 'puzzle_solved.jsonl': [l('a', 1)] }, { 'puzzle_solved.jsonl': [c('a', 1)] },
+    { 'puzzle_solved.jsonl': [l('a', 1), l('b', 2)] }), { 'puzzle_solved.jsonl': [c('a', 1), l('b', 2)] });
+  assert.deepEqual(merge({ 'puzzle_solved.jsonl': [l('a', 1)] }, { 'puzzle_solved.jsonl': [l('a', 1)] },
+    { 'puzzle_solved.jsonl': [c('a', 1)] }), { 'puzzle_solved.jsonl': [c('a', 1)] });
   const pinned = '{"added": null, "pinned": "2026", "source": "lichess", "username": "bob"}';
   const unpinned = '{"added": null, "pinned": null, "source": "lichess", "username": "bob"}';
   assert.deepEqual(tidy('profiles.jsonl', [unpinned, pinned]), [pinned]);

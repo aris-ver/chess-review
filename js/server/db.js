@@ -31,7 +31,10 @@ export const EVALS = 'evals.sqlite';
 export const PROGRESS = 'progress.sqlite';
 export const profileDb = id => `profiles/${id}/games.sqlite`;
 
-export const SCHEMA_VERSION = 1;
+// 2: puzzle_solved.clean (SOLVED_CLEAN). A database made at an earlier version is brought up to this one as it is
+// opened (UPGRADES), and a new one is made at 1 and brought up the same way, so the two have the same schema to the
+// letter (sqlite_master's text of an altered table isn't what a CREATE TABLE of it would say).
+export const SCHEMA_VERSION = 2;
 
 /** (name, SQL type) in order, as normalise.GAMES_SCHEMA */
 export const GAMES_SCHEMA = [
@@ -117,12 +120,16 @@ export const ATTEMPTS_SCHEMA = [
   ['rating', 'INTEGER'],
 ];
 
-/** puzzle_solved.jsonl: {id, ts} */
+/** puzzle_solved.jsonl: {id, ts}, as the Python app wrote it and schema 1 made it; and since schema 2 {id, ts,
+ * clean: true} for a puzzle solved without a mistake or a hint on a later go (SOLVED_CLEAN, NULL otherwise). */
 export const SOLVED_SCHEMA = [
   ['seq', 'INTEGER'],
   ['id', 'TEXT'],
   ['ts', 'INTEGER'],
 ];
+export const SOLVED_CLEAN = ['clean', 'BOOLEAN'];
+/** the columns a puzzle_solved row has now */
+export const SOLVED_ROW = [...SOLVED_SCHEMA, SOLVED_CLEAN];
 
 /** puzzle_daily.jsonl: {date, n, id, solved, clean, ms, marks} */
 export const DAILY_SCHEMA = [
@@ -164,6 +171,17 @@ export const PROFILE_DDL = [
   table('puzzle_attempts', ATTEMPTS_SCHEMA),
   'CREATE INDEX IF NOT EXISTS puzzle_attempts_id ON puzzle_attempts (id);',
 ].join('\n');
+
+const hasTable = (db, t) => !!db.value("SELECT count(*) FROM main.sqlite_master WHERE type = 'table' AND name = ?", [t]);
+const hasColumn = (db, t, c) => !!db.value(`SELECT count(*) FROM pragma_table_info('${t}', 'main') WHERE name = ?`, [c]);
+
+/** [version, step]: what brings a database at the version before up to this one. Each step looks for what it
+ * changes, so it does nothing to a database that hasn't that table (an evals or profile database). */
+const UPGRADES = [
+  [2, db => {
+    if (hasTable(db, 'puzzle_solved') && !hasColumn(db, 'puzzle_solved', 'clean')) db.exec(`ALTER TABLE puzzle_solved ADD COLUMN "clean" BOOLEAN`);
+  }],
+];
 
 /** A JS value as SQLite stores it. */
 export function encode(v) {
@@ -299,9 +317,11 @@ export class Store {
         try {
           for (const [other, as] of attach) await this.ensure(other);
           for (const [other, as] of attach) raw.attach(other, as);
-          if (db.value('PRAGMA user_version') === 0) {
+          const v = db.value('PRAGMA user_version');
+          if (v < SCHEMA_VERSION) {
             db.tx(() => {
-              db.exec(ddl);
+              if (v === 0) db.exec(ddl);
+              for (const [to, step] of UPGRADES) if (v < to) step(db);
               db.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`);
             });
           }

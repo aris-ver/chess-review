@@ -10,14 +10,17 @@
 //
 // What you've done with a puzzle comes from progress.sqlite (Store.progress(), db.js):
 //     puzzle_attempts   (puzzles.js) the first try at each puzzle, archived ones too: solved clean or not
-//     puzzle_solved     one row per puzzle solved later on, after a miss or a hint: {id, ts}
+//     puzzle_solved     one row per puzzle solved, on the first try or a later one: {id, ts}, and clean: true once
+//                       a go at it was solved without a mistake or a hint
 //     puzzle_daily      one row per day played, the first showing only: {date, n, id, solved, clean, ms, marks}
-// A puzzle is "clean" when its first try was solved without a mistake or a hint, "solved" when it was solved since,
-// "missed" when it was tried and never solved.
+// A puzzle is "clean" when a go at it was solved without a mistake or a hint: the first try, or one after it (a
+// puzzle opened again and found at once counts as found first try, and a miss after that doesn't take it away);
+// "solved" when it was solved, but never cleanly; "missed" when it was tried and never solved. The rating and its
+// counts stay with the first try alone (puzzles.js): a puzzle played again is one you may remember.
 //
 // Days are ISO dates ('2026-10-23'), the caller's local date (today()).
 
-import { DAILY_SCHEMA, SOLVED_SCHEMA } from './db.js';
+import { DAILY_SCHEMA, SOLVED_ROW } from './db.js';
 
 export const STAGE_SIZE = 20;
 export const STAGE_PASS = 0.8;             // 16 of 20 opens the next stage
@@ -63,20 +66,26 @@ export function firstTries(db) {
   return out;
 }
 
+/** id → solved cleanly on some go (a Map): every puzzle solved, the first try or a later one. */
 export function solvedLater(db) {
-  return new Set(db.column('SELECT id FROM puzzle_solved'));
+  const out = new Map();
+  for (const r of db.all('SELECT id, clean FROM puzzle_solved ORDER BY seq')) out.set(r.id, !!r.clean || !!out.get(r.id));
+  return out;
 }
 
-/** A puzzle solved, after a miss or a hint (shown the solution doesn't count). */
-export function markSolved(db, pid, now = nowSeconds()) {
+/** A puzzle solved (shown the solution doesn't count); clean: without a mistake or a hint on this go. Once a
+ * puzzle is solved clean it stays so: a solve with misses later leaves the row as it is. */
+export function markSolved(db, pid, now = nowSeconds(), clean = false) {
   db.tx(() => {
-    if (db.value('SELECT count(*) FROM puzzle_solved WHERE id = ?', [pid])) return;
-    db.insert('puzzle_solved', SOLVED_SCHEMA, [{ id: pid, ts: Math.floor(now) }]);
+    const had = db.all('SELECT clean FROM puzzle_solved WHERE id = ?', [pid]);
+    if (!had.length) db.insert('puzzle_solved', SOLVED_ROW, [{ id: pid, ts: Math.floor(now), clean: clean ? true : null }]);
+    else if (clean && !had.some(r => r.clean)) db.run('UPDATE puzzle_solved SET clean = 1 WHERE id = ?', [pid]);
   });
 }
 
+/** later: solvedLater()'s Map (a Set of ids, as before it, has no clean solves in it). */
 export function stateOf(pid, first, later) {
-  if (first.get(pid)) return 'clean';
+  if (first.get(pid) || (later instanceof Map && later.get(pid))) return 'clean';
   if (later.has(pid)) return 'solved';
   return first.has(pid) ? 'missed' : 'new';
 }

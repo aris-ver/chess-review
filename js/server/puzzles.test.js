@@ -2,6 +2,7 @@
 // recorded runs of attempts, resets and daily showings are replayed into SQLite and every answer compared.
 process.env.TZ = 'UTC';     // the archive's name is local time, and the dump ran in UTC
 
+import assert from 'node:assert/strict';
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -10,7 +11,7 @@ import { test } from 'node:test';
 import { load, PARITY, same } from '../parity.js';
 import { writeResults } from './eval-cache.js';
 import { nodeSqlite } from './db-node.js';
-import { EVALS_MULTIPV_SCHEMA, EVALS_SCHEMA, MOVES_SCHEMA, Store, writeGames } from './db.js';
+import { EVALS_MULTIPV_SCHEMA, EVALS_SCHEMA, MOVES_SCHEMA, PROGRESS_DDL, SCHEMA_VERSION, Store, writeGames } from './db.js';
 import * as O from './own-puzzles.js';
 import * as K from './packs.js';
 import * as P from './puzzles.js';
@@ -74,7 +75,7 @@ test('packs: progress, ladders and the shelf as Python', async () => {
     same(sorted(archived.map(n => n.replace('puzzle_attempts.', 'pk_attempts.'))), pk.archives, 'archives');
     const first = K.firstTries(db), later = K.solvedLater(db);
     same([...first], pk.first, 'first_tries');
-    same(sorted(later), pk.later, 'solved_later');
+    same(sorted(later.keys()), pk.later, 'solved_later');
     for (const [i, st] of pk.stats.entries()) same(K.shelf(packs, st, db, get), pk.shelf[i], `shelf[${i}]`);
     for (const [i, c] of pk.ladders.entries()) {
       const p = packs.get(c.pack);
@@ -84,6 +85,64 @@ test('packs: progress, ladders and the shelf as Python', async () => {
     }
   });
   for (const [id, out] of Object.entries(pk.where)) same(K.where(packs, id), out, `where(${id})`);
+});
+
+test('packs: a puzzle solved clean on a later go counts as first try, and nothing takes that back', async () => {
+  const pack = { id: 't', family: 'f', name: 'T', desc: '', themes: [], stages: [{ n: 1, lo: 1000, hi: 1100, ids: ['a', 'b', 'c', 'd'] }] };
+  const states = db => K.ladder(pack, K.firstTries(db), K.solvedLater(db), { played: 0 }).stages[0].puzzles.map(c => c.state);
+  await withStore(async store => {
+    const db = await store.progress();
+    // a: missed, then found with a miss on a second go, then found at once on a third: first try from then on
+    P.record(db, 'a', 1000, false, null, false, 100);
+    K.markSolved(db, 'a', 200, false);
+    assert.deepEqual(states(db), ['solved', 'new', 'new', 'new']);
+    K.markSolved(db, 'a', 300, true);
+    // b: found at once on its first try, then missed on a later go (the record ignores it) and found late: still clean
+    P.record(db, 'b', 1000, true, null, false, 400);
+    K.markSolved(db, 'b', 400, true);
+    assert.equal(P.record(db, 'b', 1000, false, null, false, 500), null);
+    K.markSolved(db, 'b', 600, false);
+    // c: hinted on the first try, then solved at once: first try. d: missed, never solved
+    P.record(db, 'c', 1000, true, null, true, 700);
+    K.markSolved(db, 'c', 800, true);
+    K.markSolved(db, 'c', 900, false);
+    P.record(db, 'd', 1000, false, null, false, 1000);
+    assert.deepEqual(states(db), ['clean', 'clean', 'clean', 'missed']);
+    const lad = K.ladder(pack, K.firstTries(db), K.solvedLater(db), { played: 0 });
+    assert.deepEqual([lad.solved, lad.clean, lad.stages[0].solved, lad.stages[0].clean], [3, 3, 3, 3]);
+    // one row a puzzle, the time it was first solved kept
+    assert.deepEqual(db.all('SELECT id, ts, clean FROM puzzle_solved ORDER BY seq').map(r => ({ ...r })),
+      [{ id: 'a', ts: 200, clean: true }, { id: 'b', ts: 400, clean: true }, { id: 'c', ts: 800, clean: true }]);
+    // the rating and its counts are the first tries' alone: a second go is one you may remember
+    const st = P.stats(P.attempts(db));
+    assert.deepEqual([st.played, st.solved], [4, 1]);
+  });
+});
+
+test('db: a progress database made at schema 1 gets puzzle_solved.clean, and the same schema as a new one', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'blundr-schema-'));
+  try {
+    const raw = await nodeSqlite(dir).open('progress.sqlite');
+    raw.exec(PROGRESS_DDL);
+    raw.exec('PRAGMA user_version = 1');
+    raw.exec(`INSERT INTO puzzle_solved (id, ts) VALUES ('a', 5)`);
+    raw.close();
+    await withStore(async fresh => {
+      const old = new Store(nodeSqlite(dir));
+      try {
+        const db = await old.progress(), ref = await fresh.progress();
+        const master = d => d.all("SELECT name, sql FROM main.sqlite_master WHERE name NOT LIKE 'sqlite_%' ORDER BY name").map(r => ({ ...r }));
+        assert.deepEqual(master(db), master(ref));
+        assert.equal(db.value('PRAGMA user_version'), SCHEMA_VERSION);
+        K.markSolved(db, 'a', 9, true);
+        assert.deepEqual(db.all('SELECT id, ts, clean FROM puzzle_solved').map(r => ({ ...r })), [{ id: 'a', ts: 5, clean: true }]);
+      } finally {
+        await old.close();
+      }
+    });
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test('packs: the puzzle of the day and the streak as Python', async () => {

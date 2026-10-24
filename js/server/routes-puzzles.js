@@ -264,9 +264,9 @@ async function post(router, path, raw) {
     return json({ stats: st ?? P.stats(P.attempts(progress)), counted: st !== null });
   }
   if (path === '/api/puzzles/solved') {
-    const pid = pyStr(jsonBody(raw).id);
+    const b = jsonBody(raw), pid = pyStr(b.id);
     if (pack.get(pid) === null) return json({ error: 'unknown puzzle' }, 404);
-    K.markSolved(await env.store.progress(), pid, now);
+    K.markSolved(await env.store.progress(), pid, now, truthy(b.clean));
     return json({ ok: true });
   }
   if (path === '/api/puzzles/daily') {
