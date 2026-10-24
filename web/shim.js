@@ -115,14 +115,14 @@
   const mb = b => (b / 1048576).toFixed(0);
   let appReady = false, engineReady = false, analysing = false, hideT = null;
   const render = () => {
-    let loading = appReady ? '' : `<div>${state.app}</div>`;
-    // the engine by name and version ("Stockfish 19"), so a 95 MB download says what it is
-    if (engineReady) { if (!analysing) loading += `<div>${state.engine.name} ready</div>`; }   // old news by then
-    else if (state.engine) {
-      const { done, total, name } = state.engine;
-      loading += `<div>Downloading ${name}, the chess engine: ${mb(done)}${total ? ' / ' + mb(total) : ''} MB</div>` +
-        (total ? `<div class="pb"><i style="width:${Math.min(100, done / total * 100).toFixed(1)}%"></i></div>` : '');
-    }
+    // One line over one progress track, so the bar keeps its height as loading goes on: the app, then the engine by
+    // name and version ("Stockfish 19", so a 95 MB download says what it is), then that it's ready. Analysing, that
+    // is old news: the line goes.
+    const e = state.engine;
+    const line = !appReady ? state.app : engineReady ? (analysing ? '' : `${e.name} ready`)
+      : e ? `Downloading the ${e.name} engine: ${mb(e.done)}${e.total ? ' / ' + mb(e.total) : ''} MB` : 'Loading the chess engine';
+    const pct = engineReady ? 100 : e && e.total ? Math.min(100, e.done / e.total * 100) : 0;
+    const loading = line && `<div>${line}</div><div class="pb"><i style="width:${pct.toFixed(1)}%"></i></div>`;
     const note = noteOff ? '' : lite
       ? `<div style="opacity:.85${loading ? ';margin-top:4px' : ''}">New: Blundr works as an app. ` +
         `<a class="a2hs" style="color:var(--accent)" href="#">Add it to your home screen</a>.</div>`
