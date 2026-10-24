@@ -393,7 +393,7 @@ def test_a_swiped_stage_takes_the_focus_once_it_comes_to_rest(site, browser):
         print(f"phone: stage 1 lit {beat:.0f} ms after the track stopped")
         assert s["dimmed"] < s["scrolls"][-1], "stage 2 stayed lit till the track stopped"
         assert beat > 0, f"stage 1 took the focus {-beat:.0f} ms before the track stopped"
-        assert beat < 300, f"stage 1 took the focus {beat:.0f} ms after the track stopped"
+        assert beat < 110, f"stage 1 took the focus {beat:.0f} ms after the track stopped"   # 22 ms, then a 65 ms fade
     finally:
         ctx.close()
 

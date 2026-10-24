@@ -145,7 +145,7 @@ main { padding: 16px 18px; max-width: 1800px; margin: 0 auto; }
 .sttrack::-webkit-scrollbar { display: none; }
 .scard { --dc: var(--accent); flex: 0 0 min(520px, 88vw); scroll-snap-align: center; background: var(--panel); border: 1px solid var(--line); border-top: 5px solid var(--dc);
   border-radius: 16px; padding: 16px; opacity: .45; transform: scale(.94); transition: transform .2s, opacity .2s, box-shadow .2s; display: flex; flex-direction: column; }
-.scard.sel { opacity: 1; transform: none; box-shadow: 0 8px 30px rgba(0,0,0,.35); }
+.scard.sel { opacity: 1; transform: none; box-shadow: 0 8px 30px rgba(0,0,0,.35); transition-duration: .065s; }   /* lights quick, greys at ease */
 .scard:not(.sel) { cursor: pointer; }
 .scard:not(.sel) .tiles, .scard:not(.sel) .prog { pointer-events: none; }   /* a stage not in focus is one target: a click brings it in */
 .scard .sh { display: flex; align-items: center; gap: 8px; }
@@ -2369,7 +2369,7 @@ async function showLadder(id) {
     mark(n);
   };
   // swiping: the stage is the card that comes to rest in the middle. It lights a beat after the track has stopped there
-  // (70 ms after scrollend, or after the last scroll event where there's none), not as it slides past on the way; the
+  // (22 ms after scrollend, or after the last scroll event where there's none; then a 65 ms fade), not as it slides past on the way; the
   // stage swiped away greys as it leaves the middle line (an observer: no work per scroll event)
   const settle = () => {
     clearTimeout(still);
@@ -2381,7 +2381,7 @@ async function showLadder(id) {
     target = null;
     mark(n);
   };
-  const later = () => { clearTimeout(still); still = setTimeout(settle, 70); };
+  const later = () => { clearTimeout(still); still = setTimeout(settle, 22); };
   const scrollEnd = 'onscrollend' in tr;
   tr.addEventListener('scroll', () => { scrollEnd ? clearTimeout(still) : later(); }, { passive: true });
   if (scrollEnd) tr.addEventListener('scrollend', later);
