@@ -4,8 +4,8 @@
 //
 // The account API is account/*: on the website the Worker's (worker/src/index.js), a real network request with the
 // session cookie; in the desktop app the local server's, which passes it on to blundr.gr with the session token it
-// keeps (chess_review/account.py), and there a Lichess or Google sign-in runs in the system browser (appSignIn).
-// The merge is /api/sync/* (chess_review/sync.py): the Python worker's on the website (shim.js routes it there like
+// keeps (js/server/account.js), and there a Lichess or Google sign-in runs in the system browser (appSignIn).
+// The merge is /api/sync/* (js/server/sync.js): the app worker's on the website (shim.js routes it there like
 // every other api/ call), the local server's in the desktop app.
 (() => {
   const CONSENT = '2026-10-22';      // worker/src/consent.js: the terms and privacy policy agreed to
@@ -16,7 +16,7 @@
   let app = false, site = '';                    // the desktop app (account/me says so), and the website's address
   const here = () => (app ? 'this computer' : 'this browser');
   const sitePage = name => (site ? `${site}/${name}` : name);     // privacy.html, terms.html: the website's
-  const pageFetch = window.fetch;                // shim.js's: api/ goes to Python, the rest to the network
+  const pageFetch = window.fetch;                // shim.js's: api/ goes to the app worker, the rest to the network
   const post = (url, body) => pageFetch(url, { method: 'POST', body: JSON.stringify(body || {}), headers: { 'Content-Type': 'application/json' } });
   const getJSON = async url => { const r = await pageFetch(url, { cache: 'no-store' }); if (!r.ok) throw new Error(`${url}: HTTP ${r.status}`); return r.json(); };
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
@@ -29,8 +29,8 @@
   const synced = (redrawn = false) => window.dispatchEvent(new CustomEvent('progresssynced', { detail: { redrawn } }));
   const redraw = () => { synced(true); window.dispatchEvent(new HashChangeEvent('hashchange')); };
 
-  // Whose data is in the browser (chess_review/sync.py switch()): set aside one owner's, bring back another's.
-  // Python answers busy while a profile that would move is being fetched or analysed: wait for it.
+  // Whose data is in the browser (js/server/sync.js switch()): set aside one owner's, bring back another's.
+  // The server answers busy while a profile that would move is being fetched or analysed: wait for it.
   async function handOver(body, route = 'api/sync/switch') {
     for (let i = 0; i < 200; i++) {
       const r = await (await post(route, body)).json();
@@ -357,7 +357,7 @@ dialog#account .syncrow button { flex: none; padding: 4px 10px; }
     }
     const status = syncing ? 'Syncing…'
       : syncError ? `Last sync failed: ${esc(syncError)}`
-      : lastSync ? `Synced at ${lastSync.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : app ? 'Not synced yet' : 'Not synced yet (waiting for Python to load)';
+      : lastSync ? `Synced at ${lastSync.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : app ? 'Not synced yet' : 'Not synced yet (waiting for the app to load)';
     const first = me.identities[0] || {};
     return note() +
       `<div class="who">${ICON}<div><b>${esc(first.name || 'Your account')}</b>` +
@@ -487,7 +487,7 @@ dialog#account .syncrow button { flex: none; padding: 4px 10px; }
 
   // ---------- the desktop app's sign-in with Lichess or Google ----------
   // It can't happen in the app's window, so the local server opens it in the system browser, which comes back to the
-  // server once done (chess_review/account.py). Meanwhile the dialog waits, asking account/me how it went.
+  // server once done (js/server/account.js). Meanwhile the dialog waits, asking account/me how it went.
   async function appSignIn(provider, mode) {
     const r = await post(`account/app/login/${provider}`, { mode, consent: CONSENT });
     const d = await r.json().catch(() => ({}));

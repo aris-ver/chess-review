@@ -187,7 +187,7 @@
       return r ? { text: await r.text(), type: r.headers.get('Content-Type') } : null;
     } catch (e) { return null; }
   };
-  // The browser holds someone else's data now (a log in, a log out, a deleted account: chess_review/sync.py switch()
+  // The browser holds someone else's data now (a log in, a log out, a deleted account: js/server/sync.js switch()
   // and release()): what was kept is the last owner's, so it goes, and answers asked for before that aren't kept.
   let owners = 0;
   const forget = async body => {
