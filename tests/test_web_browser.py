@@ -129,14 +129,54 @@ def site():
 
 
 @pytest.fixture(scope="module")
-def browser():
+def pwr():
     with pw.sync_playwright() as p:
-        try:
-            b = p.chromium.launch(args=CHROMIUM_ARGS)
-        except Exception as e:  # noqa: BLE001
-            pytest.skip(f"no Chromium to launch: {str(e).splitlines()[0]}")
-        yield b
-        b.close()
+        yield p
+
+
+@pytest.fixture(scope="module")
+def browser(pwr):
+    try:
+        b = pwr.chromium.launch(args=CHROMIUM_ARGS)
+    except Exception as e:  # noqa: BLE001
+        pytest.skip(f"no Chromium to launch: {str(e).splitlines()[0]}")
+    yield b
+    b.close()
+
+
+@pytest.fixture(scope="module")
+def webkit(pwr):
+    """Playwright's WebKit, for what an iPhone does differently. Its GL in software: under WSL it finds WSLg's GPU
+    and hangs on the first page, as Chromium does (which runs with the GPU off). Needs `playwright install webkit`
+    and its system libraries (`playwright install-deps webkit`); skips without them."""
+    try:
+        b = pwr.webkit.launch(env={**os.environ, "LIBGL_ALWAYS_SOFTWARE": "1"})
+        b.new_page().close()
+    except Exception as e:  # noqa: BLE001
+        pytest.skip(f"no WebKit to launch: {str(e).splitlines()[0]}")
+    yield b
+    b.close()
+
+
+@pytest.fixture(params=["chromium", "webkit"])
+def engine(request):
+    """(name, browser): the test runs in Chromium and in WebKit (as on an iPhone)."""
+    return request.param, request.getfixturevalue("browser" if request.param == "chromium" else "webkit")
+
+
+def phone_of(pwr, engine_name: str, **chromium_phone) -> dict:
+    """New-context options for a phone: Playwright's iPhone 13 in WebKit, the given ones in Chromium."""
+    if engine_name == "webkit":
+        d = dict(pwr.devices["iPhone 13"])
+        d.pop("default_browser_type", None)
+        return d
+    return chromium_phone
+
+
+def throttle(ctx, page, engine_name: str, rate=4) -> None:
+    """A slow phone's CPU (Chromium only: WebKit has no such switch)."""
+    if engine_name == "chromium":
+        ctx.new_cdp_session(page).send("Emulation.setCPUThrottlingRate", {"rate": rate})
 
 
 @pytest.fixture
@@ -433,16 +473,18 @@ PLAY_THE_SOLUTION = """async () => {
 }"""
 
 
-def test_the_board_stays_still_as_a_puzzle_is_solved_on_a_phone(site, browser):
+def test_the_board_stays_still_as_a_puzzle_is_solved_on_a_phone(site, pwr, engine):
     """On a phone held upright the board takes the height the rows around it leave: once a puzzle is solved, Skip
     turns into "Next puzzle →", the themes and the game link come in, the daily's result card comes up. None of it may
-    move the board (it did by a couple of pixels, the daily's card by 86), on a pack's puzzle, the next one, the daily."""
-    ctx = browser.new_context(viewport={"width": 412, "height": 915}, device_scale_factor=2.6, is_mobile=True, has_touch=True, user_agent=LITE)
+    move the board (it did by a couple of pixels, the daily's card by 86), on a pack's puzzle, the next one, the daily.
+    (WebKit reports no layout shifts: there, the board's box alone.)"""
+    name, browser = engine
+    ctx = browser.new_context(**phone_of(pwr, name, viewport={"width": 412, "height": 915}, device_scale_factor=2.6, is_mobile=True, has_touch=True, user_agent=LITE))
     page = ctx.new_page()
     try:
         page.goto(site)
         ready(page)
-        ctx.new_cdp_session(page).send("Emulation.setCPUThrottlingRate", {"rate": 4})
+        throttle(ctx, page, name)
         # layout shifts, but the title row's: its counts come in after the first puzzle and widen with the numbers
         page.evaluate("""() => { window.shifted = 0;
             const title = n => n && n.closest && n.closest('.phead, .pzhead');
@@ -463,11 +505,12 @@ def test_the_board_stays_still_as_a_puzzle_is_solved_on_a_phone(site, browser):
         ctx.close()
 
 
-def test_on_a_phone_its_own_back_goes_where_the_back_button_did(site, browser):
+def test_on_a_phone_its_own_back_goes_where_the_back_button_did(site, pwr, engine):
     """An iPhone has no Back in the header (its swipe is the back), so the history keeps to the levels the Back button
     goes by: Next and Skip take the puzzle's place, and back from any puzzle of a pack is its ladder. On a desktop (the
     app has no back of its own) the button stays."""
-    ctx = browser.new_context(viewport={"width": 412, "height": 915}, device_scale_factor=2.6, is_mobile=True, has_touch=True, user_agent=IPHONE)
+    name, browser = engine
+    ctx = browser.new_context(**phone_of(pwr, name, viewport={"width": 412, "height": 915}, device_scale_factor=2.6, is_mobile=True, has_touch=True, user_agent=IPHONE))
     page = ctx.new_page()
     hash_is = lambda h: page.wait_for_function("h => location.hash === h", arg=h, timeout=30_000)
     try:
@@ -519,13 +562,14 @@ FRAMES = """() => {
 }"""
 
 
-def test_a_ladder_opens_on_the_stage_you_are_at(site, browser):
+def test_a_ladder_opens_on_the_stage_you_are_at(site, pwr, engine):
     """Back from a puzzle, the ladder faces that puzzle's stage; opened from the shelf or home, the stage being worked
     on (here 2: 16 of stage 1 solved). From the first frame it's seen: no scroll there, no other stage on the way."""
-    ctx, page = ladder(browser, site, viewport={"width": 412, "height": 915}, device_scale_factor=2.6, is_mobile=True,
-                       has_touch=True, user_agent=LITE)
+    name, browser = engine
+    ctx, page = ladder(browser, site, **phone_of(pwr, name, viewport={"width": 412, "height": 915}, device_scale_factor=2.6, is_mobile=True,
+                                                 has_touch=True, user_agent=LITE))
     try:
-        ctx.new_cdp_session(page).send("Emulation.setCPUThrottlingRate", {"rate": 4})
+        throttle(ctx, page, name)
         settled(page)
 
         def ladder_on(n, go):
@@ -611,6 +655,96 @@ def test_swiping_right_goes_back_and_android_keeps_the_button(site, browser, pho
         assert swipe(60, legend["y"] + 5, 200, 0) == "#/packs"     # off them: back to the shelf
         assert swipe(60, 400, 200, 0) in ("", "#/")                 # and home
         assert swipe(60, 400, 200, 0) in ("", "#/")                 # nowhere further: it stays
+    finally:
+        ctx.close()
+
+
+# a finger's swipe in the page itself (WebKit has no touch input to drive from outside): touch events at the element
+# under the start, every 12 ms; the hash after it, whether anything cancelled a move (that would stop a scroll), and
+# the sign's opacity and green halfway and at the end
+SWIPE_JS = """([x0, y0, dx, dy, steps]) => new Promise(done => {
+    const el = document.elementFromPoint(x0, y0), sign = () => document.getElementById('swipeback');
+    // (WPE's WebKit has no Touch constructor: an event of the touch type carrying the same fields)
+    const touch = (x, y) => ({ identifier: 1, target: el, clientX: x, clientY: y, pageX: x, pageY: y });
+    let blocked = false, seen = [];
+    const fire = (type, x, y) => { const e = new Event(type, { bubbles: true, cancelable: true, composed: true });
+        const now = type === 'touchend' ? [] : [touch(x, y)];
+        Object.defineProperties(e, { touches: { value: now }, targetTouches: { value: now }, changedTouches: { value: [touch(x, y)] } });
+        el.dispatchEvent(e); blocked = blocked || e.defaultPrevented; };
+    fire('touchstart', x0, y0);
+    let i = 0;
+    const step = () => {
+        i++;
+        fire('touchmove', x0 + dx * i / steps, y0 + dy * i / steps);
+        if (sign()) seen.push([+getComputedStyle(sign()).opacity, sign().classList.contains('go')]);
+        if (i < steps) setTimeout(step, 12);
+        else {      // then the hash once it changes (going back is a history step: it takes a moment), or after 1.5 s
+            const was = location.hash, t0 = performance.now();
+            fire('touchend', x0 + dx, y0 + dy);
+            const wait = () => location.hash !== was || performance.now() - t0 > 1500 ? done({ hash: location.hash, blocked, seen }) : setTimeout(wait, 20);
+            wait();
+        }
+    };
+    setTimeout(step, 12);
+})"""
+
+
+def test_on_an_iphone_a_swipe_right_goes_back_in_webkit(site, pwr, webkit):
+    """The swipe right in WebKit, as on an iPhone: from anywhere but Safari's own strip along the left edge, the
+    board and the stages; not short, not mostly down; never blocking a scroll; the sign follows and turns green.
+    No Back button there."""
+    ctx = webkit.new_context(**phone_of(pwr, "webkit"))
+    page = ctx.new_page()
+    try:
+        page.goto(site)
+        ready(page)
+        for h in ["#/packs", "#/packs/forks", "#/packs/forks/1/1"]:
+            page.evaluate(f"location.hash = '{h}'")
+            page.wait_for_function("h => location.hash === h", arg=h)
+        page.wait_for_function("document.body.classList.contains('puzzle') && pz.hash === location.hash && !state.exploring", timeout=60_000)
+        assert page.evaluate("document.documentElement.classList.contains('pf-ios')")
+        assert page.locator("#b-back").is_hidden()
+        swipe = lambda x, y, dx, dy, steps=8: page.evaluate(SWIPE_JS, [x, y, dx, dy, steps])
+        y = page.locator("#now").bounding_box()["y"] + 20
+        here = "#/packs/forks/1/1"
+        for args in [(60, y, 50, 0), (60, y, 150, 120), (8, y, 200, 0)]:     # short, mostly down, Safari's edge strip
+            r = swipe(*args)
+            assert r["hash"] == here and not r["blocked"], (args, r)
+        b = page.locator("#boardbox").bounding_box()
+        assert swipe(b["x"] + 40, b["y"] + b["height"] / 2, 200, 0)["hash"] == here      # on the board
+        r = swipe(60, y, 180, 20)
+        assert r["hash"] == "#/packs/forks" and not r["blocked"], r
+        assert r["seen"][0][0] > 0 and r["seen"][-1] == [1, True], r["seen"]          # the sign: there, then green
+        page.wait_for_selector(".scard.sel", timeout=30_000)
+        tr = page.locator(".sttrack").bounding_box()
+        assert swipe(60, tr["y"] + 120, 200, 0)["hash"] == "#/packs/forks"            # on the stages
+        legend = page.locator(".legend").bounding_box()
+        assert swipe(60, legend["y"] + 5, 200, 0)["hash"] == "#/packs"
+    finally:
+        ctx.close()
+
+
+def test_the_home_mark_shows_no_ring_when_tapped(site, pwr, engine):
+    """Tapped away from home, the Home mark goes in a little and comes back, and nothing else: no border, outline or
+    focus ring in any frame after (a white 1 px border faded out over it, going home)."""
+    name, browser = engine
+    ctx = browser.new_context(**phone_of(pwr, name, viewport={"width": 390, "height": 844}, device_scale_factor=3, is_mobile=True, has_touch=True, user_agent=PIXEL))
+    page = ctx.new_page()
+    try:
+        page.goto(site + "#/packs")
+        page.wait_for_function("document.documentElement.classList.contains('booted') && !!document.querySelector('.card.pack')", timeout=60_000)
+        page.evaluate("""() => { window.frames_ = []; const a = document.getElementById('b-home'), t0 = performance.now();
+            const f = () => { const s = getComputedStyle(a);
+                window.frames_.push({ border: s.borderTopColor, outline: s.outlineStyle, focus: a.matches(':focus-visible'), pressed: a.classList.contains('pressed') });
+                if (performance.now() - t0 < 600) requestAnimationFrame(f); };
+            requestAnimationFrame(f); }""")
+        page.tap("#b-home")
+        page.wait_for_timeout(800)
+        frames = page.evaluate("window.frames_")
+        assert page.evaluate("location.hash") in ("", "#/")
+        assert {f["border"] for f in frames} == {"rgba(0, 0, 0, 0)"}, {f["border"] for f in frames}
+        assert {f["outline"] for f in frames} == {"none"} and not any(f["focus"] for f in frames)
+        assert any(f["pressed"] for f in frames), "no press-in"
     finally:
         ctx.close()
 
