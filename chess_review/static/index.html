@@ -1897,6 +1897,7 @@ function enterPuzzleView() {
   stopSandboxStream(); stopPolling(); stopPlay();
   showSection('review');
   document.body.classList.remove('sandbox'); document.body.classList.add('puzzle');
+  pz.hash = location.hash;     // the address of the puzzle on the board (nextPuzzle)
   const own = ownPuzzle();
   setContext(false); $('crumb').textContent = own ? `Personal puzzles · ${profileName(pz.p.profile)}` : 'Puzzle library';
   $('ginfo').textContent = ''; $('ptitle-t').textContent = own ? 'Personal puzzle' : 'Puzzle';
@@ -2209,6 +2210,9 @@ function renderPuzzleBox() {
 }
 function nextPuzzle() {
   if (state.exploring && !pz.done) return;
+  // the address has moved on and its puzzle is still loading: the one on the board, and its place in a pack, are the
+  // last one's. Moving on from there would go back to where we are already, and the tap would come to nothing
+  if (pz.hash !== location.hash) return;
   const c = pz.ctx;
   if (c && c.kind === 'daily') { goTo('#/packs'); return; }
   if (c) { goTo(c.n < c.size ? `#/packs/${c.pack}/${c.stage}/${c.n + 1}` : '#/packs/' + c.pack); return; }   // the end of a stage: back to the ladder

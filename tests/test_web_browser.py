@@ -463,7 +463,9 @@ def test_on_a_phone_its_own_back_goes_where_the_back_button_did(site, browser):
         assert page.locator("#b-home").is_visible()
         depth = page.evaluate("history.length")
         for n in (2, 3):
-            page.wait_for_function("!!pz.p && state.game.moves.length > 0 && !state.exploring", timeout=30_000)
+            # the puzzle the address names, on the board and waiting for a move (not the one before it, still
+            # there while this one loads)
+            page.wait_for_function("pz.hash === location.hash && state.game.moves.length > 0 && !state.exploring", timeout=30_000)
             page.click("#pz-next")                      # Skip: the next puzzle of the stage, in this one's place
             hash_is(f"#/packs/forks/1/{n}")
         assert page.evaluate("history.length") == depth
