@@ -140,7 +140,6 @@ main { padding: 16px 18px; max-width: 1800px; margin: 0 auto; }
 .ladhead .lh .meta { margin-left: 0; }
 /* a pack's stages: one at a time on a carousel (swipe, the arrows, the dots or the arrow keys), its neighbours peeking in */
 .lock { display: inline-block; width: 1em; height: 1em; vertical-align: -.12em; color: #fff; }
-.star { display: inline-block; width: 1.15em; height: 1.15em; vertical-align: -.2em; }
 .stcar { position: relative; margin: 6px -18px 0; }
 .sttrack { display: flex; gap: 14px; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; padding: 8px calc(50% - min(260px, 44vw)) 16px; }
 .sttrack::-webkit-scrollbar { display: none; }
@@ -156,10 +155,12 @@ main { padding: 16px 18px; max-width: 1800px; margin: 0 auto; }
 .tile { aspect-ratio: 1; border-radius: 10px; background: var(--panel2); color: var(--muted); display: grid; place-items: center; font-weight: 700; font-variant-numeric: tabular-nums;
   cursor: pointer; border: 2px solid transparent; position: relative; user-select: none; -webkit-user-select: none; }
 @media (hover: hover) { .tile:hover { border-color: var(--text); } }
-/* solved, however it went: filled. Solved without a mistake or a hint (the first try, or a go after it): a gold star */
-.tile.clean, .tile.solved { background: var(--dc); color: #1b1b1b; }
-.tile .star { position: absolute; top: 4px; right: 4px; width: clamp(14px, 28%, 20px); height: auto; filter: drop-shadow(0 1px 1px rgba(0,0,0,.35)); }
-.tile:has(.star) .lock { right: auto; left: -5px; }
+/* solved without a mistake or a hint (the first try, or a go after it): filled. Solved after a miss or a hint: the
+   same colour as an outline only, the square left empty, till a clean go fills it */
+.tile.clean { background: var(--dc); color: #1b1b1b; }
+.tile.solved { background: transparent; border-color: var(--dc); color: var(--dc); }
+.legend .sw { display: inline-block; width: 12px; height: 12px; border-radius: 3px; vertical-align: -1px; border: 2px solid var(--accent); }
+.legend .sw.clean { background: var(--accent); } .legend .sw.missed { border-color: var(--c-miss); }
 .tile.missed { border-color: var(--c-miss); color: var(--c-miss); }
 .scard.sel .tile.next { border-color: var(--dc); color: var(--text); animation: tpulse 1.6s infinite; }
 .tile .lock { position: absolute; right: -5px; top: -7px; font-size: 13px; filter: drop-shadow(0 1px 1px rgba(0,0,0,.6)); }
@@ -2101,7 +2102,7 @@ function renderPuzzleNow() {
         return;
       }
     }
-    const late = c && c.kind === 'pack' ? ' It counts toward the pack. Solve it again without a mistake for its star.' : '';
+    const late = c && c.kind === 'pack' ? ' It counts toward the pack. Solve it again without a mistake to fill its square.' : '';
     if (pz.shown) el.innerHTML = top(null, 'Solution') + `<p>That's how it goes.${more}</p>` + tail;
     else if (pz.failed || pz.hinted) el.innerHTML = top('best', 'Solved', COLOR.best) + `<p>Got there in the end.${late}</p>` + tail;
     else el.innerHTML = top('best', 'Solved!', COLOR.best) + `<p>Well played. Try other moves on the board to see why they don't work.</p>` + tail;
@@ -2343,7 +2344,8 @@ async function showLadder(id) {
     `<div class="ladder"><div class="stcar"><button class="arrow l" data-d="-1" title="The stage before (←)">‹</button><button class="arrow r" data-d="1" title="The next stage (→)">›</button><div class="sttrack">`;
   for (const s of k.stages) html += stageCard(k, s);
   html += `</div></div><div class="stdots">${k.stages.map(s => `<i class="${s.open ? 'open' : ''}" data-n="${s.n}" style="--dc:${diffOf(s.lo)[2]}" title="Stage ${s.n}${s.open ? '' : ' (locked)'}"></i>`).join('')}</div>` +
-    `<p class="legend">Filled: solved. ${STAR_SVG} solved first try, or on a later go without a mistake or a hint. Red outline: not solved yet. ${LOCK_OPEN_SVG} is the one that opens the next stage.</p></div>`;
+    `<p class="legend"><i class="sw clean"></i> solved first try (or again later without a mistake or a hint) · <i class="sw"></i> solved after a miss or a hint · ` +
+    `<i class="sw missed"></i> not solved yet · ${LOCK_OPEN_SVG} the one that opens the next stage</p></div>`;
   box.innerHTML = html;
   // a tile or button opens only on the stage in focus; on another one the click falls through to its card, which brings it in
   box.querySelectorAll('[data-go]').forEach(el => el.onclick = e => {
@@ -2414,8 +2416,7 @@ document.addEventListener('keydown', e => {
 const reducedMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
 const LOCK_SVG = '<svg class="lock" viewBox="0 0 24 24" aria-hidden="true"><path d="M7.5 10.5V7.5a4.5 4.5 0 0 1 9 0v3" fill="none" stroke="currentColor" stroke-width="2.4"/><rect x="4" y="10.5" width="16" height="11" rx="2.5" fill="currentColor"/></svg>';
 const LOCK_OPEN_SVG = '<svg class="lock" viewBox="0 0 24 24" aria-hidden="true"><path d="M7.5 10.5V7.5a4.5 4.5 0 0 1 8.7-1.6" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/><rect x="4" y="10.5" width="16" height="11" rx="2.5" fill="currentColor"/></svg>';
-const STAR_SVG = '<svg class="star" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.6l2.85 5.95 6.55.8-4.83 4.5 1.25 6.5L12 17.15 6.18 20.35l1.25-6.5L2.6 9.35l6.55-.8z" fill="#f7c948" stroke="#6b4a00" stroke-width="1.5" stroke-linejoin="round"/></svg>';
-const TILE_SAYS = { clean: 'solved first try', solved: 'solved (solve it again without a mistake for its star)', missed: 'not solved yet' };
+const TILE_SAYS = { clean: 'solved first try', solved: 'solved after a miss or a hint (solve it again without one to fill it)', missed: 'not solved yet' };
 // One stage on the carousel: open, its puzzles as tiles and how far to the next stage; locked, what it holds and what opens it.
 function stageCard(k, s) {
   const dc = diffOf(s.lo)[2], head = `<div class="sh"><h2>Stage ${s.n}</h2>${diffChip(s.lo)}<span class="r">${s.lo}–${s.hi}</span></div>`;
@@ -2428,7 +2429,7 @@ function stageCard(k, s) {
   const next = s.puzzles.findIndex(c => c.state === 'new' || c.state === 'missed'), gate = toGate ? s.need - 1 : -1;
   const tiles = s.puzzles.map((c, i) => `<div class="tile ${c.state === 'new' ? '' : c.state}${i === next ? ' next' : ''}" data-i="${i + 1}" data-go="#/packs/${k.id}/${s.n}/${i + 1}"` +
     ` title="${[c.rating ? 'Rated ' + c.rating : '', TILE_SAYS[c.state], i === gate ? 'solving this many opens the next stage' : ''].filter(Boolean).join(' · ')}">` +
-    `${i + 1}${c.state === 'clean' ? STAR_SVG : ''}${i === gate ? LOCK_OPEN_SVG : ''}</div>`).join('');
+    `${i + 1}${i === gate ? LOCK_OPEN_SVG : ''}</div>`).join('');
   // the ring counts to the stage that opens next, then on to the end of this one
   const of = toGate ? s.need : s.size;
   const goal = s.solved === s.size ? (s.clean === s.size ? '👑 Every one first try' : '✓ Stage complete')
