@@ -1,29 +1,20 @@
-# Builds the Windows desktop app on a clean Windows runner and, on a version tag, attaches it to that tag's GitHub
-# Release. Which app a tag builds is decided by its version, so a tag always builds exactly one:
+# Builds the Windows desktop app (Electron, js/desktop/build.js) on a clean Windows runner and, on a version tag,
+# attaches it to that tag's GitHub Release: Blundr-windows.zip (the whole app, under Blundr/; the README's and
+# blundr.gr's download links point at the latest release) and blundr-app-<runtime>.asar (the small in-app update,
+# js/desktop/update.js). The bridge release's chess-review-*.zip are attached again, so that older Python installs,
+# whose updaters only know those names, update to the bridge first and from there to Electron.
 #
-#   v0.x   the Python app (PyInstaller, packaging/build_windows.ps1): Blundr-windows.zip (the whole app; the README's
-#          and blundr.gr's download links point at the latest release), chess-review-windows.zip (the same for
-#          updaters up to v0.6.0) and chess-review-update-<runtime>.zip (the in-app update, chess_review/updater.py).
-#          v0.7.0 is the last one: the bridge, which exports the data to SQLite and takes the Electron zip.
-#   v1+    the Electron app (js/desktop/build.js): Blundr-windows.zip (the whole app, under Blundr/) and
-#          blundr-app-<runtime>.asar (the small in-app update, js/desktop/update.js). The bridge release's
-#          chess-review-*.zip are attached again, so that older Python installs, whose updaters only know those
-#          names, update to the bridge first and from there to Electron.
+# Tags are v1 and up. The v0.x tags were the Python app, whose last release, v0.7.0, is the bridge; the Python app is
+# no longer in the repo (docs/js-port.md, step 7), so a v0.x tag fails here rather than build something else.
 #
-# Run manually (Actions -> Windows release -> Run workflow, choosing the app) to get the files as a workflow artifact:
-# a manual run never creates or changes a release.
+# Run manually (Actions -> Windows release -> Run workflow) to get the files as a workflow artifact: a manual run
+# never creates or changes a release.
 name: Windows release
 
 on:
   push:
     tags: ["v*"]
   workflow_dispatch:
-    inputs:
-      app:
-        description: "Which app to build (a manual run publishes nothing)"
-        type: choice
-        options: [electron, python]
-        default: electron
 
 permissions:
   contents: write
@@ -32,74 +23,16 @@ env:
   BRIDGE_TAG: v0.7.0    # the last Python release: its chess-review-*.zip ride along with every Electron release
 
 jobs:
-  plan:
-    runs-on: ubuntu-latest
-    outputs:
-      app: ${{ steps.pick.outputs.app }}
-    steps:
-      - id: pick
-        env:
-          INPUT: ${{ github.event.inputs.app }}
-        run: |
-          if [ "$GITHUB_REF_TYPE" = tag ]; then
-            major=$(printf '%s' "$GITHUB_REF_NAME" | sed -E 's/^v([0-9]+).*/\1/')
-            case "$major" in ''|*[!0-9]*) echo "tag $GITHUB_REF_NAME is not a version" >&2; exit 1;; esac
-            if [ "$major" -ge 1 ]; then app=electron; else app=python; fi
-          else
-            app=${INPUT:-electron}
-          fi
-          echo "app=$app" >> "$GITHUB_OUTPUT"
-          echo "builds the $app app"
-
-  python:
-    needs: plan
-    if: needs.plan.outputs.app == 'python'
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0    # so a manual run can name its build after the nearest tag (git describe)
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - name: Build the app
-        env:
-          GH_TOKEN: ${{ github.token }}
-          # on a tag push the version is the tag; a manual run gets git describe's v0.1.4-3-gabc123
-          VERSION: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
-        run: powershell -ExecutionPolicy Bypass -File packaging\build_windows.ps1 -Version "$env:VERSION"
-      - uses: actions/upload-artifact@v4
-        with:
-          name: chess-review-windows
-          path: packaging/dist/*.zip
-      - name: Attach to the release
-        if: github.ref_type == 'tag'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        shell: bash
-        # The notes are the commit subjects since the previous tag: the app shows them under "What's new"
-        # when it offers the update, so keep commit subjects readable to a user.
-        run: |
-          if ! gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
-            prev=$(git describe --tags --abbrev=0 "$GITHUB_REF_NAME^" 2>/dev/null || true)
-            {
-              printf '## Download\n\n'
-              printf '**[Blundr-windows.zip](https://github.com/%s/releases/download/%s/Blundr-windows.zip)** - this is the app. Unzip it anywhere and run **Blundr.exe**.\n\n' "$GITHUB_REPOSITORY" "$GITHUB_REF_NAME"
-              printf '> If the app does not open, Windows has marked the zip as downloaded: right-click it, Properties, tick **Unblock**, then extract it again.\n\n'
-              printf 'The `chess-review-*.zip` files are not meant to be downloaded by hand - older copies of the app fetch them when they update.\n\n'
-              printf "## What's new\n\n"
-              git log --no-merges --pretty='* %s' ${prev:+$prev..}"$GITHUB_REF_NAME"
-              if [ -n "$prev" ]; then printf '\n**Full changelog**: https://github.com/%s/compare/%s...%s\n' "$GITHUB_REPOSITORY" "$prev" "$GITHUB_REF_NAME"; fi
-            } > notes.md
-            gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --notes-file notes.md
-          fi
-          gh release upload "$GITHUB_REF_NAME" packaging/dist/*.zip --clobber
-
   electron:
-    needs: plan
-    if: needs.plan.outputs.app == 'electron'
     runs-on: windows-latest
     steps:
+      - name: Only v1+ tags
+        if: github.ref_type == 'tag'
+        shell: bash
+        run: |
+          major=$(printf '%s' "$GITHUB_REF_NAME" | sed -E 's/^v([0-9]+).*/\1/')
+          case "$major" in ''|*[!0-9]*) echo "tag $GITHUB_REF_NAME is not a version" >&2; exit 1;; esac
+          if [ "$major" -lt 1 ]; then echo "v0.x was the Python app, which is gone; the bridge ($BRIDGE_TAG) was its last release" >&2; exit 1; fi
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0    # git describe names a manual build after the nearest tag
@@ -116,10 +49,6 @@ jobs:
         with:
           node-version: "22"
           cache: npm
-      - uses: actions/setup-python@v5     # packaging/puzzles_json.py: the puzzle pack as JSON, from its parquet
-        with:
-          python-version: "3.12"
-      - run: pip install -r requirements.txt
       - run: npm ci --no-audit --no-fund
       - run: npm test
       - name: Build the app

@@ -1,6 +1,6 @@
 // The opening book: every position reachable along a line of the lichess chess-openings TSVs counts as "in book",
 // so the ply where a game leaves theory is the first non-book position. The keys come prebuilt as book_keys.txt
-// (one fen_key per line, written by scripts/build_web.py from data/book), which the app loads once at start.
+// (one fen_key per line, written by scripts/build_web.js from data/book), which the app loads once at start.
 
 let keys = new Set();
 

@@ -80,7 +80,7 @@ ends in commits on `main` with its tests passing.
    still apply.
 7. **Retire Python.** Delete `chess_review/*.py`, `launcher.py`, `web/py`, the PyInstaller packaging and the
    Python tests that have JS twins; update README, `docs/web.md` and `docs/accounts.md`. Build-only scripts
-   (`build_puzzle_pack.py`, the sound synth) may stay Python.
+   (`build_puzzle_pack.py`, the sound synth) may stay Python. Done (see Status).
 
 Steps 1, 2 and 3 can partly run side by side (different modules); step 4 needs them, and 5 and 6 need 4.
 
@@ -216,6 +216,24 @@ real data, including both update kinds and the bridge swapping a Python install 
 what to check after each: `js/desktop/README.md`. Still open: a real provider sign-in through the system browser, a
 frozen-exe bridge run (it was tested from source), the first CI run; v0.6.1 installs whose runtime differs from the
 bridge's have to download Electron by hand.
+
+**Step 7 is done (2026-10-24): Python is retired.** Gone: `chess_review/*.py`, `launcher.py`, `web/py`, the
+PyInstaller packaging (`packaging/` keeps only the icon), the Python tests with JS twins, the parity dump scripts,
+`requirements.txt`, `restart_server.sh` and `mem.sh` (the Python server's). The parity dumps in `tests/parity` stay,
+frozen: the JS is the reference now. Everything is in git history (`e8e547f` is the last commit with it).
+- `scripts/build_web.js` replaces `build_web.py`: the same `web-dist/` byte for byte except index.html's pieces JSON,
+  now spaced as the desktop's (`JSON.stringify`). `npm run build:web`, `--serve`, `--engine-wasm cdn` as before.
+- The puzzle library is `chess_review/puzzle_packs/puzzles.json` (one puzzle a line) in place of `lichess.parquet`,
+  the rows the web build already shipped, so neither build needs Python or a Parquet reader. The picking rules for the
+  packs (`packs.build`, `daily_list`) moved to `scripts/pack_rules.py`; rebuilding gives the same `packs.json`.
+- `legacy/` keeps the one-time move of old browser data working: the four modules `legacy/app.zip` holds, frozen as
+  v0.7.0 had them, python-chess's wheel, and `make_fixture.py` (a Python build's data folder, for
+  `js/server/migrate.test.js` and the browser test). The build zips them; Pyodide still comes from its CDN.
+- `windows-release.yml` builds only Electron (`v1+` tags; a `v0.x` tag fails); the bridge's zips are attached again
+  as before. `deploy-web.yml` tests with `npm test` and builds with Node, no Python.
+- Still Python, build-only: `build_puzzle_pack.py`, `build_puzzle_packs.py` (pyarrow, for the `.zst`), the themes
+  import and sound scripts, `bench_web_startup.py` and `tests/test_web_browser.py` / `test_web_shim.py` (Playwright;
+  they test the JS app in a real browser and have no JS twin).
 
 **Port check (2026-10-24, `port-check`).** The list of open items that stood here, item by item:
 - Done by `desktop-switch`: the updater (`main.js` gives `env.updater`, the apply script, streamed downloads);

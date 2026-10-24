@@ -1,4 +1,4 @@
-# Builds the browser version (scripts/build_web.py) and deploys it with the Worker to blundr.gr: on every push to
+# Builds the browser version (scripts/build_web.js) and deploys it with the Worker to blundr.gr: on every push to
 # main that touches the site, and by hand (Actions -> Deploy blundr.gr -> Run workflow). D1 migrations run only by
 # hand, with "Apply D1 migrations" ticked: a migration on every push would reach the live database unreviewed.
 # Needs the repository secrets CLOUDFLARE_API_TOKEN (the "Edit Cloudflare Workers" template, plus D1 Edit) and
@@ -13,8 +13,9 @@ on:
       - "js/**"
       - "web/**"
       - "worker/**"
-      - "scripts/build_web.py"
-      - "requirements.txt"
+      - "legacy/**"
+      - "scripts/build_web.js"
+      - "package.json"
       - ".github/workflows/deploy-web.yml"
   workflow_dispatch:
     inputs:
@@ -36,26 +37,23 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-          cache: pip
-      - run: pip install -r requirements.txt
-      - name: Tests
-        run: python -m pytest -q
-      - uses: actions/cache@v4
-        with:
-          path: data/web-cache      # python-chess's wheel and npm stockfish, as build_web.py downloads them
-          key: web-cache-${{ hashFiles('scripts/build_web.py') }}
-      - name: Opening book
-        run: bash scripts/fetch_book.sh
-      - name: Build
-        run: python scripts/build_web.py --engine-wasm cdn
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
           cache: npm
-          cache-dependency-path: worker/package-lock.json
+          cache-dependency-path: |
+            package-lock.json
+            worker/package-lock.json
+      - name: Tests
+        run: npm test       # nothing to install: the tests need only Node (Electron is for the desktop build)
+      - uses: actions/cache@v4
+        with:
+          path: data/web-cache      # npm stockfish, as build_web.js downloads it
+          key: web-cache-${{ hashFiles('scripts/build_web.js') }}
+      - name: Opening book
+        run: bash scripts/fetch_book.sh
+      - name: Build
+        run: node scripts/build_web.js --engine-wasm cdn
       - run: npm ci --no-audit --no-fund
         working-directory: worker
       - name: D1 migrations

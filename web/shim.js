@@ -1,4 +1,4 @@
-// Loaded first by the web build of index.html (scripts/build_web.py adds the tag). The page asks for api/... and
+// Loaded first by the web build of index.html (scripts/build_web.js adds the tag). The page asks for api/... and
 // p/<id>/... as it does from the desktop server; here those go to the app worker (js/web/worker.js), which answers
 // them with the same JS server the desktop runs. Everything else (themes, sounds) is a static file and goes to the network.
 (() => {

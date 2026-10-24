@@ -1,4 +1,5 @@
-// Puzzle progress kept in step with a Blundr account, as chess_review/sync.py (its docstring has the whole story):
+// Puzzle progress kept in step with a Blundr account, as chess_review/sync.py did (its docstring has the whole story:
+// git show e8e547f:chess_review/sync.py).
 // static/account.js runs the loop through /api/sync/*, on the website and in the desktop app alike.
 //
 // The account holds sets of lines per file, under Python's file names, and those names and lines are what goes back

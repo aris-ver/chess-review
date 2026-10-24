@@ -5,14 +5,12 @@
 //
 //   node js/desktop/build.js [--version v1.0.0]
 //
-// app.asar also holds the puzzle pack (puzzle_packs/puzzles.json, from packaging/build/puzzles.json, which
-// packaging/puzzles_json.py writes when it is missing: $PYTHON, else python, with requirements.txt installed),
-// packs.json and the opening book (book_keys.txt, made here from packaging/assets/book, data/book or lichess's TSVs).
+// app.asar also holds the puzzle pack (puzzle_packs/puzzles.json and packs.json, from chess_review/puzzle_packs/)
+// and the opening book (book_keys.txt, made here from packaging/assets/book, data/book or lichess's TSVs).
 //
-// Stockfish comes from packaging/bin/stockfish.exe, which packaging/build_windows.ps1 downloads too; if it isn't there
-// the latest official release is fetched into it ($GH_TOKEN, if set, against the API's rate limit). The app is
+// Stockfish comes from packaging/bin/stockfish.exe; if it isn't there the latest official release is fetched into it ($GH_TOKEN, if set, against the API's rate limit). The app is
 // staged and packaged under %LOCALAPPDATA%\chess-review-build\electron, not in the repo: packaging over the WSL share
-// is slow (the same reason build_windows.ps1 builds there).
+// is slow.
 
 import { execFileSync } from 'node:child_process';
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
@@ -57,17 +55,7 @@ async function fetchStockfish() {
   rmSync(tmp, { recursive: true, force: true });
 }
 
-// puzzles.json: built once by Python from the parquet pack (the same rows the web build ships)
-function puzzlesJson() {
-  const out = join(ROOT, 'packaging', 'build', 'puzzles.json');
-  if (!existsSync(out)) {
-    console.log('Writing the puzzle pack as JSON...');
-    execFileSync(process.env.PYTHON || 'python', [join(ROOT, 'packaging', 'puzzles_json.py'), out], { stdio: 'inherit' });
-  }
-  return out;
-}
-
-// the opening book's keys, from the TSVs build_windows.ps1 stages, a checkout's data/book, or lichess
+// the opening book's keys, from the TSVs fetched here before, a checkout's data/book, or lichess
 async function bookKeys() {
   for (const dir of [join(ROOT, 'packaging', 'assets', 'book'), join(ROOT, 'data', 'book')]) {
     const keys = bookKeysFromDir(dir);
@@ -91,7 +79,7 @@ async function stage(ver) {
   const notTest = src => !/\.test\.js$/.test(src) && !/[\\/]js[\\/](run-tests|parity)\.js$/.test(src);
   cpSync(join(ROOT, 'js'), join(STAGE, 'js'), { recursive: true, filter: src => notTest(src) && src !== join(ROOT, 'js', 'desktop', 'build.js') });
   cpSync(join(ROOT, 'chess_review', 'static'), join(STAGE, 'chess_review', 'static'), { recursive: true });
-  cpSync(puzzlesJson(), join(STAGE, 'puzzle_packs', 'puzzles.json'));
+  cpSync(join(ROOT, 'chess_review', 'puzzle_packs', 'puzzles.json'), join(STAGE, 'puzzle_packs', 'puzzles.json'));
   cpSync(join(ROOT, 'chess_review', 'puzzle_packs', 'packs.json'), join(STAGE, 'puzzle_packs', 'packs.json'));
   const keys = await bookKeys();
   if (keys.length < 1000) throw new Error(`the opening book has only ${keys.length} positions`);

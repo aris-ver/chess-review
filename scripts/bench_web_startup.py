@@ -9,22 +9,20 @@ are from the navigation's start, in seconds:
   api      the worker's first answer to any api/ request (the page waits for it to draw the home screen)
   pasted   POST api/pgn of a game answered (the Python build: once DuckDB is in), asked as soon as the page has loaded
   analyse  POST api/p/<id>/analyse/<game> answered (the job queued)
-Works on the Python (Pyodide) build as well as the JS one: it only listens to the page's worker messages.
+It only listens to the page's worker messages, so it measured the Python (Pyodide) build as well. Needs playwright.
 """
 
 import argparse
 import functools
 import statistics
-import sys
 import threading
-from http.server import ThreadingHTTPServer
+from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 ANDROID = "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0 Mobile Safari/537.36"
-# WSLg's GPU makes headless Chromium draw no frames (tests/test_web_browser.py): off
+# WSLg's GPU makes headless Chromium draw no frames: off
 ARGS = ["--disable-gpu", "--disable-software-rasterizer"]
 PGN = (ROOT / "tests" / "fixtures" / "clocks.pgn").read_text().split("\n\n[Event")[0]
 
@@ -53,10 +51,21 @@ ACT = """async pgn => {
 }"""
 
 
+class _Handler(SimpleHTTPRequestHandler):
+    """web-dist/ as scripts/build_web.js --serve serves it: never cached, the right types, no log."""
+    extensions_map = {**SimpleHTTPRequestHandler.extensions_map, ".wasm": "application/wasm", ".js": "text/javascript",
+                      ".mjs": "text/javascript", ".svg": "image/svg+xml", ".mp3": "audio/mpeg", ".webp": "image/webp"}
+
+    def end_headers(self):
+        self.send_header("Cache-Control", "no-cache")
+        super().end_headers()
+
+    def log_message(self, *_):
+        pass
+
+
 def serve(dist: Path):
-    from build_web import _Handler
-    quiet = type("Quiet", (_Handler,), {"log_message": lambda *_: None})
-    srv = ThreadingHTTPServer(("127.0.0.1", 0), functools.partial(quiet, directory=str(dist)))
+    srv = ThreadingHTTPServer(("127.0.0.1", 0), functools.partial(_Handler, directory=str(dist)))
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     return srv, f"http://127.0.0.1:{srv.server_port}/"
 
@@ -71,7 +80,7 @@ def visit(page, url, timeout=180_000) -> dict:
 
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--dist", type=Path, default=ROOT / "web-dist", help="a built site (scripts/build_web.py)")
+    p.add_argument("--dist", type=Path, default=ROOT / "web-dist", help="a built site (scripts/build_web.js)")
     p.add_argument("--runs", type=int, default=5)
     args = p.parse_args()
     from playwright.sync_api import sync_playwright

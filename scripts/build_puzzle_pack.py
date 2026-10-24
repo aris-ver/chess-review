@@ -1,4 +1,4 @@
-"""Build the puzzle pack the trainer ships with (chess_review/puzzle_packs/lichess.parquet) from Lichess's puzzle
+"""Build the puzzle pack the trainer ships with (chess_review/puzzle_packs/puzzles.json) from Lichess's puzzle
 database: CC0, about 5 million puzzles mined from real games, each rated by the players who tried it.
 
     curl -LO https://database.lichess.org/lichess_db_puzzle.csv.zst
@@ -10,7 +10,8 @@ THEME_CAP of the quota, which keeps the generic tags (crushing, advantage, middl
 The sample is seeded, so the same input builds the same pack. The puzzles in the packs (packs.json, picked from the
 whole database by scripts/build_puzzle_packs.py) are kept on top of the sample, so the packs go on working.
 
-A build tool, not part of the app: it needs pyarrow, which the app itself no longer installs (pip install pyarrow).
+puzzles.json is a JSON array with one puzzle a line, so a rebuild diffs by puzzle; both apps read it as it is.
+A build tool, not part of the app: it needs pyarrow for the .zst (pip install pyarrow).
 """
 import argparse
 import csv
@@ -21,10 +22,9 @@ import sys
 from pathlib import Path
 
 import pyarrow as pa
-import pyarrow.parquet as pq
 
 ROOT = Path(__file__).resolve().parent.parent
-OUT = ROOT / "chess_review" / "puzzle_packs" / "lichess.parquet"
+OUT = ROOT / "chess_review" / "puzzle_packs" / "puzzles.json"
 
 MIN_POPULARITY = 85     # -100..100: how many players liked it, net
 MIN_PLAYS = 500
@@ -47,6 +47,17 @@ SCHEMA = pa.schema([
     ("game_url", pa.string()),
     ("opening", pa.string()),     # Lichess opening tags, space-separated
 ])
+
+
+def read_library(path: Path = OUT) -> list[dict]:
+    """puzzles.json's rows, themes as stored (a space-separated string); [] when there is none."""
+    return json.loads(path.read_text(encoding="utf-8")) if path.exists() else []
+
+
+def write_library(rows: list[dict], path: Path = OUT) -> None:
+    """rows as puzzles.json: SCHEMA's columns in order, one puzzle a line."""
+    lines = (json.dumps({k: r[k] for k in SCHEMA.names}, separators=(",", ":")) for r in rows)
+    path.write_text("[\n" + ",\n".join(lines) + "\n]\n", encoding="utf-8", newline="\n")
 
 
 def rows(path: Path):
@@ -142,7 +153,7 @@ def main(argv=None) -> None:
                 if packs_json.exists() else set())
     pack = build(args.src, args.total, in_packs)
     args.out.parent.mkdir(parents=True, exist_ok=True)
-    pq.write_table(pa.Table.from_pylist(pack, schema=SCHEMA), args.out, compression="zstd", compression_level=19)
+    write_library(pack, args.out)
     print(f"wrote {len(pack):,} puzzles to {args.out} ({args.out.stat().st_size / 1e6:.1f} MB)", file=sys.stderr)
 
 
