@@ -25,12 +25,11 @@ disk, the page (`chess_review/static`) in one window.
 - `update.js`: the desktop half of the updater (below).
 - `build.js`: `npm run build:windows` on Windows → `packaging/dist/Blundr-windows.zip` (portable folder `Blundr/`:
   `Blundr.exe`, `resources/app.asar`, `resources/bin/stockfish.exe`, `resources/build.json`) and
-  `packaging/dist/blundr-app-<runtime>.asar`. app.asar holds js/, the page, `puzzle_packs/puzzles.json` (from
-  `packaging/build/puzzles.json`, which `packaging/puzzles_json.py` writes from the parquet pack when missing:
-  `$PYTHON` or `python` with requirements.txt), `puzzle_packs/packs.json` and `book_keys.txt` (from
-  `packaging/assets/book`, `data/book` or lichess). Staged under `%LOCALAPPDATA%\chess-review-build\electron`.
+  `packaging/dist/blundr-app-<runtime>.asar`. app.asar holds js/, the page, `puzzle_packs/puzzles.json` and
+  `puzzle_packs/packs.json` (from `chess_review/puzzle_packs/`) and `book_keys.txt` (from `packaging/assets/book`,
+  `data/book` or lichess). Staged under `%LOCALAPPDATA%\chess-review-build\electron`.
 
-Run from a checkout: `npm ci`, `python packaging/puzzles_json.py` once, then `npm run desktop`.
+Run from a checkout: `npm ci`, then `npm run desktop` (`bash scripts/fetch_book.sh` once for the opening book).
 
 ## Updater
 
@@ -53,6 +52,10 @@ holds `{version, runtime}`, where `runtime` is `electron-<version>`: what only a
 
 ## The bridge (v0.7.0, the last Python release)
 
+The Python app is gone from the repo (docs/js-port.md, step 7); its source is in git history and in the
+v0.7.0 tag. What the bridge did:
+
+
 - `migrate_sqlite.ENABLED` is on: every start of the Python app exports its data to the SQLite files (a no-op while
   nothing changed), `.accounts/<who>/` workspaces included (sync's layout: their own `progress.sqlite` and
   `profiles/<id>/games.sqlite`).
@@ -70,6 +73,6 @@ holds `{version, runtime}`, where `runtime` is `electron-<version>`: what only a
 
 ## Release build
 
-`.github/workflows/windows-release.yml` builds one app per tag, by its version: `v0.x` the Python app, `v1+` the
-Electron app (Blundr-windows.zip, blundr-app-<runtime>.asar, and the bridge's chess-review-*.zip again). A manual run
-asks which app and only uploads a workflow artifact.
+`.github/workflows/windows-release.yml` builds the Electron app on a `v1+` tag (Blundr-windows.zip,
+blundr-app-<runtime>.asar, and the bridge's chess-review-*.zip again) and refuses a `v0.x` tag: no Python release
+comes after the bridge. A manual run only uploads a workflow artifact.

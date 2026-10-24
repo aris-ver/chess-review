@@ -104,7 +104,8 @@ anything, the leader calls `migrateOnce` (`js/web/legacy.js`):
 1. Nothing to do when `data/pyodide-migration.json` says it's done, or when there's no IndexedDB `/data`
    (`indexedDB.databases()`, or an aborted open where that's missing).
 2. Otherwise Pyodide loads from its CDN (`legacy.pyodide` in `web/config.js`, the version that wrote the data) with
-   python-chess's wheel and `legacy/app.zip`, which holds only `chess_review/migrate_sqlite.py` and what it imports.
+   python-chess's wheel and `legacy/app.zip`, which holds only `chess_review/migrate_sqlite.py` and what it imports
+   (zipped by the build from the repo's `legacy/`, where they and the wheel are frozen).
    `/data` is mounted and synced in.
 3. `migratePyodide` (`js/web/migrate.js`) runs the export into Pyodide's memory, imports each SQLite file into the
    pool, checks them against the export's counts and copies the other files (meta.json, raw/, pgn/, site/, settings…)
@@ -114,8 +115,11 @@ anything, the leader calls `migrateOnce` (`js/web/legacy.js`):
 5. `pyodide-migration.json` records the outcome. A failure is tried again on the next two visits, then given up.
    IndexedDB is left as it was; deleting it is for later.
 
-`legacy/` and Pyodide's URL are fetched by no other browser. When `chess_review/*.py` is retired (step 7), the
-legacy zip has to be kept as a frozen file (build it once from this commit), or the move dropped.
+`legacy/` and Pyodide's URL are fetched by no other browser. The Python app is gone from the repo (step 7), so
+`legacy/` keeps what the move needs, frozen: `chess_review/{__init__,config,fen,migrate_sqlite}.py` as the last Python
+release had them, python-chess 1.11.2's wheel (PyPI has only its sdist), and `make_fixture.py`, a data folder as the
+Python build left it, for the tests. Dropping the move means deleting `legacy/`, `js/web/legacy.js` and the `legacy`
+entry in `web/config.js`; browsers that never came back since the switch would then start empty.
 
 ## Engines
 
@@ -136,11 +140,11 @@ npm `stockfish@19.0.1`, run by the leader as a pool of Web Workers (`web/engines
 - One **Cloudflare Worker** (`worker/`, free plan) serves `web-dist/` as static assets and runs code only for
   `/account/*` ([accounts.md](accounts.md)). Static requests are free and unmetered, but an asset may be 25 MiB at most.
 - The 99 MB engine comes from **unpkg**, the npm CDN: `https://unpkg.com/stockfish@19.0.1/bin/stockfish-19-single.wasm`
-  (`build_web.py --engine-wasm cdn`). unpkg serves npm files of any size, with `Access-Control-Allow-Origin: *` and a
+  (`build_web.js --engine-wasm cdn`). unpkg serves npm files of any size, with `Access-Control-Allow-Origin: *` and a
   year's `Cache-Control`; jsDelivr refuses a file that big (403).
-- `scripts/build_web.py` assembles `web-dist/`: the page with the shim tag, `web/` (shim, engines, config, engine/),
+- `scripts/build_web.js` assembles `web-dist/`: the page with the shim tag, `web/` (shim, engines, config, engine/),
   `js/` (core, server minus the Node adapters, web, vendor: chessops and SQLite WASM; no tests), `book_keys.txt`,
-  `puzzles.json`, `packs.json` and `legacy/`. `python scripts/build_web.py --serve` serves it locally on port 8200.
+  `puzzles.json`, `packs.json` and `legacy/`. `node scripts/build_web.js --serve` serves it locally on port 8200.
   The modules load as they are, with no bundler (about 45 files; on a reload they come back as 304s).
 - The page says that the browser analyses about 2× slower than the desktop app and links the Windows download
   (GitHub Releases). The notice shows while the app and the engine load, and again while a game is analysed or waits
@@ -179,7 +183,8 @@ sign-in through Lichess or Google. The page calls `/account/*` on the Worker its
 - `npm test`: `js/web/tabs.test.js` (leader election, relaying, a leader going, streams stopped when their tab goes,
   over fake Web Locks and channel), `js/web/app.test.js` (the server as messages on SQLite WASM, eval_stream, the
   migration's skip/once/retry logic, sync's database copy).
-- `pytest tests/test_web_browser.py` (Playwright, headless Chromium with the GPU off: under WSL it otherwise draws no
-  frames and the page waits forever on its board image): profiles from chess.com and lichess a page at a time,
-  failures, a reload keeping the data, two tabs and the second taking over, the move from a seeded Python IndexedDB
-  (needs the network for Pyodide) and a WASM review against the desktop's labels (needs Node ≥ 22.13 and bin/stockfish).
+- `pytest tests/test_web_browser.py` (Python, Playwright, headless Chromium with the GPU off: under WSL it otherwise
+  draws no frames and the page waits forever on its board image; it builds the site with Node ≥ 22.13 first): profiles
+  from chess.com and lichess a page at a time, failures, a reload keeping the data, two tabs and the second taking
+  over, the move from a seeded Python IndexedDB (`legacy/make_fixture.py`'s data; needs duckdb and the network for
+  Pyodide) and a WASM review against the desktop's labels (needs bin/stockfish).

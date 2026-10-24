@@ -7,7 +7,7 @@ Reviewed games, analysis and the engine's eval cache stay in the browser and nev
 
 ## The profile list
 
-It syncs like puzzle progress, as a virtual `profiles.jsonl` that `sync.py` builds from `profiles/*/meta.json`, one line
+It syncs like puzzle progress, as a virtual `profiles.jsonl` that `js/server/sync.js` builds from `profiles/*/meta.json`, one line
 per profile: `{"added", "pinned", "source", "username"}`. Pasted-PGN profiles stay out of it, because their games
 can't be fetched again. A profile that arrives from the account is created empty, and `account.js` asks for it the way
 the Add profile form does, so its games are fetched fresh from chess.com or Lichess. A pin set or cleared on one browser
@@ -18,14 +18,14 @@ that moment. Local-only state (the "new games" flags) is not synced.
 ## The desktop app
 
 The Windows app has the same Log in button and dialog, and syncs the same account with blundr.gr. The
-page code is one file, `chess_review/static/account.js`, in both apps, and so is the merge, `chess_review/sync.py`:
+page code is one file, `chess_review/static/account.js`, in both apps, and so is the merge, `js/server/sync.js`:
 the page runs the delta, account, commit loop in both, after each puzzle result, at start-up, on log-in and when the
 window comes back into view. Only the transport differs:
 
-- **`api/sync/*`** is answered by Pyodide on the website and by the local server (`serve.py`) in the app. The app's
+- **`api/sync/*`** is answered by the JS server in both: in the tabs' worker on the website, on 127.0.0.1 in the app. The app's
   `DATA` folder plays the browser's part: "this computer" where the website says "this browser".
 - **`account/*`** goes straight to the Worker on the website, with the session cookie. In the app it goes to the local
-  server, and `chess_review/account.py` passes it on to `https://blundr.gr` (`BLUNDR_URL` to point it elsewhere) with
+  server, and `js/server/account.js` passes it on to `https://blundr.gr` (`BLUNDR_URL` to point it elsewhere) with
   the header `X-Blundr-App: 1` and the session token as `Authorization: Bearer`. The token is kept in
   `DATA/account_token.json` (`%LOCALAPPDATA%\chess-review\`), together with the site it is for, and only the server
   reads it, as a browser keeps its cookie. The local server answers `account/*` only for its own page: a request from
@@ -53,9 +53,9 @@ window comes back into view. Only the transport differs:
 ## Shape
 
 ```
- page                                  Python: Pyodide, or the app's server   Worker (Cloudflare)          D1
+ page                                  js/server: the worker, or the app's    Worker (Cloudflare)          D1
  ────                                  ────────────────────────────────────   ───────────────────          ──
- chess_review/static/account.js        chess_review/sync.py                   worker/src/index.js          users, identities,
+ chess_review/static/account.js        js/server/sync.js                      worker/src/index.js          users, identities,
    header button + account dialog        POST api/sync/delta   ──┐            /account/me, login,           sessions, logins,
    sync: delta → account → commit        POST api/sync/commit    │  ───►      callback, logout,             progress
    after each puzzle result, on load,    POST api/sync/forget    │            progress, export, delete,
@@ -64,7 +64,7 @@ window comes back into view. Only the transport differs:
 
 - **One Worker** (`worker/wrangler.jsonc`) serves `web-dist/` as static assets and runs code only for `/account/*`
   (`run_worker_first`). Static requests are free and unmetered; the account API is a few requests a day per user.
-  The full engine (95 MB) is over the 25 MiB asset limit, so `build_web.py` writes a `.assetsignore` for it and
+  The full engine (95 MB) is over the 25 MiB asset limit, so `build_web.js` writes a `.assetsignore` for it and
   the deployed build fetches it from unpkg instead (`--engine-wasm cdn`, [web.md](web.md#hosting)).
 - **Sign-in**: OAuth 2 with PKCE, with Lichess (no registration needed, no scope: id and username only) and Google
   (scope `openid email`; email kept and shown). Sign-up and log-in are separate buttons. A sign-up needs the
@@ -93,7 +93,7 @@ window comes back into view. Only the transport differs:
   stored in D1 only as its SHA-256. 90 days, extended on use. POSTs must carry the site's own `Origin`, or the desktop
   app's `X-Blundr-App` header, which no other site's page can send (the browser would ask first with a CORS preflight,
   and the Worker never says yes). The desktop app's session is the same kind of token, sent as `Bearer`.
-- **Sync** is a three-way merge of the JSONL files, done in Python (`sync.py`, whose docstring has the details) against
+- **Sync** is a three-way merge of the JSONL files, done by the JS server (`js/server/sync.js`; the whole story is in the Python original's docstring, `git show e8e547f:chess_review/sync.py`) against
   the copy last received from the account (`DATA/account_sync.json`). The server keeps a set of lines per file
   (`store.js`), so two browsers writing at once can't undo each other. A guest has no base, so signing up or logging
   in uploads everything already in the browser. A rating reset moves the lines into a `.reset-` archive file, and that
@@ -122,7 +122,7 @@ window comes back into view. Only the transport differs:
 
 > **Not legal advice.** They were drafted with Claude Code, not by a lawyer. Have them checked before going live.
 > The controller's details are filled in. The page says the database stays in the EU, which holds only if D1 is
-> created with `--jurisdiction eu`. A new placeholder goes in `<span class="fill">`, and `build_web.py` warns while any
+> created with `--jurisdiction eu`. A new placeholder goes in `<span class="fill">`, and `build_web.js` warns while any
 > are left.
 
 What makes it fit without a cookie banner: the two cookies and the browser storage are all strictly necessary for what
@@ -135,7 +135,7 @@ required.** Account holders get Download my data (JSON of every row about them: 
 ## Run it locally
 
 ```
-python scripts/build_web.py                 # web-dist/
+node scripts/build_web.js                   # web-dist/
 cd worker && npm install
 python ../scripts/fake_lichess.py &         # optional: a Lichess stand-in that signs in any name you type
 echo LICHESS_URL=http://localhost:8788 > .dev.vars
@@ -145,10 +145,9 @@ npm test                                    # the Worker's tests (vitest, local 
 
 Without `LICHESS_URL` the real lichess.org is used, which also works from localhost. For Google locally, add
 `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` to `.dev.vars` with `http://localhost:8787/account/callback/google` as an
-authorised redirect URI. Python side: `pytest tests/test_sync.py tests/test_account.py`.
+authorised redirect URI. The app's side: `npm test` at the root (`js/server/sync.test.js`, `account.test.js`).
 
-The desktop app against that local Worker: `BLUNDR_URL=http://localhost:8787 python -m chess_review.serve` (or the
-launcher). Its token is kept per site, so one for blundr.gr isn't sent to localhost.
+The desktop app against that local Worker: `BLUNDR_URL=http://localhost:8787 npm run desktop`. Its token is kept per site, so one for blundr.gr isn't sent to localhost.
 
 ## Deploy
 
@@ -173,7 +172,7 @@ after `npx wrangler login`. The domain's nameservers must already be Cloudflare'
    - Senders: `Blundr <login@blundr.gr>` (`MAIL_FROM`).
    - SMTP & API > API keys: a key with no expiry, and Security > Authorised IPs off, because a Worker's IP varies.
    - `npx wrangler secret put BREVO_API_KEY`. The codes reach Gmail's inbox (the Updates tab).
-4. **Build**: `python scripts/build_web.py --engine-wasm cdn`. It needs the opening book in `data/book`
+4. **Build**: `node scripts/build_web.js --engine-wasm cdn` (Node ≥ 22.13). It needs the opening book in `data/book`
    (`scripts/fetch_book.sh`). In a worktree, link the main checkout's `data/book`.
 5. **Worker**: `npm run deploy`. `wrangler.jsonc` attaches blundr.gr and www.blundr.gr as custom domains (their DNS
    records and certificates are made automatically), sets the daily cron, and turns the `workers.dev` address off. The
@@ -187,5 +186,5 @@ Updating: a push to main deploys by itself (`.github/workflows/deploy-web.yml`, 
 `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`); migrations only from a manual run with the box ticked. By hand:
 build as in step 4, then `npm run deploy`. The desktop app's sign-in needs the Worker with
 `migrations/0003_app_sign_in.sql` and `/account/app/*` deployed before a desktop release that has it; no Google or
-Lichess setting changes for it. A new Stockfish is `STOCKFISH_VERSION` in `build_web.py`, together
+Lichess setting changes for it. A new Stockfish is `STOCKFISH_VERSION` in `build_web.js`, together
 with the desktop's `bin/`, or reviews stop matching between the two.

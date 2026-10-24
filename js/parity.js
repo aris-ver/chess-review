@@ -1,4 +1,4 @@
-// Test helpers for replaying the Python parity dumps (tests/parity/*.json, written by scripts/dump_parity.py).
+// Test helpers for replaying the parity dumps (tests/parity/*.json): the Python app wrote them; frozen since it went.
 
 import assert from 'node:assert/strict';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
@@ -17,7 +17,7 @@ export const GOLDEN = fileURLToPath(new URL('../tests/golden/', import.meta.url)
 
 export const load = (name, dir = PARITY) => JSON.parse(readFileSync(dir + name, 'utf8'));
 
-/** The local dumps (your own games, gitignored), if scripts/dump_parity.py --local has written any. */
+/** The local dumps (your own games, gitignored), if an old checkout wrote any (the Python dump_parity.py --local). */
 export function localDumps() {
   const dir = PARITY + 'local/';
   if (!existsSync(dir)) return [];

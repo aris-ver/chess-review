@@ -4,8 +4,9 @@ Node tests can't reach: the real fetch and stream reading from a worker, OPFS, t
 "Load older games", a site's "slow down", the errors), several tabs on one database, the one-time move from the
 Python build's IndexedDB (which needs the network for Pyodide), and a review with WASM Stockfish against the desktop's.
 
-Needs `pip install playwright` and a Chromium it can launch (`playwright install chromium`, plus its system libraries:
-`playwright install-deps chromium`). Skips without them.
+Needs `pip install pytest playwright` and a Chromium it can launch (`playwright install chromium`, plus its system
+libraries: `playwright install-deps chromium`), and Node >= 22.13 to build the site (scripts/build_web.js). Skips without
+them. The one-time move also needs duckdb (legacy/make_fixture.py writes the Python build's data).
 
 Chromium runs with the GPU off: under WSL it finds WSLg's GPU (/dev/dxg) and then never draws a frame, so
 requestAnimationFrame and HTMLImageElement.decode() never resolve, and the page (which decodes the board's image
@@ -22,7 +23,7 @@ import subprocess
 import sys
 import threading
 import urllib.request
-from http.server import ThreadingHTTPServer
+from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import pytest
@@ -32,6 +33,7 @@ pw = pytest.importorskip("playwright.sync_api")
 DESKTOP = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0 Safari/537.36"
 STOCKFISH = ROOT / "bin" / ("stockfish.exe" if sys.platform == "win32" else "stockfish")
 CHROMIUM_ARGS = ["--disable-gpu", "--disable-software-rasterizer"]
+OUT = ROOT / "web-dist"
 READY = "document.querySelector('#profiles .card.profile, #profiles .empty') && !/Loading/.test(document.querySelector('#profiles').textContent)"
 
 PGN = (ROOT / "tests" / "fixtures" / "clocks.pgn").read_text().split("\n\n[Event")[0]
@@ -100,15 +102,26 @@ class Sites:
         route.fulfill(status=404, headers=CORS, body='{"message": "not found"}')
 
 
+class _Handler(SimpleHTTPRequestHandler):
+    """web-dist/ as scripts/build_web.js --serve serves it: never cached, the right types, no log."""
+    extensions_map = {**SimpleHTTPRequestHandler.extensions_map, ".wasm": "application/wasm", ".js": "text/javascript",
+                      ".mjs": "text/javascript", ".svg": "image/svg+xml", ".mp3": "audio/mpeg", ".webp": "image/webp"}
+
+    def end_headers(self):
+        self.send_header("Cache-Control", "no-cache")
+        super().end_headers()
+
+    def log_message(self, *_):
+        pass
+
+
 @pytest.fixture(scope="module")
 def site():
-    import subprocess
-    import sys
-    sys.path.insert(0, str(ROOT / "scripts"))
-    from build_web import OUT, _Handler
-    subprocess.run([sys.executable, str(ROOT / "scripts" / "build_web.py")], check=True, capture_output=True)
-    quiet = type("Quiet", (_Handler,), {"log_message": lambda *_: None})
-    srv = ThreadingHTTPServer(("127.0.0.1", 0), functools.partial(quiet, directory=str(OUT)))
+    node = node22()
+    if node is None:
+        pytest.skip("needs Node >= 22.13 to build the site")
+    subprocess.run([node, str(ROOT / "scripts" / "build_web.js")], check=True, capture_output=True)
+    srv = ThreadingHTTPServer(("127.0.0.1", 0), functools.partial(_Handler, directory=str(OUT)))
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     yield f"http://127.0.0.1:{srv.server_port}/"
     srv.shutdown()
@@ -367,59 +380,6 @@ def test_a_review_with_wasm_stockfish_has_the_desktops_labels(site, browser, tmp
         ctx.close()
 
 
-PYTHON_DATA = r"""
-# A data folder as the Python build leaves it: the migration fixture (two profiles, the eval cache, puzzle progress,
-# an account set aside) and a pasted game reviewed by serve.Handler with native Stockfish.
-import asyncio, json, sys
-sys.path[:0] = [ROOT, ROOT + "/web/py", ROOT + "/tests"]
-from test_migrate_sqlite import make_fixture
-from chess_review.config import DATA
-make_fixture(DATA)
-from chess_web import bridge
-
-class Lines(list):
-    def to_py(self):
-        return list(self)
-
-class Pool:
-    size, name = 1, "Stockfish (test)"
-    async def search(self, fen, nodes, multipv):
-        p = await asyncio.create_subprocess_exec(STOCKFISH, stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE)
-        p.stdin.write(f"uci\nsetoption name Threads value 1\nsetoption name Hash value 16\nsetoption name MultiPV value {multipv}\n"
-                      f"ucinewgame\nposition fen {fen}\ngo nodes {nodes}\n".encode())
-        out = Lines()
-        while True:
-            line = (await p.stdout.readline()).decode().strip()
-            if line.startswith("info "):
-                out.append(line)
-            if line.startswith("bestmove"):
-                break
-        p.stdin.write(b"quit\n")
-        await p.wait()
-        return out
-
-def call(method, path, body=None):
-    status, headers, payload = bridge.handle(method, path, json.dumps(body).encode() if body is not None else b"")
-    return status, json.loads(payload)
-
-async def main():
-    open(APP + "/book_keys.txt", "w").write(open(BOOK).read())
-    bridge.setup(APP, Pool())
-    bridge.serve.Handler.runner.analyser.nodes = 20000
-    _, d = call("POST", "/api/pgn", {"pgn": PGN})
-    slug = d["games"][0]
-    call("POST", f"/api/p/pgn-pasted-games/analyse/{slug}")
-    for _ in range(2400):
-        _, st = call("GET", "/api/status")
-        if st["job"]["status"] not in ("queued", "running", "finishing"):
-            break
-        await asyncio.sleep(0.05)
-    _, game = call("GET", f"/p/pgn-pasted-games/games/{slug}.json")
-    print("RESULT" + json.dumps({"slug": slug, "labels": [[m["san"], m["label"]] for m in game["moves"]]}))
-
-asyncio.run(main())
-"""
-
 SEED_IDBFS = """async ({ files, pyodide }) => {
     // Pyodide's IDBFS at /data, as the Python build mounted it, filled with the Python data folder
     const { loadPyodide } = await import(pyodide + 'pyodide.mjs');
@@ -447,26 +407,19 @@ OPFS_TEXT = """async path => {
 
 
 def test_the_python_builds_data_moves_to_sqlite_once(site, browser, tmp_path):
-    from build_web import LEGACY_PYODIDE
+    config = (OUT / "web" / "config.js").read_text(encoding="utf-8")
+    pyodide = json.loads(config[config.index("{"):config.rindex("}") + 1])["legacy"]["pyodide"]
     try:
-        urllib.request.urlopen(LEGACY_PYODIDE + "pyodide.mjs", timeout=10).close()
+        urllib.request.urlopen(pyodide + "pyodide.mjs", timeout=10).close()
     except Exception as e:  # noqa: BLE001
         pytest.skip(f"no network for Pyodide: {e}")
-    if not STOCKFISH.exists():
-        pytest.skip("no bin/stockfish")
-    data, app = tmp_path / "data", tmp_path / "app"
-    app.mkdir()
-    script = (f"ROOT, APP, STOCKFISH, BOOK = {str(ROOT)!r}, {str(app)!r}, {str(STOCKFISH)!r}, "
-              f"{str(ROOT / 'web-dist' / 'book_keys.txt')!r}\nPGN = {PGN!r}\n" + PYTHON_DATA)
-    run = subprocess.run([sys.executable, "-c", script], env={**os.environ, "CHESS_REVIEW_DATA": str(data)},
-                         capture_output=True, text=True, timeout=600)
-    line = next((x for x in run.stdout.splitlines() if x.startswith("RESULT")), None)
-    assert line, run.stdout + run.stderr
-    python = json.loads(line[6:])
-    assert all(label for _, label in python["labels"])
+    pytest.importorskip("duckdb")
+    # a data folder as the Python build left it (frozen with the export it runs: legacy/)
+    data = tmp_path / "data"
+    subprocess.run([sys.executable, str(ROOT / "legacy" / "make_fixture.py"), str(data)], check=True)
     files = {f.relative_to(data).as_posix(): base64.b64encode(f.read_bytes()).decode()
              for f in sorted(data.rglob("*")) if f.is_file()}
-    assert "evals.duckdb" in files and "profiles/pgn-pasted-games/games.parquet" in files
+    assert "evals.duckdb" in files and "profiles/pgn-fuzz/games.parquet" in files
 
     ctx = browser.new_context(user_agent=LITE)
     asked = []
@@ -475,20 +428,16 @@ def test_the_python_builds_data_moves_to_sqlite_once(site, browser, tmp_path):
         page = ctx.new_page()
         page.on("console", lambda m: m.type in ("error", "warning") and print("console:", m.text[:500]))
         page.goto(site + "privacy.html")                     # the site's origin, without the app
-        assert "/data" in page.evaluate(SEED_IDBFS, {"files": files, "pyodide": LEGACY_PYODIDE})
+        assert "/data" in page.evaluate(SEED_IDBFS, {"files": files, "pyodide": pyodide})
         asked.clear()
         page.goto(site)
-        page.wait_for_function("document.querySelector('#profiles .card.profile[data-id=pgn-pasted-games]')", timeout=300_000)
+        page.wait_for_function("document.querySelector('#profiles .card.profile[data-id=pgn-fuzz]')", timeout=300_000)
         assert any("/pyodide/" in u for u in asked) and any(u.endswith("legacy/app.zip") for u in asked)
-        assert profile_ids(page) == ["pgn-fuzz", "pgn-pasted-games", "pgn-testuser"]
+        assert profile_ids(page) == ["pgn-fuzz", "pgn-testuser"]
         done = json.loads(page.evaluate(OPFS_TEXT, "data/pyodide-migration.json"))
         assert done["status"] == "done", done
         assert done["files"]["evals.sqlite"]["evals"] > 0
         assert page.evaluate(OPFS_TEXT, "data/sqlite-export.json") is not None
-        # every game classified again by the JS from the cached evals: the labels are Python's
-        status, game = api(page, f"p/pgn-pasted-games/games/{python['slug']}.json")
-        assert status == 200
-        assert [[m["san"], m["label"]] for m in game["moves"]] == python["labels"]
         status, d = api(page, "p/pgn-fuzz/games.json")
         assert status == 200 and len(d["games"]) > 0
 
@@ -496,6 +445,6 @@ def test_the_python_builds_data_moves_to_sqlite_once(site, browser, tmp_path):
         page.reload()
         page.wait_for_function("document.querySelector('#profiles .card.profile[data-id=pgn-fuzz]')", timeout=60_000)
         assert not any("/pyodide/" in u or "/legacy/" in u for u in asked)
-        assert profile_ids(page) == ["pgn-fuzz", "pgn-pasted-games", "pgn-testuser"]
+        assert profile_ids(page) == ["pgn-fuzz", "pgn-testuser"]
     finally:
         ctx.close()

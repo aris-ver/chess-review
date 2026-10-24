@@ -1,4 +1,4 @@
-// Blundr on Cloudflare: one Worker serving the static site (web-dist/, built by scripts/build_web.py) and the
+// Blundr on Cloudflare: one Worker serving the static site (web-dist/, built by scripts/build_web.js) and the
 // optional accounts under /account/* with their D1 database. docs/accounts.md has the set-up steps.
 {
   "$schema": "node_modules/wrangler/config-schema.json",
