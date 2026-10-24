@@ -445,6 +445,43 @@ def test_the_board_stays_still_as_a_puzzle_is_solved_on_a_phone(site, browser):
         ctx.close()
 
 
+def test_on_a_phone_its_own_back_goes_where_the_back_button_did(site, browser):
+    """A phone has no Back in the header (its gesture or button is the back), so the history keeps to the levels the
+    Back button goes by: Next and Skip take the puzzle's place, and back from any puzzle of a pack is its ladder. On
+    a desktop (the app has no back of its own) the button stays."""
+    ctx = browser.new_context(viewport={"width": 412, "height": 915}, device_scale_factor=2.6, is_mobile=True, has_touch=True, user_agent=LITE)
+    page = ctx.new_page()
+    hash_is = lambda h: page.wait_for_function("h => location.hash === h", arg=h, timeout=30_000)
+    try:
+        page.goto(site)
+        ready(page)
+        for h in ["#/packs", "#/packs/forks", "#/packs/forks/1/1"]:
+            page.evaluate(f"location.hash = '{h}'")
+            hash_is(h)
+        page.wait_for_function("document.body.classList.contains('puzzle') && !!pz.p", timeout=30_000)
+        assert page.locator("#b-back").is_hidden()
+        assert page.locator("#b-home").is_visible()
+        depth = page.evaluate("history.length")
+        for n in (2, 3):
+            page.wait_for_function("!!pz.p && state.game.moves.length > 0 && !state.exploring", timeout=30_000)
+            page.click("#pz-next")                      # Skip: the next puzzle of the stage, in this one's place
+            hash_is(f"#/packs/forks/1/{n}")
+        assert page.evaluate("history.length") == depth
+        for h in ["#/packs/forks", "#/packs", ""]:
+            page.go_back()
+            hash_is(h)
+        desk = browser.new_context(viewport={"width": 1280, "height": 900})
+        try:
+            d = desk.new_page()
+            d.goto(site + "#/packs/forks/1/1")
+            d.wait_for_function("document.documentElement.classList.contains('booted') && document.body.classList.contains('puzzle') && !!pz.p", timeout=60_000)
+            assert d.locator("#b-back").is_visible()
+        finally:
+            desk.close()
+    finally:
+        ctx.close()
+
+
 def profile_ids(page) -> list[str]:
     return sorted(p["id"] for p in api(page, "api/profiles")[1]["profiles"])
 

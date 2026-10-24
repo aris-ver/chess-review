@@ -49,6 +49,10 @@ header h1 a.away:active { background: #46423d; }
 /* Back: one level up (a puzzle -> its pack, a game -> its list), never a replay of the history */
 header button.back { color: var(--text); white-space: nowrap; font-size: 15px; font-weight: 600; padding: 4px 10px; }
 @media (hover: hover) { header button.back:hover { border-color: var(--accent); } }
+/* a phone has a back of its own (the gesture, the button): no Back in the header there, and the history is kept
+   one level up at each step (goTo), so the phone's back goes where this one would. The desktop app has no back but
+   this one */
+@media (max-width: 900px) and (pointer: coarse) { header button.back { display: none !important; } }
 header .crumb { color: var(--muted); }
 header .right { margin-left: auto; display: flex; gap: 10px; align-items: center; }
 header .right a { color: var(--muted); }
@@ -1278,6 +1282,19 @@ function goBack() {
   else location.hash = to;
 }
 $('b-back').onclick = goBack;
+// Moving on from a screen (Next, the end of a stage, the daily's way to the packs): to the screen above it, back in
+// the history when that is the screen before, else in its place; to one beside it (the next puzzle), in its place.
+// So the history keeps to the levels Back goes by, and the browser's or the phone's back goes where Back would.
+function goTo(h) {
+  const here = location.hash || '#/', up = upTo(here) || '#/';
+  if (visited.length > 1 && visited[visited.length - 2] === h) { history.back(); return; }
+  if (h === up || (upTo(h) || '#/') === up) {
+    if (visited[visited.length - 1] === here) visited.pop();
+    location.replace(h);
+    return;
+  }
+  location.hash = h;
+}
 async function route() {
   const h = location.hash || '#/';
   noteVisit(h);
@@ -2175,7 +2192,7 @@ function renderPuzzleBox() {
   if ($('pz-retry')) $('pz-retry').onclick = takeBackMiss;
   $('pz-next').onclick = nextPuzzle;
   $('pz-analyse').onclick = () => { location.hash = '#/sandbox/' + encodeURIComponent(currentFen()); };
-  if ($('pz-source')) $('pz-source').onchange = e => { location.hash = dealHash(e.target.value); };
+  if ($('pz-source')) $('pz-source').onchange = e => { goTo(dealHash(e.target.value)); };
   if ($('pz-theme')) $('pz-theme').onchange = e => {
     pz.theme = e.target.value; try { localStorage.setItem('puzzleTheme', pz.theme); } catch (err) {}
     nextPuzzle();
@@ -2193,9 +2210,9 @@ function renderPuzzleBox() {
 function nextPuzzle() {
   if (state.exploring && !pz.done) return;
   const c = pz.ctx;
-  if (c && c.kind === 'daily') { location.hash = '#/packs'; return; }
-  if (c) { location.hash = c.n < c.size ? `#/packs/${c.pack}/${c.stage}/${c.n + 1}` : '#/packs/' + c.pack; return; }   // the end of a stage: back to the ladder
-  pz.sources = null; location.hash = dealHash(pz.source);
+  if (c && c.kind === 'daily') { goTo('#/packs'); return; }
+  if (c) { goTo(c.n < c.size ? `#/packs/${c.pack}/${c.stage}/${c.n + 1}` : '#/packs/' + c.pack); return; }   // the end of a stage: back to the ladder
+  pz.sources = null; goTo(dealHash(pz.source));
 }
 // the home tiles: how the library is going once it's started; the puzzles from your games, and the reviews due
 async function renderPuzzleCards() {
