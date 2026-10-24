@@ -217,18 +217,17 @@ what to check after each: `js/desktop/README.md`. Still open: a real provider si
 frozen-exe bridge run (it was tested from source), the first CI run; v0.6.1 installs whose runtime differs from the
 bridge's have to download Electron by hand.
 
-Open, for the sessions named:
-- `desktop-switch` (the parts above that are done are kept for the record): the updater, `env.updater = new Updater({ installed, platform, assets: ELECTRON_ASSETS, apply,
-  unpack })`, where `apply` writes the PowerShell swap script (`write_apply_script`) and quits once the answer is out,
-  and the download streams to disk instead of being buffered; migrating Python's `.accounts/<who>/` workspaces (jsonl,
-  parquet) to the SQLite layout; a real provider sign-in through the system browser back to `/account/callback`.
-- `web-switch`: sync's table-by-table database copy is tested only on `node:sqlite`; check it on SQLite WASM in OPFS.
-  The account routes aren't needed there (the page calls the Worker itself).
-- `desktop-switch`: the opening book (the JS desktop reads only `DATA/book_keys.txt`; ship or build it, as
-  `scripts/build_web.py` does); `reap_idle` (idle engines are never closed); Python's explorer interrupts a running
-  stream when a new search comes, while the JS pool queues it (one engine per open stream).
-- `desktop-switch`: `puzzles.json` and `packs.json` for the desktop build; turn the export on in the bridge release and
-  run it once more before the "electron" update; Electron accepts the data only when `verify` passes; sync moves the
-  SQLite files into `.accounts/<who>/`.
-- `web-switch`: call `migratePyodide` before the `Store` opens anything (old data shows as an IndexedDB database named
-  `/data`), keeping a legacy `app.zip` and the Pyodide CDN for that one load; test it in a real browser.
+**Port check (2026-10-24, `port-check`).** The list of open items that stood here, item by item:
+- Done by `desktop-switch`: the updater (`main.js` gives `env.updater`, the apply script, streamed downloads);
+  `.accounts/<who>/` workspaces (the bridge's `migrate_sqlite` exports them in sync's layout); the opening book
+  (`book_keys.txt` in app.asar, `DATA/book` from a checkout); `reap_idle` (`EnginePool.reapIdle`, every 10 minutes
+  idle); `puzzles.json`/`packs.json` in app.asar; the export on in v0.7.0; `verify` before Electron opens the data.
+- Done by `web-switch`: `migratePyodide` before the Store opens anything (`js/web/legacy.js`, with its browser test).
+- Done here: the explorer's interrupt. A stream the page closes now stops its search at once (the pools' `stream()`
+  take an AbortSignal, which the router aborts when the client goes), where before the stop waited for the engine's
+  next `info` line, holding the one engine a phone has. A new stream doesn't stop another one (Python's single
+  sandbox did): tabs share the server now, and the page closes its own stream before it moves or plays.
+- Done here: sync's table-by-table copy on SQLite WASM in OPFS, by a browser test (a profile's database into
+  `.accounts/guest/` and back through `api/sync/switch` and `release`).
+- Still open: a real provider sign-in through the system browser back to `/account/callback`; a frozen-exe bridge run;
+  the first CI run of the release workflow; a check on a real phone.
