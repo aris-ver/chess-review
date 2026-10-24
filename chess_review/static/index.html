@@ -170,7 +170,7 @@ main { padding: 16px 18px; max-width: 1800px; margin: 0 auto; }
 .legend .sw { display: inline-block; width: 12px; height: 12px; border-radius: 3px; vertical-align: -1px; border: 2px solid var(--accent); }
 .legend .sw.clean { background: var(--accent); } .legend .sw.missed { border-color: var(--c-miss); }
 .tile.missed { border-color: var(--c-miss); color: var(--c-miss); }
-.scard.sel .tile.next { border-color: var(--dc); color: var(--text); animation: tpulse 1.6s infinite; }
+.scard.sel .tile.next { border-color: var(--text); color: var(--text); animation: tpulse 1.6s infinite; }   /* not the stage's colour: that outline is "solved" */
 .tile .lock { position: absolute; right: -5px; top: -7px; font-size: 13px; filter: drop-shadow(0 1px 1px rgba(0,0,0,.6)); }
 @keyframes tpulse { 0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--dc) 60%, transparent); } 50% { box-shadow: 0 0 0 6px transparent; } }
 .tile.pop { animation: tpop .6s; }
