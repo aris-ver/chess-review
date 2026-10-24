@@ -247,5 +247,6 @@ frozen: the JS is the reference now. Everything is in git history (`e8e547f` is 
   sandbox did): tabs share the server now, and the page closes its own stream before it moves or plays.
 - Done here: sync's table-by-table copy on SQLite WASM in OPFS, by a browser test (a profile's database into
   `.accounts/guest/` and back through `api/sync/switch` and `release`).
-- Still open: a real provider sign-in through the system browser back to `/account/callback`; a frozen-exe bridge run;
+- Checked by the user (2026-10-24): a real Google sign-in works.
+- Still open: a Lichess sign-in through the system browser back to `/account/callback`; a frozen-exe bridge run;
   the first CI run of the release workflow; a check on a real phone.
