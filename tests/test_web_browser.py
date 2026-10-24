@@ -398,6 +398,53 @@ def test_a_swiped_stage_takes_the_focus_once_it_comes_to_rest(site, browser):
         ctx.close()
 
 
+# a puzzle on screen, its setup move played: then the solver's moves, each once the board is waiting for it, and the
+# board's box (x, y, width, height) before the first and after the card has come up
+PLAY_THE_SOLUTION = """async () => {
+    const until = c => new Promise(r => { const t = setInterval(() => { if (c()) { clearInterval(t); r(); } }, 30); });
+    const box = () => { const b = document.getElementById('boardbox').getBoundingClientRect(); return [b.x, b.y, b.width, b.height]; };
+    await until(() => pz.p && state.game && state.game.moves.length >= 1 && !state.exploring);
+    const before = box();
+    for (let i = 1; i < pz.p.moves.length; i += 2) {
+        await until(() => state.game.moves.length === i && !state.exploring);
+        puzzleMove(pz.p.moves[i].uci);
+    }
+    await until(() => pz.over === 'done');
+    await new Promise(r => setTimeout(r, 300));
+    return [before, box()];
+}"""
+
+
+def test_the_board_stays_still_as_a_puzzle_is_solved_on_a_phone(site, browser):
+    """On a phone held upright the board takes the height the rows around it leave: once a puzzle is solved, Skip
+    turns into "Next puzzle →", the themes and the game link come in, the daily's result card comes up. None of it may
+    move the board (it did by a couple of pixels, the daily's card by 86), on a pack's puzzle, the next one, the daily."""
+    ctx = browser.new_context(viewport={"width": 412, "height": 915}, device_scale_factor=2.6, is_mobile=True, has_touch=True, user_agent=LITE)
+    page = ctx.new_page()
+    try:
+        page.goto(site)
+        ready(page)
+        ctx.new_cdp_session(page).send("Emulation.setCPUThrottlingRate", {"rate": 4})
+        # layout shifts, but the title row's: its counts come in after the first puzzle and widen with the numbers
+        page.evaluate("""() => { window.shifted = 0;
+            const title = n => n && n.closest && n.closest('.phead, .pzhead');
+            new PerformanceObserver(l => { for (const e of l.getEntries()) if (e.sources.some(s => s.node && !title(s.node))) window.shifted += e.value; })
+                .observe({ type: 'layout-shift' }); }""")
+        for name, go in [("a pack's first", "#/packs/forks/1/1"), ("the next", None), ("the daily", "#/daily")]:
+            if go:
+                page.evaluate(f"location.hash = '{go}'")
+            else:
+                page.click("#pzover [data-act=next]")
+            page.wait_for_function("document.body.classList.contains('puzzle') && !!pz.p && !pz.done", timeout=30_000)
+            page.evaluate("window.shifted = 0")
+            before, after = page.evaluate(PLAY_THE_SOLUTION)
+            assert after == before, f"{name} puzzle: the board moved from {before} to {after} as it was solved"
+            assert page.evaluate("window.shifted") == 0, f"{name} puzzle: layout shift {page.evaluate('window.shifted')} as it was solved"
+        assert page.locator("#pzover .dres [data-act=share]").count() == 1      # the daily's result, with its share button, on the card
+    finally:
+        ctx.close()
+
+
 def profile_ids(page) -> list[str]:
     return sorted(p["id"] for p in api(page, "api/profiles")[1]["profiles"])
 

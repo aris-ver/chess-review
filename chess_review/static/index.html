@@ -364,6 +364,7 @@ body:not(.puzzle) .pzover { display: none; }
 .pzcard .btns button { padding: 11px; font-size: 15px; font-weight: 700; }
 .pzcard .x { position: absolute; top: 4px; right: 4px; width: 36px; height: 36px; padding: 0; border: 0; background: none; color: var(--muted); font-size: 18px; }
 @media (hover: hover) { .pzcard .x:hover { background: var(--panel2); color: var(--text); } }
+.pzcard .dres { margin: 0 0 10px; text-align: left; }     /* the daily's result, just solved */
 
 /* game list */
 .filters { display: flex; gap: 8px; margin-bottom: 12px; align-items: center; }
@@ -532,12 +533,20 @@ table.games button.an { padding: 3px 9px; font-size: 12px; font-weight: 600; whi
   .pzhead { grid-area: stats; align-self: center; padding: 0 2px; margin-left: 8px; }
   .pzhead .r { display: none; }     /* "Your games": the title says it */
   .pzhead .cnt { font-size: 13px; } .pzhead .meta { font-size: 11px; line-height: 1.3; }
-  .pzbtns { grid-area: btns; } .pzbtns button { padding: 10px 6px; }
+  /* nothing in the rows around the board may change height as a puzzle goes on (Skip turning into "Next puzzle →",
+     the themes and the game link coming in once it's solved, the daily's result card): the board's row would give
+     or take it, and the board would move under the finger that just played */
+  .pzbtns { grid-area: btns; } .pzbtns button { padding: 10px 6px; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pzbtns #pz-next { flex: 1.4 1 0; }
   body.puzzle .coach { grid-area: coach; height: 72px; padding: 0; }     /* fixed, so a longer message doesn't shrink the board */
   body.puzzle .coach .bubble { height: 100%; overflow-y: auto; }
   body.puzzle .coach .avatar, body.puzzle .coach .bubble::before { display: none; }
-  body.puzzle .coach:has(.dres) { height: auto; max-height: 40dvh; }     /* the daily's result card, with its share button */
-  .pzinfo { grid-area: info; padding: 0 2px; }
+  /* the daily played already, opened again: its result card, with the share button, is there from the start. A
+     daily just solved shows its card over the board instead (showPzOver), and in the coach as it scrolls */
+  body.puzzle.dreview .coach:has(.dres) { height: auto; max-height: 40dvh; }
+  .pzinfo { grid-area: info; padding: 0 2px; height: 20px; flex-wrap: nowrap; white-space: nowrap; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
+  .pzinfo::-webkit-scrollbar { display: none; }
+  .pzinfo > * { flex: none; }
   .pzfoot { grid-area: foot; padding: 0; }
   /* back and forward only, beside Analyse: to the start, the end or autoplay mean little in a few moves */
   body.puzzle .review .panel .nav { grid-area: nav; position: static; padding: 0; background: none; border: 0; }
@@ -547,7 +556,7 @@ table.games button.an { padding: 3px 9px; font-size: 12px; font-weight: 600; whi
 /* a short phone: the coach would leave the board under 300px, and the card over the board already says how it went.
    It stays for the daily's result, the only place its share button is */
 @media (max-width: 900px) and (orientation: portrait) and (max-height: 600px) {
-  body.puzzle .coach:not(:has(.dres)) { display: none; }
+  body.puzzle:not(.dreview) .coach { display: none; }
 }
 /* touch screens: no long-press selection or callout on the boards, and no cursor-following piece in the editor */
 @media (hover: none) and (pointer: coarse) {
@@ -1864,6 +1873,7 @@ function enterPuzzleView() {
   $('ginfo').textContent = ''; $('ptitle-t').textContent = own ? 'Personal puzzle' : 'Puzzle';
   const cc = !own && ctxCrumb();
   if (cc) { $('crumb').textContent = cc.crumb; $('ptitle-t').textContent = pz.ctx.kind === 'daily' ? 'Puzzle of the day' : `${pz.ctx.name} ${pz.ctx.stage} · ${pz.ctx.n}`; }
+  document.body.classList.toggle('dreview', !!(cc && pz.ctx.kind === 'daily' && pz.ctx.review));
   renderPuzzleBox(); updateBack();
 }
 function startPuzzle(p, stats) {
@@ -1981,11 +1991,15 @@ function showPzOver(kind) {
   else if (pz.shown) el.innerHTML = card('Solution', "That's how it goes. The next one's yours.", next);
   else if (pz.failed || pz.hinted) el.innerHTML = card(`${icon('best')}<span>Solved</span>`, 'Got there in the end.', next);
   else el.innerHTML = card(`${icon('best')}<span>Solved!</span>`, 'First try. Well played.', next);
+  // the daily: its result card with the share button, once the day's result is in (finishCtx draws the card again)
+  const c = pz.ctx;
+  if (c && c.kind === 'daily' && c.result && !c.review && !pz.shown) el.querySelector('.btns').insertAdjacentHTML('beforebegin', resultCard(c.result, c.streak, true));
 }
 $('pzover').addEventListener('pointerdown', e => e.stopPropagation());     // not a move on the board under it
 $('pzover').addEventListener('click', e => {
   const act = e.target === $('pzover') ? 'close' : (e.target.closest('[data-act]') || {}).dataset?.act;
   if (!act) return;
+  if (act === 'share') return copyShare();
   showPzOver(null);
   if (act === 'retry') takeBackMiss();
   else if (act === 'solution') puzzleSolution();
@@ -2472,12 +2486,12 @@ function shareText(r, streak) {
     (r.marks || []).map(m => SHARE_SQ[m] || '⬜').join('') + (streak ? `\n🔥 ${streak}-day streak` : '') + `\nTry it yourself: ${DAILY_URL}`;
 }
 const SQ_TITLE = { ok: 'Found first time', miss: 'Found after a miss', hint: 'Found with a hint', shown: 'Shown the solution' };
-function resultCard(r, streak) {
+function resultCard(r, streak, inCard = false) {
   const t = fmtTime(r.ms);
   return `<div class="dres"><div class="dh">Puzzle of the day #${r.n} · ${esc(fmtDay(r.date))}</div>` +
     `<div class="sq">${(r.marks || []).map((m, i) => `<span class="${m}" title="Move ${i + 1}: ${SQ_TITLE[m] || ''}">${m === 'hint' ? '💡' : ''}</span>`).join('')}</div>` +
     `<div class="stats"><span>${resultWords(r)}</span>${t ? `<span>⏱ ${t}</span>` : ''}${streak ? `<span>🔥 ${streak}-day streak</span>` : ''}</div>` +
-    `<button id="pz-share" class="primary" title="Copies your result and a link to get the app">Copy result to share</button></div>`;
+    `<button ${inCard ? 'data-act="share"' : 'id="pz-share"'} class="primary" title="Copies your result and a link to get the app">Copy result to share</button></div>`;
 }
 async function finishCtx(solved) {
   const c = pz.ctx, p = pz.p;
@@ -2489,6 +2503,7 @@ async function finishCtx(solved) {
     if (pz.ctx !== c) return;
     Object.assign(c, { result: d.result, streak: d.streak, best: d.best_streak, played: true });
     renderNow(); renderPuzzleBox();
+    if (pz.over === 'done') showPzOver('done');
     return;
   }
   const before = packCache[c.pack], st = before && before.stages.find(x => x.n === c.stage);
