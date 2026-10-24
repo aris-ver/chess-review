@@ -1,5 +1,5 @@
-// chess_review/migrate_sqlite.py's files opened with the JS Store: the export of tests/test_migrate_sqlite.py's fixture
-// (and of MIGRATE_DATA, a data directory of your own, copied first) has db.js's schema, and every table's row count
+// The Python app's export (legacy/chess_review/migrate_sqlite.py, frozen) opened with the JS Store: the export of
+// legacy/make_fixture.py's data (and of MIGRATE_DATA, a data directory of your own, copied first) has db.js's schema, and every table's row count
 // and sampled rows are what Python reads from DuckDB, parquet and jsonl (the export's --dump). Then the browser's half:
 // js/web/migrate.js's import from a Pyodide-like file system into a pool. Needs the Python venv (.venv, or PYTHON);
 // skipped without it.
@@ -33,7 +33,7 @@ const PY = python();
 const SKIP = !PY && 'no Python venv (.venv or PYTHON)';
 
 function run(args, data) {
-  const r = spawnSync(PY, args, { cwd: ROOT, encoding: 'utf8', env: { ...process.env, PYTHONPATH: ROOT, CHESS_REVIEW_DATA: data } });
+  const r = spawnSync(PY, args, { cwd: ROOT, encoding: 'utf8', env: { ...process.env, PYTHONPATH: join(ROOT, 'legacy'), CHESS_REVIEW_DATA: data } });
   if (r.status !== 0) throw new Error(`${args.join(' ')}: ${r.stderr || r.stdout}`);
   return r.stdout;
 }
@@ -118,7 +118,7 @@ test('migrate: the Python export opens in the JS Store as Python read it', { ski
   try {
     const data = join(tmp, 'data');
     mkdirSync(data);
-    run(['tests/test_migrate_sqlite.py', data], data);
+    run(['legacy/make_fixture.py', data], data);
     const marker = await exportAndCheck(data);
     same(Object.keys(marker.files).sort(), ['.accounts/guest/profiles/pgn-fuzz/games.sqlite', '.accounts/guest/progress.sqlite',
       'evals.sqlite', 'profiles/pgn-fuzz/games.sqlite', 'profiles/pgn-testuser/games.sqlite', 'progress.sqlite'], 'files');
@@ -139,7 +139,7 @@ test('migrate: the browser half puts the export into a pool and the rest into fi
   try {
     const data = join(tmp, 'data'), out = join(tmp, 'out'), pool = join(tmp, 'pool');
     mkdirSync(data);
-    run(['tests/test_migrate_sqlite.py', data], data);
+    run(['legacy/make_fixture.py', data], data);
     mkdirSync(join(data, 'profiles', 'pgn-fuzz', 'site'), { recursive: true });
     writeFileSync(join(data, 'profiles', 'pgn-fuzz', 'site', 'games.json'), '{"games": []}');
     writeFileSync(join(data, 'settings.json'), '{"theme": "dark"}');
@@ -175,7 +175,7 @@ test('migrate: migratePyodide end to end, with Python standing in for Pyodide', 
   try {
     const data = join(tmp, 'data'), out = join(tmp, 'out'), pool = join(tmp, 'pool');
     mkdirSync(data);
-    run(['tests/test_migrate_sqlite.py', data], data);
+    run(['legacy/make_fixture.py', data], data);
     const FS = { ...pyFS(''), rmdir: p => rmSync(p, { recursive: true }), unlink: p => rmSync(p) };
     const loaded = [];
     const py = {

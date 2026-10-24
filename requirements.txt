@@ -1,4 +1,0 @@
-chess>=1.11
-duckdb>=1.1
-requests>=2.32
-pytest>=8
