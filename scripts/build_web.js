@@ -1,6 +1,6 @@
 // Assembles the browser version (docs/web.md) into web-dist/, a static site.
 //
-//   node scripts/build_web.js [--serve [--port 8200]] [--engine-wasm URL|cdn]     (npm run build:web -- ...)
+//   node scripts/build_web.js [--serve [--port 8200] [--log]] [--engine-wasm URL|cdn]     (npm run build:web -- ...)
 //
 // web-dist/
 //   index.html            chess_review/static/index.html with the board's pieces (js/desktop/pieces.json) filled in,
@@ -23,11 +23,12 @@
 // Worker refuses files over 25 MiB); `--engine-wasm cdn` is blundr.gr's: the same npm package's file on unpkg. By
 // default it is served from web/engine/ next to the rest, which is what --serve wants.
 
+import { createHash } from 'node:crypto';
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { basename, dirname, extname, join, normalize, relative, sep } from 'node:path';
 import { parseArgs } from 'node:util';
-import { crc32, deflateRawSync, gunzipSync } from 'node:zlib';
+import { crc32, deflateRawSync, gunzipSync, gzipSync } from 'node:zlib';
 
 import { bookKeysFromDir } from '../js/desktop/book.js';
 import { ROOT } from '../js/desktop/paths.js';
@@ -35,6 +36,7 @@ import { fillPieces } from '../js/server/router.js';
 
 const { values: args } = parseArgs({ options: {
   serve: { type: 'boolean', default: false }, port: { type: 'string', default: '8200' }, 'engine-wasm': { type: 'string' },
+  log: { type: 'boolean', default: false },
 } });
 
 const OUT = join(ROOT, 'web-dist');
@@ -255,11 +257,28 @@ const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/ja
   '.ogg': 'audio/ogg', '.webp': 'image/webp', '.css': 'text/css', '.txt': 'text/plain', '.zip': 'application/zip',
   '.whl': 'application/zip', '.woff2': 'font/woff2' };
 
-/** web-dist/ on localhost as the Worker would serve it (index.html for a folder): themes/ cached as _headers says,
- * the rest never. */
-function serve(dir, port) {
+/** _headers' rules as [[pattern, {header: value}]]: a pattern is a path, `*` standing for anything. */
+function headerRules(text) {
+  const rules = [];
+  for (const line of text.split('\n')) {
+    if (!line.trim() || line.trim().startsWith('#')) continue;
+    if (!/^\s/.test(line)) rules.push([new RegExp('^' + line.trim().replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*') + '$'), {}]);
+    else if (rules.length) {
+      const i = line.indexOf(':');
+      rules.at(-1)[1][line.slice(0, i).trim()] = line.slice(i + 1).trim();
+    }
+  }
+  return rules;
+}
+
+/** web-dist/ on localhost as the Worker serves it: index.html for a folder, an ETag that a request may send back for a
+ * 304, the Worker's default Cache-Control (ask again every time) unless web-dist/_headers says otherwise, and text
+ * compressed, so that a throttled browser here waits for what it waits for on blundr.gr. */
+function serve(dir, port, log = false) {
   const root = normalize(dir + sep);
+  const packed = new Map();     // file -> { mtime, body, type, etag, gzip }
   return createServer((req, res) => {
+    if (log) res.on('finish', () => console.log(res.statusCode, req.url));
     let path = decodeURIComponent(new URL(req.url, 'http://x').pathname);
     if (path.endsWith('/')) path += 'index.html';
     const file = normalize(join(dir, path));
@@ -267,14 +286,31 @@ function serve(dir, port) {
       res.writeHead(404, { 'Cache-Control': 'no-cache' }).end('not found');
       return;
     }
-    res.writeHead(200, { 'Content-Type': TYPES[extname(file).toLowerCase()] || 'application/octet-stream',
-                         'Cache-Control': path.startsWith('/themes/') ? THEMES_CACHE : 'no-cache' });
-    res.end(readFileSync(file));
+    const mtime = statSync(file).mtimeMs;
+    let p = packed.get(file);
+    if (!p || p.mtime !== mtime) {
+      const body = readFileSync(file);
+      const type = TYPES[extname(file).toLowerCase()] || 'application/octet-stream';
+      const text = /^text\/|json|javascript|wasm|svg/.test(type);
+      p = { mtime, body, type, etag: `"${createHash('sha1').update(body).digest('hex').slice(0, 16)}"`,
+            gzip: text ? gzipSync(body) : null };
+      packed.set(file, p);
+    }
+    const headers = { 'Content-Type': p.type, 'Cache-Control': 'public, max-age=0, must-revalidate', ETag: p.etag };
+    const rules = existsSync(join(dir, '_headers')) ? headerRules(readFileSync(join(dir, '_headers'), 'utf8')) : [];
+    for (const [re, h] of rules) if (re.test(path)) Object.assign(headers, h);
+    if (req.headers['if-none-match'] === p.etag) {
+      res.writeHead(304, headers).end();
+      return;
+    }
+    const gz = p.gzip && /\bgzip\b/.test(req.headers['accept-encoding'] || '');
+    if (gz) headers['Content-Encoding'] = 'gzip';
+    res.writeHead(200, headers).end(gz ? p.gzip : p.body);
   }).listen(port, '127.0.0.1');
 }
 
 await build(args['engine-wasm'] === 'cdn' ? ENGINE_CDN : args['engine-wasm']);
 if (args.serve) {
-  serve(OUT, Number(args.port));
+  serve(OUT, Number(args.port), args.log);
   console.log(`serving http://127.0.0.1:${args.port}/`);
 }
