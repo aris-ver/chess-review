@@ -171,8 +171,8 @@ async function get(router, what, q) {
     const out = [{ id: 'lichess', name: 'Lichess puzzles', count: pack.rows().length }];
     for (const p of await env.profiles.list()) {
       const s = await env.profiles.summary(p);
-      if (!s.games) continue;
       const st = await O.summary(pool, p, now);
+      if (!s.games && !st.total) continue;      // synced from another device, a profile has its puzzles before its games
       out.push({ id: `mine:${p.id}`, profile: p.id, name: p.username, source: p.source, count: st.total, stats: st,
         games: s.games, analysed: s.analysed });
       if (st.total) await extendPuzzles(runner, p);

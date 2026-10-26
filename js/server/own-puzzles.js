@@ -14,6 +14,11 @@
 // finding it; a miss at any point starts it over. Solved first time, or found at the 7-day review, it is learned.
 // Starting the schedule over (reset()) archives the record, and every puzzle is new again.
 //
+// The puzzles also go into the profile's own_puzzles table, one compact line each (ownLine: the position, the solution
+// line, the follow-up and what the page says about the game), which sync.js keeps in step with the account. So a
+// profile synced from another device has its puzzles without its games or their analysis: the Pool plays the table's
+// lines along with the ones made here, and where both have a puzzle the better line (betterOwn) is the one kept.
+//
 // Times (`now`, `ts`, `due`) are epoch seconds.
 
 import { boardFromFen, fen, isGameOver, isLegal, moveFromUci, push, san, InvalidMoveError } from '../core/chess.js';
@@ -23,6 +28,7 @@ import { fenKey } from '../core/fen.js';
 import { cachedLines } from './eval-cache.js';
 import { sha1 } from './classify.js';
 import { ATTEMPTS_SCHEMA } from './db.js';
+import { pyDumps } from './profiles.js';
 import { archive, attempts as attemptRows, choice, line } from './puzzles.js';
 import { slug } from './site.js';
 
@@ -64,8 +70,12 @@ function parse(u) {
 
 /** The engine's line after the answer, as legal moves with SAN and FEN (cut where it stops being legal). */
 export function follow(fenAfterBest, pv) {
+  return followMoves(fenAfterBest, (pv ?? []).slice(1, 1 + FOLLOW_PLIES));
+}
+
+function followMoves(fenAfterBest, ucis) {
   const out = [], board = boardFromFen(fenAfterBest);
-  for (const u of (pv ?? []).slice(1, 1 + FOLLOW_PLIES)) {
+  for (const u of ucis) {
     const mv = parse(u);
     if (!mv || !isLegal(board, mv)) break;
     const s = san(board, mv);
@@ -158,6 +168,78 @@ export function puzzle(profileId, r, walked, slugOf = slug) {
   });
 }
 
+// ---------- the synced copy: a puzzle as one line ----------
+
+/** A puzzle as the own_puzzles table and the account keep it: only what playing it needs, ~350 bytes. */
+export function ownLine(p) {
+  const g = p.game;
+  return pyDumps({
+    id: p.id, fen: p.fen, moves: p.moves.map(m => m.uci).join(' '), follow: p.follow.map(m => m.uci).join(' '),
+    game: { slug: g.slug, ply: g.ply, opponent: g.opponent, date: g.date, time_class: g.time_class, played_san: g.played_san, label: g.label },
+  });
+}
+
+/** The puzzle a line stands for, as puzzle() makes it; null for a line that isn't one. */
+export function ownPuzzle(profileId, ln) {
+  try {
+    const v = JSON.parse(ln);
+    if (!isOwnId(v.id) || typeof v.moves !== 'string' || typeof v.game !== 'object' || !v.game) return null;
+    const p = line({ id: v.id, fen: v.fen, moves: v.moves, rating: null, themes: [] });
+    if (p.moves.length < 2) return null;
+    return Object.assign(p, {
+      source: 'mine', profile: profileId, themes: [],
+      follow: followMoves(p.moves[p.moves.length - 1].fen, String(v.follow ?? '').split(' ').filter(Boolean).slice(0, FOLLOW_PLIES)),
+      game: { ...v.game },
+    });
+  } catch {
+    return null;     // a position or move that doesn't parse
+  }
+}
+
+const ownId = ln => {
+  try {
+    const id = JSON.parse(ln).id;
+    return isOwnId(id) ? id : null;
+  } catch {
+    return null;
+  }
+};
+const lineMoves = ln => String(JSON.parse(ln).moves ?? '').split(' ').filter(Boolean).length;
+
+/** Of two lines of one puzzle, the one to keep: the longer solution (its line settled further), else the greater
+ * line. The same answer on every device, so two that made the puzzle differently agree on it. */
+export function betterOwn(a, b) {
+  const d = lineMoves(a) - lineMoves(b);
+  return d > 0 || (d === 0 && a > b) ? a : b;
+}
+
+/** One line per puzzle (betterOwn), by id: own_puzzles.jsonl as sync.js merges it. Lines that aren't puzzles go. */
+export function bestOwn(lines) {
+  const best = new Map();
+  for (const ln of lines) {
+    const id = ownId(ln);
+    if (id !== null) best.set(id, best.has(id) ? betterOwn(best.get(id), ln) : ln);
+  }
+  return [...best.keys()].sort().map(id => best.get(id));
+}
+
+/** The table brought up to date with the puzzles made here: one goes in where the table has none with its id, or a
+ * worse one. A puzzle made here that the table has better (from another device) stays as the table has it, so the
+ * two don't take turns. Returns id → line, the table after. */
+export function keepOwn(db, made) {
+  const have = new Map(db.all('SELECT id, line FROM own_puzzles').map(r => [r.id, r.line]));
+  const put = [];
+  for (const p of made) {
+    const ln = ownLine(p), old = have.get(p.id);
+    if (old === undefined || (old !== ln && betterOwn(ln, old) === ln)) {
+      put.push([p.id, ln]);
+      have.set(p.id, ln);
+    }
+  }
+  if (put.length) db.tx(() => { for (const r of put) db.run('INSERT OR REPLACE INTO own_puzzles (id, line) VALUES (?, ?)', r); });
+  return have;
+}
+
 /** The background half: search every position the puzzles' lines are waiting on, a round (a ply) at a time, until
  * each line is settled. db: the profile's connection (Store.profile(p), the cache attached); search(keys) puts the
  * MultiPV of those positions into the cache (it may be async). Settled lines cost a few cache reads, nothing else. */
@@ -217,10 +299,21 @@ export class Pool {
     if (hit && hit.stamp === stamp) return hit;
     const rows = db.all(CANDIDATES_SQL).map(r => [r, start(r)]).filter(([, s]) => s);
     const walked = settle(rows.map(([, s]) => s), keys => cachedLines(db, keys));
-    const entry = {
-      stamp, puzzles: rows.map(([r], i) => puzzle(profile.id, r, walked[i], this.slug)),
-      waiting: walked.filter(([w]) => w !== null).length,
-    };
+    const made = rows.map(([r], i) => puzzle(profile.id, r, walked[i], this.slug));
+    const kept = keepOwn(db, made);
+    // the table's line where it is the better one, and the puzzles only another device made; newest game first
+    const mine = new Map(made.map(p => [p.id, p]));
+    const games = new Set(db.column('SELECT game_id FROM games').map(this.slug));
+    const puzzles = [];
+    for (const id of new Set([...mine.keys(), ...kept.keys()])) {
+      const ln = kept.get(id);
+      const p = mine.has(id) && ownLine(mine.get(id)) === ln ? mine.get(id) : ownPuzzle(profile.id, ln);
+      if (p && !games.has(p.game.slug)) p.game.here = false;     // no "View in game"
+      if (p) puzzles.push(p);
+    }
+    const date = p => p.game.date ?? '';
+    puzzles.sort((a, b) => (date(a) < date(b) ? 1 : date(a) > date(b) ? -1 : 0));
+    const entry = { stamp, puzzles, waiting: walked.filter(([w]) => w !== null).length };
     this.cache.set(profile.id, entry);
     return entry;
   }

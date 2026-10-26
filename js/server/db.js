@@ -31,10 +31,11 @@ export const EVALS = 'evals.sqlite';
 export const PROGRESS = 'progress.sqlite';
 export const profileDb = id => `profiles/${id}/games.sqlite`;
 
-// 2: puzzle_solved.clean (SOLVED_CLEAN). A database made at an earlier version is brought up to this one as it is
-// opened (UPGRADES), and a new one is made at 1 and brought up the same way, so the two have the same schema to the
-// letter (sqlite_master's text of an altered table isn't what a CREATE TABLE of it would say).
-export const SCHEMA_VERSION = 2;
+// 2: puzzle_solved.clean (SOLVED_CLEAN). 3: a profile's own_puzzles (OWN_PUZZLES_SCHEMA). A database made at an
+// earlier version is brought up to this one as it is opened (UPGRADES), and a new one is made at 1 and brought up the
+// same way, so the two have the same schema to the letter (sqlite_master's text of an altered table isn't what a
+// CREATE TABLE of it would say).
+export const SCHEMA_VERSION = 3;
 
 /** (name, SQL type) in order, as normalise.GAMES_SCHEMA */
 export const GAMES_SCHEMA = [
@@ -143,6 +144,13 @@ export const DAILY_SCHEMA = [
   ['marks', 'JSON'],
 ];
 
+/** A profile's own puzzles as they sync (own-puzzles.js ownLine): the ones made from its games here, and the ones
+ * another device made, which need no games or analysis to be played. One line per puzzle id. */
+export const OWN_PUZZLES_SCHEMA = [
+  ['id', 'TEXT'],
+  ['line', 'TEXT'],
+];
+
 const SEQ = 'seq INTEGER PRIMARY KEY AUTOINCREMENT';
 
 function table(name, schema, extra = []) {
@@ -180,6 +188,9 @@ const hasColumn = (db, t, c) => !!db.value(`SELECT count(*) FROM pragma_table_in
 const UPGRADES = [
   [2, db => {
     if (hasTable(db, 'puzzle_solved') && !hasColumn(db, 'puzzle_solved', 'clean')) db.exec(`ALTER TABLE puzzle_solved ADD COLUMN "clean" BOOLEAN`);
+  }],
+  [3, db => {
+    if (hasTable(db, 'moves')) db.exec(table('own_puzzles', OWN_PUZZLES_SCHEMA, ['PRIMARY KEY (id)']));
   }],
 ];
 

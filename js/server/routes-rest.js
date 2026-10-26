@@ -5,7 +5,7 @@
 // What they work through comes from the router's env, each made with defaults when it isn't there:
 //     env.account    an account.js Account (default: over env.fetch and env.files, no browser to open, no port)
 //     env.updater    an updater.js Updater (default: disabled, as outside the packaged desktop app)
-//     env.sync       a sync.js Sync (default: over env.files, env.store and the router's runner)
+//     env.sync       a sync.js Sync (default: over env.files, env.store, the router's runner and the own-puzzle pool)
 //     env.onSwitch   called after a sync switch or release moved the profiles (own puzzles' cache)
 //     env.fetch      for /api/fetch_image
 // The account's Host/Origin check (serve.Handler._account's) is the local server's: js/desktop/server.js.
@@ -13,6 +13,7 @@
 import { Account, Unreachable } from './account.js';
 import { BadRequest, json, jsonBody } from './http.js';
 import { BACKGROUND } from './jobs.js';
+import { library } from './routes-puzzles.js';
 import { loadSettings, saveSettings, validSettings } from './settings.js';
 import { Sync } from './sync.js';
 import { USER_AGENT, Updater, raiseForStatus } from './updater.js';
@@ -33,7 +34,7 @@ function parts(router) {
     d.account = new Account({ fetch: env.fetch, files: env.files, log: router.log });
     d.updater = new Updater({ fetch: env.fetch, files: env.files, log: router.log });
     d.sync = new Sync({ files: env.files, store: env.store, runner: router.runner, log: router.log,
-                        onSwitch: () => env.onSwitch?.() });
+                        onSwitch: () => env.onSwitch?.(), ownPuzzles: id => library(env).pool.load({ id }) });
   }
   const { env } = router;
   return { account: env.account ?? d.account, updater: env.updater ?? d.updater, sync: env.sync ?? d.sync };

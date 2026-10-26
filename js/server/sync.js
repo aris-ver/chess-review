@@ -11,6 +11,11 @@
 //     puzzle_attempts[.<archive>].jsonl             progress.sqlite puzzle_attempts, archive NULL or <archive>
 //     puzzle_solved.jsonl, puzzle_daily.jsonl       progress.sqlite puzzle_solved, puzzle_daily
 //     profiles/<id>/puzzle_attempts[.<a>].jsonl     profiles/<id>/games.sqlite puzzle_attempts
+//     profiles/<id>/own_puzzles.jsonl               profiles/<id>/games.sqlite own_puzzles (a line per row as it is)
+//
+// own_puzzles.jsonl is the personal puzzles themselves (own-puzzles.js ownLine), for the synced profiles only: on
+// another device they are played without the games they came from. One line per puzzle id, the better one where two
+// devices made it differently (bestOwn).
 //
 // The sync is a three-way merge against the account's files as this browser last got them (account_sync.json, the
 // base); switch() and release() move whose data is in DATA as a whole, into and out of .accounts/<owner>/, which has
@@ -18,10 +23,12 @@
 //
 // Through what the constructor is given: `files` (profiles-files.js, at the data directory), `store` (db.js's Store
 // over the same data directory), and `runner` (jobs.js: whether a job is on a profile, cancelling its build), and
-// `onSwitch` (called once the profiles changed hands: own puzzles' cache).
+// `onSwitch` (called once the profiles changed hands, or their own puzzles changed: own puzzles' cache), and
+// `ownPuzzles` (profile id -> the own_puzzles table brought up to date with the puzzles its games give here).
 
-import { EVALS, PROFILE_DDL, PROGRESS, PROGRESS_DDL, ATTEMPTS_SCHEMA, DAILY_SCHEMA, SOLVED_ROW, profileDb } from './db.js';
+import { EVALS, PROFILE_DDL, PROGRESS, PROGRESS_DDL, ATTEMPTS_SCHEMA, DAILY_SCHEMA, OWN_PUZZLES_SCHEMA, SOLVED_ROW, profileDb } from './db.js';
 import { BadRequest, pyRepr, truthy } from './http.js';
+import { bestOwn } from './own-puzzles.js';
 import { profileId, pyDumps, validId } from './profiles.js';
 
 export const BASE = 'account_sync.json';
@@ -57,7 +64,8 @@ const KEYS = {
   puzzle_daily: ['date', 'n', 'id', 'solved', 'clean', 'ms', 'marks'],
 };
 const ALWAYS = new Set(['ms']);
-const SCHEMAS = { puzzle_attempts: ATTEMPTS_SCHEMA, puzzle_solved: SOLVED_ROW, puzzle_daily: DAILY_SCHEMA };
+const SCHEMAS = { puzzle_attempts: ATTEMPTS_SCHEMA, puzzle_solved: SOLVED_ROW, puzzle_daily: DAILY_SCHEMA, own_puzzles: OWN_PUZZLES_SCHEMA };
+export const OWN = 'own_puzzles.jsonl';
 
 export function rowLine(table, row) {
   const o = {};
@@ -67,6 +75,7 @@ export function rowLine(table, row) {
 
 function lineRow(table, line, archive) {
   const v = JSON.parse(line);
+  if (table === 'own_puzzles') return { id: v.id, line };
   const row = table === 'puzzle_attempts' ? { archive } : {};
   for (const k of KEYS[table]) row[k] = v[k] ?? null;
   return row;
@@ -74,7 +83,9 @@ function lineRow(table, line, archive) {
 
 /** Where a file of the account lives here: {db, table, archive, dir}, or null for a name this app doesn't keep. */
 export function locate(file) {
-  let m = /^profiles\/([^/]+)\/puzzle_attempts(?:\.(.+))?\.jsonl$/.exec(file);
+  let m = /^profiles\/([^/]+)\/own_puzzles\.jsonl$/.exec(file);
+  if (m) return validId(m[1]) ? { db: profileDb(m[1]), table: 'own_puzzles', archive: null, dir: `profiles/${m[1]}` } : null;
+  m = /^profiles\/([^/]+)\/puzzle_attempts(?:\.(.+))?\.jsonl$/.exec(file);
   if (m) return validId(m[1]) ? { db: profileDb(m[1]), table: 'puzzle_attempts', archive: m[2] ?? null, dir: `profiles/${m[1]}` } : null;
   m = /^puzzle_attempts(?:\.(.+))?\.jsonl$/.exec(file);
   if (m) return { db: PROGRESS, table: 'puzzle_attempts', archive: m[1] ?? null, dir: null };
@@ -171,6 +182,7 @@ export function tidy(file, lines) {
   if (!file.includes('/') && name.startsWith('puzzle_attempts')) out = oncePer('id', out);
   else if (name === 'puzzle_solved.jsonl') out = bestSolved(out);
   else if (name === 'puzzle_daily.jsonl') out = oncePer('date', out);
+  else if (name === OWN) out = bestOwn(out);
   return out;
 }
 
@@ -192,8 +204,8 @@ const sameList = (a, b) => (a === undefined || b === undefined ? a === b : a.len
 // ---------- the data folder ----------
 
 export class Sync {
-  constructor({ files, store, runner = null, onSwitch = null, log = null }) {
-    Object.assign(this, { files, store, runner, onSwitch, log });
+  constructor({ files, store, runner = null, onSwitch = null, ownPuzzles = null, log = null }) {
+    Object.assign(this, { files, store, runner, onSwitch, ownPuzzles, log });
   }
 
   // --- databases by name (DATA's own, or a workspace's: '.accounts/<who>/progress.sqlite')
@@ -221,6 +233,7 @@ export class Sync {
     const loc = locate(file);
     const db = loc && await this.db(at(root, loc.db));
     if (!db) return [];
+    if (loc.table === 'own_puzzles') return db.column('SELECT line FROM own_puzzles ORDER BY id');
     const where = loc.table === 'puzzle_attempts' ? ' WHERE archive IS ?' : '';
     const rows = db.all(`SELECT * FROM ${loc.table}${where} ORDER BY seq`, where ? [loc.archive] : []);
     return rows.map(r => rowLine(loc.table, r));
@@ -280,6 +293,18 @@ export class Sync {
     return out;
   }
 
+  /** profiles/<id>/own_puzzles.jsonl under root, for the synced profiles that have puzzles; here (root '') each
+   * brought up to date first with the puzzles of its games (ownPuzzles). */
+  async ownFiles(root) {
+    const out = [];
+    for (const pid of sorted(Object.keys(await this.metas(root)))) {
+      if (!root) await this.ownPuzzles?.(pid);
+      const db = await this.db(at(root, profileDb(pid)));
+      if (db && db.value('SELECT count(*) FROM own_puzzles')) out.push(`profiles/${pid}/${OWN}`);
+    }
+    return out;
+  }
+
   /** profile id → meta.json, for the profiles that are synced. */
   async metas(root = '') {
     const out = {};
@@ -301,7 +326,8 @@ export class Sync {
   /** {file: [line, ...]} for every puzzle-progress file there is under root, and the profile list. */
   async local(root = '') {
     const out = {};
-    for (const f of [...await this.libraryFiles(root), ...await this.profileFiles(root)]) out[f] = await this.readLines(root, f);
+    const files = [...await this.libraryFiles(root), ...await this.profileFiles(root), ...await this.ownFiles(root)];
+    for (const f of files) out[f] = await this.readLines(root, f);
     const metas = await this.metas(root);
     if (Object.keys(metas).length) out[PROFILES] = sorted(Object.keys(metas)).map(pid => profileLine(metas[pid]));
     return out;
@@ -386,6 +412,7 @@ export class Sync {
       added = await this.applyProfiles(here[PROFILES] ?? [], merged[PROFILES] ?? []);
     }
     await this.saveBase(user, theirs);
+    if (changed.some(f => f.endsWith(`/${OWN}`))) await this.invalidate();    // the pool plays the new lines
     const [a, r] = diff(theirs, await this.local());
     return { changed, pending: Object.keys(a).length > 0 || Object.keys(r).length > 0, profiles_added: added };
   }
@@ -439,7 +466,7 @@ export class Sync {
       }
       return;
     }
-    for (const f of await this.attemptFiles(s, `profiles/${pid}`)) await this.moveLines(src, dst, f, merge);
+    for (const f of [...await this.attemptFiles(s, `profiles/${pid}`), `profiles/${pid}/${OWN}`]) await this.moveLines(src, dst, f, merge);
     await this.dropDb(s);
   }
 
@@ -517,7 +544,7 @@ export class Sync {
   async guestData() {
     const here = await this.local();
     let records = 0;
-    for (const [f, v] of Object.entries(here)) if (f !== PROFILES) records += v.length;
+    for (const [f, v] of Object.entries(here)) if (f !== PROFILES && !f.endsWith(`/${OWN}`)) records += v.length;
     return { puzzle_records: records, profiles: (here[PROFILES] ?? []).length };
   }
 

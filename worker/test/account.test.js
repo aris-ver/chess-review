@@ -167,6 +167,8 @@ const A1 = '{"id": "00008", "ts": 1760000000, "solved": true, "ms": 4100, "hinte
 const A2 = '{"id": "0000D", "ts": 1760000100, "solved": false, "ms": 9000, "hinted": false, "rating": 1610}';
 const PROFILE = '{"added": "2026-10-01T10:00:00+00:00", "pinned": null, "source": "chesscom", "username": "AlirezaFirouzja"}';
 const OWN ='{"id": "own:chesscom-me:abc:31", "ts": 1760000200, "solved": false, "ms": 5000, "hinted": false}';
+const PUZZLE = '{"id": "m0123456789", "fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", "moves": "e2e4 e7e5", "follow": "g1f3", ' +
+  '"game": {"slug": "7", "ply": 2, "opponent": "bob", "date": "2026-10-20", "time_class": "blitz", "played_san": "a6", "label": "mistake"}}';
 
 describe('puzzle progress', () => {
   it('needs an account', async () => {
@@ -197,6 +199,23 @@ describe('puzzle progress', () => {
       b.json('/account/progress', { method: 'POST', body: { add: { 'puzzle_attempts.jsonl': [A2] } } }),
     ]);
     expect((await a.json('/account/progress')).body.files['puzzle_attempts.jsonl'].sort()).toEqual([A1, A2].sort());
+  });
+
+  it("keeps the personal puzzles only for an app that takes them, so an older one can't delete them", async () => {
+    const b = new Browser();
+    await b.signIn('lichess', 'signup');
+    const file = 'profiles/chesscom-me/own_puzzles.jsonl';
+    let r = await b.json('/account/progress', { method: 'POST', body: { add: { [file]: [PUZZLE] }, own_puzzles: true } });
+    expect(r.body.files).toEqual({ [file]: [PUZZLE] });
+    // an older app: doesn't see them, and its add or remove of them changes nothing
+    r = await b.json('/account/progress', { method: 'POST', body: { add: { 'puzzle_attempts.jsonl': [A1] }, remove: { [file]: [PUZZLE] } } });
+    expect(r.body.files).toEqual({ 'puzzle_attempts.jsonl': [A1] });
+    expect((await b.json('/account/progress')).body.files).toEqual({ 'puzzle_attempts.jsonl': [A1] });
+    expect((await b.json('/account/progress?own_puzzles=1')).body.files).toEqual({ 'puzzle_attempts.jsonl': [A1], [file]: [PUZZLE] });
+    // a removed profile: its puzzles go
+    r = await b.json('/account/progress', { method: 'POST', body: { remove: { [file]: [PUZZLE] }, own_puzzles: true } });
+    expect(r.body.files).toEqual({ 'puzzle_attempts.jsonl': [A1] });
+    expect((await b.json('/account/progress', { method: 'POST', body: { add: { 'own_puzzles.jsonl': [PUZZLE] }, own_puzzles: true } })).status).toBe(400);
   });
 
   it('takes only puzzle-progress files of JSON objects', async () => {
@@ -231,7 +250,8 @@ describe('your data', () => {
     const a = new Browser(GOOGLE);
     await a.signIn('lichess', 'signup');
     await a.signIn('google', 'link');
-    await a.json('/account/progress', { method: 'POST', body: { add: { 'puzzle_attempts.jsonl': [A1, A2], 'puzzle_daily.jsonl': ['{"date": "2026-10-21", "n": 1}'], 'profiles.jsonl': [PROFILE] } } });
+    await a.json('/account/progress', { method: 'POST', body: { add: { 'puzzle_attempts.jsonl': [A1, A2], 'puzzle_daily.jsonl': ['{"date": "2026-10-21", "n": 1}'], 'profiles.jsonl': [PROFILE],
+                                                                       'profiles/chesscom-alirezafirouzja/own_puzzles.jsonl': [PUZZLE] }, own_puzzles: true } });
     lichessUser = { id: 'hikaru', username: 'Hikaru' };
     const other = new Browser();
     await other.signIn('lichess', 'signup');
@@ -248,6 +268,7 @@ describe('your data', () => {
     expect(x.sign_in_methods.map(i => i.name)).toEqual(['Magnus', 'magnus@example.com']);
     expect(x.puzzle_progress).toEqual({ 'puzzle_attempts.jsonl': [A1, A2], 'puzzle_daily.jsonl': ['{"date": "2026-10-21", "n": 1}'] });
     expect(x.profiles).toEqual([JSON.parse(PROFILE)]);
+    expect(x.personal_puzzles).toEqual({ 'chesscom-alirezafirouzja': [JSON.parse(PUZZLE)] });
     expect(JSON.stringify(x)).not.toContain('Hikaru');
     expect(JSON.stringify(x)).not.toContain('token_hash');
   });

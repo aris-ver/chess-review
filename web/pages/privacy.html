@@ -30,13 +30,14 @@ th { color: var(--muted); font-weight: 600; }
 <header><a href="./"><span>♞</span> Blundr</a></header>
 <main>
 <h1>Privacy policy</h1>
-<p class="muted">Version of 22 October 2026</p>
+<p class="muted">Version of 26 October 2026</p>
 
 <div class="box">
 <p><b>In short.</b> Blundr runs on your own computer, in your browser. Without an account, nothing about you is
 stored on our server: your games, reviews and puzzle progress stay in your browser. If you create an account, we store
-only what is needed to sign you in, your <b>puzzle progress</b> and the <b>list of profiles</b> you added, so they follow you
-to other browsers. Your reviewed games and their analysis are never uploaded. No ads, no analytics, no tracking, and nothing is sold.</p>
+only what is needed to sign you in, your <b>puzzle progress</b>, the <b>list of profiles</b> you added and the
+<b>personal puzzles</b> made from those profiles' games, so they follow you to other browsers. Your reviewed games and their
+analysis are never uploaded. No ads, no analytics, no tracking, and nothing is sold.</p>
 </div>
 
 <h2>1. Who is responsible</h2>
@@ -74,8 +75,13 @@ profile you added (stored under the profile's name, which contains the chess.com
 it and whether (and since when) it is pinned. Not the games: another browser fetches them again from chess.com or Lichess.
 Games you pasted yourself are not included</td>
 <td>The service you asked for: the same profiles on every browser you sign in on</td></tr>
+<tr><td>Personal puzzles of each chess.com or Lichess profile you added: for each, a position from one of its games, the
+moves that solve it and a few moves after, the move that was played in the game and how it was rated, and the game's
+date, time control, the opponent's username and a short id of the game. Not puzzles from games you pasted yourself</td>
+<td>The service you asked for: the puzzles made on one device can be played on the others, without fetching and
+analysing the games there again</td></tr>
 </table>
-<p>We do not store the games you review, the engine's analysis, or anything else from your browser. We never store a
+<p>We do not store the games you review, the engine's analysis, or anything else from your browser beyond the above. We never store a
 password itself, only its hash, and "Download my data" doesn't include the hash. When you sign in with Lichess or Google,
 they tell us only the details above. We keep no access to your Lichess or Google account (the Lichess access token is
 revoked straight away). The emails we send are only the codes for signing up and resetting your password; there are no
@@ -99,8 +105,8 @@ To do that it handles your email address and the message.</li>
 
 <h2>6. How long we keep it</h2>
 <ul>
-<li>Account data, puzzle progress and the profile list: until you delete your account (a profile you remove is
-removed from the account at the next sync). An account not used for <b>24 months</b> is deleted
+<li>Account data, puzzle progress, the profile list and the personal puzzles: until you delete your account (a
+profile you remove is removed from the account at the next sync, with its puzzles). An account not used for <b>24 months</b> is deleted
 automatically, with all its data.</li>
 <li>Sessions: they end when you log out, or 90 days after you last used them.</li>
 <li>A sign-in in progress (the short-lived record and cookie while you are at Lichess or Google), an emailed code, and
