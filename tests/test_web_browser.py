@@ -677,23 +677,32 @@ def test_swiping_right_goes_back_and_android_keeps_the_button(site, browser, pho
         cdp = ctx.new_cdp_session(page)
         y = page.locator("#now").bounding_box()["y"] + 20
 
+        peek = {}
+
         def swipe(x0, y0, dx, dy, steps=8):
             cdp.send("Input.dispatchTouchEvent", {"type": "touchStart", "touchPoints": [{"x": x0, "y": y0}]})
             for i in range(1, steps + 1):
                 cdp.send("Input.dispatchTouchEvent", {"type": "touchMove", "touchPoints": [{"x": x0 + dx * i / steps, "y": y0 + dy * i / steps}]})
                 page.wait_for_timeout(12)
+            peek.update(page.evaluate(PEEK_JS))         # before letting go
             cdp.send("Input.dispatchTouchEvent", {"type": "touchEnd", "touchPoints": []})
-            page.wait_for_timeout(300)
+            page.wait_for_function("!document.documentElement.matches('.swiping, .swipeon')", timeout=5000)   # settled
+            page.wait_for_timeout(50)
             return page.evaluate("location.hash")
 
         here = "#/packs/forks/1/1"
         assert swipe(60, y, 50, 0) == here                         # too short
+        assert 0 < peek["main"] < 50 and peek["prev"] and peek["prev"]["ladder"], peek    # the screen went with it, the ladder under it
+        assert page.locator("#swipeprev").count() == 0 and page.locator("main").bounding_box()["x"] == 0    # and back
         assert swipe(60, y, 150, 120) == here                      # more down than across
+        assert peek["main"] == 0 and not peek["prev"], peek
         b = page.locator("#boardbox").bounding_box()
         assert swipe(b["x"] + 40, b["y"] + b["height"] / 2, 200, 0) == here     # on the board: a move, not a way back
+        assert peek["main"] == 0 and not peek["prev"], peek
         if phone == "iphone":
             assert swipe(8, y, 200, 0) == here                     # Safari's own edge swipe: left to Safari
         assert swipe(60, y, 180, 20) == "#/packs/forks"            # back to the ladder
+        assert peek["main"] > 100 and peek["prev"]["ladder"] and -390 * .3 < peek["prev"]["x"] < 0 and .5 < peek["prev"]["opacity"] < 1, peek
         page.wait_for_selector(".scard.sel", timeout=30_000)
         page.wait_for_timeout(500)
         tr = page.locator(".sttrack").bounding_box()
@@ -706,11 +715,20 @@ def test_swiping_right_goes_back_and_android_keeps_the_button(site, browser, pho
         ctx.close()
 
 
+# mid-swipe: how far the screen has gone with the finger, and the screen gone back to peeking in under it (where,
+# how dimmed, and whether it is a pack's stages)
+PEEK_JS = """() => {
+    const prev = document.getElementById('swipeprev');
+    return { main: Math.round(document.querySelector('body > main').getBoundingClientRect().x),
+             prev: prev && { x: prev.getBoundingClientRect().x, opacity: +getComputedStyle(prev).opacity, ladder: !!prev.querySelector('.scard') } };
+}"""
+
+
 # a finger's swipe in the page itself (WebKit has no touch input to drive from outside): touch events at the element
-# under the start, every 12 ms; the hash after it, whether anything cancelled a move (that would stop a scroll), and
-# the sign's opacity and green halfway and at the end
+# under the start, every 12 ms; the hash once it has settled, whether anything cancelled a move (that would stop a
+# scroll), and the peek (PEEK_JS) after each move
 SWIPE_JS = """([x0, y0, dx, dy, steps]) => new Promise(done => {
-    const el = document.elementFromPoint(x0, y0), sign = () => document.getElementById('swipeback');
+    const el = document.elementFromPoint(x0, y0), peek = """ + PEEK_JS + """;
     // (WPE's WebKit has no Touch constructor: an event of the touch type carrying the same fields)
     const touch = (x, y) => ({ identifier: 1, target: el, clientX: x, clientY: y, pageX: x, pageY: y });
     let blocked = false, seen = [];
@@ -723,12 +741,13 @@ SWIPE_JS = """([x0, y0, dx, dy, steps]) => new Promise(done => {
     const step = () => {
         i++;
         fire('touchmove', x0 + dx * i / steps, y0 + dy * i / steps);
-        if (sign()) seen.push([+getComputedStyle(sign()).opacity, sign().classList.contains('go')]);
+        seen.push(peek());
         if (i < steps) setTimeout(step, 12);
-        else {      // then the hash once it changes (going back is a history step: it takes a moment), or after 1.5 s
-            const was = location.hash, t0 = performance.now();
+        else {      // then the hash once it has settled (sliding off, then a history step: it takes a moment), or after 3 s
+            const t0 = performance.now();
             fire('touchend', x0 + dx, y0 + dy);
-            const wait = () => location.hash !== was || performance.now() - t0 > 1500 ? done({ hash: location.hash, blocked, seen }) : setTimeout(wait, 20);
+            const wait = () => !document.documentElement.matches('.swiping, .swipeon') || performance.now() - t0 > 3000
+                ? done({ hash: location.hash, blocked, seen, prev: !!document.getElementById('swipeprev') }) : setTimeout(wait, 20);
             wait();
         }
     };
@@ -738,8 +757,8 @@ SWIPE_JS = """([x0, y0, dx, dy, steps]) => new Promise(done => {
 
 def test_on_an_iphone_a_swipe_right_goes_back_in_webkit(site, pwr, webkit):
     """The swipe right in WebKit, as on an iPhone: from anywhere but Safari's own strip along the left edge, the
-    board and the stages; not short, not mostly down; never blocking a scroll; the sign follows and turns green.
-    No Back button there."""
+    board and the stages; not short, not mostly down; never blocking a scroll; the screen follows the finger, the
+    ladder it goes back to peeking in under it. No Back button there."""
     ctx = webkit.new_context(**phone_of(pwr, "webkit"))
     page = ctx.new_page()
     try:
@@ -756,12 +775,14 @@ def test_on_an_iphone_a_swipe_right_goes_back_in_webkit(site, pwr, webkit):
         here = "#/packs/forks/1/1"
         for args in [(60, y, 50, 0), (60, y, 150, 120), (8, y, 200, 0)]:     # short, mostly down, Safari's edge strip
             r = swipe(*args)
-            assert r["hash"] == here and not r["blocked"], (args, r)
+            assert r["hash"] == here and not r["blocked"] and not r["prev"], (args, r)
         b = page.locator("#boardbox").bounding_box()
         assert swipe(b["x"] + 40, b["y"] + b["height"] / 2, 200, 0)["hash"] == here      # on the board
         r = swipe(60, y, 180, 20)
-        assert r["hash"] == "#/packs/forks" and not r["blocked"], r
-        assert r["seen"][0][0] > 0 and r["seen"][-1] == [1, True], r["seen"]          # the sign: there, then green
+        assert r["hash"] == "#/packs/forks" and not r["blocked"] and not r["prev"], r
+        mid, last = r["seen"][3], r["seen"][-1]     # the screen with the finger, the ladder coming in under it
+        assert 0 < mid["main"] < last["main"] and 100 < last["main"] <= 180 and last["prev"]["ladder"], r["seen"]
+        assert mid["prev"]["x"] < last["prev"]["x"] < 0 and mid["prev"]["opacity"] < last["prev"]["opacity"] < 1, r["seen"]
         page.wait_for_selector(".scard.sel", timeout=30_000)
         tr = page.locator(".sttrack").bounding_box()
         assert swipe(60, tr["y"] + 120, 200, 0)["hash"] == "#/packs/forks"            # on the stages
