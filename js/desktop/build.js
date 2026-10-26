@@ -48,7 +48,10 @@ async function fetchStockfish() {
   mkdirSync(tmp, { recursive: true });
   const zip = join(tmp, 'stockfish.zip');
   writeFileSync(zip, Buffer.from(await (await fetch(asset.browser_download_url)).arrayBuffer()));
-  execFileSync('tar', ['-xf', zip, '-C', tmp]);     // Windows' tar (bsdtar) reads zips
+  // Windows' own tar (bsdtar) reads zips; a plain 'tar' finds Git's GNU tar first under Git Bash (the CI runner),
+  // which takes C:\... for a remote host and can't read a zip anyway.
+  const tar = process.platform === 'win32' ? join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'tar.exe') : 'tar';
+  execFileSync(tar, ['-xf', zip, '-C', tmp]);
   const exe = readdirSync(tmp, { recursive: true }).find(f => f.toLowerCase().endsWith('.exe'));
   mkdirSync(join(ROOT, 'packaging', 'bin'), { recursive: true });
   cpSync(join(tmp, exe), STOCKFISH);
