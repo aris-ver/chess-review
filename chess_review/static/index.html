@@ -707,6 +707,23 @@ body.sandbox #movelist, body.puzzle #movelist { display: grid !important; }
 /* Start review: pinned to the bottom of the overview, so it shows however far down the panel is scrolled */
 .ovfoot { position: sticky; bottom: 0; z-index: 2; margin-top: 8px; padding: 10px 14px; background: var(--panel); }
 .ovfoot .ovstart { display: block; width: 100%; padding: 13px; font-size: 16px; font-weight: 700; }
+/* greyed while the web build's engine loads (web/shim.js: html.engine-loading) */
+.ovfoot .ovstart:disabled, .ovfoot .ovstart:disabled:hover { background: var(--panel2); border-color: var(--line); color: var(--muted); opacity: 1; }
+/* a phone upright: just over the nav pinned to the bottom, so it shows as the game opens; gone once pressed */
+@media (max-width: 900px) {
+  .panel .ovfoot { position: fixed; left: 0; right: 0; bottom: calc(61px + env(safe-area-inset-bottom)); z-index: 6; margin: 0;
+    padding: 8px max(10px, env(safe-area-inset-right)) 0 max(10px, env(safe-area-inset-left)); }
+  body.hasbar .panel .ovfoot { bottom: calc(123px + env(safe-area-inset-bottom)); }
+  .panel .ovfoot.used { display: none; }
+  body:has(#review:not(.hidden) .panel[data-tab="overview"] .ovfoot:not(.used)) main { padding-bottom: calc(150px + env(safe-area-inset-bottom)); }
+  body.hasbar:has(#review:not(.hidden) .panel[data-tab="overview"] .ovfoot:not(.used)) main { padding-bottom: calc(216px + env(safe-area-inset-bottom)); }
+}
+/* on its side the nav is in the panel: the button stays at the overview's foot */
+@media (max-width: 900px) and (orientation: landscape) and (max-height: 500px) {
+  .panel .ovfoot { position: sticky; bottom: 0; z-index: 2; margin-top: 8px; padding: 10px 14px; }
+  body:has(#review:not(.hidden)) main { padding-bottom: 8px; }
+  body.hasbar:has(#review:not(.hidden)) main { padding-bottom: calc(70px + env(safe-area-inset-bottom)); }
+}
 /* stepping through one label's moves (a count clicked in the overview), pinned over the move list */
 .stepchip { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; gap: 6px; padding: 6px 10px; background: var(--panel2); border-bottom: 1px solid var(--line); }
 .stepchip .pos { margin-left: auto; color: var(--muted); font-variant-numeric: tabular-nums; }
@@ -3245,7 +3262,7 @@ async function showGame(id) {
   $('a-insights2').href = `${P()}/insights.html`; $('ptitle-t').textContent = 'Game Review'; setContext(true);
   const same = state.game && state.game.id === id;
   state.game = g;
-  if (!same) { stopPlay(); state.ply = 0; state.flipped = g.my_colour === 'black'; dropVariation(); state.sel = null; state.step = null; $('pieces').innerHTML = ''; }
+  if (!same) { stopPlay(); state.ply = 0; state.flipped = g.my_colour === 'black'; dropVariation(); state.sel = null; state.step = null; state.ovUsed = null; $('pieces').innerHTML = ''; }
   const back = state.resume && state.resume.id === id ? state.resume : null;   // coming back to this review
   if (back) { state.ply = back.ply; state.flipped = back.flipped; }
   state.resume = null;
@@ -4393,9 +4410,11 @@ function renderOverview() {
   }
   html += `<div class="summary">${s}</div>`;
   // Start review: on an analysed game it opens the moves at the start; on one not analysed yet it starts the analysis,
-  // and the board plays the game along with it. While the analysis runs there is nothing to press.
-  const foot = full ? `<div class="ovfoot"><button class="primary ovstart" id="ov-start">Start review</button></div>`
-    : f == null ? `<div class="ovfoot"><button class="primary ovstart" id="ov-analyse">Start review</button></div>` : '';
+  // and the board plays the game along with it. While the analysis runs there is nothing to press. Pressed once, a
+  // phone drops it for this game (.used), as there it covers the panel.
+  const used = state.ovUsed === g.id ? ' used' : '';
+  const foot = full ? `<div class="ovfoot${used}"><button class="primary ovstart" id="ov-start">Start review</button></div>`
+    : f == null ? `<div class="ovfoot${used}"><button class="primary ovstart" id="ov-analyse">Start review</button></div>` : '';
   if (!any && f == null) { $('overview').innerHTML = html + foot; bindOverview(); return; }
 
   // the labels: the four bad ones and the rest as "good moves", or all eleven
@@ -4439,12 +4458,20 @@ function bindOverview() {
   ov.querySelectorAll('[data-ply]:not(.cnt)').forEach(el => el.onclick = e => { e.preventDefault(); openMove(+el.dataset.ply); });
   const more = $('ov-labels');
   if (more) more.onclick = () => { allLabels = !allLabels; try { localStorage.setItem('overview.labels', allLabels ? 'all' : 'some'); } catch (e) {} renderOverview(); };
+  const used = el => { state.ovUsed = state.game.id; el.parentNode.classList.add('used'); };
   const start = $('ov-start');
-  if (start) start.onclick = () => { setTab('moves'); dropVariation(); renderMoveList(); go(0); };
+  if (start) start.onclick = () => { used(start); setTab('moves'); dropVariation(); renderMoveList(); go(0); };
   const analyse = $('ov-analyse');
-  if (analyse) analyse.onclick = async () => { analyse.disabled = true; try { await startReview(); } finally { analyse.disabled = false; } };
+  if (analyse) {
+    // the web build's engine still downloading: nothing to analyse with yet (engineReady below lets it go)
+    const loading = () => document.documentElement.classList.contains('engine-loading');
+    analyse.disabled = loading();
+    analyse.title = loading() ? 'The engine is still loading' : '';
+    analyse.onclick = async () => { used(analyse); analyse.disabled = true; try { await startReview(); } finally { analyse.disabled = loading(); } };
+  }
   highlightCurrent();
 }
+addEventListener('engineready', () => { const a = $('ov-analyse'); if (a) { a.disabled = false; a.title = ''; } });
 // A count clicked in the overview: that side's first such move, then the next on each click or with the chip's arrows.
 function labelPlies(side, label) { return readyMoves(state.game).filter(m => m.label === label && sideOf(m) === side).map(m => m.ply); }
 function cycleLabel(side, label, dir = 1) {
