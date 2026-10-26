@@ -203,6 +203,10 @@ async function ownCase(store, c, inputs) {
   }
   same((await O.nextPuzzle(pool, profile, null, rv.checks[0].now, FIRST))[1], rv.checks[0].stats, `${c.name} next_puzzle`);
   same(await O.summary(pool, profile, rv.checks[0].now), rv.checks[0].stats, `${c.name} summary`);
+
+  // the synced copy (sync.js own_puzzles.jsonl): each puzzle as its line and back is the puzzle the page plays
+  for (const p of c.after) same(O.ownPuzzle(p.profile, O.ownLine(p)), p, `${c.name} ownLine ${p.id}`);
+  same(db.column('SELECT line FROM own_puzzles ORDER BY id'), O.bestOwn(c.after.map(O.ownLine)), `${c.name} own_puzzles`);
 }
 
 test('own puzzles: the fixtures as Python', async () => {

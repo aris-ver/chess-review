@@ -8,7 +8,7 @@
 // The merge is /api/sync/* (js/server/sync.js): the app worker's on the website (shim.js routes it there like
 // every other api/ call), the local server's in the desktop app.
 (() => {
-  const CONSENT = '2026-10-22';      // worker/src/consent.js: the terms and privacy policy agreed to
+  const CONSENT = '2026-10-26';      // worker/src/consent.js: the terms and privacy policy agreed to
   const PROGRESS_WRITES = /^api\/(puzzles\/(attempt|solved|daily|reset)|profiles|profiles\/[^/]+\/(delete|pin))$/;
   const OVERVIEW = /^(|#|#\/|#\/packs(\/[a-z0-9-]+)?|#\/puzzles\/mine)$/;     // screens that show progress, safe to redraw
 
@@ -70,7 +70,7 @@
     let changed = [];
     for (let round = 0; round < 3; round++) {        // again while this browser still has something the account lacks
       const d = await (await post('api/sync/delta', { user: me.id })).json();
-      const r = await post('account/progress', d);
+      const r = await post('account/progress', { ...d, own_puzzles: true });     // the puzzles too (worker/src/store.js)
       if (r.status === 401) {                          // the session ended elsewhere: back to the guest's data
         me = null;
         attached = false;
@@ -240,7 +240,7 @@ dialog#account .syncrow button { flex: none; padding: 4px 10px; }
   function guestBody() {
     if (view.step) return note() + stepBody() + legal();
     const or = text => providers.length ? `<div class="or"><span>${text}</span></div>` : '';
-    const what = `An account is optional: it keeps your puzzle progress and profiles on ${app ? 'blundr.gr and your computers' : 'all your devices'}.`;
+    const what = `An account is optional: it keeps your puzzle progress, profiles and personal puzzles on ${app ? 'blundr.gr and your computers' : 'all your devices'}.`;
     if (view.tab === 'signup') {
       return note() + `<p class="muted">${what}</p>` +
         `<label class="consent"><input type="checkbox" id="acc-consent"> <span>I am 15 or older and agree to the <a href="${sitePage('terms.html')}" target="_blank">terms of use</a> and the <a href="${sitePage('privacy.html')}" target="_blank">privacy policy</a>.</span></label>` +
@@ -352,7 +352,7 @@ dialog#account .syncrow button { flex: none; padding: 4px 10px; }
         // the app's window can't download: the local server saves the file instead
         `<div class="col">${app ? '<button data-act="export">Download my data</button>' : '<a class="btn" href="account/export" download="blundr-account.json">Download my data</a>'}` +
         `<button data-act="logout-wipe" title="For a shared computer">Log out and remove my progress and profiles from ${here()}</button>${del}</div>` +
-        `<p class="muted">Account created ${new Date(me.created_at * 1000).toLocaleDateString()}, ${me.progress_lines || 0} records stored. Reviewed games and engine analysis never leave ${here()}.</p>` +
+        `<p class="muted">Account created ${new Date(me.created_at * 1000).toLocaleDateString()}, ${me.progress_lines || 0} records stored. Reviewed games and engine analysis never leave ${here()}; only the personal puzzles made from them are stored.</p>` +
         legal() + back;
     }
     const status = syncing ? 'Syncing…'

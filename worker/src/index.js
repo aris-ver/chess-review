@@ -6,8 +6,10 @@
 //   GET  /account/login/<provider>?mode= login | signup (needs consent=<CONSENT_VERSION>) | link
 //   GET  /account/callback/<provider>    back from the provider: sets the session cookie, returns to /?account=...
 //   POST /account/logout
-//   GET  /account/progress               {files: {file: [line, ...]}}
-//   POST /account/progress               {add: {file: [lines]}, remove: {file: [lines]}} -> {files}
+//   GET  /account/progress               {files: {file: [line, ...]}}  (?own_puzzles=1: the personal puzzles too)
+//   POST /account/progress               {add: {file: [lines]}, remove: {file: [lines]}, own_puzzles: true} -> {files}
+//                                        (without own_puzzles, as an older app sends it: the personal puzzles are
+//                                        left out of all three)
 //   POST /account/email/<step>           email and password: signup, verify, login, forgot, reset, link (email.js)
 //   POST /account/unlink/<provider>      drop a sign-in method (not the last one)
 //   GET  /account/export                 everything kept about you, as a JSON download
@@ -276,16 +278,19 @@ async function route(req, env, url) {
   }
   if (path === '/account/progress' && (req.method === 'GET' || req.method === 'POST')) {
     const u = await requireUser(req, env);
+    let own = url.searchParams.get('own_puzzles') === '1';
     if (req.method === 'POST') {
       const b = await body(req);
+      own ||= b.own_puzzles === true;
+      const lines = what => store.checkLines(b[what], what).filter(([f]) => own || !store.isOwnPuzzles(f));
       try {
-        await store.applyProgress(env.DB, u, store.checkLines(b.add, 'add'), store.checkLines(b.remove, 'remove'), now());
+        await store.applyProgress(env.DB, u, lines('add'), lines('remove'), now());
       } catch (e) {
         if (e instanceof store.BadRequest) throw new HttpError(400, e.message);
         throw e;
       }
     }
-    return json({ files: await store.progress(env.DB, u) });
+    return json({ files: await store.progress(env.DB, u, own) });
   }
   if (req.method === 'POST' && m && m[1] === 'unlink') {
     const u = await requireUser(req, env);

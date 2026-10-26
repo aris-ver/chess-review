@@ -4,9 +4,12 @@
 
 export const MAX_LINES = 200000;          // per account: years of puzzles a day
 export const MAX_BATCH = 20000;           // per request
-export const MAX_LINE = 2000;             // bytes; a real line is ~100
-// puzzle progress, and profiles.jsonl: the list of profiles added ({source, username, added, pinned}, no games)
-const FILE = /^((profiles\/[a-z0-9_.-]{1,80}\/)?puzzle_(attempts|solved|daily)(\.reset-[0-9-]{1,40})?|profiles)\.jsonl$/;
+export const MAX_LINE = 2000;             // bytes; a real line is ~100, a personal puzzle's ~350
+// puzzle progress, profiles.jsonl: the list of profiles added ({source, username, added, pinned}, no games), and
+// profiles/<id>/own_puzzles.jsonl: that profile's personal puzzles (a position from one of its games and the line
+// that solves it, one per line), so another device can play them without the games
+const FILE = /^((profiles\/[a-z0-9_.-]{1,80}\/)?puzzle_(attempts|solved|daily)(\.reset-[0-9-]{1,40})?|profiles\/[a-z0-9_.-]{1,80}\/own_puzzles|profiles)\.jsonl$/;
+const OWN_PUZZLES = /\/own_puzzles\.jsonl$/;
 
 export class BadRequest extends Error {}
 
@@ -15,6 +18,10 @@ const DAY = 86400;
 export function validFile(f) {
   return typeof f === 'string' && FILE.test(f) && !f.includes('..');
 }
+
+// An app from before personal puzzles synced doesn't say it takes them (own_puzzles: true), and must never see them:
+// it would take the lines it doesn't keep for lines taken away, and send them back to be deleted.
+export const isOwnPuzzles = f => OWN_PUZZLES.test(f);
 
 // {file: [line, ...]} from the request, checked: only puzzle-progress files, only JSON objects.
 export function checkLines(obj, what) {
@@ -144,11 +151,11 @@ export async function takeAppCode(db, codeHash, now) {
 
 // ---------- puzzle progress ----------
 
-export async function progress(db, userId) {
+export async function progress(db, userId, ownPuzzles = true) {
   const rows = await db.prepare('SELECT file, line FROM progress WHERE user_id = ? ORDER BY file, added_at, rowid')
     .bind(userId).all();
   const files = {};
-  for (const r of rows.results) (files[r.file] ||= []).push(r.line);
+  for (const r of rows.results) if (ownPuzzles || !isOwnPuzzles(r.file)) (files[r.file] ||= []).push(r.line);
   return files;
 }
 
@@ -176,11 +183,16 @@ export async function exportAll(db, userId) {
   const u = await db.prepare('SELECT * FROM users WHERE id = ?').bind(userId).first();
   const ids = await db.prepare('SELECT provider, subject, name, email, created_at FROM identities WHERE user_id = ?').bind(userId).all();
   const ses = await db.prepare('SELECT created_at, expires_at FROM sessions WHERE user_id = ?').bind(userId).all();
-  const { 'profiles.jsonl': profileLines = [], ...puzzleProgress } = await progress(db, userId);
+  const { 'profiles.jsonl': profileLines = [], ...rest } = await progress(db, userId);
+  const puzzleProgress = {}, personalPuzzles = {};
+  for (const [f, lines] of Object.entries(rest)) {
+    if (isOwnPuzzles(f)) personalPuzzles[f.split('/')[1]] = lines.map(l => JSON.parse(l));
+    else puzzleProgress[f] = lines;
+  }
   const pw = await db.prepare('SELECT updated_at FROM passwords WHERE user_id = ?').bind(userId).first();
   return { account: u, sign_in_methods: ids.results, sessions: ses.results,
            password: pw ? { set: true, stored_as: 'a salted PBKDF2-SHA256 hash, not included here', updated_at: pw.updated_at } : null,
-           profiles: profileLines.map(l => JSON.parse(l)), puzzle_progress: puzzleProgress };
+           profiles: profileLines.map(l => JSON.parse(l)), puzzle_progress: puzzleProgress, personal_puzzles: personalPuzzles };
 }
 
 export async function deleteUser(db, userId) {

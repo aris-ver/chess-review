@@ -2358,7 +2358,7 @@ function renderPuzzleBox() {
   if (own) {
     const g = p.game;
     info = `From your ${esc(g.time_class || '')} game against ${esc(g.opponent || '?')}${g.date ? ` · ${esc(g.date)}` : ''}` +
-      (pz.done ? ` · <a href="#" id="pz-game">View in game</a>` : '');
+      (pz.done && g.here !== false ? ` · <a href="#" id="pz-game">View in game</a>` : '');     // a synced puzzle's game may not be here
   } else {
     const tags = pz.done ? p.themes.filter(t => !['short', 'long', 'veryLong', 'oneMove'].includes(t.id)).map(t => `<span class="tag">${esc(t.name)}</span>`).join('') : '';
     info = `Puzzle ${esc(p.id)}${tags ? ' · ' + tags : ''}` +

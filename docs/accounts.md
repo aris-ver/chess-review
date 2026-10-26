@@ -1,9 +1,10 @@
 # Blundr accounts
 
-Optional. Guests can use everything. An account keeps **puzzle progress** and the **profile list**, so they follow you to
-other browsers and to the desktop app: the library puzzle rating and attempts, pack progress, the daily-puzzle record, each profile's
-personal-puzzle review schedule, and the chess.com/Lichess profiles you added (source, username, when added, pinned).
-Reviewed games, analysis and the engine's eval cache stay in the browser and never reach the server.
+Optional. Guests can use everything. An account keeps **puzzle progress**, the **profile list** and the **personal
+puzzles**, so they follow you to other browsers and to the desktop app: the library puzzle rating and attempts, pack
+progress, the daily-puzzle record, each profile's personal-puzzle review schedule, the chess.com/Lichess profiles you added
+(source, username, when added, pinned), and the personal puzzles made from those profiles' games. Reviewed games, analysis
+and the engine's eval cache stay in the browser and never reach the server; only the puzzles made from them do.
 
 ## The profile list
 
@@ -14,6 +15,31 @@ the Add profile form does, so its games are fetched fresh from chess.com or Lich
 reaches the others. If two browsers disagree at the same time, pinned wins. **A profile deleted on one browser is deleted
 on the others too, with the reviews made there** (they exist only in that browser), unless a job is running on it at
 that moment. Local-only state (the "new games" flags) is not synced.
+
+## Personal puzzles
+
+The puzzles made from a synced profile's games travel as `profiles/<id>/own_puzzles.jsonl`, so a phone plays the
+puzzles the Windows app made without fetching and analysing the games again (the games are still fetched, for the
+reviews, but the puzzles are there before that). Pasted-PGN profiles stay out, as in the profile list.
+
+- **Where they live**: each profile's `games.sqlite` has an `own_puzzles` table (schema 3, `js/server/db.js`), one
+  row per puzzle id holding its line as it syncs. The Pool (`js/server/own-puzzles.js`) puts the puzzles it makes from
+  the games there (`keepOwn`) and plays the table: the ones made here and the ones only another device made. "View in
+  game" shows only where the game is here.
+- **A line** (`ownLine`) is only what playing needs: `{"id", "fen", "moves", "follow", "game": {"slug", "ply",
+  "opponent", "date", "time_class", "played_san", "label"}}`: the position before the opponent's setup move, the
+  setup and solution moves (UCI), the engine's moves after it, and what the page says about the game. **About 350
+  bytes**, so 1,000 puzzles are ~0.35 MB of D1 (500 MB per database on the free plan) and 1,000 rows written on the
+  first sync (100,000 a day).
+- **Merging**: the puzzle ids are stable (`m` + a hash of game and ply), so two devices that made the same puzzle send
+  the same id. Where their lines differ (one settled a longer solution, or another engine's line), every device keeps
+  the same one (`betterOwn`: the longer solution, else the greater line). A device whose own line loses keeps the
+  better one and doesn't send its own again, so the two don't take turns; one whose line wins replaces it (a row
+  deleted and one added). A puzzle stays once synced, even if a later analysis no longer makes it; removing the
+  profile removes its puzzles from the account.
+- **Older apps**: a desktop app from before this doesn't keep the file, and would send its lines back as taken away.
+  So the Worker shows `own_puzzles.jsonl` only to a page that says it takes it (`own_puzzles: true` in the POST
+  `/account/progress` body, `?own_puzzles=1` on the GET), and ignores it in the add and remove of any other.
 
 ## The desktop app
 
@@ -98,7 +124,8 @@ window comes back into view. Only the transport differs:
   (`store.js`), so two browsers writing at once can't undo each other. A guest has no base, so signing up or logging
   in uploads everything already in the browser. A rating reset moves the lines into a `.reset-` archive file, and that
   move reaches the other browsers. After merging, files are sorted oldest first and the library record keeps one first
-  try per puzzle, as on a single browser. Deleting a profile removes its review schedule from the account too.
+  try per puzzle, as on a single browser. Deleting a profile removes its review schedule and its puzzles from the
+  account too.
 - **Whose data is in the browser** is switched as a whole (`sync.switch`). Each owner, the guest or an account, has its
   own synced set: the puzzle files and the chess.com/Lichess profile folders with their reviews. The set of the owner
   who isn't active waits in `DATA/.accounts/<owner>/`.
