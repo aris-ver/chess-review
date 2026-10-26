@@ -24,7 +24,8 @@ class FakeWorker { constructor() { worker = this; this.sent = []; } postMessage(
 const el = () => ({ style: {}, classList: { toggle() {}, remove() {} }, remove() {}, querySelector: () => ({}), isConnected: false });
 const g = {
   location: { href: 'https://blundr.gr/', origin: 'https://blundr.gr', hash: '' },
-  document: { createElement: el, head: { appendChild() {} }, body: null, addEventListener() {}, querySelector: () => null },
+  document: { createElement: el, head: { appendChild() {} }, body: null, addEventListener() {}, querySelector: () => null,
+              documentElement: { classList: { add() {}, remove() {}, contains: () => false } } },
   localStorage: { getItem: () => null, setItem() {}, removeItem() {} },
   caches: { open: async name => { if (name !== 'blundr-kept') throw new Error(name); return cache; } },
   Worker: FakeWorker, XMLHttpRequest: function () {}, HashChangeEvent: class { constructor(t) { this.type = t; } },

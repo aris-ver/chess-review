@@ -23,10 +23,10 @@
   const streams = new Map();      // id → { ctl } of an answer still streaming
   let seq = 0;
 
-  // The notice bar: the app loading first (the page waits for it), then the engine (95 MB, 2 MB on phones) with a progress bar, and the
-  // note that the desktop app analyses faster. The note stays up while a game is being analysed or waits to be.
-  // Its × closes the bar for this visit and drops the note (and the lit button) for good: later visits still show
-  // the loading lines, as those say why the page isn't answering yet.
+  // The notice bar: the app loading, if the page shows before it's done (or that it failed to start), and once per
+  // browser, as the engine first loads, a quiet note: that the Windows app analyses faster (on a phone, that the site
+  // goes on the home screen). The engine's own download says nothing: until it's done the page's Start review is
+  // greyed (html.engine-loading), and an "engineready" event lets it go.
   const bar = document.createElement('div');
   bar.id = 'web-loading';
   bar.style.cssText = 'position:fixed;z-index:9999;max-width:min(420px,calc(100vw - 24px));padding:8px 30px 8px 12px;' +
@@ -44,8 +44,6 @@
     'header .right a#web-dl.lit{border-color:var(--accent);color:var(--accent);box-shadow:0 0 8px 1px color-mix(in srgb,var(--accent) 40%,transparent)}' +
     '#web-loading .x,#web-a2hs .x{position:absolute;top:4px;right:4px;width:22px;height:22px;padding:0;border:0;border-radius:4px;background:none;' +
     'color:#aaa;font:16px/22px system-ui,sans-serif;cursor:pointer}@media (hover:hover){#web-loading .x:hover,#web-a2hs .x:hover{background:rgba(255,255,255,.1);color:#fff}}' +
-    '#web-loading .pb{height:4px;margin:4px 0 2px;border-radius:2px;background:rgba(255,255,255,.15);overflow:hidden}' +
-    '#web-loading .pb>i{display:block;height:100%;background:var(--accent);transition:width .3s}' +
     'header .right a#web-dl svg,#web-a2hs svg{width:16px;height:16px;vertical-align:-3px;fill:none;stroke:currentColor;stroke-width:2;' +
     'stroke-linecap:round;stroke-linejoin:round}' +
     '#web-a2hs{position:fixed;inset:0;z-index:10000;display:flex;align-items:flex-end;justify-content:center;padding:16px;' +
@@ -59,7 +57,10 @@
     '@media (max-width:900px){#web-loading .x{width:36px;height:36px;top:0;right:0}#web-a2hs .x{width:36px;height:36px;top:2px;right:2px}#web-loading{padding-right:40px!important}' +
     'body.hasbar #web-loading{bottom:calc(72px + env(safe-area-inset-bottom))}' +
     'body:has(#review:not(.hidden)) #web-loading{bottom:calc(76px + env(safe-area-inset-bottom))}' +
-    'body.hasbar:has(#review:not(.hidden)) #web-loading{bottom:calc(138px + env(safe-area-inset-bottom))}}' +
+    'body.hasbar:has(#review:not(.hidden)) #web-loading{bottom:calc(138px + env(safe-area-inset-bottom))}' +
+    // over the page's Start review, pinned above that nav
+    'body:has(#review:not(.hidden) .panel[data-tab="overview"] .ovfoot:not(.used)) #web-loading{bottom:calc(136px + env(safe-area-inset-bottom))}' +
+    'body.hasbar:has(#review:not(.hidden) .panel[data-tab="overview"] .ovfoot:not(.used)) #web-loading{bottom:calc(198px + env(safe-area-inset-bottom))}}' +
     '@media (max-width:900px) and (orientation:landscape) and (max-height:500px){body:has(#review:not(.hidden)) #web-loading' +
     '{top:calc(64px + env(safe-area-inset-top));bottom:auto!important;left:auto;right:max(12px,env(safe-area-inset-right));max-width:min(420px,45vw)}}';
   document.head.appendChild(style);
@@ -112,27 +113,20 @@
   // A download leaves the page as it is, so say what just happened and what to do with the zip
   const downloading = () => { if (window.toast) toast('Downloading Blundr for Windows… unzip it and run Blundr.exe', 8000); };
   if (!lite) dl.onclick = downloading;
-  // The note under the loading lines: on a computer that the Windows app is faster, until its × is clicked; on a
-  // phone, once, that the site goes on the home screen
+  // The note, once per browser (the keys of earlier builds, whose notes came every visit until dismissed, count too)
   const NOTE_OFF = lite ? 'webHomeScreenNoteShown' : 'webSpeedNoteDismissed';
-  let noteOff = lite && standalone, closed = false;
-  try { noteOff = noteOff || localStorage.getItem(NOTE_OFF) === '1'; if (lite) localStorage.setItem(NOTE_OFF, '1'); } catch (e) {}
-  const state = { app: 'Loading Blundr', engine: null };    // engine: { done, total, name } once it starts
-  const mb = b => (b / 1048576).toFixed(0);
-  let appReady = false, engineReady = false, analysing = false, hideT = null;
+  const NOTE_S = 12;
+  let noteOff = lite && standalone, noteUp = false, noteT = null, closed = false;
+  try { noteOff = noteOff || localStorage.getItem(NOTE_OFF) === '1'; } catch (e) {}
+  const state = { app: 'Loading Blundr' };
+  let appReady = false, engineReady = false;
+  document.documentElement.classList.add('engine-loading');
   const render = () => {
-    // One line over one progress track, so the bar keeps its height as loading goes on: the app, then the engine by
-    // name and version ("Stockfish 19", so a 95 MB download says what it is), then that it's ready. Analysing, that
-    // is old news: the line goes.
-    const e = state.engine;
-    const line = !appReady ? state.app : engineReady ? (analysing ? '' : `${e.name} ready`)
-      : e ? `Downloading the ${e.name} engine: ${mb(e.done)}${e.total ? ' / ' + mb(e.total) : ''} MB` : 'Loading the chess engine';
-    const pct = engineReady ? 100 : e && e.total ? Math.min(100, e.done / e.total * 100) : 0;
-    const loading = line && `<div>${line}</div><div class="pb"><i style="width:${pct.toFixed(1)}%"></i></div>`;
-    const note = noteOff ? '' : lite
-      ? `<div style="opacity:.85${loading ? ';margin-top:4px' : ''}">New: Blundr works as an app. ` +
-        `<a class="a2hs" style="color:var(--accent)" href="#">Add it to your home screen</a>.</div>`
-      : `<div style="opacity:.7${loading ? ';margin-top:4px' : ''}">Analysis in the browser is about 2× slower than the ` +
+    const loading = appReady ? '' : `<div>${state.app}</div>`;
+    const note = !noteUp ? '' : lite
+      ? `<div style="opacity:.85${loading ? ';margin-top:4px' : ''}">Blundr works as an app: ` +
+        `<a class="a2hs" style="color:var(--accent)" href="#">add it to your home screen</a>.</div>`
+      : `<div style="opacity:.75${loading ? ';margin-top:4px' : ''}">Analysis runs faster in the ` +
         `<a class="dl" style="color:var(--accent)" href="${DOWNLOAD}">Windows app</a>.</div>`;
     bar.innerHTML = '<button class="x" title="Dismiss" aria-label="Dismiss">×</button>' + loading + note;
     const a2hs = bar.querySelector('.a2hs');
@@ -140,40 +134,37 @@
     const get = bar.querySelector('.dl');
     if (get) get.onclick = downloading;
     bar.querySelector('.x').onclick = () => {
-      closed = noteOff = true;
-      try { localStorage.setItem(NOTE_OFF, '1'); } catch (e) {}
-      clearTimeout(hideT);
+      closed = true;
+      noteUp = false;
+      clearTimeout(noteT);
       bar.remove();
       dl.classList.remove('lit');
     };
     return loading || note;
   };
-  // Up while loading or analysing; gone 4 s after both are over. Nothing left to say (the note dismissed): gone now.
+  // The engine loaded for the first time in this browser: the note, for NOTE_S seconds once the page shows, then never again
+  const showNote = () => {
+    if (noteOff) return;
+    noteOff = noteUp = true;
+    try { localStorage.setItem(NOTE_OFF, '1'); } catch (e) {}
+  };
+  // Up while the app loads (or failed to) and while the note is; gone otherwise.
   const update = () => {
-    clearTimeout(hideT);
     if (!document.body) return;
     const right = document.querySelector('header .right');
     if (right && !dl.isConnected && !(lite && standalone)) right.prepend(dl);
-    dl.classList.toggle('lit', !noteOff);
+    dl.classList.toggle('lit', noteUp);
     // While the page's splash (#boot) is up, the loading line is on it; the bar comes in as the page shows, not before
     const boot = document.getElementById('boot');
     if (boot && !document.documentElement.classList.contains('booted')) {
       boot.querySelector('.st').innerHTML = appReady ? '' : state.app;
       return;
     }
+    if (noteUp && !noteT) noteT = setTimeout(() => { noteUp = false; update(); }, NOTE_S * 1000);
     if (closed || !render()) { bar.remove(); return; }
     if (!bar.isConnected) document.body.appendChild(bar);
-    if (appReady && engineReady && !analysing) hideT = setTimeout(() => { bar.remove(); dl.classList.remove('lit'); }, 4000);
   };
-  // The page polls api/status while a game is analysed (or queued): read the answer on its way back.
-  const ANALYSING = ['analyse', 'analyse_all', 'build'];
-  const watchStatus = body => {
-    let s;
-    try { s = JSON.parse(new TextDecoder().decode(body)); } catch (e) { return; }
-    const busy = j => j && ANALYSING.includes(j.kind) && ['queued', 'running', 'finishing'].includes(j.status);
-    const now = busy(s.job) || (s.queue || []).some(busy);
-    if (now !== analysing) { analysing = now; update(); }
-  };
+  addEventListener('blundrshown', update);
 
   // Answers from the last visit, handed back at once while the app loads: the home screen's
   // (profiles, puzzle tiles, the updater's "nothing to update here", which the page waits on before it shows) and a profile's: its games.json, which of them are new, and each game's review, so those
@@ -285,7 +276,6 @@
       const p = pending.get(m.id);
       if (!p) return;
       pending.delete(m.id);
-      if (p.path === '/api/status' && m.status === 200) watchStatus(m.body);
       if (p.keep) keep(p.rel, m, p.shown, p.hash, p.owner);
       if (/^\/api\/sync\/(switch|release)$/.test(p.path) && m.status === 200) forget(m.body);
       if (m.stream) {     // /api/eval_stream: NDJSON lines as the engine deepens, until the page lets go
@@ -313,9 +303,12 @@
         if (m.total === 0) stale();      // failed to load: a module imported late (SQLite's) may be what is gone
         state.app = m.text;
         appReady = m.total > 0 && m.done === m.total;
-      } else {
-        engineReady = m.total > 0 && m.done >= m.total;
-        state.engine = { done: m.done, total: m.total, name: m.text };
+      } else if (!engineReady && (m.failed || (m.total > 0 && m.done >= m.total))) {
+        // loaded (or failed to: Start review then says why rather than staying grey)
+        engineReady = true;
+        document.documentElement.classList.remove('engine-loading');
+        dispatchEvent(new Event('engineready'));
+        if (!m.failed) showNote();
       }
       update();
     }

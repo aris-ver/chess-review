@@ -74,7 +74,11 @@ function lead() {
   })();
   ready.catch(e => { log.error(e); progress('app', 0, 0, 'Blundr failed to load: ' + (e?.message ?? e)); });
   // the engine once the server answers: it would only share the bandwidth with what the page waits for
-  ready.then(() => engines.load()).catch(e => log.error('engine failed to load', e));
+  // (failed: the page stops waiting for it, so Start review says why instead of staying grey)
+  ready.then(() => engines.load()).catch(e => {
+    log.error('engine failed to load', e);
+    tabs.progress({ what: 'engine', done: 0, total: 0, text: engineName, failed: true });
+  });
   return (req, emit, signal) => answer(ready, req, emit, signal);
 }
 

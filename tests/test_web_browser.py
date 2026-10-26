@@ -749,6 +749,47 @@ def test_the_home_mark_shows_no_ring_when_tapped(site, pwr, engine):
         ctx.close()
 
 
+START_AT = """() => { const b = document.querySelector('.ovfoot .ovstart'), r = b && getComputedStyle(b.parentNode).display !== 'none' && b.getBoundingClientRect();
+    return r && { id: b.id, disabled: b.disabled, bottom: r.bottom, nav: document.querySelector('.panel .nav').getBoundingClientRect().top }; }"""
+NOTICE = "() => (document.getElementById('web-loading') || {}).textContent || ''"
+
+
+def test_the_engine_loads_quietly_and_start_review_waits_for_it_on_a_phone(site, browser):
+    ctx = browser.new_context(user_agent=LITE, viewport={"width": 390, "height": 844}, is_mobile=True, has_touch=True)
+    held = []
+    engine_wasm = re.compile(r".*stockfish.*\.wasm$")
+    ctx.route(engine_wasm, lambda r: held.append(r))     # the engine's download hangs until let go
+    try:
+        page = ctx.new_page()
+        page.goto(site)
+        ready(page)
+        slug = api(page, "api/pgn", {"pgn": PGN})[1]["games"][0]
+        page.evaluate("s => location.hash = '#/p/pgn-pasted-games/game/' + s", slug)
+        page.wait_for_selector(".ovfoot .ovstart")
+        at = page.evaluate(START_AT)
+        # greyed while the engine loads; on a phone just over the nav, as the game opens
+        assert at["id"] == "ov-analyse" and at["disabled"], at
+        assert abs(at["bottom"] - at["nav"]) <= 2, at
+        assert "Stockfish" not in page.evaluate(NOTICE) and "ngine" not in page.evaluate(NOTICE)
+        for r in held:
+            r.continue_()
+        ctx.unroute(engine_wasm)
+        page.wait_for_function("() => !document.getElementById('ov-analyse').disabled", timeout=120_000)
+        assert "home screen" in page.evaluate(NOTICE)       # the once-only note, as the engine first loads
+        page.tap("#ov-analyse")
+        page.wait_for_timeout(500)
+        assert page.evaluate(START_AT) is None              # pressed: gone, on the overview too
+        page.tap("#ptabs button[data-tab=overview]")
+        assert page.evaluate(START_AT) is None
+        page.goto(site)
+        ready(page)
+        page.wait_for_function("() => !document.documentElement.classList.contains('engine-loading')", timeout=60_000)
+        page.wait_for_timeout(500)
+        assert page.evaluate(NOTICE) == ""                  # never again
+    finally:
+        ctx.close()
+
+
 def profile_ids(page) -> list[str]:
     return sorted(p["id"] for p in api(page, "api/profiles")[1]["profiles"])
 
