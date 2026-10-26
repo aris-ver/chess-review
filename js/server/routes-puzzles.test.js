@@ -34,13 +34,12 @@ function replayPool(d) {
 }
 
 const VOLATILE = new Set(['created', 'pinned', 'elapsed', 'ended', 'fp']);
-const SINCE_PORT = new Set(['stages_done', 'stages_perfect', 'tried']);     // the shelf's, added since (puzzles.test.js checks them)
 
-/** Timestamps and timings only say whether they're there; what was added since the port is left out. */
+/** Timestamps and timings only say whether they're there. */
 function scrub(v) {
   if (Array.isArray(v)) return v.map(scrub);
   if (v === null || typeof v !== 'object') return v;
-  return Object.fromEntries(Object.entries(v).filter(([k]) => !SINCE_PORT.has(k)).map(([k, x]) => [k, VOLATILE.has(k) ? x !== null : scrub(x)]));
+  return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, VOLATILE.has(k) ? x !== null : scrub(x)]));
 }
 
 async function withRouter(d, fn) {

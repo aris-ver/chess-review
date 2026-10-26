@@ -57,10 +57,12 @@ header h1 a.away:active { background: #46423d; }
 /* Back: one level up (a puzzle -> its pack, a game -> its list), never a replay of the history */
 header button.back { color: var(--text); white-space: nowrap; font-size: 15px; font-weight: 600; padding: 4px 10px; }
 @media (hover: hover) { header button.back:hover { border-color: var(--accent); } }
-/* Back: on an iPhone or iPad the swipe right is the way back (Safari's from the edge, the page's own from anywhere:
-   swipeBack), so no button; Android has the button as well as its back gesture and the swipe; a desktop, the button.
-   The history is kept one level up at each step (goTo), so every one of them goes where this one would */
-html.pf-ios header button.back { display: none !important; }
+/* Back: on an iPhone or iPad the swipe right is the main way back (Safari's from the edge, the page's own from
+   anywhere: swipeBack), so the button is a quiet arrow there; Android has the button as well as its back gesture and
+   the swipe; a desktop, the button. The history is kept one level up at each step (goTo), so every one of them goes
+   where this one would */
+html.pf-ios header button.back { background: none; border-color: transparent; color: var(--muted); padding: 4px 8px; }
+html.pf-ios header button.back .t { display: none; }
 header h1 a { -webkit-touch-callout: none; }
 /* the swipe back, as an iPhone's own: the screen follows the finger (over a backing of the page's colour, with a shadow
    on its edge), the one it goes back to peeks in under it, a little behind and dimmed. That one as it was last seen
@@ -1363,7 +1365,7 @@ function goBack() {
   else location.hash = to;
 }
 $('b-back').onclick = goBack;
-// Swipe right to go back, from anywhere on a phone or tablet (the one way back on an iPhone: there's no button there).
+// Swipe right to go back, from anywhere on a phone or tablet (the main way back on an iPhone: its button is quiet).
 // Not from what a finger drags sideways itself (the stages, a board, anything that scrolls sideways, a slider), not
 // once it turns out a scroll (it never blocks one) or a pinch, and only where there is somewhere to go back to (on
 // Home there isn't). It needs 70 px to the right, within 30 degrees of level. In Safari the strip along the left edge
@@ -1455,7 +1457,7 @@ function keepScreen(h) {
   };
   document.addEventListener('touchstart', e => {
     if (sw) cancel();
-    if (busy || e.touches.length !== 1 || !upTo()) return;
+    if (busy || e.touches.length !== 1 || !upTo() || !$('home').classList.contains('hidden')) return;   // (Home, whatever the address says)
     const t = e.touches[0];
     if (t.clientX < EDGE || draggable(e.target)) return;
     sw = { x: t.clientX, y: t.clientY, dx: 0, dy: 0, on: false };
@@ -2421,9 +2423,9 @@ async function renderPuzzleCards() {
     const dl = d.daily, r = dl.result;
     $('card-daily-desc').textContent = r ? `#${dl.n} ${r.clean ? 'solved without a mistake' : r.solved ? 'solved' : 'played'}.${dl.streak ? ` 🔥 ${dl.streak}-day streak.` : ''} Open it to share your result.`
       : `#${dl.n} is waiting: one tougher puzzle, the same for everyone today.${dl.streak ? ` 🔥 ${dl.streak}-day streak, keep it going.` : ''}`;
-    // how far, in stages across the packs (no totals); none done yet: what the packs are
-    const done = d.packs.reduce((n, k) => n + k.stages_done, 0), perfect = d.packs.reduce((n, k) => n + k.stages_perfect, 0);
-    if (done) $('card-packs-desc').innerHTML = `${done} stage${done > 1 ? 's' : ''} done${perfect ? ` · ${perfect} perfect ${STAR_SVG}` : ''}`;
+    // the packs done, and those perfect (no totals); none done yet: what the packs are
+    const done = d.packs.filter(k => k.done).length, perfect = d.packs.filter(k => k.perfect).length;
+    if (done) $('card-packs-desc').textContent = `${done} pack${done > 1 ? 's' : ''} done${perfect ? ` · ${perfect} perfect 👑` : ''}`;
   }).catch(() => {});
   let st, srcs;
   try { [st, srcs] = await Promise.all([fetch('api/puzzles/themes').then(r => r.json()).then(d => d.stats), puzzleSources()]); } catch (e) { return packs; }
@@ -2586,9 +2588,11 @@ function drawLadder(id, k, fx, want) {
   // swiping: the stage is the card the track comes to rest on. It lights as soon as that is certain, not as cards slide
   // past on the way: where the browser says where the snap is going (scrollsnapchanging, Chromium), once the finger is
   // off; elsewhere (Safari) once a card is within 15% of its width of the middle and the track is down to a crawl
-  // (under 0.5 px/ms, too slow to carry it to the next card); and at the latest 22 ms after the track stops. Waiting
+  // (under 0.5 px/ms, too slow to carry it to the next card); and at the latest 42 ms after the track stops. Each lights
+  // 20 ms after it is sure (LIGHT_LAG): any sooner looked hasty. Waiting
   // for the stop alone took the length of the browser's own snap animation (about 0.2 s here, longer with Safari's
   // momentum). The stage swiped away greys as it leaves the middle line (an observer: no work per scroll event)
+  const LIGHT_LAG = 20;
   const settle = () => {
     clearTimeout(still);
     if (touching) return;                                     // a finger still on the track: the snap is yet to come
@@ -2599,8 +2603,13 @@ function drawLadder(id, k, fx, want) {
     target = null;
     mark(n);
   };
-  const later = () => { clearTimeout(still); still = setTimeout(settle, 22); };
-  const light = c => { if (c && !c.classList.contains('sel')) mark(+c.dataset.n); };
+  const later = () => { clearTimeout(still); still = setTimeout(settle, 22 + LIGHT_LAG); };
+  let lighting = null, lightT;
+  const light = c => {
+    if (!c || c.classList.contains('sel') || c === lighting) return;
+    clearTimeout(lightT); lighting = c;
+    lightT = setTimeout(() => { lighting = null; if (!touching && target === null) mark(+c.dataset.n); }, LIGHT_LAG);
+  };
   let lastX = tr.scrollLeft, lastT = 0, snapTo = null;
   const arriving = () => {       // near the middle and slowing to a stop there
     const now = performance.now(), x = tr.scrollLeft, speed = lastT && now > lastT ? Math.abs(x - lastX) / (now - lastT) : Infinity;
@@ -2624,7 +2633,7 @@ function drawLadder(id, k, fx, want) {
   cards.forEach(c => ladderIO.observe(c));
   for (const ev of ['pointerdown', 'touchstart', 'wheel']) tr.addEventListener(ev, () => { target = null; }, { passive: true });
   tr.addEventListener('touchstart', () => { touching = true; clearTimeout(still); }, { passive: true });
-  tr.addEventListener('touchstart', () => { snapTo = null; }, { passive: true });
+  tr.addEventListener('touchstart', () => { snapTo = null; clearTimeout(lightT); lighting = null; }, { passive: true });
   // let go: where the snap goes, if the browser has said (it says again in a moment if the fling changes it)
   for (const ev of ['touchend', 'touchcancel']) tr.addEventListener(ev, e => {
     if (e.touches.length) return;

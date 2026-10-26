@@ -76,16 +76,7 @@ test('packs: progress, ladders and the shelf as Python', async () => {
     const first = K.firstTries(db), later = K.solvedLater(db);
     same([...first], pk.first, 'first_tries');
     same(sorted(later.keys()), pk.later, 'solved_later');
-    for (const [i, st] of pk.stats.entries()) {
-      const shelf = K.shelf(packs, st, db, get);
-      same(shelf.map(({ stages_done, stages_perfect, tried, ...k }) => k), pk.shelf[i], `shelf[${i}]`);   // (added since the port)
-      for (const [j, k] of shelf.entries()) {
-        const lad = K.ladder(packs.get(k.id), first, later, st);
-        assert.equal(k.stages_done, lad.stages.filter(s => s.solved === s.size).length, `shelf[${i}][${j}].stages_done`);
-        assert.equal(k.stages_perfect, lad.stages.filter(s => s.clean === s.size).length, `shelf[${i}][${j}].stages_perfect`);
-        assert.equal(k.tried, lad.stages.some(s => s.puzzles.some(c => c.state !== 'new')), `shelf[${i}][${j}].tried`);
-      }
-    }
+    for (const [i, st] of pk.stats.entries()) same(K.shelf(packs, st, db, get), pk.shelf[i], `shelf[${i}]`);
     for (const [i, c] of pk.ladders.entries()) {
       const p = packs.get(c.pack);
       const ratings = Object.fromEntries(p.stages.flatMap(s => s.ids).map(id => [id, pk.rows[id]?.rating ?? null]));

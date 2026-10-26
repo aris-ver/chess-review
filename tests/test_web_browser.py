@@ -344,6 +344,10 @@ OPEN_STAGE_TWO = """async () => {
 FOCUS = "(document.querySelector('.scard.sel') || {dataset: {}}).dataset.n"
 
 
+# what shows once the shelf and a pack's ladder are drawn
+DRAWN = {"#/packs": ".card.pack", "#/packs/forks": ".scard.sel"}
+
+
 def ladder(browser, site, init=None, **kw):
     ctx = browser.new_context(**kw)
     if init:
@@ -426,10 +430,18 @@ def test_solved_tiles_look_done_and_first_tries_get_a_star(site, browser):
         assert desc("forks") == "One piece hits two at once."            # the shelf: what each pack holds, played or not
         assert desc("pins") == "The piece in front can't move without losing the one behind."
         page.evaluate("location.hash = '#/'")
+        page.wait_for_selector("#home:not(.hidden)")
+        home = page.locator("#card-packs-desc").inner_text().strip()     # no pack done yet: what the packs are
+        assert home == "Themes laid out as stages that climb from easy to the very top.", home
+        page.evaluate("""async () => {      // the rest of Mate in one, all first try: a pack done, and perfect
+            const post = (u, b) => fetch(u, { method: 'POST', body: JSON.stringify(b) });
+            const mates = (await (await fetch('api/puzzles/pack?id=mate-in-one')).json()).pack;
+            for (const s of mates.stages.slice(1)) for (const p of s.puzzles) await post('api/puzzles/attempt', { id: p.id, solved: true, hinted: false, ms: 5000 });
+            location.hash = '#/packs'; await new Promise(r => setTimeout(r, 300)); location.hash = '#/';
+        }""")
         page.wait_for_function("/ done/.test(document.getElementById('card-packs-desc').textContent)")
         home = page.locator("#card-packs-desc").inner_text().strip()
-        assert re.fullmatch(r"1 stage done · 1 perfect", home), home
-        assert page.locator("#card-packs-desc .star").count() == 1
+        assert home == "1 pack done · 1 perfect 👑", home
 
         page.evaluate("location.hash = '#/packs/forks'")
         page.wait_for_function("document.querySelectorAll('.scard[data-n=\"1\"] .tile.solved').length === 1")
@@ -497,9 +509,9 @@ def test_a_swiped_stage_lights_once_it_is_sure_to_stop_there(site, browser, snap
         print(f"phone ({'scrollsnapchanging' if snap_event else 'no scrollsnapchanging'}): stage 1 lit {lit - s['lift']:.0f} ms "
               f"after the finger lifted, {stop - lit:.0f} ms before the track stopped, {off:.0%} of a card from the middle")
         assert s["dimmed"] < stop, "stage 2 stayed lit till the track stopped"
-        assert lit < stop, f"stage 1 lit only {lit - stop:.0f} ms after the track stopped"
+        assert lit < stop + 20, f"stage 1 lit only {lit - stop:.0f} ms after the track stopped"   # (20 ms: LIGHT_LAG)
         if snap_event:
-            assert lit - s["lift"] < 80, f"stage 1 lit {lit - s['lift']:.0f} ms after the finger lifted"
+            assert lit - s["lift"] < 100,f"stage 1 lit {lit - s['lift']:.0f} ms after the finger lifted"
         else:
             assert off < .15, f"stage 1 lit {off:.0%} of a card from the middle"
     finally:
@@ -556,7 +568,7 @@ def test_the_board_stays_still_as_a_puzzle_is_solved_on_a_phone(site, pwr, engin
 
 
 def test_on_a_phone_its_own_back_goes_where_the_back_button_did(site, pwr, engine):
-    """An iPhone has no Back in the header (its swipe is the back), so the history keeps to the levels the Back button
+    """An iPhone's Back in the header is a quiet arrow (its swipe is the main way back), and the history keeps to the levels the Back button
     goes by: Next and Skip take the puzzle's place, and back from any puzzle of a pack is its ladder. On a desktop (the
     app has no back of its own) the button stays."""
     name, browser = engine
@@ -570,9 +582,9 @@ def test_on_a_phone_its_own_back_goes_where_the_back_button_did(site, pwr, engin
             page.evaluate(f"location.hash = '{h}'")
             hash_is(h)
         page.wait_for_function("document.body.classList.contains('puzzle') && !!pz.p", timeout=30_000)
-        assert page.locator("#b-back").is_hidden()
+        assert page.locator("#b-back").is_visible() and page.locator("#back-t").is_hidden()   # a quiet arrow
         assert page.locator("#b-home").is_visible()
-        depth = page.evaluate("history.length")
+        depth =page.evaluate("history.length")
         for n in (2, 3):
             # the puzzle the address names, on the board and waiting for a move (not the one before it, still
             # there while this one loads)
@@ -658,8 +670,8 @@ SEEN = {}     # phone -> (header height, board box): the same on both
 @pytest.mark.parametrize("phone", ["iphone", "android"])
 def test_swiping_right_goes_back_and_android_keeps_the_button(site, browser, phone):
     """A swipe right from anywhere goes back a level, as the phone's back does: not from the board, not from Safari's
-    own strip along the left edge on an iPhone, not when it's mostly up or down, not when short. An iPhone has no Back
-    button, Android has it as well; the header is the same height either way, and so the board sits in the same place."""
+    own strip along the left edge on an iPhone, not when it's mostly up or down, not when short. An iPhone's Back button
+    is a quiet arrow, Android's has its word; the header is the same height either way, and so the board sits in the same place."""
     ctx = browser.new_context(viewport={"width": 390, "height": 844}, device_scale_factor=3, is_mobile=True, has_touch=True,
                               user_agent=IPHONE if phone == "iphone" else PIXEL)
     page = ctx.new_page()
@@ -669,9 +681,10 @@ def test_swiping_right_goes_back_and_android_keeps_the_button(site, browser, pho
         for h in ["#/packs", "#/packs/forks", "#/packs/forks/1/1"]:
             page.evaluate(f"location.hash = '{h}'")
             page.wait_for_function("h => location.hash === h", arg=h)
+            page.wait_for_selector(DRAWN.get(h, "body"))      # drawn before leaving: the swipe back's peek is its copy
         page.wait_for_function("document.body.classList.contains('puzzle') && pz.hash === location.hash && !state.exploring", timeout=30_000)
         assert page.evaluate("document.documentElement.classList.contains('pf-' + (navigator.userAgent.includes('iPhone') ? 'ios' : 'android'))")
-        assert page.locator("#b-back").is_visible() == (phone == "android")
+        assert page.locator("#b-back").is_visible()                      # on an iPhone a quiet arrow
         header = page.locator("header").bounding_box()["height"]
         board = tuple(page.locator("#boardbox").bounding_box().values())
         print(f"{phone}: header {header} px, board {board}")
@@ -770,10 +783,11 @@ def test_on_an_iphone_a_swipe_right_goes_back_in_webkit(site, pwr, webkit):
         for h in ["#/packs", "#/packs/forks", "#/packs/forks/1/1"]:
             page.evaluate(f"location.hash = '{h}'")
             page.wait_for_function("h => location.hash === h", arg=h)
+            page.wait_for_selector(DRAWN.get(h, "body"))      # drawn before leaving: the swipe back's peek is its copy
         page.wait_for_function("document.body.classList.contains('puzzle') && pz.hash === location.hash && !state.exploring", timeout=60_000)
         assert page.evaluate("document.documentElement.classList.contains('pf-ios')")
-        assert page.locator("#b-back").is_hidden()
-        swipe = lambda x, y, dx, dy, steps=8: page.evaluate(SWIPE_JS, [x, y, dx, dy, steps])
+        assert page.locator("#b-back").is_visible() and page.locator("#back-t").is_hidden()
+        swipe =lambda x, y, dx, dy, steps=8: page.evaluate(SWIPE_JS, [x, y, dx, dy, steps])
         y = page.locator("#now").bounding_box()["y"] + 20
         here = "#/packs/forks/1/1"
         for args in [(60, y, 50, 0), (60, y, 150, 120), (8, y, 200, 0)]:     # short, mostly down, Safari's edge strip
