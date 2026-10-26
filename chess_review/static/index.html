@@ -62,12 +62,19 @@ header button.back { color: var(--text); white-space: nowrap; font-size: 15px; f
    The history is kept one level up at each step (goTo), so every one of them goes where this one would */
 html.pf-ios header button.back { display: none !important; }
 header h1 a { -webkit-touch-callout: none; }
-/* the swipe back's sign, following the finger along the left edge; green once letting go goes back */
-#swipeback { position: fixed; left: 0; top: 0; z-index: 99999;     /* over the notices and bars; under the splash */ width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center;
-  background: var(--panel2); border: 1px solid var(--line); color: var(--text); font-size: 26px; line-height: 1; box-shadow: 0 4px 12px rgba(0,0,0,.4);
-  pointer-events: none; opacity: 0; transform: translate(-50px, 0); will-change: transform, opacity; }
-#swipeback.go { background: var(--accent); border-color: var(--accent); color: #1b1b1b; }
-#swipeback.out { transition: opacity .15s, transform .15s; }
+/* the swipe back, as an iPhone's own: the screen follows the finger (over a backing of the page's colour, with a shadow
+   on its edge), the one it goes back to peeks in under it, a little behind and dimmed. That one as it was last seen
+   (keepScreen): a second body after the page's, so its body.puzzle and the like hold for it alone */
+html.swiping { overflow-x: hidden; } html.swiping body:not(#swipeprev) { background: none; }     /* (it'd cover them) */
+html.swiping body:not(#swipeprev) > :is(header, main) { transform: translateX(var(--swx, 0)); }
+html.swiping body:not(#swipeprev)::before { content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none; background: var(--bg);
+  transform: translateX(var(--swx, 0)); box-shadow: -8px 0 24px rgba(0,0,0,.5); }
+#swipeprev { position: fixed !important; inset: 0; height: auto !important; overflow: hidden !important; z-index: -2; pointer-events: none;
+  transform: translateX(var(--swp, 0)); opacity: var(--swo, 1); }
+#swipeprev * { animation: none !important; transition: none !important; }
+html.swipeon #swipeprev { z-index: 99999; }     /* over the screen: reduced motion's fade, and while the screen gone back to draws */
+html.swipeease body:not(#swipeprev) > :is(header, main), html.swipeease body:not(#swipeprev)::before, html.swipeease #swipeprev {
+  transition: transform .2s ease-out, opacity .2s ease-out; }
 header .crumb { color: var(--muted); }
 header .right { margin-left: auto; display: flex; gap: 10px; align-items: center; }
 header .right a { color: var(--muted); }
@@ -1272,7 +1279,8 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape') closeVolume(
 paintSound();
 
 // ---------- routing ----------
-window.addEventListener('hashchange', () => { assetsReady.then(route); checkStale(); });
+let routed = Promise.resolve();     // the route to the hash last changed to, drawn (swipeBack: the screen gone back to)
+window.addEventListener('hashchange', () => { keepScreen(atHash); routed = assetsReady.then(route); checkStale(); });
 let pageStamp = null;
 async function checkStale() {
   // the page by its directory ('.'): blundr.gr redirects index.html there. A server that sends neither header isn't
@@ -1340,13 +1348,32 @@ $('b-back').onclick = goBack;
 // once it turns out a scroll (it never blocks one) or a pinch, and only where there is somewhere to go back to (on
 // Home there isn't). It needs 70 px to the right, within 30 degrees of level. In Safari the strip along the left edge
 // is left to Safari's own swipe back (so the two don't both go back); a home-screen app has none, and gets it all.
+// As on an iPhone the screen follows the finger and the one it goes back to peeks in under it; let go past the 70 px
+// and the one slides off, else back. With reduced motion nothing slides: the one gone back to fades in over it.
+// The screens share their sections and draw them anew, so the one gone back to isn't there until it's back: what
+// peeks in is a copy of it as it was left (keepScreen), or the bare page for one not seen yet (a link to a puzzle).
+const shots = new Map();      // hash -> the screen as it was left: { el (a body, unseen), scrolls }; the last 8
+function keepScreen(h) {
+  if (PLATFORM === 'desktop' || !h) return;
+  const live = [...document.body.querySelectorAll(':scope > main > section:not(.hidden)')];
+  if (!live.length) return;
+  const el = document.createElement('body'), main = document.createElement('main'), scrolls = [];
+  el.id = 'swipeprev'; el.className = document.body.className; el.setAttribute('aria-hidden', 'true'); el.inert = true;
+  el.append(document.body.querySelector(':scope > header').cloneNode(true), main);
+  for (const s of live) {     // a copy loses where its boxes were scrolled to (the stages): those put back on showing
+    const c = s.cloneNode(true), from = [s, ...s.querySelectorAll('*')], to = [c, ...c.querySelectorAll('*')];
+    from.forEach((e, i) => { if (e.scrollLeft || e.scrollTop) scrolls.push([to[i], e.scrollLeft, e.scrollTop]); });
+    main.append(c);
+  }
+  main.style.marginTop = -scrollY + 'px';     // the page as it was scrolled, under the header
+  shots.delete(h); shots.set(h, { el, scrolls });
+  if (shots.size > 8) shots.delete(shots.keys().next().value);
+}
 (function swipeBack() {
   if (PLATFORM === 'desktop') return;
   const standalone = navigator.standalone === true || matchMedia('(display-mode: standalone)').matches;
   const EDGE = PLATFORM === 'ios' && !standalone ? 24 : 0, TAN = Math.tan(30 * Math.PI / 180), FAR = 70;
-  const sign = document.createElement('div');
-  sign.id = 'swipeback'; sign.setAttribute('aria-hidden', 'true'); sign.textContent = '‹';
-  document.body.appendChild(sign);
+  const root = document.documentElement, rs = root.style;
   const OWN = '.sttrack, svg.board, .boardbox, .setup-board, .palette, input, select, textarea, dialog, .vol';
   const draggable = el => {
     for (let e = el; e && e.nodeType === 1 && e !== document.body; e = e.parentElement) {
@@ -1355,37 +1382,81 @@ $('b-back').onclick = goBack;
     }
     return false;
   };
-  let sw = null;
+  let sw = null, prev = null, pinned = [], still = false, busy = false;
   const far = s => s.dx > FAR && Math.abs(s.dy) < s.dx * TAN;
-  const hide = () => { sign.classList.add('out'); sign.classList.remove('go'); sign.style.opacity = 0; sign.style.transform = `translate(-50px, ${sw ? sw.y - 22 : 0}px)`; sw = null; };
+  // the screen dx to the right; the one gone back to from a third of the way behind and dimmed, to in place
+  const at = dx => {
+    const W = innerWidth, p = Math.min(1, Math.max(0, dx) / W);
+    if (still) { rs.setProperty('--swo', Math.min(.9, 2 * p)); return; }
+    rs.setProperty('--swx', Math.max(0, dx) + 'px'); rs.setProperty('--swp', (p - 1) * W * .3 + 'px'); rs.setProperty('--swo', .5 + .5 * p);
+  };
+  const show = () => {
+    const shot = shots.get(upTo());
+    still = reducedMotion();
+    prev = shot ? shot.el : Object.assign(document.createElement('body'), { id: 'swipeprev', inert: true });
+    // a bar fixed to the foot of the screen (a phone's move buttons) would go to main's foot once main moves: kept
+    pinned = [...document.body.querySelectorAll(':scope > main .panel .nav')].filter(e => getComputedStyle(e).position === 'fixed')
+      .map(e => [e, e.getBoundingClientRect(), e.closest('main').getBoundingClientRect()]);
+    at(0);
+    root.append(prev);
+    if (shot) shot.scrolls.forEach(([e, l, t]) => { e.scrollLeft = l; e.scrollTop = t; });
+    root.classList.add('swiping'); root.classList.toggle('swipeon', still);
+    pinned.forEach(([e, r, m]) => Object.assign(e.style, { top: r.top - m.top + 'px', bottom: 'auto', width: r.width + 'px' }));
+  };
+  const clear = () => {     // the screen back as it was
+    root.classList.remove('swiping', 'swipeease'); rs.removeProperty('--swx');
+    pinned.forEach(([e]) => Object.assign(e.style, { top: '', bottom: '', width: '' })); pinned = [];
+  };
+  const drop = () => {      // and the one gone back to's copy away
+    if (prev) prev.remove();
+    prev = null; busy = false; root.classList.remove('swipeon'); rs.removeProperty('--swp'); rs.removeProperty('--swo');
+  };
+  const settle = (dx, then) => {
+    if (still) return then();
+    root.classList.add('swipeease'); at(dx);
+    setTimeout(then, 220);
+  };
+  const cancel = () => {
+    const on = sw && sw.on;
+    sw = null;
+    if (!on) return;
+    busy = true; settle(0, () => { clear(); drop(); });
+  };
+  // gone: the copy over the screen until the one gone back to is drawn (or 1.5 s, should that hang)
+  const go = () => {
+    busy = true;
+    settle(innerWidth, () => {
+      root.classList.remove('swipeease'); root.classList.add('swipeon'); rs.setProperty('--swp', '0px'); rs.setProperty('--swo', 1);
+      clear();
+      const t = setTimeout(drop, 1500);
+      addEventListener('hashchange', () => routed.finally(() => requestAnimationFrame(() => { if (busy) { clearTimeout(t); drop(); } })), { once: true });
+      goBack();
+    });
+  };
   document.addEventListener('touchstart', e => {
-    if (sw) hide();
-    if (e.touches.length !== 1 || !upTo()) return;
+    if (sw) cancel();
+    if (busy || e.touches.length !== 1 || !upTo()) return;
     const t = e.touches[0];
     if (t.clientX < EDGE || draggable(e.target)) return;
     sw = { x: t.clientX, y: t.clientY, dx: 0, dy: 0, on: false };
   }, { passive: true });
   document.addEventListener('touchmove', e => {
     if (!sw) return;
-    if (e.touches.length !== 1) { hide(); return; }     // a pinch
+    if (e.touches.length !== 1) { cancel(); return; }     // a pinch
     const t = e.touches[0];
     sw.dx = t.clientX - sw.x; sw.dy = t.clientY - sw.y;
     if (!sw.on) {
       if (Math.abs(sw.dy) > 12 && Math.abs(sw.dy) > Math.abs(sw.dx) * .8 || sw.dx < -12) { sw = null; return; }   // a scroll, or leftwards
       if (sw.dx < 16 || Math.abs(sw.dy) > sw.dx * TAN) return;
-      sw.on = true; sign.classList.remove('out');
+      sw.on = true; sw.from = sw.dx; show();     // from here: no jump by the way it took to tell
     }
-    sign.style.transform = `translate(${Math.min(sw.dx, FAR + 20) * .7 - 40}px, ${t.clientY - 22}px)`;
-    sign.style.opacity = Math.min(1, sw.dx / FAR);
-    sign.classList.toggle('go', far(sw));
+    at(sw.dx - sw.from);
   }, { passive: true });
   document.addEventListener('touchend', e => {
     if (!sw || e.touches.length) return;
-    const go = sw.on && far(sw);
-    hide();
-    if (go) goBack();
+    if (sw.on && far(sw)) { sw = null; go(); } else cancel();
   }, { passive: true });
-  document.addEventListener('touchcancel', () => { if (sw) hide(); }, { passive: true });
+  document.addEventListener('touchcancel', () => { if (sw) cancel(); }, { passive: true });
 })();
 // Moving on from a screen (Next, the end of a stage, the daily's way to the packs): to the screen above it, back in
 // the history when that is the screen before, else in its place; to one beside it (the next puzzle), in its place.
