@@ -439,9 +439,9 @@ def test_solved_tiles_look_done_and_first_tries_get_a_star(site, browser):
             for (const s of mates.stages.slice(1)) for (const p of s.puzzles) await post('api/puzzles/attempt', { id: p.id, solved: true, hinted: false, ms: 5000 });
             location.hash = '#/packs'; await new Promise(r => setTimeout(r, 300)); location.hash = '#/';
         }""")
-        page.wait_for_function("/ done/.test(document.getElementById('card-packs-desc').textContent)")
+        page.wait_for_function("/perfect/.test(document.getElementById('card-packs-desc').textContent)")
         home = page.locator("#card-packs-desc").inner_text().strip()
-        assert home == "1 pack done · 1 perfect 👑", home
+        assert home == "1 pack perfect 👑", home                         # every pack done is perfect: just that
 
         page.evaluate("location.hash = '#/packs/forks'")
         page.wait_for_function("document.querySelectorAll('.scard[data-n=\"1\"] .tile.solved').length === 1")
@@ -466,54 +466,67 @@ def test_solved_tiles_look_done_and_first_tries_get_a_star(site, browser):
         ctx.close()
 
 
-# Safari has no scrollsnapchanging: a page without it, to try the way the ladder does without
-NO_SNAP_EVENT = ("const add = EventTarget.prototype.addEventListener; EventTarget.prototype.addEventListener = "
-                 "function (t, ...r) { if (t !== 'scrollsnapchanging') return add.call(this, t, ...r); };")
+# a finger's drag along the stage track, dx px in steps; then when it was let go, the stages lit since, and the one at
+# rest in the middle once the track stops
+TRACK_SWIPE_JS = """([dx, steps]) => new Promise(done => {
+    const tr = document.querySelector('.sttrack'), r = tr.getBoundingClientRect(), x0 = r.left + r.width / 2, y0 = r.top + 120;
+    const el = document.elementFromPoint(x0, y0), lit = [];
+    const touch = (x, y) => ({ identifier: 1, target: el, clientX: x, clientY: y, pageX: x, pageY: y });
+    const fire = (type, x) => { const e = new Event(type, { bubbles: true, cancelable: true, composed: true });
+        const now = type === 'touchend' ? [] : [touch(x, y0)];
+        Object.defineProperties(e, { touches: { value: now }, targetTouches: { value: now }, changedTouches: { value: [touch(x, y0)] } });
+        el.dispatchEvent(e); };
+    new MutationObserver(ms => { for (const m of ms) if (m.target.classList.contains('sel') && !m.oldValue.includes('sel')) lit.push([m.target.dataset.n, performance.now()]); })
+        .observe(tr, { subtree: true, attributes: true, attributeFilter: ['class'], attributeOldValue: true });
+    const middle = () => { const m = r.left + r.width / 2; return [...tr.children].reduce((a, b) => {
+        const off = c => Math.abs(c.getBoundingClientRect().left + c.offsetWidth / 2 - m); return off(b) < off(a) ? b : a; }); };
+    fire('touchstart', x0);
+    let i = 0;
+    const step = () => {
+        fire('touchmove', x0 + dx * ++i / steps);
+        if (i < steps) return setTimeout(step, 16);
+        const lift = performance.now();
+        fire('touchend', x0 + dx);
+        let last = tr.scrollLeft, quiet = 0;
+        const wait = () => { quiet = tr.scrollLeft === last ? quiet + 1 : 0; last = tr.scrollLeft;
+            if (quiet < 10) return setTimeout(wait, 30);
+            done({ lit: lit.map(([n, t]) => [n, t - lift]), rest: middle().dataset.n, sel: document.querySelector('.scard.sel').dataset.n }); };
+        wait();
+    };
+    setTimeout(step, 16);
+})"""
 
 
-@pytest.mark.parametrize("snap_event", [True, False], ids=["scrollsnapchanging", "without it, as Safari"])
-def test_a_swiped_stage_lights_once_it_is_sure_to_stop_there(site, browser, snap_event):
-    """On a phone (a slow one: the CPU throttled) a fling goes on after the finger lifts, and the browser's snap takes
-    a while to bring the stage in. The stage swiped to lights as soon as it is sure to stop there: where the browser
-    says where the snap goes, just after the finger lifts; without that, once it's near the middle and down to a
-    crawl, before the track stops. Never a stage passed on the way; the one swiped away greys as it goes."""
-    ctx, page = ladder(browser, site, init=None if snap_event else NO_SNAP_EVENT, viewport={"width": 412, "height": 915},
-                       device_scale_factor=2.6, is_mobile=True, has_touch=True, user_agent=LITE)
+def test_a_swiped_stage_lights_as_the_finger_lifts_as_the_arrows_light_it(site, pwr, engine):
+    """On a phone a swipe along the stages ends as the arrows do on a computer: the stage it goes to lights the moment
+    the finger lifts, and the track glides to it. Past a fifth of a card it's the next stage; short of that, the same."""
+    name, browser = engine
+    ctx = browser.new_context(**phone_of(pwr, name, viewport={"width": 412, "height": 915}, device_scale_factor=2.6, is_mobile=True, has_touch=True, user_agent=LITE))
+    page = ctx.new_page()
     try:
+        page.goto(site)
+        ready(page)
+        page.evaluate(OPEN_STAGE_TWO)
+        page.wait_for_selector(".scard[data-n='2'].sel", timeout=30_000)
         settled(page)
-        page.evaluate("""() => {
-            const tr = document.querySelector('.sttrack'), two = tr.querySelector('.scard[data-n="2"]');
-            const off = c => { const r = c.getBoundingClientRect(), t = tr.getBoundingClientRect(); return Math.abs(r.left + r.width / 2 - (t.left + t.width / 2)) / r.width; };
-            window.swipe = { scrolls: [], lit: [] };
-            tr.addEventListener('scroll', () => window.swipe.scrolls.push(performance.now()), { passive: true });
-            tr.addEventListener('touchend', () => { window.swipe.lift = performance.now(); }, { passive: true });
-            new MutationObserver(ms => {
-                for (const m of ms) if (m.target.classList.contains('scard') && m.target.classList.contains('sel') && !m.oldValue.includes('sel'))
-                    window.swipe.lit.push([m.target.dataset.n, performance.now(), off(m.target)]);
-                if (!two.classList.contains('sel') && !window.swipe.dimmed) window.swipe.dimmed = performance.now();
-            }).observe(tr, { subtree: true, attributes: true, attributeFilter: ['class'], attributeOldValue: true });
-        }""")
-        cdp = ctx.new_cdp_session(page)
-        cdp.send("Emulation.setCPUThrottlingRate", {"rate": 4})
-        cdp.send("Input.dispatchTouchEvent", {"type": "touchStart", "touchPoints": [{"x": 60, "y": 400}]})
-        for x in range(90, 360, 30):                    # a finger dragging right: the track scrolls back to stage 1
-            cdp.send("Input.dispatchTouchEvent", {"type": "touchMove", "touchPoints": [{"x": x, "y": 400}]})
-            page.wait_for_timeout(16)
-        cdp.send("Input.dispatchTouchEvent", {"type": "touchEnd", "touchPoints": []})
-        page.wait_for_function(f"{FOCUS} === '1'", timeout=10_000)
-        settled(page)
-        s = page.evaluate("window.swipe")
-        stop = s["scrolls"][-1]
-        assert [n for n, _, _ in s["lit"]] == ["1"], f"lit on the way: {s['lit']}"
-        _, lit, off = s["lit"][0]
-        print(f"phone ({'scrollsnapchanging' if snap_event else 'no scrollsnapchanging'}): stage 1 lit {lit - s['lift']:.0f} ms "
-              f"after the finger lifted, {stop - lit:.0f} ms before the track stopped, {off:.0%} of a card from the middle")
-        assert s["dimmed"] < stop, "stage 2 stayed lit till the track stopped"
-        assert lit < stop + 20, f"stage 1 lit only {lit - stop:.0f} ms after the track stopped"   # (20 ms: LIGHT_LAG)
-        if snap_event:
-            assert lit - s["lift"] < 100,f"stage 1 lit {lit - s['lift']:.0f} ms after the finger lifted"
-        else:
-            assert off < .15, f"stage 1 lit {off:.0%} of a card from the middle"
+        for dx, to in [(200, "1"), (-40, "1"), (-200, "2"), (30, "2")]:     # right: the stage before; short: stays
+            s = page.evaluate(TRACK_SWIPE_JS, [dx, 8])
+            print(f"{name}: swipe {dx:+} px: lit {s['lit']}, at rest on {s['rest']}")
+            assert s["rest"] == to and s["sel"] == to, s
+            if s["lit"]:
+                assert [n for n, _ in s["lit"]] == [to], f"lit on the way: {s['lit']}"
+                assert s["lit"][0][1] < 30, f"stage {to} lit {s['lit'][0][1]:.0f} ms after the finger lifted"
+        if name == "chromium":      # and a real finger (the browser's own touch handling, touch-action), a slow phone's
+            cdp = ctx.new_cdp_session(page)
+            cdp.send("Emulation.setCPUThrottlingRate", {"rate": 4})
+            cdp.send("Input.dispatchTouchEvent", {"type": "touchStart", "touchPoints": [{"x": 60, "y": 400}]})
+            for x in range(90, 360, 30):
+                cdp.send("Input.dispatchTouchEvent", {"type": "touchMove", "touchPoints": [{"x": x, "y": 400}]})
+                page.wait_for_timeout(16)
+            cdp.send("Input.dispatchTouchEvent", {"type": "touchEnd", "touchPoints": []})
+            assert page.evaluate(f"{FOCUS}") == "1", "not lit as the finger lifted"
+            settled(page)
+            assert page.evaluate(f"{FOCUS}") == "1"
     finally:
         ctx.close()
 

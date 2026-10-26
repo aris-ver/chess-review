@@ -167,6 +167,7 @@ main { padding: 16px 18px; max-width: 1800px; margin: 0 auto; }
 .stcar { position: relative; margin: 6px -18px 0; }
 .sttrack { display: flex; gap: 14px; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; padding: 8px calc(50% - min(260px, 44vw)) 16px; }
 .sttrack::-webkit-scrollbar { display: none; }
+.sttrack { touch-action: pan-y; } .sttrack.dragging { scroll-snap-type: none; }     /* a finger's swipe is the page's (drawLadder) */
 .scard { --dc: var(--accent); flex: 0 0 min(520px, 88vw); scroll-snap-align: center; background: var(--panel); border: 1px solid var(--line); border-top: 5px solid var(--dc);
   border-radius: 16px; padding: 16px; opacity: .45; transition: opacity .2s, box-shadow .2s; display: flex; flex-direction: column; }
 .scard.sel { opacity: 1; box-shadow: 0 8px 30px rgba(0,0,0,.35); transition-duration: .065s; }   /* lights quick, greys at ease; no scaling: a plain glide */
@@ -2425,7 +2426,8 @@ async function renderPuzzleCards() {
       : `#${dl.n} is waiting: one tougher puzzle, the same for everyone today.${dl.streak ? ` 🔥 ${dl.streak}-day streak, keep it going.` : ''}`;
     // the packs done, and those perfect (no totals); none done yet: what the packs are
     const done = d.packs.filter(k => k.done).length, perfect = d.packs.filter(k => k.perfect).length;
-    if (done) $('card-packs-desc').textContent = `${done} pack${done > 1 ? 's' : ''} done${perfect ? ` · ${perfect} perfect 👑` : ''}`;
+    const packs = n => `${n} pack${n > 1 ? 's' : ''}`;     // every one done perfect: just that
+    if (done) $('card-packs-desc').textContent = perfect === done ? `${packs(done)} perfect 👑` : `${packs(done)} done${perfect ? ` · ${perfect} perfect 👑` : ''}`;
   }).catch(() => {});
   let st, srcs;
   try { [st, srcs] = await Promise.all([fetch('api/puzzles/themes').then(r => r.json()).then(d => d.stats), puzzleSources()]); } catch (e) { return packs; }
@@ -2578,67 +2580,63 @@ function drawLadder(id, k, fx, want) {
   };
   // going to a stage (a click, the arrows, the dots, the keys): the stages scrolled past on the way don't take the focus
   let target = null;
-  let still, touching = false;
+  let still, drag = null;     // a finger dragging the track (below)
   const go = (n, smooth = true) => {
     const c = cards.find(x => +x.dataset.n === n); if (!c) return;
     target = n; clearTimeout(still);
     tr.scrollTo({ left: c.offsetLeft - (tr.clientWidth - c.offsetWidth) / 2, behavior: smooth && !reducedMotion() ? 'smooth' : 'auto' });   // (Safari before 15.4 throws on 'instant')
     mark(n);
   };
-  // swiping: the stage is the card the track comes to rest on. It lights as soon as that is certain, not as cards slide
-  // past on the way: where the browser says where the snap is going (scrollsnapchanging, Chromium), once the finger is
-  // off; elsewhere (Safari) once a card is within 15% of its width of the middle and the track is down to a crawl
-  // (under 0.5 px/ms, too slow to carry it to the next card); and at the latest 42 ms after the track stops. Each lights
-  // 20 ms after it is sure (LIGHT_LAG): any sooner looked hasty. Waiting
-  // for the stop alone took the length of the browser's own snap animation (about 0.2 s here, longer with Safari's
-  // momentum). The stage swiped away greys as it leaves the middle line (an observer: no work per scroll event)
-  const LIGHT_LAG = 20;
+  // a trackpad or a wheel scrolling the track: the stage is the card it comes to rest on, lit once it stops. The stage
+  // scrolled away greys as it leaves the middle line (an observer: no work per scroll event)
   const settle = () => {
     clearTimeout(still);
-    if (touching) return;                                     // a finger still on the track: the snap is yet to come
+    if (drag && drag.on) return;
     const r = tr.getBoundingClientRect(), mid = r.left + r.width / 2, off = x => { const b = x.getBoundingClientRect(); return Math.abs(b.left + b.width / 2 - mid); };
     const c = cards.reduce((a, b) => off(b) < off(a) ? b : a);
     const n = +c.dataset.n;
     if (off(c) > 4 || (target !== null && n !== target)) return;   // not at rest in the middle, or on the way to a stage
-    target = null;
+    target = null; tr.classList.remove('dragging');
     mark(n);
   };
-  const later = () => { clearTimeout(still); still = setTimeout(settle, 22 + LIGHT_LAG); };
-  let lighting = null, lightT;
-  const light = c => {
-    if (!c || c.classList.contains('sel') || c === lighting) return;
-    clearTimeout(lightT); lighting = c;
-    lightT = setTimeout(() => { lighting = null; if (!touching && target === null) mark(+c.dataset.n); }, LIGHT_LAG);
-  };
-  let lastX = tr.scrollLeft, lastT = 0, snapTo = null;
-  const arriving = () => {       // near the middle and slowing to a stop there
-    const now = performance.now(), x = tr.scrollLeft, speed = lastT && now > lastT ? Math.abs(x - lastX) / (now - lastT) : Infinity;
-    lastX = x; lastT = now;
-    if (touching || target !== null || speed >= 0.5) return;
-    const r = tr.getBoundingClientRect(), mid = r.left + r.width / 2;
-    for (const c of cards) { const b = c.getBoundingClientRect(); if (Math.abs(b.left + b.width / 2 - mid) < b.width * .15) light(c); }
-  };
+  const later = () => { clearTimeout(still); still = setTimeout(settle, 22); };
   const scrollEnd = 'onscrollend' in tr;
-  tr.addEventListener('scroll', () => { scrollEnd ? clearTimeout(still) : later(); arriving(); }, { passive: true });
-  if (scrollEnd) tr.addEventListener('scrollend', later);
-  tr.addEventListener('scrollsnapchanging', e => {
-    snapTo = e.snapTargetInline;
-    if (!touching && target === null) light(snapTo);
-  });
+  tr.addEventListener('scroll', () => { if (!(drag && drag.on)) scrollEnd ? clearTimeout(still) : later(); }, { passive: true });
+  if (scrollEnd) tr.addEventListener('scrollend', () => { if (!(drag && drag.on)) later(); });
   if (ladderIO) ladderIO.disconnect();
   ladderIO = new IntersectionObserver(es => {
-    if (target !== null) return;
+    if (target !== null || (drag && drag.on)) return;
     for (const e of es) if (!e.isIntersecting && +e.target.dataset.n === sel) e.target.classList.remove('sel');
   }, { root: tr, rootMargin: '0px -49% 0px -49%' });
   cards.forEach(c => ladderIO.observe(c));
-  for (const ev of ['pointerdown', 'touchstart', 'wheel']) tr.addEventListener(ev, () => { target = null; }, { passive: true });
-  tr.addEventListener('touchstart', () => { touching = true; clearTimeout(still); }, { passive: true });
-  tr.addEventListener('touchstart', () => { snapTo = null; clearTimeout(lightT); lighting = null; }, { passive: true });
-  // let go: where the snap goes, if the browser has said (it says again in a moment if the fling changes it)
+  tr.addEventListener('wheel', () => { target = null; }, { passive: true });
+  // a finger: the swipe is the page's (touch-action: pan-y, the browser keeps the page's scroll up and down) and ends as
+  // the arrows do on a computer: let go, and the stage it goes to lights at once (go) while the track glides there. Past
+  // a fifth of a card, or a flick, it's the next stage that way; less, this one again
+  tr.addEventListener('touchstart', e => {
+    drag = e.touches.length === 1 ? { x: e.touches[0].clientX, y: e.touches[0].clientY, left: tr.scrollLeft, on: false, vx: 0 } : null;
+  }, { passive: true });
+  tr.addEventListener('touchmove', e => {
+    if (!drag) return;
+    const t = e.touches[0], dx = t.clientX - drag.x, dy = t.clientY - drag.y;
+    if (!drag.on) {
+      if (e.touches.length !== 1 || (Math.abs(dy) > 10 && Math.abs(dy) > Math.abs(dx))) { drag = null; return; }   // a pinch, or the page's scroll
+      if (Math.abs(dx) < 10) return;
+      Object.assign(drag, { on: true, x: t.clientX, lx: t.clientX, lt: e.timeStamp });   // from here: no jump by the 10 px
+      target = null; clearTimeout(still); tr.classList.add('dragging');
+    }
+    e.preventDefault();
+    if (e.timeStamp > drag.lt) { drag.vx = (t.clientX - drag.lx) / (e.timeStamp - drag.lt); drag.lx = t.clientX; drag.lt = e.timeStamp; }
+    tr.scrollLeft = drag.left - (t.clientX - drag.x);
+  }, { passive: false });
   for (const ev of ['touchend', 'touchcancel']) tr.addEventListener(ev, e => {
-    if (e.touches.length) return;
-    touching = false; later();
-    requestAnimationFrame(() => requestAnimationFrame(() => { if (!touching && target === null && snapTo) light(snapTo); }));
+    if (!drag || e.touches.length) return;
+    const d = drag; drag = null;
+    if (!d.on) return;
+    const moved = d.left - tr.scrollLeft, w = cards[0].offsetWidth;     // over 0: the finger went right, to the stage before
+    const step = Math.abs(d.vx) > .5 ?-Math.sign(d.vx) : Math.abs(moved) > w * .2 ? -Math.sign(moved) : 0;
+    go(Math.min(k.stages[k.stages.length - 1].n, Math.max(k.stages[0].n, sel + step)));
+    setTimeout(() => { if (!drag) tr.classList.remove('dragging'); }, 1000);   // (settle does it on arriving)
   }, { passive: true });
   cards.forEach(c => c.onclick = () => { if (+c.dataset.n !== sel) go(+c.dataset.n); });
   tr.addEventListener('focusin', e => { const c = e.target.closest('.scard'); if (c && +c.dataset.n !== sel) go(+c.dataset.n); });   // tabbing into a stage
