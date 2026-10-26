@@ -386,8 +386,10 @@ def test_only_the_stage_in_focus_opens_its_puzzles(site, browser):
         page.mouse.click(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
         page.wait_for_function("location.hash === '#/packs/forks/1/6'")     # in focus now: it opens
         back_to_ladder(page, "1")                                           # back on the stage looked at
-        # tabbing to the button of a stage not in focus scrolls that stage in, and Enter then opens its puzzle
-        page.focus(".scard[data-n='2'] .prog .primary")
+        # no Start/Continue button: the tiles alone open puzzles. Tabbing to a tile of a stage not in focus scrolls
+        # that stage in, and Enter then opens its puzzle
+        assert page.locator(".scard button").count() == 0
+        page.focus(".scard[data-n='2'] .tile.next")
         page.wait_for_function(f"{FOCUS} === '2'")
         assert page.evaluate("location.hash") == "#/packs/forks"
         page.keyboard.press("Enter")
@@ -400,6 +402,51 @@ def test_only_the_stage_in_focus_opens_its_puzzles(site, browser):
             page.wait_for_function(f"{FOCUS} === '{n}'")
         settled(page)
         assert page.evaluate("location.hash") == "#/packs/forks"
+    finally:
+        ctx.close()
+
+
+def test_solved_tiles_look_done_and_first_tries_get_a_star(site, browser):
+    """Every solved puzzle looks done, first try or not; a first try has a faint star in its corner, the stage card
+    counts them by its ring, a stage all of first tries gets a solid star. No totals in the solved counts; the shelf
+    says how far a pack went in stages, or what it holds when it's not been played."""
+    ctx, page = ladder(browser, site, viewport={"width": 1280, "height": 900})
+    try:
+        page.evaluate("""async () => {
+            const post = (u, b) => fetch(u, { method: 'POST', body: JSON.stringify(b) });
+            const forks = (await (await fetch('api/puzzles/pack?id=forks')).json()).pack, c = forks.stages[0].puzzles[16];
+            await post('api/puzzles/attempt', { id: c.id, solved: false, hinted: false, ms: 5000 });   // a miss, then found
+            await post('api/puzzles/solved', { id: c.id, clean: false });
+            const mates = (await (await fetch('api/puzzles/pack?id=mate-in-one')).json()).pack;     // a stage of first tries
+            for (const p of mates.stages[0].puzzles) await post('api/puzzles/attempt', { id: p.id, solved: true, hinted: false, ms: 5000 });
+            location.hash = '#/packs';
+        }""")
+        page.wait_for_selector(".card.pack[data-go='#/packs/forks']")
+        desc = lambda id: page.locator(f".card.pack[data-go='#/packs/{id}'] .desc").inner_text().strip()
+        assert desc("forks") == "Stage 1 under way"
+        assert re.fullmatch(r"1 stage done · 1 perfect", desc("mate-in-one")), desc("mate-in-one")
+        assert desc("pins") == "The piece in front can't move without losing the one behind."   # not played: what it holds
+        assert not re.search(r"\bof \d+ solved", page.locator("#pzpacksbox").inner_text())
+
+        page.evaluate("location.hash = '#/packs/forks'")
+        page.wait_for_function("document.querySelectorAll('.scard[data-n=\"1\"] .tile.solved').length === 1")
+        one = ".scard[data-n='1']"
+        t = page.evaluate(f"""() => [...document.querySelectorAll("{one} .tile")].slice(0, 18).map(e =>
+            [e.className.replace(/ ?(next|pressed)/g, '').trim(), !!e.querySelector('.star'), getComputedStyle(e).backgroundColor])""")
+        assert all(c == "tile clean" and star for c, star, _ in t[:16]), t[:16]
+        assert t[16][:2] == ["tile solved", False] and t[16][2] == t[0][2], t[16]      # done, the same fill, no star
+        assert t[17][0] == "tile" and t[17][2] != t[0][2]
+        assert page.locator(f"{one} .prog .firsts").inner_text().strip() == "16"
+        assert page.locator(f"{one} .prog .firsts.all").count() == 0
+        legend = page.locator(".legend").inner_text()
+        assert "solved · " in legend and "first try" in legend and "miss" not in legend
+        meta = page.locator(".ladhead .meta").inner_text()
+        assert re.match(r"17 solved · 16 first try", meta), meta
+
+        page.evaluate("location.hash = '#/packs/mate-in-one'")
+        page.wait_for_selector(".scard[data-n='1'] .prog .firsts.all")
+        assert "Stage complete" in page.locator(".scard[data-n='1'] .goal").inner_text()
+        assert "👑" not in page.locator(".ladder").inner_text()
     finally:
         ctx.close()
 

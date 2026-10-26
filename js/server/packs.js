@@ -144,6 +144,10 @@ export function shelf(packs, stats, db, get) {
     lad.n_stages = p.stages.length;
     lad.lo = p.stages[0].lo;
     lad.hi = p.stages[p.stages.length - 1].hi;
+    // since the port (not in the Python dump): stages done, those every puzzle of first try, and whether any was tried
+    lad.stages_done = stages.filter(s => s.solved === s.size).length;
+    lad.stages_perfect = stages.filter(s => s.clean === s.size).length;
+    lad.tried = stages.some(s => s.puzzles.some(c => c.state !== 'new'));
     out.push(lad);
   }
   return out;
