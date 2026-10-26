@@ -408,8 +408,8 @@ def test_only_the_stage_in_focus_opens_its_puzzles(site, browser):
 
 def test_solved_tiles_look_done_and_first_tries_get_a_star(site, browser):
     """Every solved puzzle looks done, first try or not; a first try has a faint star in its corner, the stage card
-    counts them by its ring, a stage all of first tries gets a solid star. No totals in the solved counts; the shelf
-    says how far a pack went in stages, or what it holds when it's not been played."""
+    counts them by its ring, a stage all of first tries gets a solid star. No totals in the ladder's solved count; the
+    home's packs tile says how far the packs went in stages, the shelf's cards what each pack holds."""
     ctx, page = ladder(browser, site, viewport={"width": 1280, "height": 900})
     try:
         page.evaluate("""async () => {
@@ -423,10 +423,13 @@ def test_solved_tiles_look_done_and_first_tries_get_a_star(site, browser):
         }""")
         page.wait_for_selector(".card.pack[data-go='#/packs/forks']")
         desc = lambda id: page.locator(f".card.pack[data-go='#/packs/{id}'] .desc").inner_text().strip()
-        assert desc("forks") == "Stage 1 under way"
-        assert re.fullmatch(r"1 stage done · 1 perfect", desc("mate-in-one")), desc("mate-in-one")
-        assert desc("pins") == "The piece in front can't move without losing the one behind."   # not played: what it holds
-        assert not re.search(r"\bof \d+ solved", page.locator("#pzpacksbox").inner_text())
+        assert desc("forks") == "One piece hits two at once."            # the shelf: what each pack holds, played or not
+        assert desc("pins") == "The piece in front can't move without losing the one behind."
+        page.evaluate("location.hash = '#/'")
+        page.wait_for_function("/ done/.test(document.getElementById('card-packs-desc').textContent)")
+        home = page.locator("#card-packs-desc").inner_text().strip()
+        assert re.fullmatch(r"1 stage done · 1 perfect", home), home
+        assert page.locator("#card-packs-desc .star").count() == 1
 
         page.evaluate("location.hash = '#/packs/forks'")
         page.wait_for_function("document.querySelectorAll('.scard[data-n=\"1\"] .tile.solved').length === 1")

@@ -2418,11 +2418,12 @@ function nextPuzzle() {
 async function renderPuzzleCards() {
   renderCovers($('home'));
   const packs = fetch('api/puzzles/packs').then(r => r.json()).then(d => {
-    const dl = d.daily, r = dl.result, going = d.packs.filter(k => k.solved && !k.done);
+    const dl = d.daily, r = dl.result;
     $('card-daily-desc').textContent = r ? `#${dl.n} ${r.clean ? 'solved without a mistake' : r.solved ? 'solved' : 'played'}.${dl.streak ? ` 🔥 ${dl.streak}-day streak.` : ''} Open it to share your result.`
       : `#${dl.n} is waiting: one tougher puzzle, the same for everyone today.${dl.streak ? ` 🔥 ${dl.streak}-day streak, keep it going.` : ''}`;
-    const done = d.packs.filter(k => k.done).length;
-    if (going.length || done) $('card-packs-desc').textContent = (going.length ? `${going.slice(0, 2).map(k => `${k.name}: stage ${k.current} of ${k.n_stages}`).join(' · ')}.` : '') + (done ? ` ${done} pack${done > 1 ? 's' : ''} complete.` : '');
+    // how far, in stages across the packs (no totals); none done yet: what the packs are
+    const done = d.packs.reduce((n, k) => n + k.stages_done, 0), perfect = d.packs.reduce((n, k) => n + k.stages_perfect, 0);
+    if (done) $('card-packs-desc').innerHTML = `${done} stage${done > 1 ? 's' : ''} done${perfect ? ` · ${perfect} perfect ${STAR_SVG}` : ''}`;
   }).catch(() => {});
   let st, srcs;
   try { [st, srcs] = await Promise.all([fetch('api/puzzles/themes').then(r => r.json()).then(d => d.stats), puzzleSources()]); } catch (e) { return packs; }
@@ -2503,12 +2504,9 @@ async function showShelf() {
   for (const k of d.packs) {
     if (k.family !== fam) { html += `${fam ? '</div>' : ''}<h2 style="color:${FAMILY_COLOR[k.family] || ''}">${esc(k.family)}</h2><div class="cards">`; fam = k.family; }
     const pct = k.total ? 100 * k.solved / k.total : 0, dc = diffOf(k.current_lo)[2];
-    const where = k.done ? `${k.solved} solved · ${k.clean} first try` : k.solved ? `Stage ${k.current} of ${k.n_stages} · ${k.solved} solved` : `${k.n_stages} stages · ${k.total} puzzles`;
-    // played: how far, in stages (no totals); not yet: what it holds
-    const far = !k.tried ? esc(k.desc) : (k.stages_done ? `${k.stages_done} stage${k.stages_done > 1 ? 's' : ''} done` : `Stage ${k.current} under way`) +
-      (k.stages_perfect ? ` · ${k.stages_perfect} perfect ${STAR_SVG}` : '');
+    const where = k.done ? `${k.clean} of ${k.total} first try` : k.solved ? `Stage ${k.current} of ${k.n_stages} · ${k.solved} of ${k.total} solved` : `${k.n_stages} stages · ${k.total} puzzles`;
     html += `<div class="card pack covered" data-go="#/packs/${k.id}">${coverHtml(k.id, k.family)}<div class="cbody"><span class="who"><span class="wt">${esc(k.name)}</span>${packBadge(k)}</span>` +
-      `<span class="desc">${far}</span><div class="progress"><div style="width:${pct}%;background:${dc}"></div></div>` +
+      `<span class="desc">${esc(k.desc)}</span><div class="progress"><div style="width:${pct}%;background:${dc}"></div></div>` +
       `<span class="meta">${where} · ${k.lo}–${k.hi}${k.solved && !k.done ? ' · now ' + diffChip(k.current_lo) : ''}</span></div></div>`;
   }
   box.innerHTML = html + (fam ? '</div>' : '');
