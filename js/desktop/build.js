@@ -30,6 +30,9 @@ const HOME = process.platform === 'win32'
   : join(tmpdir(), 'chess-review-build', 'electron');
 const STAGE = join(HOME, 'app'), OUT = join(HOME, 'out'), DIST = join(ROOT, 'packaging', 'dist');
 const STOCKFISH = join(ROOT, 'packaging', 'bin', 'stockfish.exe');
+// Windows' own tar (bsdtar) reads and writes zips; a plain 'tar' finds Git's GNU tar first under Git Bash (the CI
+// runner), which takes C:\... for a remote host and can't do zips anyway.
+const TAR = process.platform === 'win32' ? join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'tar.exe') : 'tar';
 
 function version() {
   if (args.version) return args.version;
@@ -48,10 +51,7 @@ async function fetchStockfish() {
   mkdirSync(tmp, { recursive: true });
   const zip = join(tmp, 'stockfish.zip');
   writeFileSync(zip, Buffer.from(await (await fetch(asset.browser_download_url)).arrayBuffer()));
-  // Windows' own tar (bsdtar) reads zips; a plain 'tar' finds Git's GNU tar first under Git Bash (the CI runner),
-  // which takes C:\... for a remote host and can't read a zip anyway.
-  const tar = process.platform === 'win32' ? join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'tar.exe') : 'tar';
-  execFileSync(tar, ['-xf', zip, '-C', tmp]);
+  execFileSync(TAR, ['-xf', zip, '-C', tmp]);
   const exe = readdirSync(tmp, { recursive: true }).find(f => f.toLowerCase().endsWith('.exe'));
   mkdirSync(join(ROOT, 'packaging', 'bin'), { recursive: true });
   cpSync(join(tmp, exe), STOCKFISH);
@@ -133,7 +133,7 @@ async function main() {
   for (const f of readdirSync(DIST)) if (/^blundr-app-.*\.asar$/.test(f)) rmSync(join(DIST, f));
   cpSync(join(app, 'resources', 'app.asar'), asar);
   // the zip wraps the app folder, as Blundr-windows.zip does (updater.ZIP_ROOTS)
-  if (process.platform === 'win32') execFileSync('tar', ['-a', '-c', '-f', zip, '-C', OUT, NAME]);
+  if (process.platform === 'win32') execFileSync(TAR, ['-a', '-c', '-f', zip, '-C', OUT, NAME]);
   else execFileSync('zip', ['-qr', zip, NAME], { cwd: OUT });
   console.log(`\nversion ${ver}, Electron ${electronVersion}\nApp folder: ${join(app, NAME + '.exe')}\nZip: ${zip}
 Small update: ${asar}`);
