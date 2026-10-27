@@ -19,7 +19,7 @@ import { Packs } from '../server/packs.js';
 import { ELECTRON_ASSETS, GITHUB_REPO, Updater } from '../server/updater.js';
 import { bookKeysFromDir } from './book.js';
 import { EnginePool } from './engines.js';
-import { checkData } from './handover.js';
+import { checkData, restoreClean } from './handover.js';
 import { retireOldExes, unblock } from './launcher.js';
 import { logger, setupLogging } from './log.js';
 import { STATIC_DIR, bundled, dataDir, stockfishPath } from './paths.js';
@@ -156,6 +156,15 @@ async function main() {
     return failurePage(win, `${handover.detail} Data folder: ${DATA}`, handover.title, list);
   }
   log.info(`data: ${handover.how}`);
+  // the clean solves the bridge left out, put back before the first sync can drop them from the account again
+  try {
+    const store = new Store(nodeSqlite(DATA));
+    const n = await restoreClean(files, await store.progress());
+    await store.close();
+    if (n !== null) log.info(`clean solves restored from puzzle_solved.jsonl: ${n}`);
+  } catch (err) {
+    log.warn(`restoring clean solves: ${err.message}`);
+  }
 
   const router = startServer({ quit: () => win.close() });
   router.catch(err => log.error('the server failed to start', err));

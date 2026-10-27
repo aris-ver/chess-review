@@ -8,11 +8,11 @@ import { join } from 'node:path';
 import { afterEach, test } from 'node:test';
 
 import { nodeSqlite } from '../server/db-node.js';
-import { EVALS, EVALS_DDL, PROGRESS, PROGRESS_DDL, Store } from '../server/db.js';
+import { EVALS, EVALS_DDL, PROGRESS, PROGRESS_DDL, SOLVED_ROW, Store } from '../server/db.js';
 import { nodeFiles } from '../server/profiles-files-node.js';
 import { bookKeys } from './book.js';
 import { EnginePool } from './engines.js';
-import { ACCEPTED, checkData } from './handover.js';
+import { ACCEPTED, CLEAN_RESTORED, checkData, restoreClean } from './handover.js';
 
 const dirs = [];
 const tmp = () => {
@@ -95,6 +95,33 @@ test('handover: an export for a newer schema stops', async () => {
   const d = tmp();
   writeFileSync(join(d, 'sqlite-export.json'), JSON.stringify({ schema_version: 99, files: {} }));
   assert.equal((await check(d)).ok, false);
+});
+
+test('handover: the clean solves the bridge left out come back once, from puzzle_solved.jsonl', async () => {
+  const d = tmp();
+  writeFileSync(join(d, 'puzzle_solved.jsonl'), [
+    '{"id": "a", "ts": 10}', '{"id": "b", "ts": 11, "clean": true}', '{"id": "c", "ts": 12, "clean": true}',
+    '{"id": "d", "ts": 13, "clean": true}', '{"id": "torn', ''].join('\n'));
+  const store = new Store(nodeSqlite(d));
+  const db = await store.progress();
+  // as the bridge exported it: every row without clean, d not there at all; c made clean here since
+  db.insert('puzzle_solved', SOLVED_ROW, [{ id: 'a', ts: 10, clean: null }, { id: 'b', ts: 11, clean: null }, { id: 'c', ts: 12, clean: true }]);
+  const files = nodeFiles(d);
+  assert.equal(await restoreClean(files, db), 2);
+  assert.deepEqual(db.all('SELECT id, ts, clean FROM puzzle_solved ORDER BY id').map(r => [r.id, r.ts, !!r.clean]),
+    [['a', 10, false], ['b', 11, true], ['c', 12, true], ['d', 13, true]]);
+  assert.ok(existsSync(join(d, CLEAN_RESTORED)));
+  db.run('UPDATE puzzle_solved SET clean = NULL');
+  assert.equal(await restoreClean(files, db), null);     // once only
+  assert.equal(db.value('SELECT count(*) FROM puzzle_solved WHERE clean'), 0);
+  await store.close();
+});
+
+test('handover: no puzzle_solved.jsonl, nothing to restore', async () => {
+  const d = tmp();
+  const store = new Store(nodeSqlite(d));
+  assert.equal(await restoreClean(nodeFiles(d), await store.progress()), 0);
+  await store.close();
 });
 
 test('book: the keys of a line are the positions after each of its moves', () => {

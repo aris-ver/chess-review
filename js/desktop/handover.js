@@ -14,8 +14,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { markerState, readMarker, verify } from '../server/migrate.js';
+import { markSolved } from '../server/packs.js';
 
 export const ACCEPTED = 'sqlite-accepted.json';
+export const CLEAN_RESTORED = 'sqlite-clean-restored.json';
 
 /** The Python app's own data files: any of these and no export means the export hasn't run. */
 async function pythonData(files) {
@@ -67,6 +69,29 @@ export async function checkData(files, dataDir, driverAt) {
   }
   await files.writeText(ACCEPTED, JSON.stringify({ at: marker.at, verified: new Date().toISOString() }));
   return { ok: true, how: 'verified' };
+}
+
+/** The bridge (v0.7.0) exported puzzle_solved as {id, ts} only, so the `clean: true` the web had put on a puzzle
+ * solved cleanly on a later go (and the Python app's sync kept in puzzle_solved.jsonl) was lost, and the first sync
+ * then took it off the account too. Once, after the hand-over: every puzzle the old file has clean is marked clean
+ * again (markSolved), which the next sync sends up. Returns how many were marked, or null when it has run before.
+ * db: Store.progress(). */
+export async function restoreClean(files, db) {
+  if (await files.exists(CLEAN_RESTORED)) return null;
+  const clean = [];
+  for (const ln of ((await files.readText('puzzle_solved.jsonl')) ?? '').split('\n')) {
+    try {
+      const v = JSON.parse(ln);
+      if (v && typeof v.id === 'string' && v.clean === true) clean.push(v);
+    } catch {
+      // a blank or torn line
+    }
+  }
+  const had = new Set(db.column('SELECT id FROM puzzle_solved WHERE clean'));
+  const put = clean.filter(v => !had.has(v.id));
+  for (const v of put) markSolved(db, v.id, Number(v.ts) || undefined, true);
+  await files.writeText(CLEAN_RESTORED, JSON.stringify({ at: new Date().toISOString(), restored: put.length }));
+  return put.length;
 }
 
 /** verify over a copy of the marker's files in a temporary folder, removed afterwards. */
