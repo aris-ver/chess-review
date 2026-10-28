@@ -113,10 +113,17 @@ window comes back into view. Only the transport differs:
     Cloudflare's own Email Sending (a `send_email` binding named `EMAIL`) also works, with no code change, but it reaches
     arbitrary addresses only on the Workers Paid plan. With neither, as under `wrangler dev`, the message is only
     printed in the console, code included.
-  - **Not yet**: a per-IP limit on asking for codes. Add a Cloudflare rate-limiting rule on `/account/email/*` if abuse
-    shows up.
-- **Session**: a random token in the `blundr_session` cookie (HttpOnly, SameSite=Lax, Secure on https, `Path=/account/`),
-  stored in D1 only as its SHA-256. 90 days, extended on use. POSTs must carry the site's own `Origin`, or the desktop
+  - **Per-IP limits** (Workers Rate Limiting, the `ratelimits` bindings in `wrangler.jsonc`, keyed on
+    `CF-Connecting-IP`): 3 a minute for the steps that email a code (sign-up, forgot, link), so one visitor can't spend
+    Brevo's 300 a day or mail strangers, and 20 a minute for the rest of signing in (log-in, verify, reset,
+    `/account/app/start` and `/token`, `/account/login/<provider>`), against password spraying across addresses and
+    rows written to D1. Over it, a 429. Cloudflare counts in memory at each of its locations and keeps nothing; the
+    address is never written to D1 or the logs. The counts are per location and approximate, and a steady 3 a minute
+    is still more than 300 a day: a loose brake, not a quota. Without the bindings (the tests) there's no limit.
+- **Session**: a random token in the `blundr_session` cookie (HttpOnly, SameSite=Lax, Secure everywhere but localhost,
+  `Path=/account/`), stored in D1 only as its SHA-256. `/account/*` works only over https: a GET over plain http is
+  sent on to https (301), anything else gets a 403, except on localhost for `wrangler dev`. The rest of the site is
+  static files the Worker never sees, so their redirect is the zone's SSL/TLS > Edge Certificates > Always Use HTTPS. 90 days, extended on use. POSTs must carry the site's own `Origin`, or the desktop
   app's `X-Blundr-App` header, which no other site's page can send (the browser would ask first with a CORS preflight,
   and the Worker never says yes). The desktop app's session is the same kind of token, sent as `Bearer`.
 - **Sync** is a three-way merge of the JSONL files, done by the JS server (`js/server/sync.js`; the whole story is in the Python original's docstring, `git show e8e547f:chess_review/sync.py`) against

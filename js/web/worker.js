@@ -26,9 +26,10 @@ const LITE = self.name === 'lite';
 const engineName = (CR_CONFIG.engineName || 'Stockfish') + (LITE ? ' lite' : '');
 const pool = () => new EnginePool({
   ...(LITE ? { size: 1, hash: 16, script: web('engine/stockfish-19-lite-single.js'),
-               wasmUrl: web(CR_CONFIG.engineLiteWasm || 'engine/stockfish-19-lite-single.wasm'), wasmBytes: CR_CONFIG.engineLiteBytes || 0 }
+               wasmUrl: web(CR_CONFIG.engineLiteWasm || 'engine/stockfish-19-lite-single.wasm'), wasmBytes: CR_CONFIG.engineLiteBytes || 0,
+               wasmSha256: CR_CONFIG.engineLiteSha256 }
            : { size: physicalCores(), script: web('engine/stockfish-19-single.js'),
-               wasmUrl: web(CR_CONFIG.engineWasm), wasmBytes: CR_CONFIG.engineBytes }),
+               wasmUrl: web(CR_CONFIG.engineWasm), wasmBytes: CR_CONFIG.engineBytes, wasmSha256: CR_CONFIG.engineSha256 }),
   onProgress: (done, total) => progress('engine', done, total, engineName),
 });
 

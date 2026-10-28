@@ -532,3 +532,55 @@ describe('the desktop app', () => {
     expect(await count('users')).toBe(1);
   });
 });
+
+describe('https and limits', () => {
+  const call = (url, { method = 'GET', headers = {}, body, extraEnv = {} } = {}) =>
+    worker.fetch(new Request(url, { method, headers, body: body === undefined ? undefined : JSON.stringify(body), redirect: 'manual' }),
+                 { ...env, LICHESS_URL: '', EMAIL, ...extraEnv });
+
+  it('the account over plain http is sent to https, or refused, but not on localhost', async () => {
+    const go = await call('http://blundr.test/account/me?x=1');
+    expect(go.status).toBe(301);
+    expect(go.headers.get('Location')).toBe('https://blundr.test/account/me?x=1');
+    const post = await call('http://blundr.test/account/logout', { method: 'POST', headers: { Origin: 'http://blundr.test' } });
+    expect(post.status).toBe(403);
+    expect(await post.json()).toEqual({ error: 'https only' });
+    expect((await call('http://localhost:8787/account/me')).status).toBe(200);
+    // and the cookie is Secure everywhere but there
+    const local = await call('http://localhost:8787/account/login/lichess?mode=login');
+    expect(local.headers.getSetCookie()[0]).not.toContain('Secure');
+    const site = await call(ORIGIN + '/account/login/lichess?mode=login');
+    expect(site.headers.getSetCookie()[0]).toContain('; Secure');
+  });
+
+  it('answers say nosniff and send no Referer on', async () => {
+    for (const res of [await call(ORIGIN + '/account/me'), await call(ORIGIN + '/account/login/lichess?mode=login')]) {
+      expect(res.headers.get('X-Content-Type-Options')).toBe('nosniff');
+      expect(res.headers.get('Referrer-Policy')).toBe('no-referrer');
+    }
+  });
+
+  it('a limiter that says no gets a 429, keyed on the address, and nothing is sent or kept', async () => {
+    const keys = [];
+    const no = { limit: async ({ key }) => { keys.push(key); return { success: false }; } };
+    const yes = { limit: async () => ({ success: true }) };
+    const headers = { Origin: ORIGIN, 'Content-Type': 'application/json', 'CF-Connecting-IP': '203.0.113.7' };
+    const signup = { email: 'ana@example.com', password: 'correct horse battery', consent: CONSENT_VERSION };
+    const r = await call(ORIGIN + '/account/email/signup', { method: 'POST', headers, body: signup, extraEnv: { MAIL_LIMIT: no, AUTH_LIMIT: yes } });
+    expect(r.status).toBe(429);
+    expect(await r.json()).toEqual({ error: expect.any(String) });
+    expect(keys).toEqual(['203.0.113.7']);
+    expect(outbox).toEqual([]);
+    expect(await count('email_codes')).toBe(0);
+    // the looser one covers logging in, the app's start and the providers' sign-ins
+    const login = await call(ORIGIN + '/account/email/login', { method: 'POST', headers, body: signup, extraEnv: { MAIL_LIMIT: yes, AUTH_LIMIT: no } });
+    expect(login.status).toBe(429);
+    const start = { provider: 'lichess', mode: 'login', challenge: 'a'.repeat(43), port: 8123 };
+    expect((await call(ORIGIN + '/account/app/start', { method: 'POST', headers, body: start, extraEnv: { AUTH_LIMIT: no } })).status).toBe(429);
+    expect((await call(ORIGIN + '/account/login/lichess?mode=login', { headers, extraEnv: { AUTH_LIMIT: no } })).status).toBe(429);
+    expect(await count('logins')).toBe(0);
+    // the same limiter saying yes lets it through
+    expect((await call(ORIGIN + '/account/email/signup', { method: 'POST', headers, body: signup, extraEnv: { MAIL_LIMIT: yes } })).status).toBe(200);
+    expect(lastCode('ana@example.com')).toBeTruthy();
+  });
+});

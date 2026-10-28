@@ -36,8 +36,15 @@ class HttpError extends Error {
 
 const now = () => Math.floor(Date.now() / 1000);
 
+// On every answer of the Worker's own. No Referer leaves the account's addresses, whose query strings carry sign-in
+// states and codes, and nothing here relies on one.
+const SAFE = { 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer' };
+
 const json = (body, status = 200, headers = {}) =>
-  new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...headers } });
+  new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json', ...SAFE, ...headers } });
+
+// wrangler dev, the one place plain http is allowed
+const local = url => url.hostname === 'localhost' || url.hostname === '127.0.0.1';
 
 function b64url(bytes) {
   return btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
@@ -58,16 +65,16 @@ function cookies(req) {
 
 // Strictly necessary cookies only: the session, and the few minutes a sign-in spends at the provider. HttpOnly, so
 // no script on the page can read them; Lax, so they come back from the provider's redirect but not on other sites'
-// requests. Secure everywhere but plain-http localhost (wrangler dev).
+// requests. Secure everywhere but localhost (wrangler dev), and plain http never gets this far elsewhere (fetch).
 function cookie(url, name, value, maxAge) {
-  const secure = url.protocol === 'https:' ? '; Secure' : '';
+  const secure = local(url) ? '' : '; Secure';
   return `${name}=${value}; Path=/account/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}${secure}`;
 }
 
-const redirect = (location, setCookies = []) => {
-  const h = new Headers({ Location: location, 'Cache-Control': 'no-store' });
+const redirect = (location, setCookies = [], status = 302) => {
+  const h = new Headers({ Location: location, ...SAFE });
   for (const c of setCookies) h.append('Set-Cookie', c);
-  return new Response(null, { status: 302, headers: h });
+  return new Response(null, { status, headers: h });
 };
 
 // The session token: the cookie from a browser, the Authorization header from the desktop app.
@@ -80,6 +87,16 @@ const fromApp = req => req.headers.get('X-Blundr-App') === '1';
 async function currentUser(req, env) {
   const token = sessionToken(req);
   return token ? store.sessionUser(env.DB, await sha256(token), now(), SESSION_DAYS) : null;
+}
+
+// Per-IP limits, the "ratelimits" bindings in wrangler.jsonc: MAIL_LIMIT for the steps that send an email, AUTH_LIMIT
+// for the other sign-in steps. Cloudflare counts them in memory at each of its locations, for a minute, and keeps
+// nothing: the address is never written to D1 or to the logs (the privacy policy says no IP addresses are kept). No
+// binding (the tests, an older config) or no address (a request that didn't come through Cloudflare): no limit.
+async function limit(req, limiter) {
+  const ip = req.headers.get('CF-Connecting-IP');
+  if (!limiter || !ip) return;
+  if (!(await limiter.limit({ key: ip })).success) throw new HttpError(429, 'Too many tries from here. Wait a minute and try again.');
 }
 
 async function requireUser(req, env) {
@@ -121,6 +138,7 @@ async function toProvider(env, url, id, state, verifier) {
 
 async function login(req, env, url, id) {
   provider(env, id);
+  await limit(req, env.AUTH_LIMIT);        // each one is a row in D1
   const resume = url.searchParams.get('resume');
   if (resume) {                    // the desktop app's sign-in (appStart), opened in the system browser
     const l = await store.appLogin(env.DB, resume, now());
@@ -141,6 +159,7 @@ async function body(req) {
 }
 
 async function appStart(req, env, url) {
+  await limit(req, env.AUTH_LIMIT);
   const b = await body(req);
   const id = String(b.provider || '');
   provider(env, id);
@@ -152,6 +171,7 @@ async function appStart(req, env, url) {
 }
 
 async function appToken(req, env, url) {
+  await limit(req, env.AUTH_LIMIT);
   const b = await body(req);
   const c = await store.takeAppCode(env.DB, await sha256(String(b.code || '')), now());
   // only the app that started the sign-in knows the verifier: a code read off the loopback redirect is no use alone
@@ -226,8 +246,12 @@ async function startSession(env, url, userId, t) {
 }
 
 const EMAIL_STEPS = ['signup', 'verify', 'login', 'forgot', 'reset', 'link'];
+// each of these mails a code to any address typed in: kept to a few a minute, or one visitor could spend Brevo's 300
+// a day and mail strangers
+const MAILING_STEPS = ['signup', 'forgot', 'link'];
 
 async function emailStep(req, env, url, step) {
+  await limit(req, MAILING_STEPS.includes(step) ? env.MAIL_LIMIT : env.AUTH_LIMIT);
   const b = await body(req);
   const t = now();
   const signedIn = await currentUser(req, env);
@@ -322,6 +346,13 @@ export default {
       const res = await env.ASSETS.fetch(req);
       if (res.status !== 404 || !url.pathname.startsWith('/v/')) return res;
       return new Response('not found', { status: 404, headers: { 'Content-Type': 'text/plain', 'Cache-Control': 'no-store' } });
+    }
+    // The account only over https: a session cookie sent in the clear could be read on the way. An address typed
+    // with http:// is sent on; anything else is refused, so it is noticed and not repeated. (The static site's own
+    // redirect is the zone's "Always Use HTTPS".)
+    if (url.protocol === 'http:' && !local(url)) {
+      if (req.method === 'GET' || req.method === 'HEAD') return redirect('https://' + url.href.slice('http://'.length), [], 301);
+      return json({ error: 'https only' }, 403);
     }
     try {
       return await route(req, env, url);

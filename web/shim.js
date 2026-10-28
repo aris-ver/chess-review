@@ -350,11 +350,14 @@
   };
   // The page reads the server's copy of its settings with a synchronous XMLHttpRequest, which the worker can't answer.
   // That copy is for the desktop, whose port (so its localStorage) may change; here localStorage is the one store, so
-  // the answer is "no server copy" without asking the network (which would only say 404).
+  // the answer is "no server copy" without asking the network (which would only say 404). Answered here, a 404 that
+  // sends nothing: a data: URL would be a fetch the Content-Security-Policy stops (connect-src).
   const xhrOpen = XMLHttpRequest.prototype.open;
   XMLHttpRequest.prototype.open = function (method, url, ...rest) {
     const u = new URL(String(url), location.href);
-    if (u.origin === location.origin && u.pathname === base + 'api/settings') url = 'data:application/json,null';
+    if (u.origin === location.origin && u.pathname === base + 'api/settings') {
+      Object.defineProperties(this, { send: { value: () => {} }, status: { value: 404 }, responseText: { value: '' } });
+    }
     return xhrOpen.call(this, method, url, ...rest);
   };
   document.addEventListener('DOMContentLoaded', update);

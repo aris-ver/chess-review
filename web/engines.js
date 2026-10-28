@@ -2,16 +2,35 @@
 // Same scheme as analyse.py: one engine per physical core, Threads=1, Hash=64 (16 on phones), MultiPV 3, a fixed node count and
 // `ucinewgame` (hash cleared) before every position, so a result is the same whichever engine gets it.
 
+// Throws unless blob's SHA-256 is sha256 (hex; none given: nothing to check). The full engine comes from unpkg, another
+// site: the build takes the hash from npm's own copy of the file, so a CDN handing out anything else is refused, not run.
+export async function checkSha256(url, blob, sha256) {
+  if (!sha256) return;
+  if (!self.crypto?.subtle) throw new Error(`${url}: can't check the engine's SHA-256 here (no crypto.subtle: not https?)`);
+  const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', await blob.arrayBuffer()));
+  const hex = [...digest].map(b => b.toString(16).padStart(2, '0')).join('');
+  if (hex !== sha256) {
+    throw new Error(`${url} is not the engine this build expects (SHA-256 ${hex}, not ${sha256}): refusing to run it`);
+  }
+}
+
 // Fetch a .wasm with progress, keep it in Cache Storage for the next visit, and hand back a blob: URL the engine
 // script takes from its location hash (stockfish.js reads the wasm's URL from there). bytes: the file's size, for
-// the progress bar when the host sends no Content-Length (unpkg doesn't).
-export async function cachedWasm(url, onProgress, bytes = 0) {
+// the progress bar when the host sends no Content-Length (unpkg doesn't); sha256: what the bytes must hash to
+// (checkSha256), downloaded or kept: a copy kept that doesn't match is dropped and fetched again.
+export async function cachedWasm(url, onProgress, bytes = 0, sha256 = '') {
   const cache = self.caches ? await caches.open('chess-review-engines') : null;
   let res = cache && await cache.match(url);
   if (res) {
     const blob = await res.blob();
-    onProgress(blob.size, blob.size);
-    return URL.createObjectURL(blob);
+    try {
+      await checkSha256(url, blob, sha256);
+      onProgress(blob.size, blob.size);
+      return URL.createObjectURL(blob);
+    } catch (e) {
+      if (!self.crypto?.subtle) throw e;
+      await cache.delete(url);
+    }
   }
   onProgress(0, bytes);       // the bar shows at once: the first chunk can take seconds
   res = await fetch(url);
@@ -27,6 +46,8 @@ export async function cachedWasm(url, onProgress, bytes = 0) {
   }
   onProgress(done, done);     // finished, whatever the size said
   const blob = new Blob(chunks, { type: 'application/wasm' });
+  chunks.length = 0;
+  await checkSha256(url, blob, sha256);     // before it is kept or run
   if (cache) {
     try { await cache.put(url, new Response(blob, { headers: { 'Content-Type': 'application/wasm' } })); } catch (e) { /* quota: fetch again next time */ }
   }
@@ -119,13 +140,13 @@ class Engine {
 
 export class EnginePool {
   // size: engines to run; script: the engine's .js; wasmUrl: its .wasm (may be on another origin, e.g. unpkg) and
-  // wasmBytes its size; hash: MB per engine. Nothing is fetched until load() (or the first search), so the caller decides
-  // what downloads first.
-  constructor({ size, script, wasmUrl, wasmBytes, hash = 64, onProgress }) {
-    Object.assign(this, { size, script, wasmUrl, wasmBytes, hash, onProgress, name: 'Stockfish 19', free: [], waiting: [], loaded: null });
+  // wasmBytes its size, wasmSha256 its SHA-256 (hex, checked before it runs); hash: MB per engine. Nothing is fetched
+  // until load() (or the first search), so the caller decides what downloads first.
+  constructor({ size, script, wasmUrl, wasmBytes, wasmSha256, hash = 64, onProgress }) {
+    Object.assign(this, { size, script, wasmUrl, wasmBytes, wasmSha256, hash, onProgress, name: 'Stockfish 19', free: [], waiting: [], loaded: null });
   }
   load() {
-    if (!this.loaded) this.loaded = cachedWasm(this.wasmUrl, this.onProgress, this.wasmBytes).then(wasm => {
+    if (!this.loaded) this.loaded = cachedWasm(this.wasmUrl, this.onProgress, this.wasmBytes, this.wasmSha256).then(wasm => {
       for (let i = 0; i < this.size; i++) this.free.push(new Engine(this.script, wasm, this.hash));
       return this.free[0].ready.then(() => { this.name = this.free[0].name; });
     });

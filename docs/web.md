@@ -154,6 +154,20 @@ npm `stockfish@19.0.1`, run by the leader as a pool of Web Workers (`web/engines
   page's head asks for them all at once: on a first visit they arrive together instead of one round trip per level of
   imports. On a phone (Slow 4G, 4× CPU) the worker's first word came after 5.4 s on a first visit and 4.4 s on a
   return (47 revalidations), now after 2.7 s and 1.2 s (none).
+- **Security headers** (`_headers` `/*`, written by the build, which `--serve` sends too): HSTS for a year on
+  blundr.gr only (no `includeSubDomains`, no `preload` until every subdomain is known to be on https: preload is slow
+  to take back), `nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`, no framing (`X-Frame-Options: DENY`
+  and `frame-ancestors 'none'`), and a `Permissions-Policy` that turns off camera, microphone, location and the other
+  devices. The `Content-Security-Policy` is made per build: scripts only from the site, the page's two inline scripts
+  by their SHA-256 (no `'unsafe-inline'` for scripts), WebAssembly by `'wasm-unsafe-eval'` (never `'unsafe-eval'`) and
+  Pyodide's folder for the one-time move; fetches only to the site, the chess.com and lichess APIs, the engine's unpkg
+  URL and Pyodide's folder. Styles may be inline (the page and the shim set them everywhere). The sign-in's trip to
+  Lichess or Google is a navigation, which the policy doesn't limit. A new place the app fetches from needs adding in
+  `csp()`, or the browser blocks it (the console says so). The desktop app serves the same page without these.
+- **The engine is checked**: the build bakes the SHA-256 of npm's own copy of the `.wasm` into `config.js`
+  (`engineSha256`, `engineLiteSha256`), and `web/engines.js` hashes the downloaded bytes (`crypto.subtle`) before
+  keeping or running them. A file from unpkg that doesn't match is refused, the reason in the console, as a failed
+  engine load; a kept copy that doesn't match is dropped and downloaded again.
 - **A tab open across a deploy** keeps its worker, which has loaded all its code. The site keeps only the latest
   version, so if such a page's worker fails to start (its version is gone, 404), the shim reloads the page once,
   which brings the new version.

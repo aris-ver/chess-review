@@ -18,6 +18,8 @@
 //   book_keys.txt         the opening book's positions, one fen_key a line (js/core/book.js), from data/book
 //                         (scripts/fetch_book.sh)
 //   puzzles.json          the Lichess puzzle pack, fetched alongside the app; packs.json, the puzzle packs
+//   _headers              what the Worker sends with the files: the security headers and the CSP on all, caching on
+//                         themes/ and v/
 //   legacy/               the one-time move from the Python build's data (js/web/legacy.js): app.zip (legacy/chess_review,
 //                         what migrate_sqlite.py needs) and python-chess's wheel, with Pyodide from its CDN. Fetched only
 //                         by a browser that still has the Python build's IndexedDB, and only once.
@@ -35,6 +37,7 @@ import { crc32, deflateRawSync, gunzipSync, gzipSync } from 'node:zlib';
 
 import { bookKeysFromDir } from '../js/desktop/book.js';
 import { ROOT } from '../js/desktop/paths.js';
+import { API, LICHESS_USER } from '../js/server/ingest.js';
 import { fillPieces } from '../js/server/router.js';
 
 const { values: args } = parseArgs({ options: {
@@ -66,6 +69,20 @@ const THEMES_CACHE = 'public, max-age=86400, stale-while-revalidate=604800';
 // the worker's imports, asked again on every visit, were one round trip per level of imports: seconds before the app
 // worker said a word. index.html, the one way in to a version, is asked for every time, so a deploy shows at once.
 const CODE_CACHE = 'public, max-age=31536000, immutable';
+// Sent with every static file (_headers /*), on top of the rules above. HSTS for a year, blundr.gr alone: no
+// includeSubDomains or preload until every subdomain is known to be on https (preload is hard to take back). The page
+// is never framed, never sniffed, sends only its origin to other sites, and asks for no camera, microphone, location
+// or other device. The Content-Security-Policy is made per build (csp()): it names the page's inline scripts by hash.
+const SECURITY = {
+  'Strict-Transport-Security': 'max-age=31536000',
+  'X-Content-Type-Options': 'nosniff',
+  'Referrer-Policy': 'strict-origin-when-cross-origin',
+  'X-Frame-Options': 'DENY',
+  'Permissions-Policy': 'accelerometer=(), camera=(), display-capture=(), geolocation=(), gyroscope=(), '
+    + 'hid=(), magnetometer=(), microphone=(), midi=(), payment=(), serial=(), usb=()',
+};
+// what the server fetches from other sites (js/server/ingest.js): the chess.com and lichess APIs, which send CORS
+const API_ORIGINS = [API, LICHESS_USER].map(u => new URL(u).origin);
 const STOCKFISH_VERSION = '19.0.1';   // the same Stockfish as the desktop's bin/: change both together, or reviews stop matching
 const STOCKFISH_NPM = `https://registry.npmjs.org/stockfish/-/stockfish-${STOCKFISH_VERSION}.tgz`;
 // the full engine (95 MB) as visitors download it: unpkg serves npm files of any size, with CORS and a year's cache
@@ -151,6 +168,30 @@ function page(code, modules) {
   html = html.slice(0, i) + `<script src="${code}web/shim.js"></script>\n` + html.slice(i);
   const h = html.indexOf('<style');     // first in the head: before the page's style, its body, its scripts
   return html.slice(0, h) + WARM_UP(code, modules) + html.slice(h);
+}
+
+/** The Content-Security-Policy for html (index.html as served) and engineWasm (the full engine's URL, when another
+ * host serves it). Scripts: our own files, the page's inline scripts by their SHA-256 (its body's and WARM_UP: no
+ * 'unsafe-inline'), WebAssembly (SQLite, Stockfish, Pyodide: 'wasm-unsafe-eval', no 'unsafe-eval') and Pyodide's
+ * folder for the one-time move. Styles may be inline: the page and the shim set style attributes and <style> tags all
+ * over. Fetches: our own, the APIs, the engine (blob: is the engine worker reading its .wasm) and Pyodide's files.
+ * The account's sign-in goes to Lichess and Google as a navigation (account/login/...), which this doesn't limit. */
+function csp(html, engineWasm) {
+  const hashes = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)]
+    .map(m => `'sha256-${createHash('sha256').update(m[1]).digest('base64')}'`);
+  const engine = /^https?:/.test(engineWasm || '') ? [engineWasm] : [];
+  return [
+    "default-src 'self'",
+    ["script-src 'self' 'wasm-unsafe-eval'", ...hashes, LEGACY_PYODIDE].join(' '),
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' data: blob:",
+    ["connect-src 'self' blob:", ...engine, ...API_ORIGINS, LEGACY_PYODIDE].join(' '),
+    "worker-src 'self'",
+    "object-src 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+    "frame-ancestors 'none'",
+  ].join('; ');
 }
 
 /** What the JS server reads besides its code: the opening book's keys, the Lichess puzzle pack and the packs. */
@@ -305,15 +346,18 @@ async function build(engineWasm) {
   }
   // The Worker (worker/, wrangler) serves web-dist/ but refuses files over 25 MiB: the full engine comes from unpkg.
   writeFileSync(join(OUT, '.assetsignore'), 'web/engine/stockfish-19-single.wasm\n');
-  // Rules the Worker applies to its static files (themes/ never reaches its code: wrangler.jsonc run_worker_first)
-  writeFileSync(join(OUT, '_headers'), `/themes/*\n  Cache-Control: ${THEMES_CACHE}\n/v/*\n  Cache-Control: ${CODE_CACHE}\n`);
-  // engineBytes: the progress bar's total, as unpkg sends no Content-Length; engineName: what the notice says it is;
-  // site: the site's root from the code's (v/<version>/), which the other paths here are relative to
+  // engineBytes: the progress bar's total, as unpkg sends no Content-Length; engineSha256: what the downloaded bytes
+  // must hash to before they run (web/engines.js), npm's own file, so unpkg can't hand out another; engineName: what
+  // the notice says it is; site: the site's root from the code's (v/<version>/), which the other paths here are
+  // relative to
+  const sha256 = f => createHash('sha256').update(readFileSync(f)).digest('hex');
   const config = {
     legacy: legacy(OUT), engineWasm: engineWasm || 'engine/stockfish-19-single.wasm',
     engineBytes: statSync(engines['stockfish-19-single.wasm']).size,
+    engineSha256: sha256(engines['stockfish-19-single.wasm']),
     engineLiteWasm: 'engine/stockfish-19-lite-single.wasm',
     engineLiteBytes: statSync(engines['stockfish-19-lite-single.wasm']).size,
+    engineLiteSha256: sha256(engines['stockfish-19-lite-single.wasm']),
     engineName: `Stockfish ${STOCKFISH_VERSION.split('.')[0]}`,
     site: '../../',
   };
@@ -321,7 +365,13 @@ async function build(engineWasm) {
   const ver = version(code);
   mkdirSync(join(OUT, 'v'), { recursive: true });
   codeTree(OUT, code, ver);
-  writeFileSync(join(OUT, 'index.html'), page(`v/${ver}/`, warmUp(code)));
+  const html = page(`v/${ver}/`, warmUp(code));
+  writeFileSync(join(OUT, 'index.html'), html);
+  // Rules the Worker applies to its static files (themes/ never reaches its code: wrangler.jsonc run_worker_first).
+  // Every rule a path matches applies: /* to all of them.
+  const rule = (path, headers) => `${path}\n${Object.entries(headers).map(([k, v]) => `  ${k}: ${v}\n`).join('')}`;
+  writeFileSync(join(OUT, '_headers'), rule('/*', { ...SECURITY, 'Content-Security-Policy': csp(html, engineWasm) })
+    + rule('/themes/*', { 'Cache-Control': THEMES_CACHE }) + rule('/v/*', { 'Cache-Control': CODE_CACHE }));
   console.log('built', OUT, 'version', ver);
 }
 
