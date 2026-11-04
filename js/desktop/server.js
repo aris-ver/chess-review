@@ -1,0 +1,128 @@
+// The desktop app's HTTP server on 127.0.0.1, which the window loads. It serves the page (chess_review/static) the way
+// serve.Handler does and hands everything else to `api`: js/server's router (routerApi), or a placeholder that
+// answers 503 so the page loads and says what it can't do.
+
+import { readFileSync } from 'node:fs';
+import { readFile } from 'node:fs/promises';
+import { createServer } from 'node:http';
+import { extname, join, normalize, sep } from 'node:path';
+
+import { fillPieces } from '../server/router.js';
+
+const TYPES = {
+  '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8',
+  '.json': 'application/json', '.svg': 'image/svg+xml', '.webp': 'image/webp', '.png': 'image/png',
+  '.jpg': 'image/jpeg', '.mp3': 'audio/mpeg', '.ogg': 'audio/ogg', '.wav': 'audio/wav', '.woff2': 'font/woff2',
+  '.ico': 'image/x-icon', '.txt': 'text/plain; charset=utf-8',
+};
+
+/** What answers api/…, account/… and p/… when there is no router. */
+export async function placeholder(method, path) {
+  const body = JSON.stringify({ error: `Not in this build yet: ${method} ${path} needs the JS server (docs/js-port.md, round 3).` });
+  return { status: 503, headers: { 'Content-Type': 'application/json' }, body };
+}
+
+/** `api` for makeServer over js/server's Router (or a promise of one, while it starts). */
+export function routerApi(router) {
+  return async (method, url, body, headers) => (await router).handle(method, url, body, headers['content-type'] ?? null);
+}
+
+const DYNAMIC = /^\/(api|account|p)\//;
+
+/** serve.Handler._account's check: account/* only from the app's own page, on this port and by its own address (no
+ * other site's page, nor one that DNS-rebinds a name of its own to 127.0.0.1, can act for the account). headers:
+ * lower-cased, as node:http gives them. */
+export function crossSite(headers, port) {
+  const ours = new Set([`127.0.0.1:${port}`, `localhost:${port}`]);
+  const origin = headers.origin;
+  return !ours.has(headers.host) || !!(origin && !ours.has(origin.split('://').slice(1).join('://') || origin));
+}
+
+export const CROSS_SITE = { status: 403, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ error: 'cross-site request' }) };
+
+/** index.html as site.write_static writes it: the board's pieces (python-chess's chess.svg.PIECES, kept in
+ * pieces.json) in place of its placeholder. */
+export function indexHtml(staticDir) {
+  const pieces = JSON.parse(readFileSync(new URL('./pieces.json', import.meta.url), 'utf8'));
+  return fillPieces(readFileSync(join(staticDir, 'index.html'), 'utf8'), pieces);
+}
+
+/** An http.Server for the page in `staticDir`; requests to api/, account/ and p/ go to `api`. */
+export function makeServer({ staticDir, api = placeholder, log }) {
+  const index = indexHtml(staticDir);
+  const root = normalize(staticDir + sep);
+  return createServer(async (req, res) => {
+    try {
+      const path = decodeURIComponent(new URL(req.url, 'http://x').pathname);
+      // themes (pieces, boards, sounds) may be cached and revalidated; everything else is fetched fresh (serve.py)
+      const cache = path.startsWith('/themes/') ? 'no-cache' : 'no-store';
+      let out;
+      if (path.startsWith('/account/') && crossSite(req.headers, req.socket.localPort)) {
+        out = CROSS_SITE;
+      } else if (DYNAMIC.test(path)) {
+        const chunks = [];
+        for await (const c of req) chunks.push(c);
+        out = await api(req.method, req.url, Buffer.concat(chunks), req.headers);
+      } else if (req.method !== 'GET' && req.method !== 'HEAD') {
+        out = { status: 405, headers: {}, body: '' };
+      } else if (path === '/' || path === '/index.html') {
+        out = { status: 200, headers: { 'Content-Type': TYPES['.html'] }, body: index };
+      } else {
+        const file = normalize(join(staticDir, path));
+        if (!file.startsWith(root)) out = { status: 404, headers: {}, body: 'not found' };
+        else {
+          try {
+            out = { status: 200, headers: { 'Content-Type': TYPES[extname(file).toLowerCase()] || 'application/octet-stream' }, body: await readFile(file) };
+          } catch {
+            out = { status: 404, headers: { 'Content-Type': TYPES['.txt'] }, body: 'not found' };
+          }
+        }
+      }
+      if (out.body && typeof out.body[Symbol.asyncIterator] === 'function') return await stream(req, res, out, cache);
+      const body = typeof out.body === 'string' ? Buffer.from(out.body) : out.body ?? Buffer.alloc(0);
+      res.writeHead(out.status, { 'Cache-Control': cache, 'Content-Length': body.length, ...out.headers });
+      res.end(req.method === 'HEAD' ? undefined : body);
+    } catch (err) {
+      log?.error(`${req.method} ${req.url} failed`, err);
+      if (!res.headersSent) res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: String(err.message || err) }));
+    }
+  });
+}
+
+/** An answer whose body is an async iterable (/api/eval_stream's NDJSON): each piece written as it comes, the body
+ * ended by the connection closing, as serve.py's HTTP/1.0 does. The client going away closes the iterable, which
+ * stops the engine. */
+async function stream(req, res, out, cache) {
+  const it = out.body[Symbol.asyncIterator]();
+  let gone = false;
+  res.on('close', () => {
+    gone = true;
+    it.return?.().catch(() => {});
+  });
+  res.writeHead(out.status, { 'Cache-Control': cache, Connection: 'close', ...out.headers });
+  try {
+    while (!gone) {
+      const { value, done } = await it.next();
+      if (done || gone) break;
+      res.write(value);
+    }
+  } finally {
+    if (!gone) await it.return?.();
+    res.end();
+  }
+}
+
+/** Listen on host:preferred, or on any free port if that one is taken (a second copy of the app, or something else
+ * on 8123), as the launcher's _free_port does. Resolves to the port. */
+export function listen(server, host, preferred) {
+  const attempt = port => new Promise((resolve, reject) => {
+    const fail = err => { server.off('listening', ok); reject(err); };
+    const ok = () => { server.off('error', fail); resolve(server.address().port); };
+    server.once('error', fail).once('listening', ok).listen(port, host);
+  });
+  return attempt(preferred).catch(err => {
+    if (err.code !== 'EADDRINUSE' && err.code !== 'EACCES') throw err;
+    return attempt(0);
+  });
+}

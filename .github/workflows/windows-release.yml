@@ -1,0 +1,84 @@
+# Builds the Windows desktop app (Electron, js/desktop/build.js) on a clean Windows runner and, on a version tag,
+# attaches it to that tag's GitHub Release: Blundr-windows.zip (the whole app, under Blundr/; the README's and
+# blundr.gr's download links point at the latest release) and blundr-app-<runtime>.asar (the small in-app update,
+# js/desktop/update.js). The bridge release's chess-review-*.zip are attached again, so that older Python installs,
+# whose updaters only know those names, update to the bridge first and from there to Electron.
+#
+# Tags are v1 and up. The v0.x tags were the Python app, whose last release, v0.7.0, is the bridge; the Python app is
+# no longer in the repo (docs/js-port.md, step 7), so a v0.x tag fails here rather than build something else.
+#
+# Run manually (Actions -> Windows release -> Run workflow) to get the files as a workflow artifact: a manual run
+# never creates or changes a release.
+name: Windows release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  BRIDGE_TAG: v0.7.0    # the last Python release: its chess-review-*.zip ride along with every Electron release
+
+jobs:
+  electron:
+    runs-on: windows-latest
+    steps:
+      - name: Only v1+ tags
+        if: github.ref_type == 'tag'
+        shell: bash
+        run: |
+          major=$(printf '%s' "$GITHUB_REF_NAME" | sed -E 's/^v([0-9]+).*/\1/')
+          case "$major" in ''|*[!0-9]*) echo "tag $GITHUB_REF_NAME is not a version" >&2; exit 1;; esac
+          if [ "$major" -lt 1 ]; then echo "v0.x was the Python app, which is gone; the bridge ($BRIDGE_TAG) was its last release" >&2; exit 1; fi
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0    # git describe names a manual build after the nearest tag
+      - name: The bridge release's zips (older Python installs update through them)
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          mkdir -p bridge
+          gh release download "$BRIDGE_TAG" --dir bridge --pattern 'chess-review-*.zip'
+          ls bridge/chess-review-windows.zip bridge/chess-review-update-*.zip
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npm test
+      - name: Build the app
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
+        shell: bash
+        run: node js/desktop/build.js ${VERSION:+--version "$VERSION"}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: blundr-electron-windows
+          path: |
+            packaging/dist/Blundr-windows.zip
+            packaging/dist/blundr-app-*.asar
+      - name: Attach to the release
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          if ! gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            prev=$(git describe --tags --abbrev=0 "$GITHUB_REF_NAME^" 2>/dev/null || true)
+            {
+              printf '## Download\n\n'
+              printf '**[Blundr-windows.zip](https://github.com/%s/releases/download/%s/Blundr-windows.zip)** - this is the app. Unzip it anywhere and run **Blundr.exe**.\n\n' "$GITHUB_REPOSITORY" "$GITHUB_REF_NAME"
+              printf 'The other files are not meant to be downloaded by hand - installed copies of the app fetch them when they update.\n\n'
+              printf "## What's new\n\n"
+              git log --no-merges --pretty='* %s' ${prev:+$prev..}"$GITHUB_REF_NAME"
+              if [ -n "$prev" ]; then printf '\n**Full changelog**: https://github.com/%s/compare/%s...%s\n' "$GITHUB_REPOSITORY" "$prev" "$GITHUB_REF_NAME"; fi
+            } > notes.md
+            gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --notes-file notes.md
+          fi
+          gh release upload "$GITHUB_REF_NAME" packaging/dist/Blundr-windows.zip packaging/dist/blundr-app-*.asar bridge/chess-review-*.zip --clobber

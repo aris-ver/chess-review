@@ -1,0 +1,20 @@
+{
+  "name": "chess-review",
+  "private": true,
+  "description": "Blundr's JavaScript port: plain ES modules under js/, no build step (docs/js-port.md)",
+  "type": "module",
+  "main": "js/desktop/main.js",
+  "scripts": {
+    "test": "node js/run-tests.js",
+    "desktop": "electron .",
+    "build:windows": "node js/desktop/build.js",
+    "build:web": "node scripts/build_web.js"
+  },
+  "engines": {
+    "node": ">=22.13"
+  },
+  "devDependencies": {
+    "@electron/packager": "20.3.0",
+    "electron": "44.9.3"
+  }
+}
