@@ -119,7 +119,7 @@ a PC with Smart App Control **on** refuses unsigned apps outright (the exe is no
 Building it: `npm ci`, then `npm run build:windows` on Windows → `packaging/dist/Blundr-windows.zip` and
 `blundr-app-<runtime>.asar` (it fetches Stockfish and the opening book itself). `.github/workflows/windows-release.yml`
 does the same on a clean runner: push a `v1+` tag (`git tag -a v1.0.0 -m v1.0.0 && git push origin v1.0.0`) and the
-files land on that tag's GitHub Release, with the bridge release's (v0.7.0) zips attached again for old Python
+files land on that tag's GitHub Release, with the bridge's zips (from v1.0.1) attached again for old Python
 installs. Push a release tag on its own: when more than three tags arrive in one push, GitHub starts no workflow. The
 release notes are the commit subjects since the last tag, and the app shows them as "What's new"; when web-only
 commits would crowd them, create the release as a draft with desktop-only notes right after pushing the tag (the

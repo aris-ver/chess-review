@@ -1,7 +1,7 @@
 # Builds the Windows desktop app (Electron, js/desktop/build.js) on a clean Windows runner and, on a version tag,
 # attaches it to that tag's GitHub Release: Blundr-windows.zip (the whole app, under Blundr/; the README's and
 # blundr.gr's download links point at the latest release) and blundr-app-<runtime>.asar (the small in-app update,
-# js/desktop/update.js). The bridge release's chess-review-*.zip are attached again, so that older Python installs,
+# js/desktop/update.js). The bridge's chess-review-*.zip are attached again (from BRIDGE_TAG), so that older Python installs,
 # whose updaters only know those names, update to the bridge first and from there to Electron.
 #
 # Tags are v1 and up. The v0.x tags were the Python app, whose last release, v0.7.0, is the bridge; the Python app is
@@ -20,7 +20,7 @@ permissions:
   contents: write
 
 env:
-  BRIDGE_TAG: v0.7.0    # the last Python release: its chess-review-*.zip ride along with every Electron release
+  BRIDGE_TAG: v1.0.1    # keeps the bridge's chess-review-*.zip (v0.7.0's release is gone): they ride along with every Electron release
 
 jobs:
   electron:
