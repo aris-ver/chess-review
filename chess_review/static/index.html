@@ -3957,7 +3957,9 @@ function squareOverlays(mv) {
 function renderArrows() {
   const mv = currentMove(), fen = currentFen();
   const list = [];
-  if (state.showBest && bestMoveHere()) list.push([bestMoveHere(), 'best', 1]);
+  // Best on: the engine's move for the side to move, alone -- the last move's arrows (its better move, in the
+  // same green) belong to the other side and would read as a second answer
+  if (state.showBest && bestMoveHere()) { drawArrows([[bestMoveHere(), 'best', 1]]); return; }
   const live = state.game && state.game.sandbox && !state.showBest;
   const leaf = !!mv && !live && inVariation() && state.ply === line().length;
   if (!live && !leaf && mv && isMine(mv) && BAD.has(mv.label) && mv.best_uci && mv.best_uci !== mv.uci && !rescueMove(mv)) list.push([mv.best_uci, 'best', 1]);

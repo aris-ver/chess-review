@@ -27,6 +27,11 @@ export function loadMultipv(db, gameId = null) {
 
 let code = '';
 
+/** Bumped whenever the labelling rules change (js/core/classify.js, its thresholds in config.js): it is part of every
+ * game's fingerprint, so the games already classified are classified once more and their reviews rebuilt.
+ * 2: the losing side's material rule needs the loss at every cut of the lines and an eval drop (2026-11-12). */
+export const RULES_VERSION = 2;
+
 /** What stands in for classify.code_fingerprint: the build's version stamp and the opening book's, set once at
  * startup by whoever knows them (the desktop app: its version; the web worker: its build hash). Changing it makes
  * every game's fingerprint change, so every game is classified again. */
@@ -77,7 +82,7 @@ export function sha1(text) {
  * Python's digest: the first JS build classifies every game once more.) */
 export function gameFingerprint(game, rows, multipv, ...extra) {
   const lines = rows.map(r => [...(multipv[r.fen_key ?? fenKey(r.fen)] ?? [])].sort((a, b) => a.rank - b.rank));
-  return sha1(canonical([code, game, rows, lines, extra]));
+  return sha1(canonical([code, RULES_VERSION, game, rows, lines, extra]));
 }
 
 // --- the build ------------------------------------------------------------------------------------------------

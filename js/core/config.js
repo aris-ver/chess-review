@@ -16,6 +16,7 @@ export const CP_MISTAKE = 300;
 export const CP_BLUNDER = 800;
 export const MATERIAL_MISTAKE = 300;
 export const LOSING_MATERIAL_CP = -400;
+export const LOSING_MATERIAL_DROP_CP = 150;   // ...but only if the eval drops this much too: lines that merely cut a trade off at different plies leave it flat
 export const MATE_FROM_LOST_CP = -650;
 export const ONLY_MOVE_GAP = 15.0;
 export const MISS_BEFORE_MIN = 40.0;

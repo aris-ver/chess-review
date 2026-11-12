@@ -9,7 +9,7 @@ import { isBook } from './book.js';
 import { boardFromFen, copy, fen, isCapture, isCheckmate, isGameOver, isLegal, legalMoveCount, legalMoves, moveFromUci, pieceTypeAt, push, san, uci } from './chess.js';
 import {
   BLUNDER, CP_BLUNDER, CP_MISTAKE, EXCELLENT, GRADE_DEFAULT_RATING, GRADE_K_HIGH, GRADE_K_LOW, GRADE_RATING_HIGH,
-  GRADE_RATING_LOW, INACCURACY, LOSING_MATERIAL_CP, MATE_FROM_LOST_CP, MATERIAL_MISTAKE, MISS_AFTER_MIN,
+  GRADE_RATING_LOW, INACCURACY, LOSING_MATERIAL_CP, LOSING_MATERIAL_DROP_CP, MATE_FROM_LOST_CP, MATERIAL_MISTAKE, MISS_AFTER_MIN,
   MISS_BEFORE_MIN, MISTAKE, ONLY_MOVE_GAP,
 } from './config.js';
 import { materialSwing, see } from './facts.js';
@@ -201,8 +201,11 @@ export function classifyGame(game, rows, multipv = null) {
     }
     if (among(label, 'best', 'excellent', 'good', 'inaccuracy', 'great') && !isBest
         && cpBefore !== null && cpBefore <= LOSING_MATERIAL_CP
-        && materialLost(boardBefore, m, rPv, nxtPv) >= MATERIAL_MISTAKE) {
-      label = 'mistake';                                    // the losing side gives more away
+        && cpAfter !== null && cpBefore - cpAfter >= LOSING_MATERIAL_DROP_CP
+        && Math.min(...[4, 6, 8].map(p => materialLost(boardBefore, m, rPv, nxtPv, p))) >= MATERIAL_MISTAKE) {
+      // the losing side gives more away: lost at every cut of the two lines (a trade cut off halfway at one ply
+      // count is not a loss) and the eval agrees it cost something
+      label = 'mistake';
     }
 
     const clk = r.clock_remaining ?? null;
