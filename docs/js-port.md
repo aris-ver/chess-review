@@ -200,7 +200,7 @@ leader's lock; the other's ad blocker blocked `/js/core/analyse.js` (privacy lis
 worker never loaded. Fixed: start-up never waits silently any more (a tab that hears no leader in 8 s, storage that
 doesn't open in 30 s, a move step over 180 s, a worker that doesn't start: each says why, naming a file that didn't
 load); the modules are `js/core/evals.js` and `js/server/eval-cache.js` now, and `build_web.py` refuses `js/` file names
-those lists match. The site also serves `/favicon.ico` (the dark-green knight, which stays Blundr's icon).
+those lists match. The site also serves `/favicon.ico` (the blue knight, the same icon as the app and the pages link).
 
 **v0.7.0, the bridge, is released (2026-10-24).** Its runtime fingerprint moved (it bundles `sqlite3`), so v0.6.1
 installs take it as a full download; v0.6.1 installs still on it when v1.0.0 comes out must download by hand, so

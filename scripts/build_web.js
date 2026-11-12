@@ -100,6 +100,18 @@ const ANALYTICS_SCRIPT = 'https://static.cloudflareinsights.com/beacon.min.js';
 const ANALYTICS_REPORTS = 'https://cloudflareinsights.com';
 // not when serving locally: a developer's own visits aren't visitors
 const analytics = !!WEB_ANALYTICS_TOKEN && !args.serve;
+/** web/icons/<name> as the pages link it: with ?v= and a hash of the file, so a new icon is a new URL. Browsers keep
+ * a site's icon in a store of their own (the tab, bookmarks, history, a home-screen install) that ignores the HTTP
+ * cache headers and goes back to the server only when the link changes; with the hash, every visitor's browser
+ * fetches a redrawn icon on its next visit, and no one has to clear anything. */
+function iconUrl(name) {
+  const hash = createHash('sha256').update(readFileSync(join(ROOT, 'web', 'icons', name))).digest('hex').slice(0, 10);
+  return `icons/${name}?v=${hash}`;
+}
+/** html with each icons/<file> it links versioned (iconUrl): the plain pages carry them as they are written. */
+function versionIcons(html) {
+  return html.replace(/(["'(]\/?)icons\/([\w.-]+\.png)(?=["')])/g, (m, before, name) => before + iconUrl(name));
+}
 const BG = '#232a35';      // the page's --bg: the status bar and the splash while it loads
 // Added to the home screen (iPhone: Share > Add to Home Screen; Android: Install app) the site opens full screen with
 // its own icon. iOS reads the apple-* tags, everything else the manifest. No service worker: it stays an online site.
@@ -110,13 +122,13 @@ const HEAD = `<meta name="description" content="${DESCRIPTION}">
 <meta property="og:url" content="${SITE}/">
 <meta property="og:title" content="${TITLE}">
 <meta property="og:description" content="${DESCRIPTION}">
-<meta property="og:image" content="${SITE}/icons/blundr-card.png">
+<meta property="og:image" content="${SITE}/${iconUrl('blundr-card.png')}">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta name="twitter:card" content="summary_large_image">
 <link rel="manifest" href="manifest.json">
-<link rel="icon" href="icons/favicon-32.png" type="image/png">
-<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="icon" href="${iconUrl('favicon-32.png')}" type="image/png">
+<link rel="apple-touch-icon" href="${iconUrl('apple-touch-icon.png')}">
 <meta name="theme-color" content="${BG}">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -126,8 +138,8 @@ const HEAD = `<meta name="description" content="${DESCRIPTION}">
 const MANIFEST = {
   name: NAME, short_name: NAME, description: 'Chess game review and puzzles', start_url: '/', scope: '/',
   display: 'standalone', background_color: BG, theme_color: BG,
-  icons: [{ src: 'icons/icon-192.png', sizes: '192x192', type: 'image/png' },
-          { src: 'icons/icon-512.png', sizes: '512x512', type: 'image/png' }],
+  icons: [{ src: iconUrl('icon-192.png'), sizes: '192x192', type: 'image/png' },
+          { src: iconUrl('icon-512.png'), sizes: '512x512', type: 'image/png' }],
 };
 
 /** Every file under dir, recursively, as absolute paths. */
@@ -344,7 +356,7 @@ async function build(engineWasm) {
   rmSync(join(OUT, 'web', 'account.js'), { force: true });      // where builds before the desktop app had it
   for (const f of files(join(STATIC, 'themes'))) copyIfChanged(f, join(OUT, 'themes', relative(join(STATIC, 'themes'), f)));
   for (const f of files(join(ROOT, 'web', 'pages')).filter(f => f.endsWith('.html'))) {    // plain pages at the site's root
-    copyIfChanged(f, join(OUT, basename(f)));
+    writeFileSync(join(OUT, basename(f)), versionIcons(readFileSync(f, 'utf8')));
     if (readFileSync(f, 'utf8').includes('<span class="fill">')) {
       console.log(`warning: ${relative(ROOT, f)} still has placeholders (class=fill) to fill in before going live`);
     }

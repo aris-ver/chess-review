@@ -3644,7 +3644,10 @@ async function pollStatus() {
     const active = j && ACTIVE(j.status);
     $('b-refresh').disabled = !!active && !['puzzles', 'build'].includes(j.kind);   // the background jobs give way to a refresh
     const fetching = active && ['ingest', 'older', 'refresh'].includes(j.kind);
-    const onCard = fetching && j.kind === 'ingest' && !$('home').classList.contains('hidden');   // the new profile's card already shows it
+    // on the home screen the profile's own card already shows it (a new one's bar, a refresh's sweep along its edge):
+    // no stripe under the header as well
+    const onCard = fetching && ['ingest', 'refresh'].includes(j.kind) && !$('home').classList.contains('hidden') &&
+      !!$('profiles')?.querySelector(`.card.profile[data-id="${CSS.escape(j.profile)}"]`);
     $('jobstat').textContent = active && j.kind !== 'build' && !onCard ? jobText(j) : '';        // a build has its bar at the bottom
     markFetchBar(fetching && !onCard ? j : null);
     const mine = j && j.profile === state.profile;   // jobs belong to a profile; only react to the one being viewed
