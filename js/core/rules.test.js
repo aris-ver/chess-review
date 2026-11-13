@@ -299,6 +299,10 @@ test('comment: a brilliant move names the piece on offer and why taking it fails
   assert.deepEqual(said({ ...args, after: quiet(['g7e7', 'd7c6', 'e7c5', 'c6g2', 'd1g4']) }),
     ['Ne7 is brilliant: it offers the knight on e7.',
       'Taking it does not pay: after 28. Qxe7 Bc6 29. Qc5 Bxg2 30. Bxg4, Black is winning.']);
+  // taking it leaves the game level: nothing is said not to pay
+  assert.deepEqual(said({ ...args, wp: [50, 50], after: quiet(['g7e7', 'd7c6', 'e7c5', 'c6g2', 'd1g4']) }),
+    ['Ne7 is brilliant: it offers the knight on e7.',
+      'After 28. Qxe7 Bc6 29. Qc5 Bxg2 30. Bxg4, the game is level.']);
   // the engine's line never takes it: the sentence says so
   assert.deepEqual(said({ ...args, after: quiet(['d1g4', 'd7g4']) }),
     ['Ne7 is brilliant: it offers the knight on e7.', 'White does better not to take it: 28. Bxg4 Bxg4.']);

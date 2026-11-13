@@ -309,7 +309,8 @@ function brilliant(f) {
   const w = f.wp_after;
   const state = w == null ? null : w >= 65 ? `${me} is winning` : w >= 55 ? `${me} is better` : w > 45 ? 'the game is level'
     : `${them} is only slightly better`;
-  if (state) s.push(`Taking it does not pay: after ${ref}, ${state}.`);
+  // "does not pay" only when the line takes it at once and the mover ends better for it
+  if (state) s.push(o.taken && w >= 55 ? `Taking it does not pay: after ${ref}, ${state}.` : `After ${ref}, ${state}.`);
   return s;
 }
 
