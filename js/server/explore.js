@@ -6,7 +6,7 @@
 // evals rows in js/core/evals.js, so a move is graded from the same kind of search as the game's moves. Results
 // are kept in memory only; the evals cache is read (when given) but never written.
 
-import { evaluateMultipv, parseInfo } from '../core/evals.js';
+import { evaluateMultipv, keepPv, parseInfo } from '../core/evals.js';
 import { boardFromFen, copy, fen, isCheckmate, isGameOver, legalMoves, moveFromUci, parseUci, push, san, uci } from '../core/chess.js';
 import { classifyGame } from '../core/classify.js';
 import { DEFAULT_NODES, MULTIPV_N } from '../core/config.js';
@@ -223,7 +223,7 @@ export class Explorer {
         const t = now();
         const fresh = !!(info.pv && info.pv.length && 'multipv' in info && 'score' in info);
         if (fresh) {
-          lines.set(info.multipv, info);
+          lines.set(info.multipv, keepPv(lines.get(info.multipv), info));
           if (lines.has(1) && nodes > bestNodes) {
             this.cache.set(key, linesRows(lines, nodes));
             bestNodes = nodes;

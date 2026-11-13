@@ -1843,7 +1843,9 @@
       ],
       "hung": [],
       "reply_uci": "f1c4",
-      "idea": [],
+      "idea": [
+       "c7c5"
+      ],
       "threat": null
      },
      {
@@ -2033,7 +2035,7 @@
       "clock": 130,
       "spent": 12,
       "comment": [
-       "This leaves the bishop on g4 hanging: 7. Qxg4 Nc6.",
+       "This leaves the bishop on g4 hanging: 7. Qxg4 Nc6 8. Nxh7 Ne5 9. Qe6+ Be7.",
        "Qxg5 was the only move."
       ],
       "hung": [
@@ -2097,12 +2099,16 @@
       "move": "6... Ke8",
       "headline": "Blunder \u2014 win chance 94% \u2192 37%",
       "text": [
-       "This leaves the bishop on g4 hanging: 7. Qxg4 Nc6.",
+       "This leaves the bishop on g4 hanging: 7. Qxg4 Nc6 8. Nxh7 Ne5 9. Qe6+ Be7.",
        "Qxg5 was the only move."
       ],
       "refutation_uci": [
        "d1g4",
-       "b8c6"
+       "b8c6",
+       "g5h7",
+       "c6e5",
+       "g4e6",
+       "f8e7"
       ],
       "best_uci": "d8g5",
       "hung": [
@@ -3577,7 +3583,11 @@
     "best_san": "e4",
     "pv_san": [
      "e4",
-     "e5"
+     "c5",
+     "d4",
+     "cxd4",
+     "Nf3",
+     "Nc6"
     ],
     "mate_in": null,
     "eval_cp": 27

@@ -114,8 +114,19 @@ export function parseInfo(arg, root) {
   return info;
 }
 
+/** `info` with its pv swapped for the one already held for its line, when that is the better line to keep. A search
+ * cut off by the node budget mid aspiration re-search ends on a lowerbound/upperbound info whose pv is just the move
+ * and at most one reply; when that pv starts with the same move as the longer one of the depth before, the longer pv
+ * stays. Score, nodes and the rest still come from `info`. A bound line with another first move replaces as usual. */
+export function keepPv(prev, info) {
+  const had = prev?.pv;
+  if (!(info.lowerbound || info.upperbound) || !info.pv || !had || had.length <= info.pv.length || had[0] !== info.pv[0]) return info;
+  return { ...info, pv: had };
+}
+
 /** What python-chess's AnalysisResult holds after a search: one merged info per MultiPV line, a later `info` for
- * a line updating the fields it carries. Lines other than `info` (bestmove, ...) are ignored. */
+ * a line updating the fields it carries. Lines other than `info` (bestmove, ...) are ignored. One deliberate
+ * departure from python-chess: a bound line keeps the full pv of the depth before (keepPv). */
 export function analysisFromLines(lines, root) {
   const multipv = [{}];
   for (const line of lines) {
@@ -127,7 +138,7 @@ export function analysisFromLines(lines, root) {
     while (multipv.length < k) multipv.push({});
     const i = k - 1 < 0 ? multipv.length + k - 1 : k - 1;
     if (i < 0 || i >= multipv.length) throw new Error(`multipv ${k} out of range`);
-    Object.assign(multipv[i], info);
+    Object.assign(multipv[i], keepPv(multipv[i], info));
   }
   return multipv;
 }

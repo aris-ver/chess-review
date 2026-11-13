@@ -137,6 +137,21 @@ test('explore: the live stream throttles, beats once a second and feeds the cach
   same([main.nodes, main.eval_cp, main.pv, ranks.map(r => r.move)], [900, 35, ['e2e4', 'c7c5', 'g1f3'], ['e2e4', 'd2d4']]);
 });
 
+test('explore: a bound line keeps the live line of the depth before', async () => {
+  const fixed = ['info depth 1 multipv 1 score cp 20 nodes 100 pv e2e4'];
+  const ex = new Explorer({ name: 'SF', async load() {}, async search() { return fixed; } }, { nodes: 100 });
+  let t = 0;
+  async function* infos() {
+    yield 'info depth 16 multipv 1 score cp 30 nodes 800 pv e2e4 e7e5 g1f3';
+    t = 1;
+    yield 'info depth 17 multipv 1 score cp 40 lowerbound nodes 1000 pv e2e4 e7e5';
+  }
+  const out = [];
+  for await (const s of ex.analyseStream(boardFromFen(START), infos(), { now: () => t + 100 })) out.push(s);
+  same(out.map(s => [s.lines[0].eval, s.lines[0].pv]), [['+0.3', ['e4', 'e5', 'Nf3']], ['+0.4', ['e4', 'e5', 'Nf3']]]);
+  same(ex.lookup(fenKey(START))[0].pv, ['e2e4', 'e7e5', 'g1f3']);
+});
+
 test('explore: the evals cache is read when given', async () => {
   const key = fenKey(START);
   const evals = {
