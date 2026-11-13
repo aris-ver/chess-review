@@ -29,6 +29,7 @@ export function moveFacts(f) {
     refutation: [],            // SAN, opponent's best line after the move
     refutation_uci: [],
     best_line: [],             // SAN, engine's line from before the move
+    best_line_uci: [],         // the same line in UCI
     material_swing: null,      // mover POV, centipawns, over the refutation
     hung_pieces: [],           // [{piece, square, capture_san, see}]
     missed_mate: null,
@@ -729,11 +730,13 @@ export function secondLine(board, multipv) {
   const side = board.turn;
   const pv = r.pv?.length ? r.pv : [r.move];
   const n = settledLength(board, pv, REFUTATION_PLIES);
-  return {
+  const out = {
     san: san(board, m), wp: povWinPct(r.eval_cp, r.mate_in, side, side),
     mate: r.mate_in == null ? null : -r.mate_in,
     line: sans(board, pv, n), trade: settledTrade(board, pv, n, side),
   };
+  out.uci = pv.slice(0, out.line.length);
+  return out;
 }
 
 /** What a sacrifice offers: the mover's piece the opponent can take after the move (the moved piece when it can be
@@ -818,6 +821,7 @@ export function extract(mv, board, evalBefore, evalAfter, multipv = null, prevRo
   const bestPv = evalBefore.pv || [];
   const bestLen = settledLength(board, bestPv, REFUTATION_PLIES);
   f.best_line = sans(board, bestPv, bestLen);
+  f.best_line_uci = bestPv.slice(0, f.best_line.length);
   f.best_trade = settledTrade(board, bestPv, bestLen, mover);
   if ((evalBefore.mate_in ?? 0) > 0) f.best_mate = evalBefore.mate_in;
 

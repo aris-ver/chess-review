@@ -59,38 +59,65 @@ function gains(t) {
   return pieces(t.won) + (t.lost.length ? ` for ${pieces(t.lost)}` : '');
 }
 
+// --- sentences ------------------------------------------------------------------------------------------------
+//
+// Each sentence is built as {text, short, reason}: `text` the full sentence, line and all; `short` the same sentence
+// without its line ("This leaves the rook on h1 hanging." for "...hanging: 4... Qxh1 5. Nf3."); `reason` whether it
+// says something the move's header (its verdict, eval and the eval bar) and the arrows don't. Filler -- the verdict
+// said again, a bare "X was better", how the game stands -- has reason false. `clock`: the "Played ..." sentence.
+// `glue`: comment() runs it on after the sentence before, in one string. `on`: the line a reason is about (moveLine):
+// 'after' the opponent's reply and on, 'before' the engine's choice and on, 'played' the move and the reply,
+// 'second' a great move's next best.
+
+const S = (on, text, short = text) => ({ text, short, reason: true, on });
+const F = (text, short = text) => ({ text, short, reason: false });
+/** A sentence ending in its line: built with the line `ref` and without it. */
+const withRef = (on, fn, ref, reason = true) => ({ text: fn(ref), short: fn(null), reason, on });
+/** ': <line>.' or '.'. */
+const end = ref => (ref ? `: ${ref}.` : '.');
+
 /** What a line loses for the mover, as a sentence about the line `ref`, or null when it loses less than two
  * pawns' worth (or what it loses isn't in the line shown, or the line stops before the material settles). */
 function losses(t, ref) {
   if (!t || t.net > -200 || t.stable === false) return null;
   const promo = t.promotes.find(p => !p.by_mover);
-  if (promo) return `This lets the ${promo.file}-pawn queen: ${ref}.`;
+  if (promo) return withRef('after', r => `This lets the ${promo.file}-pawn queen${end(r)}`, ref);
   if (!t.lost.length) return null;
-  return `This loses ${pieces(t.lost)}` + (t.won.length ? ` for ${pieces(t.won)}` : '') + `: ${ref}.`;
+  return withRef('after', r => `This loses ${pieces(t.lost)}` + (t.won.length ? ` for ${pieces(t.won)}` : '') + end(r), ref);
 }
 
 /** The sentence for the piece the refutation takes (facts.lostPiece). */
 function lostSentence(f, l, ref) {
-  if (l.blocked) {
-    const b = l.blocked;
-    return `The ${b.by} on ${b.by_square} blocks the ${b.piece} on ${b.square} from taking back on ${l.square}, `
-      + `so the ${l.piece} there is lost for nothing: ${ref}.`;
-  }
-  if (l.kind === 'trade') return `${f.san} takes a ${l.captured} but loses the ${l.piece}: ${ref}.`;
-  if (l.kind === 'moved') return `This puts the ${l.piece} on ${l.square}, where the ${l.taker} takes it: ${ref}.`;
-  if (l.kind === 'left') return `This leaves the ${l.piece} on ${l.square} hanging: ${ref}.`;
-  if (l.kind === 'unguarded') return `The ${l.guard} no longer guards the ${l.piece} on ${l.square}: ${ref}.`;
-  return `This lets the ${l.taker} take the ${l.piece} on ${l.square}: ${ref}.`;
+  return withRef('after', r => {
+    if (l.blocked) {
+      const b = l.blocked;
+      return `The ${b.by} on ${b.by_square} blocks the ${b.piece} on ${b.square} from taking back on ${l.square}, `
+        + `so the ${l.piece} there is lost for nothing${end(r)}`;
+    }
+    if (l.kind === 'trade') return `${f.san} takes a ${l.captured} but loses the ${l.piece}${end(r)}`;
+    if (l.kind === 'moved') return `This puts the ${l.piece} on ${l.square}, where the ${l.taker} takes it${end(r)}`;
+    if (l.kind === 'left') return `This leaves the ${l.piece} on ${l.square} hanging${end(r)}`;
+    if (l.kind === 'unguarded') return `The ${l.guard} no longer guards the ${l.piece} on ${l.square}${end(r)}`;
+    return `This lets the ${l.taker} take the ${l.piece} on ${l.square}${end(r)}`;
+  }, ref);
 }
 
 const SIDE = { white: 'White', black: 'Black' };
 
+/** 'After <line>, <state>.', or without the line '<State>.'. */
+const after = (ref, state) => (ref ? `After ${ref}, ${state}.` : `${capitalize(state)}.`);
+
 /** How the move changed the game, from the mover's win chance before and after: for a bad move that loses no
- * material the line shows. */
+ * material the line shows. Filler: the eval bar says as much. */
 function standing(f, ref) {
+  return withRef('after', r => after(r, standingState(f)), ref, false);
+}
+
+/** standing()'s clause: 'the game is level'. */
+function standingState(f) {
   const me = SIDE[f.side] ?? 'The mover', them = f.side === 'white' ? 'Black' : f.side === 'black' ? 'White' : 'the opponent';
   const b = f.wp_before, a = f.wp_after;
-  if (a == null || b == null) return `After ${ref}, the position is worse.`;
+  if (a == null || b == null) return 'the position is worse';
   let state;
   if (a >= 85) state = `${me} is still winning`;
   else if (a >= 65) state = `${me} is still winning, but much of the advantage is gone`;
@@ -99,22 +126,22 @@ function standing(f, ref) {
   else if (a > 35) state = `${them} is now better`;
   else if (b <= 35) state = `${them}'s advantage grows`;
   else state = b >= 65 ? `the win is gone: ${them} is now winning` : `${them} is now winning`;
-  return `After ${ref}, ${state}.`;
+  return state;
 }
 
 /** The second sentence: what the engine's choice did instead. `aboutLost`: the first sentence was about f.lost. */
 function better(f, best, aboutLost) {
-  if (f.was_only_move) return `${best} was the only move.`;
+  if (f.was_only_move) return S('before', `${best} was the only move.`);
   if (f.best_saves && aboutLost) {
     const s = f.best_saves;
-    return s.moved ? `${best} moves the ${s.piece} to safety.` : `${best} keeps the ${s.piece} on ${s.square} safe.`;
+    return S('before', s.moved ? `${best} moves the ${s.piece} to safety.` : `${best} keeps the ${s.piece} on ${s.square} safe.`);
   }
   const g = gains(f.best_trade);
-  if (g) return `${best} wins ${g}.`;
+  if (g) return S('before', `${best} wins ${g}.`);
   const b0 = f.wp_before != null ? band(f.wp_before) : 'equal';
-  if (b0 === 'winning') return f.wp_after >= 65 ? `${best} was stronger.` : `${best} kept the win.`;   // the win wasn't in danger
-  if (b0 === 'losing') return `${best} was the best chance.`;
-  return `${best} held the balance.`;
+  if (b0 === 'winning') return F(f.wp_after >= 65 ? `${best} was stronger.` : `${best} kept the win.`);   // the win wasn't in danger
+  if (b0 === 'losing') return F(`${best} was the best chance.`);
+  return F(`${best} held the balance.`);
 }
 
 // what a missed move does that says nothing about it: answering a check, castling, a trade offered, a push prepared,
@@ -124,20 +151,23 @@ const THIN = new Set(['escapes', 'blocks', 'castles', 'castle_prep', 'offers', '
 /** What the engine's choice for a miss would have done: mate, material, else what the move does (facts.describeMove),
  * else how it kept the game. */
 function missed(f, best) {
-  const bl = f.best_line.length ? `: ${line(f.best_line, f.ply)}` : '';
-  if (f.best_mate === 1) return `Missed ${best}, which was mate.`;
-  if (f.best_mate) return `Missed ${best}, which mates in ${f.best_mate}${bl}.`;
+  const ref = f.best_line.length ? line(f.best_line, f.ply) : null;
+  const bl = r => (r ? `: ${r}` : '');
+  if (f.best_mate === 1) return S('before', `Missed ${best}, which was mate.`);
+  if (f.best_mate) return withRef('before', r => `Missed ${best}, which mates in ${f.best_mate}${bl(r)}.`, ref);
   const g = gains(f.best_trade);
-  if (g) return `Missed ${best}, which wins ${g}${bl}.`;
+  if (g) return withRef('before', r => `Missed ${best}, which wins ${g}${bl(r)}.`, ref);
   const d = f.best_does;
   const c = d && !THIN.has(d.kind) && !(d.kind === 'check' && !gains(d.wins)) ? does(d) : null;
-  if (c) return `Missed ${best}, which ${c}${bl}.`;
+  if (c) return withRef('before', r => `Missed ${best}, which ${c}${bl(r)}.`, ref);
+  // the rest say only that it was better, or how the game stood: filler
   const me = SIDE[f.side];
   if (me && f.wp_before != null && f.wp_before >= 65) {
-    return f.wp_after >= 65 ? `Missed ${best}, which was stronger${bl}.` : `Missed ${best}, which kept ${me} winning${bl}.`;
+    return withRef('before', r => (f.wp_after >= 65 ? `Missed ${best}, which was stronger${bl(r)}.`
+      : `Missed ${best}, which kept ${me} winning${bl(r)}.`), ref, false);
   }
-  if (me && f.wp_before != null && f.wp_before >= 55) return `Missed ${best}, which kept ${me} better${bl}.`;
-  return `Missed ${best}${bl}.`;
+  if (me && f.wp_before != null && f.wp_before >= 55) return withRef('before', r => `Missed ${best}, which kept ${me} better${bl(r)}.`, ref, false);
+  return withRef('before', r => `Missed ${best}${bl(r)}.`, ref, false);
 }
 
 /** The clock, when it says something about the move: little time left, a long think, or an instant move. */
@@ -152,6 +182,11 @@ function clockNote(f) {
 
 /** Ordered sentences. The first is the main reason, the rest are supporting facts. */
 export function explain(f) {
+  return explainSentences(f).map(x => x.text);
+}
+
+/** explain()'s sentences as {text, short, reason, clock}. */
+function explainSentences(f) {
   const s = [];
   const replyPly = f.ply + 1;
   const ref = f.refutation.length ? line(f.refutation, replyPly) : null;
@@ -167,38 +202,45 @@ export function explain(f) {
   const cost = () => {
     if (f.allowed_mate) {
       const n = f.allowed_mate === 1 ? 'mate' : `mate in ${f.allowed_mate}`;
-      return [lostAlready ? `${capitalize(n)} follows: ${ref}.` : `This allows ${n}: ${ref}.`, false];
+      return [withRef('after', r => (lostAlready ? `${capitalize(n)} follows${end(r)}` : `This allows ${n}${end(r)}`), ref), false];
     }
     if (l && (l.piece !== 'pawn' || l.blocked)) return [lostSentence(f, l, ref), true];
-    if (f.motif && f.motif_backed) return [`${f.refutation[0]} ${f.motif_detail}: ${ref}.`, false];
+    if (f.motif && f.motif_backed) return [withRef('after', r => `${f.refutation[0]} ${f.motif_detail}${end(r)}`, ref), false];
     if (lossLine) return [lossLine, false];
     if (l) return [lostSentence(f, l, ref), true];
     return [standing(f, ref), false, true];
   };
+  /** The sentence `c` with both its forms rewritten by `fn`. */
+  const map = (c, fn) => ({ ...c, text: fn(c.text), short: fn(c.short) });
 
   let aboutLost = false;
   if (f.label === 'miss' && best) {
     s.push(missed(f, best));
     // what the move played gave away, when it gave away much: a miss is a bad move of its own too
     // (named, not "this": the sentence before is about the move missed)
-    if (f.still_mates) s.push(`After ${f.san} there is still mate in ${f.still_mates}.`);
+    if (f.still_mates) s.push(S('played', `After ${f.san} there is still mate in ${f.still_mates}.`));
     else if (ref && f.wp_loss != null && f.wp_loss >= 10) {
       const [c, , plain] = cost();
-      if (plain) s.push(standing(f, line([f.san, ...f.refutation], f.ply)));
-      else if (c.startsWith('This ')) s.push(c.replace(/^This /, `${f.san} `));
-      else if (c.startsWith(`${f.san} `)) s.push(c);
-      else s.push(`After ${f.san}, ${c.replace(/^The /, 'the ')}`);   // the reply's pattern, a guard or a block
+      if (plain) {
+        // without the line, the move played is still named
+        const st = standing(f, line([f.san, ...f.refutation], f.ply));
+        s.push({ ...st, short: `After ${f.san}, ${standingState(f)}.` });
+      }
+      else if (c.text.startsWith('This ')) s.push(map(c, t => t.replace(/^This /, `${f.san} `)));
+      else if (c.text.startsWith(`${f.san} `)) s.push(c);
+      else s.push(map(c, t => `After ${f.san}, ${t.replace(/^The /, 'the ')}`));   // the reply's pattern, a guard or a block
     }
   }
   else if (f.missed_mate && best) {
-    s.push(f.missed_mate === 1 ? `${best} was mate.` : `${best} mates in ${f.missed_mate}: ${line(f.best_line, f.ply)}.`);
+    s.push(f.missed_mate === 1 ? S('before', `${best} was mate.`)
+      : S('before', `${best} mates in ${f.missed_mate}: ${line(f.best_line, f.ply)}.`, `${best} mates in ${f.missed_mate}.`));
   }
   else if (ref) [s[0], aboutLost] = cost();
 
   if (best && !f.missed_mate && f.label !== 'miss') s.push(better(f, best, aboutLost));
 
   const c = clockNote(f);
-  if (c) s.push(c);
+  if (c) s.push({ ...F(c), clock: true });
   return s;
 }
 
@@ -239,48 +281,49 @@ const bare = d => d.kind === 'castles' || (d.kind === 'check' && !gains(d.wins))
 function itDoes(f) {
   const d = f.does;
   if (!d || bare(d)) return null;
-  if (d.kind === 'mate' && d.n === 1) return `${f.san} is checkmate.`;
-  return `${f.san} ${does(d)}.`;
+  if (d.kind === 'mate' && d.n === 1) return F(`${f.san} is checkmate.`);   // the board says so
+  return S('played', `${f.san} ${does(d)}.`);
 }
 
 /** What the engine's choice did instead: 'Nf3 was better: it protects the pawn on e5.' `plain` is the sentence when
- * there is nothing to say, and leads the longer one ("Nf3 was the engine's choice: it ..."). */
+ * there is nothing to say (filler), and leads the longer one ("Nf3 was the engine's choice: it ..."). */
 function betterDoes(f, plain = `${f.best_san} was better.`) {
   const c = f.best_does && !bare(f.best_does) ? does(f.best_does) : null;
-  return c ? `${plain.slice(0, -1)}: it ${c}.` : plain;
+  return c ? S('before', `${plain.slice(0, -1)}: it ${c}.`) : F(plain);
 }
 
 /** Why an inaccuracy cost what it did, when the facts show it: a sentence and whether it is about f.lost. */
 function whyInaccurate(f) {
   if (!f.refutation.length) return null;
   const ref = line(f.refutation, f.ply + 1);
-  if (f.allowed_mate) return [`This allows ${f.allowed_mate === 1 ? 'mate' : `mate in ${f.allowed_mate}`}: ${ref}.`, false];
+  if (f.allowed_mate) return [withRef('after', r => `This allows ${f.allowed_mate === 1 ? 'mate' : `mate in ${f.allowed_mate}`}${end(r)}`, ref), false];
   // material only when it stays lost: a few plies more of the engine's line don't win it back (the line shown can
   // stop mid-exchange, and a piece taken can be paid for)
   const settled = f.trade && f.trade.stable !== false;
   if (f.lost && settled && f.trade.net <= -100) return [lostSentence(f, f.lost, ref), true];
-  if (f.motif && f.motif_backed) return [`${f.refutation[0]} ${f.motif_detail}: ${ref}.`, false];
+  if (f.motif && f.motif_backed) return [withRef('after', r => `${f.refutation[0]} ${f.motif_detail}${end(r)}`, ref), false];
   const l = settled ? losses(f.trade, ref) : null;
   return l ? [l, false] : null;
 }
 
-/** A great move: what it does, then what the next best move would have left (facts.secondLine). */
+/** A great move: what it does, then what the next best move would have left (facts.secondLine). The next best's
+ * sentence is the reason it is great: what the move avoided. */
 function great(f) {
-  const s = [itDoes(f) ?? `${f.san} is the only good move.`];
+  const s = [itDoes(f) ?? F(`${f.san} is the only good move.`)];
   const sec = f.second;
   if (!sec) return s;
   const me = SIDE[f.side] ?? 'the mover', them = SIDE[f.side === 'white' ? 'black' : 'white'] ?? 'the opponent';
   const alt = `The next best, ${sec.san},`;
   const t = sec.trade;
-  if (sec.mate != null && sec.mate > 0) s.push(`${alt} lets ${them} mate${sec.mate === 1 ? '' : ` in ${sec.mate}`}.`);
+  if (sec.mate != null && sec.mate > 0) s.push(S('second', `${alt} lets ${them} mate${sec.mate === 1 ? '' : ` in ${sec.mate}`}.`));
   else if (t && t.net <= -200 && t.stable !== false && t.lost.length && sec.line.length) {
-    s.push(`${alt} loses ${pieces(t.lost)}${t.won.length ? ` for ${pieces(t.won)}` : ''}: ${line(sec.line, f.ply)}.`);
+    s.push(withRef('second', r => `${alt} loses ${pieces(t.lost)}${t.won.length ? ` for ${pieces(t.won)}` : ''}${end(r)}`, line(sec.line, f.ply)));
   }
   else {
     const w = sec.wp;
     const state = w >= 65 ? `keeps less of ${me}'s advantage` : w >= 55 ? `leaves ${me} only slightly better`
       : w > 45 ? 'leaves the game level' : w > 35 ? `leaves ${them} better` : `leaves ${them} winning`;
-    s.push(`${alt} ${state}.`);
+    s.push(S('second', `${alt} ${state}.`));
   }
   return s;
 }
@@ -288,60 +331,99 @@ function great(f) {
 /** A brilliant move: the piece it offers (facts.offered), then why taking it fails. */
 function brilliant(f) {
   const o = f.offered;
-  if (!o) return [`${f.san} is brilliant: a sacrifice that holds.`];
-  const s = [`${f.san} is brilliant: it offers the ${o.piece} on ${o.square}.`];
+  if (!o) return [F(`${f.san} is brilliant: a sacrifice that holds.`)];
+  const s = [S('after', `${f.san} is brilliant: it offers the ${o.piece} on ${o.square}.`)];
   if (!f.refutation.length) return s;
   const ref = line(f.refutation, f.ply + 1);
   const me = SIDE[f.side] ?? 'the mover', them = SIDE[f.side === 'white' ? 'black' : 'white'] ?? 'the opponent';
   if (!o.taken && !o.later) {
-    s.push(`${them} does better not to take it: ${ref}.`);
+    s.push(withRef('after', r => `${them} does better not to take it${end(r)}`, ref));
     return s;
   }
   if (f.still_mates) {
-    s.push(`Taking it allows mate in ${f.still_mates}: ${ref}.`);
+    s.push(withRef('after', r => `Taking it allows mate in ${f.still_mates}${end(r)}`, ref));
     return s;
   }
   const g = o.taken ? gains(o.back) : null;
   if (g) {
-    s.push(`Taking it fails: after ${ref}, ${me} wins ${g}.`);
+    s.push(withRef('after', r => `Taking it fails: ${r ? `after ${r}, ` : ''}${me} wins ${g}.`, ref));
     return s;
   }
   const w = f.wp_after;
   const state = w == null ? null : w >= 65 ? `${me} is winning` : w >= 55 ? `${me} is better` : w > 45 ? 'the game is level'
     : `${them} is only slightly better`;
   // "does not pay" only when the line takes it at once and the mover ends better for it
-  if (state) s.push(o.taken && w >= 55 ? `Taking it does not pay: after ${ref}, ${state}.` : `After ${ref}, ${state}.`);
+  if (state) {
+    s.push(o.taken && w >= 55 ? withRef('after', r => `Taking it does not pay: ${r ? `after ${r}, ` : ''}${state}.`, ref)
+      : withRef('after', r => after(r, state), ref, false));
+  }
   return s;
+}
+
+/** comment()'s sentences as {text, short, reason, clock, glue} (see S and F above). */
+export function sentences(f, opening = null) {
+  if (f.label == null) return [];
+  // the header already says it is book, or forced (the opening's name is on the first position)
+  if (f.label === 'book') return [F(`${f.san} is a book move.` + (opening ? ` (${opening})` : ''))];
+  if (f.label === 'forced') return [F(`${f.san} was the only legal move.`)];
+  if (f.label === 'brilliant') return brilliant(f);
+  if (f.label === 'great') return great(f);
+  if (f.label === 'best') return [itDoes(f) ?? F(`${f.san} is the best move.`)];
+  const close = f.best_san && f.wp_loss != null && f.wp_loss < 1;
+  if (f.label === 'excellent' || f.label === 'good') {
+    const what = `${f.san} is ${f.label === 'excellent' ? 'an excellent' : 'a good'} move`;
+    if (!f.best_san) return [F(`${what}.`)];
+    if (close) return [F(`${what}, as good as the engine's ${f.best_san}.`)];
+    const plain = f.label === 'excellent' ? `${f.best_san} was the engine's choice.` : `${f.best_san} was better.`;
+    const mine = !f.best_does && f.does && !bare(f.does) && does(f.does);    // nothing to say for the engine's choice: say what the move does
+    // two sentences in one string, as the panel has always had them
+    if (mine) return [S('played', `${what}: it ${mine}.`), { ...F(plain), glue: true }];
+    return [F(`${what}.`), { ...betterDoes(f, plain), glue: true }];
+  }
+  if (f.label === 'inaccuracy') {
+    const s = [F(`${f.san} is an inaccuracy.`)];
+    const why = f.wp_loss != null && f.wp_loss >= 6 ? whyInaccurate(f) : null;
+    if (why) s.push(why[0]);
+    if (f.best_san) {
+      const saves = why?.[1] && !f.best_san.includes('+') && f.best_saves;   // a check keeps nothing safe for long
+      s.push(saves ? S('before', saves.moved ? `${f.best_san} moves the ${saves.piece} to safety.`
+        : `${f.best_san} keeps the ${saves.piece} on ${saves.square} safe.`) : betterDoes(f));
+    }
+    return s;
+  }
+  return explainSentences(f);
 }
 
 /** One or two sentences for ANY move (the move list / current-move panel). Mistakes and worse get the full
  * explanation. Good moves say what they do, or what the engine's choice did instead. */
 export function comment(f, opening = null) {
-  if (f.label == null) return [];
-  if (f.label === 'book') return [`${f.san} is a book move.` + (opening ? ` (${opening})` : '')];
-  if (f.label === 'forced') return [`${f.san} was the only legal move.`];
-  if (f.label === 'brilliant') return brilliant(f);
-  if (f.label === 'great') return great(f);
-  if (f.label === 'best') return [itDoes(f) ?? `${f.san} is the best move.`];
-  const close = f.best_san && f.wp_loss != null && f.wp_loss < 1;
-  if (f.label === 'excellent' || f.label === 'good') {
-    const what = `${f.san} is ${f.label === 'excellent' ? 'an excellent' : 'a good'} move`;
-    if (!f.best_san) return [`${what}.`];
-    if (close) return [`${what}, as good as the engine's ${f.best_san}.`];
-    const plain = f.label === 'excellent' ? `${f.best_san} was the engine's choice.` : `${f.best_san} was better.`;
-    const mine = !f.best_does && f.does && !bare(f.does) && does(f.does);    // nothing to say for the engine's choice: say what the move does
-    return [mine ? `${what}: it ${mine}. ${plain}` : `${what}. ` + betterDoes(f, plain)];
+  const out = [];
+  for (const s of sentences(f, opening)) {
+    if (s.glue && out.length) out[out.length - 1] += ` ${s.text}`;
+    else out.push(s.text);
   }
-  if (f.label === 'inaccuracy') {
-    const s = [`${f.san} is an inaccuracy.`];
-    const why = f.wp_loss != null && f.wp_loss >= 6 ? whyInaccurate(f) : null;
-    if (why) s.push(why[0]);
-    if (f.best_san) {
-      const saves = why?.[1] && !f.best_san.includes('+') && f.best_saves;   // a check keeps nothing safe for long
-      s.push(saves ? (saves.moved ? `${f.best_san} moves the ${saves.piece} to safety.`
-        : `${f.best_san} keeps the ${saves.piece} on ${saves.square} safe.`) : betterDoes(f));
-    }
-    return s;
-  }
-  return explain(f);
+  return out;
+}
+
+/** The sentences that say something: no verdict said again, no bare "X was better", no standing the eval bar
+ * shows, no clock. Each {text (with its line), short (without), on (the line it is about)}. Empty: there is nothing
+ * more to explain. */
+export function reasons(f, opening = null) {
+  return sentences(f, opening).filter(s => s.reason && !s.clock).map(({ text, short, on }) => ({ text, short, on }));
+}
+
+/** The one line the move's explanation plays out, as {base_ply (main-line moves before it), san, uci, on}, or null: the
+ * line its first reason is about (the opponent's reply to a bad move, the move a miss missed, what the engine's choice
+ * does, the move played and its reply), and a great move's next best before all. null when there is no reason, so nothing to play.
+ * played: the move's UCI. */
+export function moveLine(f, played, opening = null) {
+  const rs = reasons(f, opening);
+  const r = rs.find(x => x.on === 'second') ?? rs.find(x => x.on);    // a great move: what the next best leaves
+  if (!r) return null;
+  const mk = (base, san, uci) => (san.length && uci.length >= san.length
+    ? { base_ply: base, san: [...san], uci: uci.slice(0, san.length), on: r.on } : null);
+  if (r.on === 'after') return mk(f.ply + 1, f.refutation, f.refutation_uci);
+  if (r.on === 'before') return mk(f.ply, f.best_line, f.best_line_uci ?? []);
+  if (r.on === 'second') return f.second ? mk(f.ply, f.second.line ?? [], f.second.uci ?? []) : null;
+  return mk(f.ply, [f.san, ...f.refutation], [played, ...f.refutation_uci]);
 }

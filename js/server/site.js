@@ -15,7 +15,7 @@ import { gameAccuracy } from '../core/accuracy.js';
 import { boardFromFen } from '../core/chess.js';
 import { classifyGame } from '../core/classify.js';
 import { select } from '../core/critical.js';
-import { comment, explain, headline, moveLabel } from '../core/explain.js';
+import { comment, explain, headline, moveLabel, moveLine, reasons } from '../core/explain.js';
 import { extract } from '../core/facts.js';
 import { povWinPct, toWhitePov } from '../core/pov.js';
 import { formatFixed, pyRound } from '../core/py.js';
@@ -44,6 +44,27 @@ function wpWhite(p) {
   return pyRound(povWinPct(p.eval_cp, p.mate_in, p.side_to_move, 'white'), 1);
 }
 
+/** What the move panel shows of a move beyond its comment: `short`, the sentences that say something, without their
+ * lines; `full`, the same with their lines (the Explain view); `line`, the one line Explain plays out
+ * (explain.moveLine), with the eval it ends on (the position it starts from, or for a great move's next best its own
+ * MultiPV line). played: the move's UCI; before/after: the evals rows around the move; ranks: the MultiPV rows before it,
+ * or null. */
+export function panelFields(facts, played, opening, before, after, ranks) {
+  const r = reasons(facts, opening);
+  const ln = moveLine(facts, played, opening);
+  let line = null;
+  if (ln) {
+    const { on, ...rest } = ln;
+    let p = on === 'before' ? before : after;
+    if (on === 'second') {
+      const second = ranks ? [...ranks].sort((a, b) => a.rank - b.rank)[1] : null;
+      p = second ? { eval_cp: second.eval_cp, mate_in: second.mate_in, side_to_move: before.side_to_move } : null;
+    }
+    line = { ...rest, eval: p ? evalText(p.eval_cp, p.mate_in, p.side_to_move) : null, wp_white: p ? wpWhite(p) : null };
+  }
+  return { short: r.map(x => x.short), full: r.map(x => x.text), line };
+}
+
 function counts(moves, side) {
   const out = {};
   for (const m of moves) if (m.side_to_move === side && m.label) out[m.label] = (out[m.label] ?? 0) + 1;
@@ -69,6 +90,8 @@ export function buildGame(game, positions, moves, critical, multipv, username = 
       best_san: m.best_san, best_uci: before.best_move,
       clock: m.clock_remaining, spent: m.time_spent,
       comment: facts ? comment(facts, m.in_book ? game.opening_name : null) : [],
+      ...(facts ? panelFields(facts, m.move_played, m.in_book ? game.opening_name : null, before, after, multipv[before.fen_key] ?? null)
+        : { short: [], full: [], line: null }),
       hung: facts ? facts.hung_pieces.map(h => h.square) : [],
       reply_uci: facts && facts.refutation_uci.length ? facts.refutation_uci[0] : null,
       idea: facts ? facts.idea : [],

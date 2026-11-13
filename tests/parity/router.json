@@ -995,7 +995,10 @@
       "hung": [],
       "reply_uci": null,
       "idea": [],
-      "threat": null
+      "threat": null,
+      "short": [],
+      "full": [],
+      "line": null
      },
      {
       "ply": 1,
@@ -1015,7 +1018,10 @@
       "hung": [],
       "reply_uci": null,
       "idea": [],
-      "threat": null
+      "threat": null,
+      "short": [],
+      "full": [],
+      "line": null
      },
      {
       "ply": 2,
@@ -1035,7 +1041,10 @@
       "hung": [],
       "reply_uci": null,
       "idea": [],
-      "threat": null
+      "threat": null,
+      "short": [],
+      "full": [],
+      "line": null
      },
      {
       "ply": 3,
@@ -1055,7 +1064,10 @@
       "hung": [],
       "reply_uci": null,
       "idea": [],
-      "threat": null
+      "threat": null,
+      "short": [],
+      "full": [],
+      "line": null
      },
      {
       "ply": 4,
@@ -1075,7 +1087,10 @@
       "hung": [],
       "reply_uci": null,
       "idea": [],
-      "threat": null
+      "threat": null,
+      "short": [],
+      "full": [],
+      "line": null
      },
      {
       "ply": 5,
@@ -1095,7 +1110,10 @@
       "hung": [],
       "reply_uci": null,
       "idea": [],
-      "threat": null
+      "threat": null,
+      "short": [],
+      "full": [],
+      "line": null
      },
      {
       "ply": 6,
@@ -1115,7 +1133,10 @@
       "hung": [],
       "reply_uci": null,
       "idea": [],
-      "threat": null
+      "threat": null,
+      "short": [],
+      "full": [],
+      "line": null
      },
      {
       "ply": 7,
@@ -1135,7 +1156,10 @@
       "hung": [],
       "reply_uci": null,
       "idea": [],
-      "threat": null
+      "threat": null,
+      "short": [],
+      "full": [],
+      "line": null
      },
      {
       "ply": 8,
@@ -1155,7 +1179,10 @@
       "hung": [],
       "reply_uci": null,
       "idea": [],
-      "threat": null
+      "threat": null,
+      "short": [],
+      "full": [],
+      "line": null
      },
      {
       "ply": 9,
@@ -1175,7 +1202,10 @@
       "hung": [],
       "reply_uci": null,
       "idea": [],
-      "threat": null
+      "threat": null,
+      "short": [],
+      "full": [],
+      "line": null
      },
      {
       "ply": 10,
@@ -1195,7 +1225,10 @@
       "hung": [],
       "reply_uci": null,
       "idea": [],
-      "threat": null
+      "threat": null,
+      "short": [],
+      "full": [],
+      "line": null
      },
      {
       "ply": 11,
@@ -1215,7 +1248,10 @@
       "hung": [],
       "reply_uci": null,
       "idea": [],
-      "threat": null
+      "threat": null,
+      "short": [],
+      "full": [],
+      "line": null
      },
      {
       "ply": 12,
@@ -1235,7 +1271,10 @@
       "hung": [],
       "reply_uci": null,
       "idea": [],
-      "threat": null
+      "threat": null,
+      "short": [],
+      "full": [],
+      "line": null
      }
     ],
     "key_moments": [],
@@ -1294,7 +1333,10 @@
       "hung": [],
       "reply_uci": null,
       "idea": [],
-      "threat": null
+      "threat": null,
+      "short": [],
+      "full": [],
+      "line": null
      },
      {
       "ply": 1,
@@ -1314,7 +1356,10 @@
       "hung": [],
       "reply_uci": null,
       "idea": [],
-      "threat": null
+      "threat": null,
+      "short": [],
+      "full": [],
+      "line": null
      },
      {
       "ply": 2,
@@ -1334,7 +1379,10 @@
       "hung": [],
       "reply_uci": null,
       "idea": [],
-      "threat": null
+      "threat": null,
+      "short": [],
+      "full": [],
+      "line": null
      },
      {
       "ply": 3,
@@ -1354,7 +1402,10 @@
       "hung": [],
       "reply_uci": null,
       "idea": [],
-      "threat": null
+      "threat": null,
+      "short": [],
+      "full": [],
+      "line": null
      },
      {
       "ply": 4,
@@ -1374,7 +1425,10 @@
       "hung": [],
       "reply_uci": null,
       "idea": [],
-      "threat": null
+      "threat": null,
+      "short": [],
+      "full": [],
+      "line": null
      },
      {
       "ply": 5,
@@ -1394,7 +1448,10 @@
       "hung": [],
       "reply_uci": null,
       "idea": [],
-      "threat": null
+      "threat": null,
+      "short": [],
+      "full": [],
+      "line": null
      },
      {
       "ply": 6,
@@ -1414,7 +1471,10 @@
       "hung": [],
       "reply_uci": null,
       "idea": [],
-      "threat": null
+      "threat": null,
+      "short": [],
+      "full": [],
+      "line": null
      }
     ],
     "key_moments": [],
@@ -1776,7 +1836,10 @@
       "hung": [],
       "reply_uci": "c7c5",
       "idea": [],
-      "threat": null
+      "threat": null,
+      "short": [],
+      "full": [],
+      "line": null
      },
      {
       "ply": 1,
@@ -1798,7 +1861,10 @@
       "hung": [],
       "reply_uci": "b1c3",
       "idea": [],
-      "threat": null
+      "threat": null,
+      "short": [],
+      "full": [],
+      "line": null
      },
      {
       "ply": 2,
@@ -1822,7 +1888,34 @@
       "idea": [
        "f3e5"
       ],
-      "threat": null
+      "threat": null,
+      "short": [
+       "Nf3 attacks the pawn on e5."
+      ],
+      "full": [
+       "Nf3 attacks the pawn on e5."
+      ],
+      "line": {
+       "base_ply": 2,
+       "san": [
+        "Nf3",
+        "Nc6",
+        "Bb5",
+        "Nd4",
+        "Nxd4",
+        "exd4"
+       ],
+       "uci": [
+        "g1f3",
+        "b8c6",
+        "f1b5",
+        "c6d4",
+        "f3d4",
+        "e5d4"
+       ],
+       "eval": "+0.4",
+       "wp_white": 53.4
+      }
      },
      {
       "ply": 3,
@@ -1846,7 +1939,32 @@
       "idea": [
        "c7c5"
       ],
-      "threat": null
+      "threat": null,
+      "short": [
+       "d6 is an excellent move: it keeps the pawn on e5 safe."
+      ],
+      "full": [
+       "d6 is an excellent move: it keeps the pawn on e5 safe."
+      ],
+      "line": {
+       "base_ply": 3,
+       "san": [
+        "d6",
+        "Bc4",
+        "c5",
+        "c3",
+        "Nf6"
+       ],
+       "uci": [
+        "d7d6",
+        "f1c4",
+        "c7c5",
+        "c2c3",
+        "g8f6"
+       ],
+       "eval": "+0.5",
+       "wp_white": 54.6
+      }
      },
      {
       "ply": 4,
@@ -1871,7 +1989,10 @@
        "e5d4",
        "f3d4"
       ],
-      "threat": null
+      "threat": null,
+      "short": [],
+      "full": [],
+      "line": null
      },
      {
       "ply": 5,
@@ -1897,7 +2018,34 @@
       "idea": [
        "f3d4"
       ],
-      "threat": null
+      "threat": null,
+      "short": [
+       "exd4 trades pawns."
+      ],
+      "full": [
+       "exd4 trades pawns."
+      ],
+      "line": {
+       "base_ply": 5,
+       "san": [
+        "exd4",
+        "Nxd4",
+        "Nf6",
+        "Bd3",
+        "Be7",
+        "O-O"
+       ],
+       "uci": [
+        "e5d4",
+        "f3d4",
+        "g8f6",
+        "f1d3",
+        "f8e7",
+        "e1g1"
+       ],
+       "eval": "+0.5",
+       "wp_white": 55.0
+      }
      },
      {
       "ply": 6,
@@ -1921,7 +2069,32 @@
       "idea": [
        "e1g1"
       ],
-      "threat": null
+      "threat": null,
+      "short": [
+       "Nxd4 was the engine's choice: it takes back on d4."
+      ],
+      "full": [
+       "Nxd4 was the engine's choice: it takes back on d4."
+      ],
+      "line": {
+       "base_ply": 6,
+       "san": [
+        "Nxd4",
+        "Nf6",
+        "Bd3",
+        "Be7",
+        "O-O"
+       ],
+       "uci": [
+        "f3d4",
+        "g8f6",
+        "f1d3",
+        "f8e7",
+        "e1g1"
+       ],
+       "eval": "+0.5",
+       "wp_white": 55
+      }
      },
      {
       "ply": 7,
@@ -1945,7 +2118,10 @@
       ],
       "reply_uci": "c2c3",
       "idea": [],
-      "threat": null
+      "threat": null,
+      "short": [],
+      "full": [],
+      "line": null
      },
      {
       "ply": 8,
@@ -1971,7 +2147,34 @@
       "idea": [
        "e8f7"
       ],
-      "threat": null
+      "threat": null,
+      "short": [
+       "Bxf7+ takes the pawn on f7."
+      ],
+      "full": [
+       "Bxf7+ takes the pawn on f7."
+      ],
+      "line": {
+       "base_ply": 8,
+       "san": [
+        "Bxf7+",
+        "Kxf7",
+        "Ng5+",
+        "Ke7",
+        "Qxg4",
+        "Qd7"
+       ],
+       "uci": [
+        "c4f7",
+        "e8f7",
+        "f3g5",
+        "f7e7",
+        "d1g4",
+        "d8d7"
+       ],
+       "eval": "+1.2",
+       "wp_white": 61
+      }
      },
      {
       "ply": 9,
@@ -1995,7 +2198,34 @@
       ],
       "reply_uci": "e1g1",
       "idea": [],
-      "threat": null
+      "threat": null,
+      "short": [
+       "Kxf7 takes back on f7."
+      ],
+      "full": [
+       "Kxf7 takes back on f7."
+      ],
+      "line": {
+       "base_ply": 9,
+       "san": [
+        "Kxf7",
+        "O-O",
+        "Ke8",
+        "c3",
+        "Nc6",
+        "cxd4"
+       ],
+       "uci": [
+        "e8f7",
+        "e1g1",
+        "f7e8",
+        "c2c3",
+        "b8c6",
+        "c3d4"
+       ],
+       "eval": "-4.2",
+       "wp_white": 17.3
+      }
      },
      {
       "ply": 10,
@@ -2018,7 +2248,10 @@
       "hung": [],
       "reply_uci": "d8g5",
       "idea": [],
-      "threat": null
+      "threat": null,
+      "short": [],
+      "full": [],
+      "line": null
      },
      {
       "ply": 11,
@@ -2044,7 +2277,36 @@
       ],
       "reply_uci": "d1g4",
       "idea": [],
-      "threat": null
+      "threat": null,
+      "short": [
+       "This leaves the bishop on g4 hanging.",
+       "Qxg5 was the only move."
+      ],
+      "full": [
+       "This leaves the bishop on g4 hanging: 7. Qxg4 Nc6 8. Nxh7 Ne5 9. Qe6+ Be7.",
+       "Qxg5 was the only move."
+      ],
+      "line": {
+       "base_ply": 12,
+       "san": [
+        "Qxg4",
+        "Nc6",
+        "Nxh7",
+        "Ne5",
+        "Qe6+",
+        "Be7"
+       ],
+       "uci": [
+        "d1g4",
+        "b8c6",
+        "g5h7",
+        "c6e5",
+        "g4e6",
+        "f8e7"
+       ],
+       "eval": "+1.4",
+       "wp_white": 62.5
+      }
      },
      {
       "ply": 12,
@@ -2067,7 +2329,34 @@
       "hung": [],
       "reply_uci": "b8c6",
       "idea": [],
-      "threat": null
+      "threat": null,
+      "short": [
+       "Qxg4 wins the bishop on g4.",
+       "The next best, f3, leaves Black winning."
+      ],
+      "full": [
+       "Qxg4 wins the bishop on g4.",
+       "The next best, f3, leaves Black winning."
+      ],
+      "line": {
+       "base_ply": 12,
+       "san": [
+        "f3",
+        "Bd7",
+        "f4",
+        "Nc6",
+        "c3"
+       ],
+       "uci": [
+        "f2f3",
+        "g4d7",
+        "f3f4",
+        "b8c6",
+        "c2c3"
+       ],
+       "eval": "-6.4",
+       "wp_white": 8.5
+      }
      }
     ],
     "key_moments": [
@@ -2182,7 +2471,10 @@
       "hung": [],
       "reply_uci": "c7c5",
       "idea": [],
-      "threat": null
+      "threat": null,
+      "short": [],
+      "full": [],
+      "line": null
      },
      {
       "ply": 1,
@@ -2204,7 +2496,10 @@
       "hung": [],
       "reply_uci": "b1c3",
       "idea": [],
-      "threat": null
+      "threat": null,
+      "short": [],
+      "full": [],
+      "line": null
      },
      {
       "ply": 2,
@@ -2226,7 +2521,10 @@
       "hung": [],
       "reply_uci": "g8f6",
       "idea": [],
-      "threat": null
+      "threat": null,
+      "short": [],
+      "full": [],
+      "line": null
      },
      {
       "ply": 3,
@@ -2248,7 +2546,32 @@
       "hung": [],
       "reply_uci": "d2d3",
       "idea": [],
-      "threat": null
+      "threat": null,
+      "short": [
+       "Nf6 was the engine's choice: it attacks the pawn on e4."
+      ],
+      "full": [
+       "Nf6 was the engine's choice: it attacks the pawn on e4."
+      ],
+      "line": {
+       "base_ply": 3,
+       "san": [
+        "Nf6",
+        "d4",
+        "exd4",
+        "Nf3",
+        "Nc6"
+       ],
+       "uci": [
+        "g8f6",
+        "d2d4",
+        "e5d4",
+        "g1f3",
+        "b8c6"
+       ],
+       "eval": "+0.1",
+       "wp_white": 50.6
+      }
      },
      {
       "ply": 4,
@@ -2271,7 +2594,10 @@
       "hung": [],
       "reply_uci": "g7g6",
       "idea": [],
-      "threat": null
+      "threat": null,
+      "short": [],
+      "full": [],
+      "line": null
      },
      {
       "ply": 5,
@@ -2296,7 +2622,24 @@
       ],
       "reply_uci": "h5f7",
       "idea": [],
-      "threat": null
+      "threat": null,
+      "short": [
+       "This allows mate."
+      ],
+      "full": [
+       "This allows mate: 4. Qxf7#."
+      ],
+      "line": {
+       "base_ply": 6,
+       "san": [
+        "Qxf7#"
+       ],
+       "uci": [
+        "h5f7"
+       ],
+       "eval": "M1",
+       "wp_white": 100
+      }
      },
      {
       "ply": 6,
@@ -2318,7 +2661,10 @@
       "hung": [],
       "reply_uci": null,
       "idea": [],
-      "threat": null
+      "threat": null,
+      "short": [],
+      "full": [],
+      "line": null
      }
     ],
     "key_moments": [
@@ -3636,7 +3982,40 @@
     "threat": null,
     "next_best_uci": "f3g5",
     "next_best_san": "Ng5",
-    "game_over": false
+    "game_over": false,
+    "short": [
+     "Nf6 attacks the pawn on e4."
+    ],
+    "full": [
+     "Nf6 attacks the pawn on e4."
+    ],
+    "line": {
+     "base_ply": 5,
+     "san": [
+      "Nf6",
+      "Ng5",
+      "d5",
+      "exd5",
+      "Na5",
+      "Bb5+",
+      "c6",
+      "dxc6",
+      "bxc6"
+     ],
+     "uci": [
+      "g8f6",
+      "f3g5",
+      "d7d5",
+      "e4d5",
+      "c6a5",
+      "c4b5",
+      "c7c6",
+      "d5c6",
+      "b7c6"
+     ],
+     "eval": "+0.3",
+     "wp_white": 52.8
+    }
    }
   },
   {
@@ -3670,7 +4049,10 @@
     "threat": null,
     "next_best_uci": "c7c5",
     "next_best_san": "c5",
-    "game_over": false
+    "game_over": false,
+    "short": [],
+    "full": [],
+    "line": null
    }
   },
   {

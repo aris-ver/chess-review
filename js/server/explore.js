@@ -15,7 +15,7 @@ import { extract } from '../core/facts.js';
 import { fenKey } from '../core/fen.js';
 import { povWinPct } from '../core/pov.js';
 import { pyRound } from '../core/py.js';
-import { evalText } from './site.js';
+import { evalText, panelFields } from './site.js';
 
 export const PV_PLIES = 16;     // how much of each engine line the sandbox shows
 export const WHY_NOT_PLIES = 6; // how much of the line /api/eval gives (a puzzle's wrong move)
@@ -284,7 +284,8 @@ export class Explorer {
       wp_loss: m.wp_loss == null ? null : pyRound(m.wp_loss, 1),
       best_san: m.best_san, best_uci: beforeMain.best_move,
       clock: null, spent: null,
-      comment: comment(facts), hung: facts.hung_pieces.map(h => h.square),
+      comment: comment(facts), ...panelFields(facts, moveUci, null, rows[0], rows[1], beforeRanks),
+      hung: facts.hung_pieces.map(h => h.square),
       reply_uci: facts.refutation_uci.length ? facts.refutation_uci[0] : null, idea: facts.idea,
       threat: facts.threat,
       // the engine's move in the new position, so a variation can be followed move by move
