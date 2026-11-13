@@ -264,12 +264,12 @@ test('comment: a brilliant move names the piece on offer and why taking it fails
 // --- where a line stops (facts.settledLength / settledTrade) -----------------------------------------------------
 
 test('explain: a line runs on through a check to what it wins', () => {
-  // 10.gxf3 ... 12.Nxc7+: the knight takes the rook on a8 after the king moves
+  // 10.gxf3 ... 12.Nxc7+: the knight takes the rook on a8 after the king moves (Qxb2 itself took a pawn)
   const f = bad({ fen: 'r1b1kb1r/ppp1pppp/5n2/1N1Pn3/1qP5/5p2/PP1B2PP/R2QKBNR b KQkq - 3 9', played: 'b4b2', ply: 17,
     wp: [80, 31], before: { eval_cp: 300, mate_in: null, pv: ['f3f2', 'e1f2', 'f6e4', 'f2e1', 'b4b2', 'a1c1'] },
     after: { eval_cp: 400, mate_in: null, pv: ['g2f3', 'e7e6', 'a1c1', 'e5g6', 'b5c7', 'e8d8', 'c7a8', 'f8c5', 'd1b3'] } });
   assert.equal(f.refutation.length, 7);
-  assert.equal(explain(f)[0], 'This loses a rook and two pawns: 10. gxf3 e6 11. Rc1 Ng6 12. Nxc7+ Kd8 13. Nxa8.');
+  assert.equal(explain(f)[0], 'This loses a rook and a pawn: 10. gxf3 e6 11. Rc1 Ng6 12. Nxc7+ Kd8 13. Nxa8.');
 });
 
 test('explain: no "loses a bishop" when the line wins it back a move later', () => {
@@ -326,4 +326,40 @@ test('explain: a fork the line wins through names the king first', () => {
 test('comment: a good move that hits a piece and a pawn attacks the piece, it doesn\'t fork', () => {
   assert.deepEqual(said({ fen: 'N1b4B/p2k1p1p/1p6/2p5/3p4/P2P1P2/3P1P1P/R3K2R b KQ - 0 18', played: 'c8b7', ply: 35,
     before: quiet(['c8b7']), after: quiet(['a8b6', 'a7b6']) }), ['Bb7 threatens to take the knight on a8.']);
+});
+
+// --- misses: what the move missed does, and what the move played cost ------------------------------------------
+
+test('explain: a miss says what the move missed does, and what the move played cost', () => {
+  // 14.h4: Ne1 took the knight out of the pawn's way; h4 leaves it to exf3
+  const f = bad({ fen: 'r3k2r/ppp2pp1/2n2n1p/3p1P1q/1b1Pp3/2N1BN1P/PPPKP3/R2Q1B1R w kq - 2 14', played: 'h3h4',
+    label: 'miss', ply: 26, wp: [54, 37], before: { eval_cp: 0, mate_in: null, pv: ['f3e1', 'h5f5'] },
+    after: { eval_cp: -150, mate_in: null, pv: ['e4f3', 'e2f3'] } });
+  assert.deepEqual(explain(f), ['Missed Ne1, which moves the knight out of danger: 14. Ne1 Qxf5.',
+    'h4 leaves the knight on f3 hanging: 14... exf3 15. exf3.']);
+});
+
+test('explain: a miss with nothing to say about the move missed still says what the move played cost', () => {
+  const f = bad({ fen: 'rn2k1nr/p6p/1pp1p1p1/4b1q1/4N3/3B1Q2/PPP2PPP/1K1R3R b kq - 1 14', played: 'g5h4',
+    label: 'miss', ply: 27, wp: [52, 22], before: { eval_cp: 0, mate_in: null, pv: ['g5e7', 'h1e1'] },
+    after: { eval_cp: 250, mate_in: null, pv: ['h1e1', 'b8d7', 'e4d6', 'e5d6', 'f3c6', 'e8f7', 'c6a8', 'd7c5'] } });
+  assert.deepEqual(explain(f), ['Missed Qe7: 14... Qe7 15. Rhe1.',
+    'After 14... Qh4 15. Rhe1 Nd7 16. Nd6+ Bxd6 17. Qxc6, White is now winning.']);
+});
+
+test('explain: "kept White winning" is followed by what the move played gave away', () => {
+  const f = bad({ fen: 'r4rk1/ppp2ppp/2n2B2/8/4P1b1/2P2N2/P1P1BPPP/R2K3R w - - 1 12', played: 'h2h3',
+    label: 'miss', ply: 22, wp: [92, 61], before: { eval_cp: 500, mate_in: null, pv: ['f6g5', 'f7f5', 'e4f5', 'f8f5'] },
+    after: { eval_cp: 150, mate_in: null, pv: ['g4f3', 'g2f3', 'g7f6', 'h1g1', 'g8h8', 'd1d2'] } });
+  assert.deepEqual(explain(f), ['Missed Bg5, which moves the bishop out of danger: 12. Bg5 f5 13. exf5 Rxf5.',
+    'h3 leaves the bishop on f6 hanging: 12... Bxf3 13. gxf3 gxf6 14. Rg1+ Kh8.']);
+});
+
+test('explain: taking a bishop and being taken back is a trade, not a bishop lost', () => {
+  const f = bad({ fen: 'r3qrk1/pp1b1ppp/2n2n2/1BbN4/8/4BN2/PPP2PPP/R2QK2R b KQ - 2 11', played: 'c5e3',
+    label: 'miss', ply: 21, wp: [65, 47], before: { eval_cp: 100, mate_in: null, pv: ['f6d5', 'd1d5'] },
+    after: { eval_cp: 0, mate_in: null, pv: ['d5e3', 'f6g4', 'd1d2', 'g4e3', 'f2e3', 'a7a6'] } });
+  assert.equal(f.lost, null);
+  assert.deepEqual(explain(f), ['Missed Nxd5, which kept Black winning: 11... Nxd5 12. Qxd5.',
+    'After 11... Bxe3 12. Nxe3 Ng4 13. Qd2 Nxe3 14. fxe3, the advantage is gone and the game is level.']);
 });

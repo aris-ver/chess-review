@@ -116,13 +116,21 @@ function better(f, best, aboutLost) {
   return `${best} held the balance.`;
 }
 
-/** What the engine's choice for a miss would have done. */
+// what a missed move does that says nothing about it: answering a check, castling, a trade offered, a push prepared,
+// a plain check
+const THIN = new Set(['escapes', 'blocks', 'castles', 'castle_prep', 'offers', 'prepares']);
+
+/** What the engine's choice for a miss would have done: mate, material, else what the move does (facts.describeMove),
+ * else how it kept the game. */
 function missed(f, best) {
   const bl = f.best_line.length ? `: ${line(f.best_line, f.ply)}` : '';
   if (f.best_mate === 1) return `Missed ${best}, which was mate.`;
   if (f.best_mate) return `Missed ${best}, which mates in ${f.best_mate}${bl}.`;
   const g = gains(f.best_trade);
   if (g) return `Missed ${best}, which wins ${g}${bl}.`;
+  const d = f.best_does;
+  const c = d && !THIN.has(d.kind) && !(d.kind === 'check' && !gains(d.wins)) ? does(d) : null;
+  if (c) return `Missed ${best}, which ${c}${bl}.`;
   const me = SIDE[f.side];
   if (me && f.wp_before != null && f.wp_before >= 65) return `Missed ${best}, which kept ${me} winning${bl}.`;
   if (me && f.wp_before != null && f.wp_before >= 55) return `Missed ${best}, which kept ${me} better${bl}.`;
@@ -151,29 +159,37 @@ export function explain(f) {
   const lossLine = ref ? losses(f.trade, ref) : null;
   const lostAlready = f.wp_before != null && f.wp_before < 10;
 
+  /** What the move played cost, from the refutation: [sentence, about f.lost, only the standing]. */
+  const cost = () => {
+    if (f.allowed_mate) {
+      const n = f.allowed_mate === 1 ? 'mate' : `mate in ${f.allowed_mate}`;
+      return [lostAlready ? `${capitalize(n)} follows: ${ref}.` : `This allows ${n}: ${ref}.`, false];
+    }
+    if (l && (l.piece !== 'pawn' || l.blocked)) return [lostSentence(f, l, ref), true];
+    if (f.motif && f.motif_backed) return [`${f.refutation[0]} ${f.motif_detail}: ${ref}.`, false];
+    if (lossLine) return [lossLine, false];
+    if (l) return [lostSentence(f, l, ref), true];
+    return [standing(f, ref), false, true];
+  };
+
   let aboutLost = false;
   if (f.label === 'miss' && best) {
     s.push(missed(f, best));
+    // what the move played gave away, when it gave away much: a miss is a bad move of its own too
+    // (named, not "this": the sentence before is about the move missed)
     if (f.still_mates) s.push(`After ${f.san} there is still mate in ${f.still_mates}.`);
+    else if (ref && f.wp_loss != null && f.wp_loss >= 10) {
+      const [c, , plain] = cost();
+      if (plain) s.push(standing(f, line([f.san, ...f.refutation], f.ply)));
+      else if (c.startsWith('This ')) s.push(c.replace(/^This /, `${f.san} `));
+      else if (c.startsWith(`${f.san} `)) s.push(c);
+      else s.push(`After ${f.san}, ${c.replace(/^The /, 'the ')}`);   // the reply's pattern, a guard or a block
+    }
   }
   else if (f.missed_mate && best) {
     s.push(f.missed_mate === 1 ? `${best} was mate.` : `${best} mates in ${f.missed_mate}: ${line(f.best_line, f.ply)}.`);
   }
-  else if (f.allowed_mate && ref) {
-    const n = f.allowed_mate === 1 ? 'mate' : `mate in ${f.allowed_mate}`;
-    s.push(lostAlready ? `${capitalize(n)} follows: ${ref}.` : `This allows ${n}: ${ref}.`);
-  }
-  else if (l && (l.piece !== 'pawn' || l.blocked)) {
-    s.push(lostSentence(f, l, ref));
-    aboutLost = true;
-  }
-  else if (f.motif && f.motif_backed && ref) s.push(`${f.refutation[0]} ${f.motif_detail}: ${ref}.`);
-  else if (lossLine) s.push(lossLine);
-  else if (l) {
-    s.push(lostSentence(f, l, ref));
-    aboutLost = true;
-  }
-  else if (ref) s.push(standing(f, ref));
+  else if (ref) [s[0], aboutLost] = cost();
 
   if (best && !f.missed_mate && f.label !== 'miss') s.push(better(f, best, aboutLost));
 
@@ -233,8 +249,7 @@ function whyInaccurate(f) {
   if (f.allowed_mate) return [`This allows ${f.allowed_mate === 1 ? 'mate' : `mate in ${f.allowed_mate}`}: ${ref}.`, false];
   // material only when it stays lost: a few plies more of the engine's line don't win it back (the line shown can
   // stop mid-exchange, and a piece taken can be paid for)
-  const settled = f.trade && f.trade.stable !== false && f.material_swing != null
-    && Math.abs(f.material_swing - f.trade.net) <= 100;
+  const settled = f.trade && f.trade.stable !== false;
   if (f.lost && settled && f.trade.net <= -100) return [lostSentence(f, f.lost, ref), true];
   if (f.motif && f.motif_backed) return [`${f.refutation[0]} ${f.motif_detail}: ${ref}.`, false];
   const l = settled ? losses(f.trade, ref) : null;

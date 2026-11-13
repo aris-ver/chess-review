@@ -42,7 +42,7 @@ export function moveFacts(f) {
     still_mates: null,         // the move misses a faster mate but still mates, in this many
     best_mate: null,           // the engine's choice mates, in this many
     lost: null,                // the piece the refutation takes, and how the move lost it (lostPiece)
-    trade: null,               // material over the refutation, mover POV (tradeOver)
+    trade: null,               // material over the move and its refutation, mover POV (settledTrade)
     best_trade: null,          // material over the best line, mover POV
     best_saves: null,          // the engine's choice keeps the lost piece: {piece, square, moved}
     does: null,                // what the move does (describeMove)
@@ -477,8 +477,11 @@ export function lostPiece(board, played, hung, refutationUci) {
   if (h.blocked) out.blocked = h.blocked;
   if (sq === played.to) {
     if (isCapture(board, played)) {
+      const captured = isEnPassant(board, played) ? 'pawn' : pieceTypeAt(board, played.to);
+      // taking something worth as much and being taken back is a trade, not a loss
+      if (VALUE[captured] >= VALUE[h.piece] || MINOR(captured) === MINOR(h.piece)) return null;
       out.kind = 'trade';
-      out.captured = NAMES[isEnPassant(board, played) ? 'pawn' : pieceTypeAt(board, played.to)];
+      out.captured = NAMES[captured];
     } else {
       out.kind = 'moved';
     }
@@ -832,7 +835,7 @@ export function extract(mv, board, evalBefore, evalAfter, multipv = null, prevRo
     if (m1 !== null && m1 < 0) f.still_mates = -m1;
 
     if (!isGameOver(boardAfter)) {
-      f.trade = settledTrade(boardAfter, pv, len, mover);
+      f.trade = settledTrade(board, [mv.move_played, ...pv], len + 1, mover);   // what the move itself takes counts
       f.lost = lostPiece(board, played, f.hung_pieces, f.refutation_uci);
       f.best_saves = bestSaves(board, bestPv[0], f.lost);
     }
@@ -856,6 +859,13 @@ export function extract(mv, board, evalBefore, evalAfter, multipv = null, prevRo
       const alsoCastles = d?.kind === 'castle_prep' && opensCastling(board, played);
       if (d && !alsoCastles && !sameIdea(d, f.does)) f.best_does = d;
     }
+  }
+  // a miss says what the move missed does, when it isn't what the move played does too
+  if (f.label === 'miss' && bestPv.length && bestPv[0] !== mv.move_played) {
+    const d = describeMove(board, bestPv, { mate: f.best_mate, prev });
+    const mine = evalAfter && Object.keys(evalAfter).length
+      ? describeMove(board, [mv.move_played, ...(evalAfter.pv || [])], { prev }) : null;
+    if (d && !sameIdea(d, mine)) f.best_does = d;
   }
   if (f.label === 'great') f.second = secondLine(board, multipv);
   if (f.label === 'brilliant') f.offered = offered(board, played, evalAfter?.pv || []);

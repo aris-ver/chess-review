@@ -135,21 +135,22 @@ for (const r of rows) {
   }
   // the lines shown under a bad move or an inaccuracy, against where the engine's line settles
   if (BAD.has(r.label) || r.label === 'inaccuracy') {
-    const shown = [[after, r.pvAfter, f.refutation, r.ply + 1]];
-    if (r.label === 'miss') shown.push([board, r.pvBefore, f.best_line, r.ply]);
-    for (const [b0, pv, sans, ply] of shown) {
+    // the refutation counts from before the move, so what the move itself takes is in it
+    const shown = [[board, [C.uci(played), ...r.pvAfter], f.refutation, r.ply + 1, 1]];
+    if (r.label === 'miss') shown.push([board, r.pvBefore, f.best_line, r.ply, 0]);
+    for (const [b0, pv, sans, ply, from] of shown) {
       const text = sans.length ? line(sans, ply) : null;
       const said = text && c.find(x => x.includes(text));
       if (!said) continue;
       bump('line: shown');
-      const k = plyKinds(b0, pv), len = sans.length;
+      const k = plyKinds(b0, pv), len = sans.length + from;
       if (len < k.length && k[len].capture) bump('line: stops right before the engine takes something', r);
       let end = len;
       while (end > 0 && end < k.length && end < 16 && (k[end].capture || k[end].promotion || k[end - 1].capture || k[end - 1].check)) end++;
       const off = Math.abs(tradeOver(b0, pv.slice(0, end), board.turn).net - tradeOver(b0, pv.slice(0, len), board.turn).net) >= 200;
       if (off) bump('line: material 2+ pawns off where the exchange settles');
       if (off && /\b(loses|wins)\b/.test(said)) bump('line: ... under a "loses"/"wins" claim', r);
-      if (len > 7) bump('line: longer than 7 plies');
+      if (sans.length > 7) bump('line: longer than 7 plies');
     }
   }
   // fork / pin / skewer / discovered attack sentences, against the line under them
@@ -166,7 +167,7 @@ for (const r of rows) {
   if (!BAD.has(r.label)) continue;
   bump('bad: total');
   // a piece named as hung / lost / left / put somewhere, with its square
-  const named = [...all.matchAll(/(?:hangs|leaves|puts|guards|take) the (pawn|knight|bishop|rook|queen) on ([a-h][1-8])(?! safe)/g)];
+  const named = [...all.matchAll(/(?:hangs|leaves|puts|guards|(?<!to )take) the (pawn|knight|bishop|rook|queen) on ([a-h][1-8])(?! safe)/g)];
   for (const [, piece, s] of named) {
     bump('claim: a piece on a square is lost');
     if (!taken.has(s)) bump('claim: the line shown never takes it', r);
@@ -177,6 +178,12 @@ for (const r of rows) {
     bump('miss');
     if (/hangs/.test(c0)) bump('miss: told as a hang', r);
     if (!all.includes(f.best_san ?? '@@')) bump('miss: never names the move that was missed', r);
+    const told = c.filter(x => !x.startsWith('Played '));
+    if (/^Missed [^,:]+(: [^,]*)?\.$/.test(c0) && told.length === 1) bump('miss: says nothing but the line', r);
+    if (/which kept \w+ (winning|better)/.test(c0) && told.length === 1 && (f.wp_loss ?? 0) >= 20) {
+      bump('miss: "kept winning/better", the move dropped 20+, and nothing says what it cost', r);
+    }
+    if (told.length > 1 && !/still mate/.test(told[1])) bump('miss: says what the move played cost');
   }
   if (f.missed_mate && !/mate/i.test(all)) bump('mate on the board, not mentioned', r);
   if (f.allowed_mate && !/mate/i.test(all)) bump('allowed mate, not mentioned', r);
