@@ -285,3 +285,45 @@ test('settledLength: a long run of captures and checks stops six plies past the 
   assert.equal(settledLength(b, ['e5f7', 'd4b5', 'a4b5', 'd5e4', 'd1d6', 'd8d6', 'f7h8', 'a6b5', 'f1f8', 'd6d8', 'f8d8',
     'c8d8'], 5), 11);
 });
+
+// --- forks, pins, skewers (facts.motif): pawns aren't targets, and the line must bear the pattern out -----------
+
+test('explain: a pawn is no fork target; the line\'s material says what it costs', () => {
+  // 54.Kc7: Rxa7+ "forked" the pawn on a3 and the king
+  const f = bad({ fen: 'r7/P7/1K6/5k2/3R2p1/P7/6bP/8 w - - 20 54', played: 'b6c7', ply: 106, wp: [50, 13],
+    before: { eval_cp: 0, mate_in: null, pv: ['d4b4', 'f5g5'] },
+    after: { eval_cp: -400, mate_in: null, pv: ['a8a7', 'c7d6', 'a7a3', 'd4b4', 'g2f3', 'b4b5', 'f5g6'] } });
+  assert.equal(f.motif, null);
+  assert.equal(explain(f)[0], 'This loses two pawns: 54... Rxa7+ 55. Kd6 Rxa3 56. Rb4 Bf3.');
+});
+
+test('explain: a skewer by a piece that is simply taken is no skewer', () => {
+  // 17...Rd8: Rxd8+ Kxd8
+  const f = bad({ fen: 'r3kb1r/p5pp/2p1np2/4p3/1P6/6B1/P3P1PP/2KR1BNR b kq - 1 17', played: 'a8d8', label: 'mistake',
+    ply: 33, wp: [40, 17], before: { eval_cp: 0, mate_in: null, pv: ['f8b4', 'g3e1'] },
+    after: { eval_cp: 200, mate_in: null, pv: ['d1d8', 'e8d8', 'g3e1', 'f8d6', 'e2e3', 'd8e7'] } });
+  assert.notEqual(f.motif, 'skewer');
+  assert.equal(explain(f)[0], 'After 18. Rxd8+ Kxd8 19. Be1 Bd6 20. e3, White is now winning.');
+});
+
+test('explain: a pin the line wins nothing through is not given as the reason', () => {
+  const f = bad({ fen: 'r1bqk2r/pppp1ppp/2n5/8/1b2n3/NQ3N2/PPPP1PPP/R1B1KB1R b KQkq - 1 7', played: 'd7d5', label: 'mistake',
+    ply: 13, wp: [73, 58], before: { eval_cp: 0, mate_in: null, pv: ['e8g8', 'f1b5'] },
+    after: { eval_cp: 0, mate_in: null, pv: ['f1b5', 'b4d6'] } });
+  assert.equal(f.motif, 'pin');
+  assert.equal(f.motif_backed, false);
+  assert.equal(explain(f)[0], 'After 8. Bb5 Bd6, Black is only slightly better.');
+});
+
+test('explain: a fork the line wins through names the king first', () => {
+  // 13.Nxc7+: Qxc7 would lose to Bxf6, so the engine's Kf8 is the answer and the rook on a8 goes
+  const f = bad({ fen: 'r2qk2r/ppp2pbp/3p2p1/1N1Pp1B1/4Q3/5N2/PP3PPP/R4RK1 b kq - 2 12', played: 'g7f6', label: 'mistake',
+    ply: 23, wp: [5, 3], before: { eval_cp: -600, mate_in: null, pv: ['d8d7', 'b5c3'] },
+    after: { eval_cp: 900, mate_in: null, pv: ['b5c7', 'e8f8', 'g5f6', 'd8f6', 'c7a8', 'f8g7', 'a8c7', 'h8c8'] } });
+  assert.equal(explain(f)[0], 'Nxc7+ forks the king and the rook on a8: 13. Nxc7+ Kf8 14. Bxf6 Qxf6 15. Nxa8.');
+});
+
+test('comment: a good move that hits a piece and a pawn attacks the piece, it doesn\'t fork', () => {
+  assert.deepEqual(said({ fen: 'N1b4B/p2k1p1p/1p6/2p5/3p4/P2P1P2/3P1P1P/R3K2R b KQ - 0 18', played: 'c8b7', ply: 35,
+    before: quiet(['c8b7']), after: quiet(['a8b6', 'a7b6']) }), ['Bb7 threatens to take the knight on a8.']);
+});

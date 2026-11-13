@@ -36,6 +36,7 @@ export function moveFacts(f) {
     was_only_move: null,       // best was the only move (MultiPV gap) and was missed
     motif: null,               // fork | pin | discovered | skewer, on the reply
     motif_detail: null,
+    motif_backed: false,       // the refutation bears the motif out: it wins material through it, or mates
     idea: [],                  // UCI arrows illustrating what a good move does
     threat: null,              // UCI, what a good move threatens next (threatMove)
     still_mates: null,         // the move misses a faster mate but still mates, in this many
@@ -163,8 +164,17 @@ function rayBeyond(board, frm, through) {
   return null;
 }
 
-/** Tactical pattern created by `reply` (the opponent's best move after the played move): [motif, detail]. */
-export function motif(boardAfter, reply) {
+/** The piece on `sq` can be won: the side to move takes it for a pawn or more (SEE). */
+function winnable(board, sq) {
+  return legalMoves(board).some(c => c.to === sq && isCapture(board, c) && see(board, c) >= 100);
+}
+
+/** Tactical pattern created by `reply` (the opponent's best move after the played move): [motif, detail, targets]
+ * or [null, null], `targets` the squares of the pieces named other than the king. Pawns are never what a fork, pin or skewer is
+ * about, and a fork, pin or skewer by a piece that can simply be won isn't one. `next`: the answer to `reply` in
+ * the engine's line, when known -- then the piece counts as won only when that answer takes it for a pawn or more
+ * (static exchange misses what taking it walks into; the engine doesn't). */
+export function motif(boardAfter, reply, next = null) {
   const victim = opposite(boardAfter.turn);       // the side that just moved
   const attacker = boardAfter.turn;
   if (!isLegal(boardAfter, reply)) return [null, null];
@@ -176,9 +186,13 @@ export function motif(boardAfter, reply) {
   const aval = VALUE[apt];
   const victimSquares = b.board[victim];
   const attacked = attacks(b, to).intersect(victimSquares);
+  const safe = next && isLegal(b, next) ? !(next.to === to && isCapture(b, next) && see(b, next) >= 100)
+    : !winnable(b, to);
+  const on = sq => (pieceTypeAt(b, sq) === 'king' ? 'the king' : `the ${NAMES[pieceTypeAt(b, sq)]} on ${makeSquare(sq)}`);
+  const named = sqs => sqs.filter(sq => pieceTypeAt(b, sq) !== 'king').map(makeSquare);
 
   // skewer: slider attacks a valuable piece with another victim piece behind it on the same ray
-  if (SLIDERS.includes(apt)) {
+  if (SLIDERS.includes(apt) && safe) {
     for (const sq of attacked) {
       const front = pieceTypeAt(b, sq);
       if (front !== 'king' && VALUE[front] <= aval) continue;
@@ -186,24 +200,22 @@ export function motif(boardAfter, reply) {
       if (behind !== null && colorAt(b, behind) === victim) {
         const back = pieceTypeAt(b, behind);
         if (back !== 'pawn' && (front === 'king' || VALUE[front] >= VALUE[back])) {
-          return ['skewer', `skewers the ${NAMES[front]} on ${makeSquare(sq)} against the ${NAMES[back]} on ${makeSquare(behind)}`];
+          return ['skewer', `skewers ${on(sq)} against ${on(behind)}`, named([sq, behind])];
         }
       }
     }
   }
 
-  // fork: the moved piece attacks >= 2 victim pieces worth more than it (or the king, or undefended)
-  const targets = [];
-  for (const sq of attacked) {
-    const pt = pieceTypeAt(b, sq);
-    if (pt === 'king' || VALUE[pt] > aval || !isAttackedBy(b, victim, sq)) targets.push(`${NAMES[pt]} on ${makeSquare(sq)}`);
-  }
-  if (targets.length >= 2) return ['fork', `forks the ${targets.join(' and ')}`];
+  // fork: the moved piece attacks two pieces that aren't pawns (forkOf)
+  const prongs = forkSquares(b, to, safe);
+  if (prongs) return ['fork', `forks ${prongs.map(on).join(' and ')}`, named(prongs)];
 
-  // pin: a victim piece is newly pinned to its king
-  for (const sq of victimSquares) {
-    if (isPinned(b, victim, sq) && !isPinned(boardAfter, victim, sq)) {
-      return ['pin', `pins the ${NAMES[pieceTypeAt(b, sq)]} on ${makeSquare(sq)}`];
+  // pin: a victim piece, not a pawn, is newly pinned to its king
+  if (safe) {
+    for (const sq of victimSquares) {
+      if (pieceTypeAt(b, sq) !== 'pawn' && isPinned(b, victim, sq) && !isPinned(boardAfter, victim, sq)) {
+        return ['pin', `pins ${on(sq)}`, named([sq])];
+      }
     }
   }
 
@@ -216,7 +228,9 @@ export function motif(boardAfter, reply) {
     const fresh = now.difference(before);
     if (fresh.size) {
       const a = fresh[Symbol.iterator]().next().value;
-      return ['discovered', `discovers an attack from the ${NAMES[pieceTypeAt(b, a)]} on ${makeSquare(a)} onto the ${NAMES[pt]} on ${makeSquare(sq)}`];
+      const from = `the ${NAMES[pieceTypeAt(b, a)]} on ${makeSquare(a)}`;
+      if (pt === 'king') return ['discovered', `is a discovered check from ${from}`, []];
+      return ['discovered', `discovers an attack from ${from} onto ${on(sq)}`, named([sq])];
     }
   }
   return [null, null];
@@ -532,13 +546,18 @@ function walkLine(board, lineUci) {
 
 const pieceOn = (board, sq) => ({ piece: NAMES[pieceTypeAt(board, sq)], square: makeSquare(sq) });
 
-/** The two most valuable things the piece on `sq` attacks (attackTargets), when that is a fork: two or more
- * targets that can't take it, not only pawns and the king, and the piece itself can't be won. [{piece, square}] or null. `board`: opponent to move. */
+/** The squares of the two most valuable things the piece on `sq` attacks (attackTargets), king first, when that
+ * is a fork: two or more targets that aren't pawns, and the piece itself can't be won (a target may take it, at a
+ * loss; `safe` says so when the caller knows better). [squares] or null. `board`: opponent to move. */
+function forkSquares(board, sq, safe = !winnable(board, sq)) {
+  if (!safe) return null;
+  const targets = attackTargets(board, sq).filter(t => pieceTypeAt(board, t) !== 'pawn');
+  return targets.length < 2 ? null : targets.slice(0, 2);
+}
+
+/** forkSquares as [{piece, square}], or null. */
 function forkOf(board, sq) {
-  if (legalMoves(board).some(c => c.to === sq && isCapture(board, c) && see(board, c) >= 100)) return null;
-  const targets = attackTargets(board, sq).filter(t => !attacks(board, t).has(sq));   // not one that can take it
-  if (targets.length < 2 || targets.every(t => ['pawn', 'king'].includes(pieceTypeAt(board, t)))) return null;
-  return targets.slice(0, 2).map(t => pieceOn(board, t));
+  return forkSquares(board, sq)?.map(t => pieceOn(board, t)) ?? null;
 }
 
 /** What a move does, as data for one short clause (explain.js words it): the first of
@@ -732,6 +751,19 @@ export function offered(board, played, replyPv) {
   return { piece: h.piece, square: h.square, taken, later, back };
 }
 
+/** Does the refutation bear the motif out? It mates, or it wins two pawns' worth that stays won -- and for a fork,
+ * pin or skewer the line takes one of the pieces named (`targets`, squares), so the pattern is how it wins. */
+function motifBacked(f, boardAfter, targets) {
+  if (f.allowed_mate) return true;
+  if (!f.trade || f.trade.net > -200 || f.trade.stable === false) return false;
+  if (f.motif === 'discovered') return true;
+  const taken = new Set();
+  for (const [i, [m, b]] of walkLine(boardAfter, f.refutation_uci).entries()) {
+    if (i % 2 === 0 && isCapture(b, m)) taken.add(makeSquare(m.to));
+  }
+  return targets.some(t => taken.has(t));
+}
+
 // --- assembly -------------------------------------------------------------------------------------------------
 
 export function sans(board, pvUci, limit) {
@@ -782,7 +814,11 @@ export function extract(mv, board, evalBefore, evalAfter, multipv = null, prevRo
     // only set when it applies, so the hung entries of every other move stay as they were
     const blocked = f.hung_pieces.length ? blockedRecapture(boardAfter, played, f.hung_pieces[0], pv[0]) : null;
     if (blocked) f.hung_pieces[0].blocked = blocked;
-    if (pv.length) [f.motif, f.motif_detail] = motif(boardAfter, moveFromUci(pv[0]));
+    let motifTargets = [];
+    if (pv.length) {
+      const next = pv.length > 1 ? moveFromUci(pv[1]) : null;
+      [f.motif, f.motif_detail, motifTargets = []] = motif(boardAfter, moveFromUci(pv[0]), next);
+    }
     // a good move's arrows tell one story: its threat if it makes one, else its idea -- and nothing on the move
     // that ends the game
     if (GOOD.has(f.label) && !isGameOver(boardAfter)) {
@@ -800,6 +836,7 @@ export function extract(mv, board, evalBefore, evalAfter, multipv = null, prevRo
       f.lost = lostPiece(board, played, f.hung_pieces, f.refutation_uci);
       f.best_saves = bestSaves(board, bestPv[0], f.lost);
     }
+    f.motif_backed = !!f.motif && motifBacked(f, boardAfter, motifTargets);
   }
 
   let prev = null;

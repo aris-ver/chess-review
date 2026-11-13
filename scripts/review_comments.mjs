@@ -152,6 +152,17 @@ for (const r of rows) {
       if (len > 7) bump('line: longer than 7 plies');
     }
   }
+  // fork / pin / skewer / discovered attack sentences, against the line under them
+  if (f.motif && f.refutation.length && all.includes(`${f.refutation[0]} ${f.motif_detail}`)) {
+    bump(`pattern: ${f.motif}`);
+    const pieceSqs = [...f.motif_detail.matchAll(/(pawn|knight|bishop|rook|queen) on ([a-h][1-8])/g)];
+    if (f.motif !== 'discovered' && pieceSqs.some(m => m[1] === 'pawn')) bump('pattern: names a pawn', r);
+    if (f.motif !== 'discovered' && !pieceSqs.some(m => taken.has(m[2]))) bump('pattern: the line takes none of the pieces named', r);
+    const [r0, r1] = f.refutation_uci.map(u => C.moveFromUci(u));
+    if (f.motif !== 'discovered' && r1 && r1.to === r0.to && /x/.test(f.refutation[1])) bump('pattern: its piece is taken at once', r);
+    if (!f.allowed_mate && (f.trade?.net ?? 0) > -200) bump('pattern: the line wins under two pawns', r);
+  }
+  if (/\bforks [^.:]*\bpawn\b/.test(all)) bump('any move: a fork that names a pawn', r);
   if (!BAD.has(r.label)) continue;
   bump('bad: total');
   // a piece named as hung / lost / left / put somewhere, with its square

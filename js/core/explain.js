@@ -167,7 +167,7 @@ export function explain(f) {
     s.push(lostSentence(f, l, ref));
     aboutLost = true;
   }
-  else if (f.motif && ref) s.push(`${f.refutation[0]} ${f.motif_detail}: ${ref}.`);
+  else if (f.motif && f.motif_backed && ref) s.push(`${f.refutation[0]} ${f.motif_detail}: ${ref}.`);
   else if (lossLine) s.push(lossLine);
   else if (l) {
     s.push(lostSentence(f, l, ref));
@@ -236,7 +236,7 @@ function whyInaccurate(f) {
   const settled = f.trade && f.trade.stable !== false && f.material_swing != null
     && Math.abs(f.material_swing - f.trade.net) <= 100;
   if (f.lost && settled && f.trade.net <= -100) return [lostSentence(f, f.lost, ref), true];
-  if (f.motif) return [`${f.refutation[0]} ${f.motif_detail}: ${ref}.`, false];
+  if (f.motif && f.motif_backed) return [`${f.refutation[0]} ${f.motif_detail}: ${ref}.`, false];
   const l = settled ? losses(f.trade, ref) : null;
   return l ? [l, false] : null;
 }
