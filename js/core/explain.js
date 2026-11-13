@@ -92,7 +92,8 @@ function standing(f, ref) {
   const b = f.wp_before, a = f.wp_after;
   if (a == null || b == null) return `After ${ref}, the position is worse.`;
   let state;
-  if (a >= 65) state = `${me} is still winning, but much of the advantage is gone`;
+  if (a >= 85) state = `${me} is still winning`;
+  else if (a >= 65) state = `${me} is still winning, but much of the advantage is gone`;
   else if (a >= 55) state = b >= 65 ? `${me} is only slightly better` : `${me}'s edge is smaller`;
   else if (a > 45) state = b >= 55 ? `the advantage is gone and the game is level` : `the game is level`;
   else if (a > 35) state = `${them} is now better`;
@@ -111,7 +112,7 @@ function better(f, best, aboutLost) {
   const g = gains(f.best_trade);
   if (g) return `${best} wins ${g}.`;
   const b0 = f.wp_before != null ? band(f.wp_before) : 'equal';
-  if (b0 === 'winning') return `${best} kept the win.`;
+  if (b0 === 'winning') return f.wp_after >= 65 ? `${best} was stronger.` : `${best} kept the win.`;   // the win wasn't in danger
   if (b0 === 'losing') return `${best} was the best chance.`;
   return `${best} held the balance.`;
 }
@@ -132,7 +133,9 @@ function missed(f, best) {
   const c = d && !THIN.has(d.kind) && !(d.kind === 'check' && !gains(d.wins)) ? does(d) : null;
   if (c) return `Missed ${best}, which ${c}${bl}.`;
   const me = SIDE[f.side];
-  if (me && f.wp_before != null && f.wp_before >= 65) return `Missed ${best}, which kept ${me} winning${bl}.`;
+  if (me && f.wp_before != null && f.wp_before >= 65) {
+    return f.wp_after >= 65 ? `Missed ${best}, which was stronger${bl}.` : `Missed ${best}, which kept ${me} winning${bl}.`;
+  }
   if (me && f.wp_before != null && f.wp_before >= 55) return `Missed ${best}, which kept ${me} better${bl}.`;
   return `Missed ${best}${bl}.`;
 }

@@ -143,6 +143,17 @@ test('explain: losing no material, the sentence says how the game changed', () =
   assert.deepEqual(explain(f), ['After 6. e5 Na6 7. Bd3 Ne7 8. Nce2, White is now winning.', 'dxe4 held the balance.']);
 });
 
+test('explain: a win that was never in danger is not "kept", and still winning big is not "much of it gone"', () => {
+  const f = bad({ fen: 'rnbqkbnr/pp3ppp/2p5/3p4/3PP3/2N5/PP3PPP/R1BQKBNR b KQkq - 0 5', played: 'b7b5', label: 'mistake',
+    ply: 9, wp: [99, 90], before: { eval_cp: 15, mate_in: null, pv: ['d5e4', 'c3e4'] },
+    after: { eval_cp: 163, mate_in: null, pv: ['e4e5', 'b8a6', 'f1d3', 'g8e7', 'c3e2'] } });
+  assert.deepEqual(explain(f), ['After 6. e5 Na6 7. Bd3 Ne7 8. Nce2, Black is still winning.', 'dxe4 was stronger.']);
+  const m = bad({ fen: 'r3qrk1/pp1b1ppp/2n2n2/1BbN4/8/4BN2/PPP2PPP/R2QK2R b KQ - 2 11', played: 'c5e3',
+    label: 'miss', ply: 21, wp: [92, 80], before: { eval_cp: 100, mate_in: null, pv: ['f6d5', 'd1d5'] },
+    after: { eval_cp: 0, mate_in: null, pv: ['d5e3', 'f6g4', 'd1d2', 'g4e3', 'f2e3', 'a7a6'] } });
+  assert.equal(explain(m)[0], 'Missed Nxd5, which was stronger: 11... Nxd5 12. Qxd5.');
+});
+
 test('explain: a line is shown to the end of the exchange it stops in', () => {
   // 1. Nxd5 ... the knight takes, the bishop takes back, the rook takes back: three plies, not one
   const b = boardFromFen('4k3/8/4b3/3p4/8/2N5/8/3RK3 w - - 0 1');
