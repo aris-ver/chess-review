@@ -6,7 +6,7 @@ import { test } from 'node:test';
 import { setBook } from './book.js';
 import { boardFromFen, moveFromUci, san } from './chess.js';
 import { classifyGame, hangsMaterial } from './classify.js';
-import { explain } from './explain.js';
+import { comment, explain } from './explain.js';
 import { extract, settledLength } from './facts.js';
 
 // 7.dxe4 in chess.com/game/live/187084467344 (White 547): 6...Nxe4 uncovered Be7 on the queen on g5; dxe4 takes
@@ -138,4 +138,125 @@ test('explain: a line is shown to the end of the exchange it stops in', () => {
   // 1. Nxd5 ... the knight takes, the bishop takes back, the rook takes back: three plies, not one
   const b = boardFromFen('4k3/8/4b3/3p4/8/2N5/8/3RK3 w - - 0 1');
   assert.equal(settledLength(b, ['c3d5', 'e6d5', 'd1d5', 'e8e7'], 1), 3);
+});
+
+// --- what the good-move sentences say (explain.comment over facts.describeMove / secondLine / offered) -------------
+// Positions from reviewed games; the engine lines are cut to what the sentence needs.
+
+const said = ({ fen, played, label = 'best', ply, wp = [50, 50], before, after, multipv = null, prev = null }) => {
+  const board = boardFromFen(fen);
+  const best = before.pv?.length ? san(board, moveFromUci(before.pv[0])) : null;
+  const f = extract({ game_id: 'g', ply, side_to_move: board.turn, is_mine: true, move_played: played,
+    san: san(board, moveFromUci(played)), best_san: best, label, wp_before: wp[0], wp_after: wp[1],
+    wp_loss: wp[0] - wp[1] }, board, before, after, multipv, prev);
+  return comment(f);
+};
+const quiet = pv => ({ eval_cp: 0, mate_in: null, pv });
+
+test('comment: a best capture says what it wins, and what it forks', () => {
+  // 17.Nxd6+: the queen on a4 also checks once the knight leaves b5, so cxd6 is illegal
+  assert.deepEqual(said({ fen: '1rq1k2r/p1p2p2/3b1pp1/1N1P4/Q3P3/8/PP3PPP/R3KB1R w KQk - 2 17', played: 'b5d6', ply: 32,
+    before: quiet(['b5d6']), after: quiet(['e8e7', 'd6c8']),
+    prev: { fen: '1rq1k2r/p1p1bp2/5pp1/1N1P4/Q3P3/8/PP3PPP/R3KB1R b KQk - 1 16', move_played: 'e7d6' } }),
+  ['Nxd6+ wins the bishop on d6 and forks the king and the queen on c8.']);
+});
+
+test('comment: a capture on the square just captured on takes back, and without the move before only "takes"', () => {
+  const fen = 'r1bqkbnr/1ppp1ppp/p1B5/4p3/4P3/5N2/PPPP1PPP/RNBQK2R b KQkq - 0 4';
+  const prev = { fen: 'r1bqkbnr/1ppp1ppp/p1n5/1B2p3/4P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 0 4', move_played: 'b5c6' };
+  const args = { fen, played: 'd7c6', ply: 7, before: quiet(['d7c6']), after: quiet(['e1g1']) };
+  assert.deepEqual(said({ ...args, prev }), ['dxc6 takes back on c6.']);
+  assert.deepEqual(said(args), ['dxc6 takes the bishop on c6.']);
+});
+
+test('comment: a capture the line answers by taking back is a trade', () => {
+  assert.deepEqual(said({ fen: 'r1b1k1nr/ppp3pp/2n2q2/3p4/1b1P1B2/2N2N2/PPPQ2PP/2KR1B1R b kq - 1 10', played: 'b4c3',
+    ply: 19, before: quiet(['b4c3']), after: quiet(['d2c3', 'c8g4']),
+    prev: { fen: 'r1b1k1nr/ppp3pp/2n2q2/3p4/1b1P1B2/2N2N2/PPPQ2PP/R3KB1R w KQkq - 0 10', move_played: 'e1c1' } }),
+  ['Bxc3 trades the bishop for the knight.']);
+});
+
+test('comment: a fork names both prongs', () => {
+  assert.deepEqual(said({ fen: 'rnbqk2r/pppp1ppp/1b6/4P3/2B1PPn1/2N2N2/PPP3PP/R1BQK2R b KQkq - 2 7', played: 'g4f2',
+    ply: 13, before: quiet(['g4f2']), after: quiet(['d1e2', 'f2h1']) }),
+  ['Nf2 forks the queen on d1 and the rook on h1.']);
+});
+
+test('comment: a move that uncovers an attack threatens what it then takes', () => {
+  // 22.Nd4: the rook on e1 now sees the knight on e4
+  assert.deepEqual(said({ fen: 'r3k1r1/ppp3pp/8/8/4n1b1/6P1/PPP1N2P/2K1R3 w q - 3 22', played: 'e2d4', ply: 42,
+    before: quiet(['e2d4']), after: quiet(['a8d8']) }),
+  ['Nd4 threatens to take the knight on e4.']);
+});
+
+test('comment: a piece moved out of an attack, and one kept safe by another move', () => {
+  assert.deepEqual(said({ fen: 'r2qk2r/1bp1npbp/p3p1pn/4P1B1/PppP4/2N2NP1/1P2QPBP/R4RK1 w kq - 0 13', played: 'c3e4',
+    ply: 24, before: quiet(['c3e4']), after: quiet(['h6f5']) }),
+  ['Ne4 moves the knight out of danger.']);
+  // 13.O-O-O: the king now guards c2, which the queen on c5 attacked
+  assert.deepEqual(said({ fen: 'r3kb1r/pp2nppp/8/2qPQ3/8/5B2/PPPB1PPP/R3K2R w KQkq - 3 13', played: 'e1c1', ply: 24,
+    before: quiet(['e1c1']), after: quiet(['f7f6']) }),
+  ['O-O-O keeps the pawn on c2 safe.']);
+});
+
+test('comment: answering a check by stepping in between', () => {
+  assert.deepEqual(said({ fen: 'rnbqkb1r/pppp1ppp/5n2/4Q3/4P3/8/PPPP1PPP/RNB1KBNR b KQkq - 0 3', played: 'f8e7', ply: 5,
+    before: quiet(['f8e7']), after: quiet(['b1c3']) }),
+  ['Be7 blocks the check.']);
+});
+
+test('comment: a pawn move that the line follows up with the push it supports', () => {
+  assert.deepEqual(said({ fen: 'rnbqkbnr/ppp2ppp/4p3/8/2pP4/2N5/PP2PPPP/R1BQKBNR w KQkq - 0 4', played: 'e2e4', ply: 6,
+    before: quiet(['e2e4']), after: quiet(['g8f6', 'd4d5']) }),
+  ['e4 prepares d5.']);
+});
+
+test('comment: nothing to say about a best move keeps the plain sentence', () => {
+  assert.deepEqual(said({ fen: '7k/8/8/8/8/8/6PP/7K w - - 0 40', played: 'h1g1', ply: 78,
+    before: quiet(['h1g1']), after: quiet(['h8g8']) }), ['Kg1 is the best move.']);
+});
+
+test('comment: an excellent move barely worse than the engine\'s is as good as it', () => {
+  assert.deepEqual(said({ fen: '7k/8/8/8/8/8/6PP/7K w - - 0 40', played: 'h1g1', label: 'excellent', ply: 78,
+    wp: [50, 49.5], before: quiet(['g2g4']), after: quiet(['h8g8']) }),
+  ['Kg1 is an excellent move, as good as the engine\'s g4.']);
+});
+
+test('comment: the engine\'s choice says what it does, or else the move played does', () => {
+  assert.deepEqual(said({ fen: 'r2qkb1r/2p1pppp/p4n2/2Pp4/5Bb1/3QPN2/PPP2PPP/RN2K2R b KQkq - 0 8', played: 'c7c6',
+    label: 'good', ply: 15, wp: [44, 40], before: quiet(['g4f3', 'g2f3']), after: quiet(['b1c3']) }),
+  ['c6 is a good move. Bxf3 was better: it trades the bishop for the knight.']);
+  assert.deepEqual(said({ fen: 'r1bqkb1r/ppp1pppp/2n2n2/3p4/3P4/4PN2/PPP2PPP/RNBQKB1R w KQkq - 1 4', played: 'f1e2',
+    label: 'excellent', ply: 6, wp: [55, 53], before: quiet(['c2c4', 'e7e6']), after: quiet(['c8f5']) }),
+  ['Be2 is an excellent move: it clears the way to castle. c4 was the engine\'s choice.']);
+});
+
+test('comment: an inaccuracy that costs 6% or more says why, when the material stays lost', () => {
+  assert.deepEqual(said({ fen: 'r3kb1r/ppp1pppp/8/1N1Pn3/2P1n3/8/PB3KPP/3R1BNR w kq - 1 14', played: 'f2e3',
+    label: 'inaccuracy', ply: 26, wp: [92, 84], before: quiet(['f2e1']),
+    after: quiet(['e5g4', 'e3e4', 'g4f2', 'e4f3', 'f2d1']) }),
+  ['Ke3 is an inaccuracy.', 'This loses a rook for a knight: 14... Ng4+ 15. Kxe4 Nf2+ 16. Kf3 Nxd1.', 'Ke1 was better.']);
+});
+
+test('comment: a great move says what the next best move would have cost', () => {
+  const fen = 'r2k1b1r/pp1n4/4p2p/2P1B1p1/3R4/5N2/P4PPP/2K4R b - - 2 19';
+  const mpv = second => [{ rank: 1, move: 'h8h7', eval_cp: 0, mate_in: null, pv: ['h8h7'] }, { rank: 2, ...second }];
+  const args = { fen, played: 'h8h7', label: 'great', ply: 37, before: quiet(['h8h7']), after: quiet(['e5g3']) };
+  assert.deepEqual(said({ ...args, multipv: mpv({ move: 'f8c5', eval_cp: -600, mate_in: null, pv: ['f8c5', 'e5h8'] }) }),
+    ['Rh7 moves the rook out of danger.', 'The next best, Bxc5, loses a rook for a pawn: 19... Bxc5 20. Bxh8.']);
+  assert.deepEqual(said({ ...args, multipv: mpv({ move: 'a7a6', eval_cp: -900, mate_in: null, pv: ['a7a6'] }) }),
+    ['Rh7 moves the rook out of danger.', 'The next best, a6, leaves White winning.']);
+  assert.deepEqual(said({ ...args, multipv: mpv({ move: 'a7a6', eval_cp: null, mate_in: -3, pv: ['a7a6'] }) }),
+    ['Rh7 moves the rook out of danger.', 'The next best, a6, lets White mate in 3.']);
+});
+
+test('comment: a brilliant move names the piece on offer and why taking it fails', () => {
+  const fen = '1k1r2nr/p2b2Qp/8/8/6p1/1P6/PK4PP/3B3n b - - 0 27';
+  const args = { fen, played: 'g8e7', label: 'brilliant', ply: 53, wp: [69, 70], before: quiet(['g8e7']) };
+  assert.deepEqual(said({ ...args, after: quiet(['g7e7', 'd7c6', 'e7c5', 'c6g2', 'd1g4']) }),
+    ['Ne7 is brilliant: it offers the knight on e7.',
+      'Taking it does not pay: after 28. Qxe7 Bc6 29. Qc5 Bxg2 30. Bxg4, Black is winning.']);
+  // the engine's line never takes it: the sentence says so
+  assert.deepEqual(said({ ...args, after: quiet(['d1g4', 'd7g4']) }),
+    ['Ne7 is brilliant: it offers the knight on e7.', 'White does better not to take it: 28. Bxg4 Bxg4.']);
 });

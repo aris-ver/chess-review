@@ -4,7 +4,7 @@
 // format strings. Boards are chessops positions, moves python-chess style (js/core/chess.js).
 
 import {
-  attackers, attacks, castlingMoves, colorAt, copy, givesCheck, hasCastlingRights, isAttackedBy, isCapture, isCheck,
+  attackers, attacks, boardFromFen, castlingMoves, colorAt, copy, givesCheck, hasCastlingRights, isAttackedBy, isCapture, isCheck,
   isCheckmate, isEnPassant, isGameOver, isLegal, isPinned, legalMoves, makeSquare, move, moveEquals, moveFromUci,
   nullMove, opposite, parseSquare, pieceAt, pieceTypeAt, push, san, squareFile, squareRank, uci,
 } from './chess.js';
@@ -19,6 +19,7 @@ export const GOOD = new Set(['best', 'excellent', 'good', 'great', 'brilliant'])
 export const THREAT_GAIN = 200;                                                      // least SEE a threatened capture must win (threatMove)
 
 const SLIDERS = ['bishop', 'rook', 'queen'];
+const DESCRIBED = new Set(['best', 'excellent', 'good', 'inaccuracy', 'great', 'brilliant']);   // labels whose comment says what a move does
 
 /** MoveFacts, field for field and in the order of the Python dataclass. */
 export function moveFacts(f) {
@@ -43,6 +44,10 @@ export function moveFacts(f) {
     trade: null,               // material over the refutation, mover POV (tradeOver)
     best_trade: null,          // material over the best line, mover POV
     best_saves: null,          // the engine's choice keeps the lost piece: {piece, square, moved}
+    does: null,                // what the move does (describeMove)
+    best_does: null,           // what the engine's choice does, when it isn't the move played
+    second: null,              // a great move's next best alternative (secondLine)
+    offered: null,             // a brilliant move's piece on offer (offered)
     clock_remaining: f.clock_remaining ?? null,
     time_spent: f.time_spent ?? null,
   };
@@ -480,6 +485,228 @@ export function bestSaves(board, bestUci, lost) {
   return { piece: lost.piece, square: lost.square, moved: false };
 }
 
+// --- what any move does ---------------------------------------------------------------------------------------
+
+/** The legal moves of `lineUci` from `board`, as [move, board before it] pairs, stopping at the first that isn't. */
+function walkLine(board, lineUci) {
+  const b = copy(board);
+  const out = [];
+  for (const u of lineUci) {
+    let m;
+    try {
+      m = moveFromUci(u);
+    } catch {
+      break;
+    }
+    if (m.null || !isLegal(b, m)) break;
+    out.push([m, copy(b)]);
+    push(b, m);
+  }
+  return out;
+}
+
+const pieceOn = (board, sq) => ({ piece: NAMES[pieceTypeAt(board, sq)], square: makeSquare(sq) });
+
+/** The two most valuable things the piece on `sq` attacks (attackTargets), when that is a fork: two or more
+ * targets that can't take it, not only pawns and the king, and the piece itself can't be won. [{piece, square}] or null. `board`: opponent to move. */
+function forkOf(board, sq) {
+  if (legalMoves(board).some(c => c.to === sq && isCapture(board, c) && see(board, c) >= 100)) return null;
+  const targets = attackTargets(board, sq).filter(t => !attacks(board, t).has(sq));   // not one that can take it
+  if (targets.length < 2 || targets.every(t => ['pawn', 'king'].includes(pieceTypeAt(board, t)))) return null;
+  return targets.slice(0, 2).map(t => pieceOn(board, t));
+}
+
+/** What a move does, as data for one short clause (explain.js words it): the first of
+ *
+ *   mate        {n}                        the move mates, or forces mate in n (counting itself)
+ *   promotes    {piece}
+ *   wins        {piece, square, for?, forks?}   a capture that wins material per SEE (`for`: the capturer, when
+ *                                          it is lost back for less; `forks`: what it then forks, as fork's targets)
+ *   recapture   {piece, square}            takes back on the square the opponent just captured on
+ *   trade       {piece, gives}             a capture the line answers by taking back, even material
+ *   takes       {piece, square}            a capture nothing above describes
+ *   fork        {targets: [{piece, square}]}
+ *   blocks / escapes {}                    answers a check by stepping in between / moving the king
+ *   check       {wins?}                    `wins`: what the line's next move of ours wins (gains' input)
+ *   threat      {mate: san} | {piece, square}   what it threatens next (threatMove)
+ *   saves       {piece, square, moved}     a piece that was hanging no longer is
+ *   castles     {}
+ *   attacks     {piece, square}            the moved piece hits one thing worth taking
+ *   offers      {piece}                    invites a trade of like pieces the line takes up
+ *   castle_prep {}                         clears the way to castle
+ *   prepares    {san}                      the pawn push the line follows up with
+ *
+ * or null. board: the position before; lineUci: the move and the engine's line after it. mate: the mover mates in
+ * this many from `board` (the engine says so), or null. prev: the opponent's last move and the board before it
+ * ({move, board}), or null when unknown: then a capture is only "takes" (it may be taking back). */
+export function describeMove(board, lineUci, { mate = null, prev = null } = {}) {
+  const steps = walkLine(board, lineUci);
+  if (!steps.length) return null;
+  const mover = board.turn;
+  const played = steps[0][0];
+  const after = copy(board);
+  push(after, played);
+  if (isCheckmate(after)) return { kind: 'mate', n: 1 };
+  if (mate && mate > 0) return { kind: 'mate', n: mate };
+  if (isGameOver(after)) return null;
+  const replyPv = lineUci.slice(1);
+  const reply = steps.length > 1 ? steps[1][0] : null;
+  const role = pieceTypeAt(board, played.from);
+  const castling = role === 'king' && Math.abs(squareFile(played.to) - squareFile(played.from)) > 1;
+  const to = played.to;
+
+  if (played.promotion) return { kind: 'promotes', piece: NAMES[played.promotion] };
+
+  if (isCapture(board, played) && !castling) {
+    const ep = isEnPassant(board, played);
+    const taken = ep ? 'pawn' : pieceTypeAt(board, to);
+    const at = makeSquare(to);
+    const retaken = reply && reply.to === to && isCapture(after, reply);
+    const back = prev && !prev.move.null && prev.move.to === to && isCapture(prev.board, prev.move);
+    if (back) return { kind: 'recapture', piece: NAMES[taken], square: at };
+    const s = ep ? 100 : see(board, played);
+    if (s >= 100 && prev) {
+      const out = { kind: 'wins', piece: NAMES[taken], square: at };
+      if (s < VALUE[taken]) out.for = NAMES[role];
+      const prongs = forkOf(after, to);
+      if (prongs && prongs.some(t => t.piece !== 'king' && VALUE[t.piece] > VALUE[taken])) out.forks = prongs;
+      return out;
+    }
+    if (retaken && Math.abs(s) < 100) return { kind: 'trade', piece: NAMES[taken], gives: NAMES[pieceTypeAt(after, to)] };
+    return { kind: 'takes', piece: NAMES[taken], square: at };
+  }
+
+  if (!castling && role !== 'king') {
+    const prongs = forkOf(after, to);
+    if (prongs) return { kind: 'fork', targets: prongs };
+  }
+  if (isCheck(board)) return { kind: role === 'king' ? 'escapes' : 'blocks' };
+
+  if (isCheck(after)) {
+    const n = settledLength(board, lineUci, 3);
+    const t = tradeOver(board, lineUci.slice(0, n), mover);
+    return { kind: 'check', wins: t.net >= 200 ? t : null };
+  }
+
+  const threat = threatMove(board, played, replyPv);
+  if (threat) {
+    const tb = copy(after);
+    push(tb, nullMove());
+    const tm = moveFromUci(threat);
+    const mated = copy(tb);
+    push(mated, tm);
+    if (isCheckmate(mated)) return { kind: 'threat', mate: san(tb, tm) };
+    return { kind: 'threat', ...pieceOn(tb, tm.to) };
+  }
+
+  const passed = copy(board);
+  push(passed, nullMove());
+  const before = hungPieces(passed, mover);
+  if (before.length) {
+    const nowHung = new Set(hungPieces(after, mover).map(h => h.square));
+    for (const h of before) {
+      const sq = parseSquare(h.square);
+      if (sq === played.from && !nowHung.has(makeSquare(to))) return { kind: 'saves', piece: h.piece, square: h.square, moved: true };
+      if (sq !== played.from && colorAt(after, sq) === mover && !nowHung.has(h.square)) {
+        return { kind: 'saves', piece: h.piece, square: h.square, moved: false };
+      }
+    }
+  }
+
+  if (castling) return { kind: 'castles' };
+
+  const idea = ideaArrows(board, played, replyPv);
+  if (idea.length) {
+    const a = moveFromUci(idea[0]);
+    if (a.from === to && colorAt(after, a.to) !== mover) return { kind: 'attacks', ...pieceOn(after, a.to) };
+    if (a.to === to && colorAt(after, a.from) === opposite(mover)) {
+      // the reply takes the moved piece: a trade offered, when the taker is a like piece and we take back
+      const taker = pieceTypeAt(after, a.from);
+      if (idea.length > 1 && MINOR(taker) === MINOR(role)) return { kind: 'offers', piece: NAMES[role] };
+      return null;
+    }
+    if (pieceTypeAt(after, a.from) === 'king' && colorAt(after, a.from) === mover) return { kind: 'castle_prep' };
+    if (steps.length > 2) {
+      const [, b2] = steps[2];
+      if (uci(steps[2][0]) === idea[0] && !isCapture(b2, steps[2][0])) return { kind: 'prepares', san: san(b2, steps[2][0]) };
+    }
+  }
+  return null;
+}
+
+/** Two describeMove results that say the same thing (both give check, both keep the knight on e5 safe, ...). */
+export function sameIdea(a, b) {
+  if (!a || !b || a.kind !== b.kind) return false;
+  const key = d => JSON.stringify(d.targets ?? d.forks ?? [d.square ?? null, d.mate ?? null, d.n ?? null, d.san ?? null]);
+  return key(a) === key(b);
+}
+
+/** The move makes castling possible on a side it wasn't before (it clears the way, or it is a castle). */
+export function opensCastling(board, played) {
+  const mover = board.turn;
+  const b = copy(board);
+  push(b, played);
+  if (!hasCastlingRights(b, mover)) return false;
+  b.turn = mover;
+  const before = castlingMoves(board);
+  return castlingMoves(b).some(m => !before.some(x => moveEquals(x, m)) && isLegal(b, m));
+}
+
+/** The second line of a MultiPV search, as the facts of a great move need it: what the next best move does to the
+ * mover's chances. {san, wp (mover's win%), mate (the mover gets mated in this many, or mates: negative), trade
+ * (material over its line, mover POV)}, or null. */
+export function secondLine(board, multipv) {
+  if (!multipv || multipv.length < 2) return null;
+  const r = [...multipv].sort((a, b) => a.rank - b.rank)[1];
+  let m;
+  try {
+    m = moveFromUci(r.move);
+  } catch {
+    return null;
+  }
+  if (!isLegal(board, m)) return null;
+  const side = board.turn;
+  const pv = r.pv?.length ? r.pv : [r.move];
+  const n = settledLength(board, pv, REFUTATION_PLIES);
+  return {
+    san: san(board, m), wp: povWinPct(r.eval_cp, r.mate_in, side, side),
+    mate: r.mate_in == null ? null : -r.mate_in,
+    line: sans(board, pv, n), trade: tradeOver(board, pv.slice(0, n), side),
+  };
+}
+
+/** What a sacrifice offers: the mover's piece the opponent can take after the move (the moved piece when it can be
+ * taken, else the most valuable one hanging), whether the engine's reply takes it, and what the rest of the
+ * engine's line wins back. {piece, square, taken (by the reply), later (further down the line), back (tradeOver after
+ * the reply's capture)}, or null. */
+export function offered(board, played, replyPv) {
+  const mover = board.turn;
+  const after = copy(board);
+  push(after, played);
+  if (isGameOver(after)) return null;
+  const hung = hungPieces(after, mover);
+  const atTo = hung.find(h => h.square === makeSquare(played.to));
+  let h = atTo;
+  if (!h) h = [...hung].sort((a, b) => VALUE[b.piece] - VALUE[a.piece])[0];
+  if (!h && isCapture(board, played) && see(board, played) <= -200) {
+    // a capture that loses the capturer: the piece on the square is on offer
+    h = { piece: NAMES[pieceTypeAt(after, played.to)], square: makeSquare(played.to) };
+  }
+  if (!h) return null;
+  const steps = walkLine(after, replyPv);
+  const takes = ([m, b]) => makeSquare(m.to) === h.square && isCapture(b, m);
+  const taken = steps.length > 0 && takes(steps[0]);
+  const later = !taken && steps.some((st, i) => i % 2 === 0 && takes(st));
+  let back = null;
+  if (taken && steps.length > 1) {
+    const b = copy(after);
+    push(b, steps[0][0]);
+    const rest = replyPv.slice(1);
+    back = tradeOver(b, rest.slice(0, settledLength(b, rest, REFUTATION_PLIES - 1)), mover);
+  }
+  return { piece: h.piece, square: h.square, taken, later, back };
+}
+
 // --- assembly -------------------------------------------------------------------------------------------------
 
 export function sans(board, pvUci, limit) {
@@ -500,8 +727,9 @@ export function sans(board, pvUci, limit) {
  * evalBefore: evals row for that position (side-to-move POV = mover)
  * evalAfter:  evals row for the position after the move (side-to-move = opponent), or null
  * multipv:    evals_multipv rows for the position before, or null
+ * prevRow:    the positions row before `board` ({fen, move_played}), or null: tells a recapture from a capture
  */
-export function extract(mv, board, evalBefore, evalAfter, multipv = null) {
+export function extract(mv, board, evalBefore, evalAfter, multipv = null, prevRow = null) {
   const mover = board.turn;
   const played = moveFromUci(mv.move_played);
   const boardAfter = copy(board);
@@ -548,6 +776,27 @@ export function extract(mv, board, evalBefore, evalAfter, multipv = null) {
       f.best_saves = bestSaves(board, bestPv[0], f.lost);
     }
   }
+
+  let prev = null;
+  if (prevRow?.fen && prevRow.move_played) {
+    try {
+      prev = { board: boardFromFen(prevRow.fen), move: moveFromUci(prevRow.move_played) };
+      if (!isLegal(prev.board, prev.move)) prev = null;
+    } catch {
+      prev = null;
+    }
+  }
+  if (DESCRIBED.has(f.label) && evalAfter && Object.keys(evalAfter).length) {
+    const m1 = evalAfter.mate_in ?? null;
+    f.does = describeMove(board, [mv.move_played, ...(evalAfter.pv || [])], { mate: m1 !== null && m1 < 0 ? 1 - m1 : null, prev });
+    if (bestPv.length && bestPv[0] !== mv.move_played) {
+      const d = describeMove(board, bestPv, { mate: f.best_mate, prev });
+      const alsoCastles = d?.kind === 'castle_prep' && opensCastling(board, played);
+      if (d && !alsoCastles && !sameIdea(d, f.does)) f.best_does = d;
+    }
+  }
+  if (f.label === 'great') f.second = secondLine(board, multipv);
+  if (f.label === 'brilliant') f.offered = offered(board, played, evalAfter?.pv || []);
 
   if (multipv && multipv.length) {
     const ranked = [...multipv].sort((a, b) => a.rank - b.rank);

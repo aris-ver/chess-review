@@ -59,7 +59,8 @@ export function buildGame(game, positions, moves, critical, multipv, username = 
   const outMoves = [], keyMoments = [];
   for (const m of moves) {
     const before = posByPly.get(m.ply), after = posByPly.get(m.ply + 1);
-    const facts = m.label ? extract(m, boardFromFen(before.fen), before, after, multipv[before.fen_key] ?? null) : null;
+    const facts = m.label ? extract(m, boardFromFen(before.fen), before, after, multipv[before.fen_key] ?? null,
+      posByPly.get(m.ply - 1) ?? null) : null;
     outMoves.push({
       ply: m.ply, san: m.san, uci: m.move_played, fen: after.fen,
       label: m.label, is_mine: m.is_mine,

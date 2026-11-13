@@ -1793,7 +1793,7 @@
       "clock": 180,
       "spent": 2,
       "comment": [
-       "e5 is an excellent move. c5 was the engine's choice."
+       "e5 is an excellent move, as good as the engine's c5."
       ],
       "hung": [],
       "reply_uci": "b1c3",
@@ -1815,7 +1815,7 @@
       "clock": 178,
       "spent": 4,
       "comment": [
-       "Nf3 is the best move."
+       "Nf3 attacks the pawn on e5."
       ],
       "hung": [],
       "reply_uci": "b8c6",
@@ -1839,7 +1839,7 @@
       "clock": 170,
       "spent": 12,
       "comment": [
-       "d6 is an excellent move. Nc6 was the engine's choice."
+       "d6 is an excellent move: it keeps the pawn on e5 safe. Nc6 was the engine's choice."
       ],
       "hung": [],
       "reply_uci": "f1c4",
@@ -1861,7 +1861,7 @@
       "clock": 175,
       "spent": 5,
       "comment": [
-       "d4 is an excellent move. Bc4 was the engine's choice."
+       "d4 is an excellent move, as good as the engine's Bc4."
       ],
       "hung": [],
       "reply_uci": "e5d4",
@@ -1886,7 +1886,7 @@
       "clock": 160,
       "spent": 12,
       "comment": [
-       "exd4 is the best move."
+       "exd4 trades pawns."
       ],
       "hung": [
        "d4"
@@ -1912,7 +1912,7 @@
       "clock": 170,
       "spent": 7,
       "comment": [
-       "Bc4 is an excellent move. Nxd4 was the engine's choice."
+       "Bc4 is an excellent move. Nxd4 was better: it takes back on d4."
       ],
       "hung": [],
       "reply_uci": "f8e7",
@@ -1960,7 +1960,7 @@
       "clock": 165,
       "spent": 7,
       "comment": [
-       "Bxf7+ is the best move."
+       "Bxf7+ takes the pawn on f7."
       ],
       "hung": [
        "f7"
@@ -1986,7 +1986,7 @@
       "clock": 140,
       "spent": 12,
       "comment": [
-       "Kxf7 is the best move."
+       "Kxf7 takes back on f7."
       ],
       "hung": [
        "d4"
@@ -2059,7 +2059,8 @@
       "clock": 155,
       "spent": 7,
       "comment": [
-       "Qxg4 is a great move \u2014 the only move that keeps things together."
+       "Qxg4 wins the bishop on g4.",
+       "The next best, f3, leaves Black winning."
       ],
       "hung": [],
       "reply_uci": "b8c6",
@@ -2192,7 +2193,7 @@
       "clock": null,
       "spent": null,
       "comment": [
-       "e5 is an excellent move. c5 was the engine's choice."
+       "e5 is an excellent move, as good as the engine's c5."
       ],
       "hung": [],
       "reply_uci": "b1c3",
@@ -2236,7 +2237,7 @@
       "clock": null,
       "spent": null,
       "comment": [
-       "Nc6 is an excellent move. Nf6 was the engine's choice."
+       "Nc6 is an excellent move. Nf6 was better: it attacks the pawn on e4."
       ],
       "hung": [],
       "reply_uci": "d2d3",
@@ -2306,7 +2307,7 @@
       "clock": null,
       "spent": null,
       "comment": [
-       "Qxf7# is the best move."
+       "Qxf7# is checkmate."
       ],
       "hung": [],
       "reply_uci": null,
@@ -3615,7 +3616,7 @@
     "clock": null,
     "spent": null,
     "comment": [
-     "Nf6 is the best move."
+     "Nf6 attacks the pawn on e4."
     ],
     "hung": [],
     "reply_uci": "f3g5",

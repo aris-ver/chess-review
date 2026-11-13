@@ -237,7 +237,7 @@ export function checkGame(c) {
   for (const m of c.moves) {
     if (!m.label) continue;
     const before = at(m.ply), after = at(m.ply + 1);
-    const f = extract(m, boardFromFen(before.fen), before, after, c.multipv[before.fen_key] ?? null);
+    const f = extract(m, boardFromFen(before.fen), before, after, c.multipv[before.fen_key] ?? null, at(m.ply - 1) ?? null);
     sameAt(f, c.facts, m.ply, `${name}.facts[${m.ply}]`);
     sameAt(comment(f, m.in_book ? c.game.opening_name : null), c.comments, m.ply, `${name}.comments[${m.ply}]`);
   }

@@ -180,23 +180,141 @@ export function explain(f) {
   return s;
 }
 
+/** A clause for describeMove's data, to follow the move's SAN or "it": 'wins the pawn on e5'. null when there is
+ * nothing to say. */
+export function does(d) {
+  if (!d) return null;
+  const on = x => (x.piece === 'king' ? 'the king' : `the ${x.piece} on ${x.square}`);
+  switch (d.kind) {
+    case 'mate': return d.n === 1 ? 'mates' : `forces mate in ${d.n}`;
+    case 'promotes': return `makes a new ${d.piece}`;
+    case 'wins': return `wins ${on(d)}` + (d.for ? ` for the ${d.for}` : '') + (d.forks ? ` and forks ${d.forks.map(on).join(' and ')}` : '');
+    case 'recapture': return `takes back on ${d.square}`;
+    case 'trade': return d.piece === d.gives ? `trades ${d.piece}s` : `trades the ${d.gives} for the ${d.piece}`;
+    case 'takes': return `takes ${on(d)}`;
+    case 'fork': return `forks ${d.targets.map(on).join(' and ')}`;
+    case 'blocks': return 'blocks the check';
+    case 'escapes': return 'gets the king out of check';
+    case 'check': {
+      const g = gains(d.wins);
+      return g ? `gives check and wins ${g}` : 'gives check';
+    }
+    case 'threat': return d.mate ? `threatens mate with ${d.mate}` : `threatens to take ${on(d)}`;
+    case 'saves': return d.moved ? `moves the ${d.piece} out of danger` : `keeps ${on(d)} safe`;
+    case 'castles': return 'castles';
+    case 'attacks': return `attacks ${on(d)}`;
+    case 'offers': return `offers a trade of ${d.piece}s`;
+    case 'castle_prep': return 'clears the way to castle';
+    case 'prepares': return `prepares ${d.san}`;
+    default: return null;
+  }
+}
+
+/** The move's own sentence from what it does ('Nxe5 wins the pawn on e5.'), or null. */
+function itDoes(f) {
+  const d = f.does;
+  if (!d || d.kind === 'castles') return null;
+  if (d.kind === 'mate' && d.n === 1) return `${f.san} is checkmate.`;
+  return `${f.san} ${does(d)}.`;
+}
+
+/** What the engine's choice did instead: 'Nf3 was better: it protects the pawn on e5.' */
+function betterDoes(f, plain = `${f.best_san} was better.`) {
+  const c = does(f.best_does);
+  return c ? `${f.best_san} was better: it ${c}.` : plain;
+}
+
+/** Why an inaccuracy cost what it did, when the facts show it: a sentence and whether it is about f.lost. */
+function whyInaccurate(f) {
+  if (!f.refutation.length) return null;
+  const ref = line(f.refutation, f.ply + 1);
+  if (f.allowed_mate) return [`This allows ${f.allowed_mate === 1 ? 'mate' : `mate in ${f.allowed_mate}`}: ${ref}.`, false];
+  // material only when it stays lost: a few plies more of the engine's line don't win it back (the line shown can
+  // stop mid-exchange, and a piece taken can be paid for)
+  const settled = f.trade && f.material_swing != null && Math.abs(f.material_swing - f.trade.net) <= 100;
+  if (f.lost && settled && f.trade.net <= -100) return [lostSentence(f, f.lost, ref), true];
+  if (f.motif) return [`${f.refutation[0]} ${f.motif_detail}: ${ref}.`, false];
+  const l = settled ? losses(f.trade, ref) : null;
+  return l ? [l, false] : null;
+}
+
+/** A great move: what it does, then what the next best move would have left (facts.secondLine). */
+function great(f) {
+  const s = [itDoes(f) ?? `${f.san} is the only good move.`];
+  const sec = f.second;
+  if (!sec) return s;
+  const me = SIDE[f.side] ?? 'the mover', them = SIDE[f.side === 'white' ? 'black' : 'white'] ?? 'the opponent';
+  const alt = `The next best, ${sec.san},`;
+  const t = sec.trade;
+  if (sec.mate != null && sec.mate > 0) s.push(`${alt} lets ${them} mate${sec.mate === 1 ? '' : ` in ${sec.mate}`}.`);
+  else if (t && t.net <= -200 && t.lost.length && sec.line.length) {
+    s.push(`${alt} loses ${pieces(t.lost)}${t.won.length ? ` for ${pieces(t.won)}` : ''}: ${line(sec.line, f.ply)}.`);
+  }
+  else {
+    const w = sec.wp;
+    const state = w >= 65 ? `keeps less of ${me}'s advantage` : w >= 55 ? `leaves ${me} only slightly better`
+      : w > 45 ? 'leaves the game level' : w > 35 ? `leaves ${them} better` : `leaves ${them} winning`;
+    s.push(`${alt} ${state}.`);
+  }
+  return s;
+}
+
+/** A brilliant move: the piece it offers (facts.offered), then why taking it fails. */
+function brilliant(f) {
+  const o = f.offered;
+  if (!o) return [`${f.san} is brilliant: a sacrifice that holds.`];
+  const s = [`${f.san} is brilliant: it offers the ${o.piece} on ${o.square}.`];
+  if (!f.refutation.length) return s;
+  const ref = line(f.refutation, f.ply + 1);
+  const me = SIDE[f.side] ?? 'the mover', them = SIDE[f.side === 'white' ? 'black' : 'white'] ?? 'the opponent';
+  if (!o.taken && !o.later) {
+    s.push(`${them} does better not to take it: ${ref}.`);
+    return s;
+  }
+  if (f.still_mates) {
+    s.push(`Taking it allows mate in ${f.still_mates}: ${ref}.`);
+    return s;
+  }
+  const g = o.taken ? gains(o.back) : null;
+  if (g) {
+    s.push(`Taking it fails: after ${ref}, ${me} wins ${g}.`);
+    return s;
+  }
+  const w = f.wp_after;
+  const state = w == null ? null : w >= 65 ? `${me} is winning` : w >= 55 ? `${me} is better` : w > 45 ? 'the game is level'
+    : `${them} is only slightly better`;
+  if (state) s.push(`Taking it does not pay: after ${ref}, ${state}.`);
+  return s;
+}
+
 /** One or two sentences for ANY move (the move list / current-move panel). Mistakes and worse get the full
- * explanation. */
+ * explanation. Good moves say what they do, or what the engine's choice did instead. */
 export function comment(f, opening = null) {
   if (f.label == null) return [];
   if (f.label === 'book') return [`${f.san} is a book move.` + (opening ? ` (${opening})` : '')];
   if (f.label === 'forced') return [`${f.san} was the only legal move.`];
-  if (f.label === 'brilliant') return [`${f.san} is brilliant — ${movedPiece(f)} sacrifice that keeps the position under control.`];
-  if (f.label === 'great') return [`${f.san} is a great move — the only move that keeps things together.`];
-  if (f.label === 'best') return [`${f.san} is the best move.`];
-  if (f.label === 'excellent') return [`${f.san} is an excellent move.` + (f.best_san ? ` ${f.best_san} was the engine's choice.` : '')];
-  if (f.label === 'good') return [`${f.san} is a good move.` + (f.best_san ? ` ${f.best_san} was better.` : '')];
+  if (f.label === 'brilliant') return brilliant(f);
+  if (f.label === 'great') return great(f);
+  if (f.label === 'best') return [itDoes(f) ?? `${f.san} is the best move.`];
+  const close = f.best_san && f.wp_loss != null && f.wp_loss < 1;
+  if (f.label === 'excellent' || f.label === 'good') {
+    const what = `${f.san} is ${f.label === 'excellent' ? 'an excellent' : 'a good'} move`;
+    if (!f.best_san) return [`${what}.`];
+    if (close) return [`${what}, as good as the engine's ${f.best_san}.`];
+    const plain = f.label === 'excellent' ? `${f.best_san} was the engine's choice.` : `${f.best_san} was better.`;
+    const mine = !f.best_does && does(f.does);    // nothing to say for the engine's choice: say what the move does
+    return [mine ? `${what}: it ${mine}. ${plain}` : `${what}. ` + betterDoes(f, plain)];
+  }
   if (f.label === 'inaccuracy') {
     const s = [`${f.san} is an inaccuracy.`];
-    if (f.best_san) s.push(`${f.best_san} was better.`);
+    const why = f.wp_loss != null && f.wp_loss >= 6 ? whyInaccurate(f) : null;
+    if (why) s.push(why[0]);
+    if (f.best_san) {
+      const saves = why?.[1] && !f.best_san.includes('+') && f.best_saves;   // a check keeps nothing safe for long
+      s.push(saves ? (saves.moved ? `${f.best_san} moves the ${saves.piece} to safety.`
+        : `${f.best_san} keeps the ${saves.piece} on ${saves.square} safe.`) : betterDoes(f));
+    }
     return s;
   }
   return explain(f);
 }
-
-const movedPiece = f => ({ N: 'a knight', B: 'a bishop', R: 'a rook', Q: 'a queen' })[f.san[0]] ?? 'a piece';

@@ -61,7 +61,7 @@ for (const id of profiles) {
     for (const m of classifyGame(game, pos, multipv)) {
       if (!m.label) continue;
       const before = byPly.get(m.ply), after = byPly.get(m.ply + 1);
-      const f = extract(m, C.boardFromFen(before.fen), before, after, multipv[before.fen_key] ?? null);
+      const f = extract(m, C.boardFromFen(before.fen), before, after, multipv[before.fen_key] ?? null, byPly.get(m.ply - 1) ?? null);
       rows.push({ game: game.game_id, ply: m.ply, san: m.san, label: m.label, fen: before.fen, f,
         comment: comment(f, m.in_book ? game.opening_name : null) });
     }
