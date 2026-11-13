@@ -14,6 +14,7 @@ import { nodeFiles } from '../server/profiles-files-node.js';
 import { Profiles } from '../server/profiles.js';
 import { serve } from '../server/router.js';
 import { Account } from '../server/account.js';
+import { setCodeFingerprint } from '../server/classify.js';
 import { Pack } from '../server/puzzles.js';
 import { Packs } from '../server/packs.js';
 import { ELECTRON_ASSETS, GITHUB_REPO, Updater } from '../server/updater.js';
@@ -61,21 +62,29 @@ const BUNDLED = bundled({ packaged });
 const INSTALL = dirname(process.execPath);
 
 /** The opening book: DATA/book_keys.txt if there is one, else the keys in app.asar (build.js), else DATA/book's TSVs
- * as book.py reads them (a checkout). */
+ * as book.py reads them (a checkout). Returns its text ('' when there is none). */
 function loadOpeningBook() {
   for (const f of [join(DATA, 'book_keys.txt'), BUNDLED.book]) {
     if (f && existsSync(f)) {
-      loadBook(readFileSync(f, 'utf8'));
-      return log.info(`opening book from ${f}`);
+      const text = readFileSync(f, 'utf8');
+      loadBook(text);
+      log.info(`opening book from ${f}`);
+      return text;
     }
   }
   const keys = bookKeysFromDir(join(DATA, 'book'));
   if (keys.length) {
     loadBook(keys.join('\n'));
-    return log.info(`opening book from ${join(DATA, 'book')}: ${keys.length} positions`);
+    log.info(`opening book from ${join(DATA, 'book')}: ${keys.length} positions`);
+    return keys.join('\n');
   }
   log.warn(`no opening book (${BUNDLED.book ?? join(DATA, 'book')}): no move is labelled book`);
+  return '';
 }
+
+/** What this build calls itself: build.json's version in a packaged app (build.js: the release tag, or git
+ * describe's), package.json's in a checkout. Part of every game's fingerprint (setCodeFingerprint). */
+const appVersion = () => (packaged && readInstalled(process.resourcesPath).version) || app.getVersion();
 
 const readJson = path => JSON.parse(readFileSync(path, 'utf8'));
 
@@ -93,7 +102,8 @@ function makeUpdater(quit) {
 
 /** js/server over the data folder: the router with its job runner (serve.main's start-up). */
 function startServer({ quit }) {
-  loadOpeningBook();
+  // a new version (or book) changes every game's fingerprint: each profile's next build redoes its reviews
+  setCodeFingerprint(appVersion(), loadOpeningBook());
   const store = new Store(nodeSqlite(DATA)), files = nodeFiles(DATA);
   // the Blundr account (account.py's): a provider sign-in runs in the system browser, which the Worker sends back to
   // this server's port; the export lands in Downloads (DATA when there is none)

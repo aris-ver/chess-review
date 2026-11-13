@@ -11,6 +11,7 @@ import { test } from 'node:test';
 
 import { PARITY, load, loadPath, same } from '../parity.js';
 import { setBook } from '../core/book.js';
+import { POSITIONS_SQL, gameFingerprint, loadMultipv, setCodeFingerprint } from './classify.js';
 import { writeResults } from './eval-cache.js';
 import { nodeSqlite } from './db-node.js';
 import { EVALS_MULTIPV_SCHEMA, EVALS_SCHEMA, Store, writeGames } from './db.js';
@@ -77,6 +78,41 @@ const local = existsSync(PARITY + 'local/')
 
 test('site: your profiles, as in Python', { skip: !local.length && 'no tests/parity/local site dump' }, async () => {
   await replayAll(local.map(c => [c, loadPath(localSite(c.name))]));
+});
+
+test('site: a new code fingerprint (an update, a new book) rebuilds every review once', async () => {
+  const [c] = load('storage.json');
+  const dir = mkdtempSync(join(tmpdir(), 'blundr-site-'));
+  const store = new Store(nodeSqlite(dir));
+  const files = memoryFiles();
+  try {
+    setBook(c.book);
+    const p = await new Profiles(files, store).create(c.source, c.username, Date.parse(c.now));
+    const db = await store.profile(p);
+    writeGames(db, c.games, c.positions);
+    db.insert('evals', EVALS_SCHEMA, c.cache.evals);
+    db.insert('evals_multipv', EVALS_MULTIPV_SCHEMA, c.cache.multipv);
+    writeResults(db, c.results);
+    const g = db.all('SELECT * FROM games')[0];
+    const rows = db.all(`${POSITIONS_SQL} WHERE p.game_id = ? ORDER BY p.ply`, [g.game_id]);
+    const multipv = loadMultipv(db);
+    const fps = [];
+    const first = await build(db, files, p);
+    assert.ok(first.games > 0);
+    for (const [stamp, book] of [['v1.0.0', ''], ['v1.0.1', ''], ['v1.0.1', 'a b c d'], ['v1.0.1', 'a b c e']]) {
+      setCodeFingerprint(stamp, book);
+      fps.push(gameFingerprint(g, rows, multipv, p.username));
+      same((await build(db, files, p)).rebuilt, first.games, `${stamp} ${book}: every review redone`);
+      same((await build(db, files, p)).rebuilt, 0, `${stamp} ${book}: then kept`);
+    }
+    same(new Set(fps).size, fps.length);
+    const r = JSON.parse(await files.readText(`${p.siteDir}/games/${slug(g.game_id)}.json`));
+    same(r.fp, fps.at(-1));
+  } finally {
+    setCodeFingerprint('');
+    await store.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test('site: slug and evalText', () => {

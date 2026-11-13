@@ -15,6 +15,9 @@ const CR_CONFIG = self.CR_CONFIG;
 // the site's root: config.js says where it is from the code's (scripts/build_web.js serves the code under v/<version>/)
 const site = path => new URL((CR_CONFIG.site ?? '') + path, new URL('../../', import.meta.url)).href;
 const web = path => new URL(path, site('web/')).href;                      // config.js's URLs are relative to web/
+// the build's version: the v/<version>/ this code is served from (a hash of the code, new with every deploy that
+// changes it); '' when it is served from the checkout
+const BUILD = new URL(import.meta.url).pathname.match(/\/v\/([0-9a-f]+)\/js\/web\/worker\.js$/)?.[1] ?? '';
 
 const tabs = new Tabs({ toPage: msg => postMessage(msg), channel: new BroadcastChannel('blundr'), log });
 const progress = (what, done, total, text) => tabs.progress({ what, done, total, text });
@@ -63,7 +66,7 @@ function lead() {
     };
     const moved = legacy ? await migrateOnce({ driver, files, legacy, log, progress: t => progress('app', 0, 1, t) }) : null;
     const out = await startApp({
-      driver, files, pool: engines, log, ...(CR_CONFIG.nodes ? { nodes: CR_CONFIG.nodes } : {}),   // nodes: tests only
+      driver, files, pool: engines, log, build: BUILD, ...(CR_CONFIG.nodes ? { nodes: CR_CONFIG.nodes } : {}),   // nodes: tests only
       site: { book: () => text('book_keys.txt'), puzzles: () => text('puzzles.json'), packs: () => text('packs.json') },
       before: moved && moved.status === 'done' ? async env => {
         progress('app', 0, 1, 'Classifying your games again (once)');

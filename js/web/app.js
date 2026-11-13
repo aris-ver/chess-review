@@ -5,7 +5,7 @@
 import { loadBook } from '../core/book.js';
 import { DEFAULT_NODES } from '../core/config.js';
 import { build as buildAggregates } from '../server/aggregates.js';
-import { build as classify } from '../server/classify.js';
+import { build as classify, setCodeFingerprint } from '../server/classify.js';
 import { Store } from '../server/db.js';
 import { Packs } from '../server/packs.js';
 import { Profiles } from '../server/profiles.js';
@@ -51,9 +51,10 @@ export async function reclassifyAll(env, log = consoleLog) {
 /** The router over driver (js/web/db.js's webSqlite) and files (an opfsFiles adapter), with the engine pool.
  * site: the static files the server reads, as fetch-able texts: { book, puzzles, packs } → Promise<string>
  * (puzzles may come late: puzzle requests wait for `packReady`). before(env): runs once the env is built and before
- * serve() starts anything (the migration's reclassification). Returns { router, env, packReady }. */
+ * serve() starts anything (the migration's reclassification). build: the code's version (the worker's v/<version>/),
+ * which with the book is part of every game's fingerprint. Returns { router, env, packReady }. */
 export async function startApp({ driver, files, pool, fetch = globalThis.fetch?.bind(globalThis), site, log = consoleLog,
-                                 nodes = DEFAULT_NODES, scan = true, before = null }) {
+                                 nodes = DEFAULT_NODES, scan = true, before = null, build = '' }) {
   let packRows = null;
   const packReady = site.puzzles().then(text => { packRows = JSON.parse(text); });
   packReady.catch(e => log.error('the puzzle pack failed to load', e));
@@ -64,6 +65,8 @@ export async function startApp({ driver, files, pool, fetch = globalThis.fetch?.
   const [book, packsText] = await Promise.all([site.book().catch(e => (log.warn('no opening book', e), '')),
                                                site.packs().catch(e => (log.warn('no packs.json', e), null))]);
   if (book) loadBook(book);
+  // a deploy (or a new book) changes every game's fingerprint: each profile's next build redoes its reviews
+  setCodeFingerprint(build, book);
   const packs = new Packs(() => {
     if (packsText === null) throw new Error('no packs.json');
     return JSON.parse(packsText);

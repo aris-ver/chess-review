@@ -36,10 +36,12 @@ let code = '';
 export const RULES_VERSION = 3;
 
 /** What stands in for classify.code_fingerprint: the build's version stamp and the opening book's, set once at
- * startup by whoever knows them (the desktop app: its version; the web worker: its build hash). Changing it makes
- * every game's fingerprint change, so every game is classified again. */
-export function setCodeFingerprint(s) {
-  code = String(s);
+ * startup by whoever knows them (the desktop app, js/desktop/main.js: its version; the web worker, js/web/app.js:
+ * its build hash). book: the book's text as loaded (its SHA-1 goes in). Changing either makes every game's
+ * fingerprint change, so the next build of a profile (a refresh, an analysis) classifies its games again and
+ * rewrites their reviews from the evals it keeps: no engine time. */
+export function setCodeFingerprint(build, book = '') {
+  code = book ? `${build} book ${sha1(book)}` : String(build);
 }
 
 /** JSON with every object's keys sorted, so equal values give equal text. */
