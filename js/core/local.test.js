@@ -4,7 +4,7 @@
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 
-import { PARITY, checkGame, localDumps, same } from '../parity.js';
+import { PARITY, checkGame, loadPath, localDumps, same } from '../parity.js';
 import { isBook, loadBook } from './book.js';
 
 const files = localDumps();
@@ -13,7 +13,7 @@ test('local: your games classify as in Python', { skip: !files.length && 'no tes
   loadBook(readFileSync(PARITY + 'local/book_keys.txt', 'utf8'));
   let games = 0;
   for (const f of files) {
-    for (const c of JSON.parse(readFileSync(f, 'utf8'))) {
+    for (const c of loadPath(f)) {
       for (const key of c.book) same(isBook(key), true, `${c.name} book ${key}`);
       checkGame(c);
       games += 1;

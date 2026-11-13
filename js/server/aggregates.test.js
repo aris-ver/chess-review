@@ -10,7 +10,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 
-import { PARITY, load, same } from '../parity.js';
+import { PARITY, load, loadPath, same, sameAt, strict, updatingDumps } from '../parity.js';
 import { webSqlite } from '../web/db.js';
 import { build, floatStr, gameAccuracies, queryAll, render, sqlRound } from './aggregates.js';
 import { nodeSqlite } from './db-node.js';
@@ -58,11 +58,21 @@ function sameOrdered(js, py, key, what, { limited = false } = {}) {
   }
 }
 
+/** `check` as it is; with PARITY_UPDATE, a failing one hands py[key] JS's rows instead. */
+function tolerant(d, py, key, check) {
+  try {
+    strict(check);
+  } catch (e) {
+    if (!updatingDumps()) throw e;
+    py[key] = structuredClone(d[key]);
+  }
+}
+
 function compare(db, d, py, games, what) {
   same(nan(d.headline), py.headline, `${what}.headline`);
   for (const k of ['by_ply', 'by_clock', 'by_colour', 'endgames']) same(d[k], py[k], `${what}.${k}`);
-  sameOrdered(d.by_time_class, py.by_time_class, 1, `${what}.by_time_class`);
-  sameOrdered(d.over_time, py.over_time, 1, `${what}.over_time`);
+  tolerant(d, py, 'by_time_class', () => sameOrdered(d.by_time_class, py.by_time_class, 1, `${what}.by_time_class`));
+  tolerant(d, py, 'over_time', () => sameOrdered(d.over_time, py.over_time, 1, `${what}.over_time`));
 
   // any_value(opening_name): one of the group's openings
   const openings = new Map();
@@ -74,10 +84,15 @@ function compare(db, d, py, games, what) {
   }
   for (const r of d.by_eco) assert.ok(openings.get(r[0])?.has(r[1]), `${what}.by_eco ${r[0]}: ${r[1]}`);
   const noOpening = rows => rows.map(r => [r[0], null, ...r.slice(2)]);
-  sameOrdered(noOpening(d.by_eco), noOpening(py.by_eco), 3, `${what}.by_eco`, { limited: py.by_eco.length === 15 });
+  tolerant(d, py, 'by_eco', () => sameOrdered(noOpening(d.by_eco), noOpening(py.by_eco), 3, `${what}.by_eco`,
+    { limited: py.by_eco.length === 15 }));
 
   // the heatmap's top ten ECO codes by games: a tie at the cut may pick others
   const ecos = rows => [...new Set(rows.map(r => r[0]))].sort();
+  tolerant(d, py, 'eco_ply', () => ecoPly(db, d, py, what, ecos));
+}
+
+function ecoPly(db, d, py, what, ecos) {
   const [je, pe] = [ecos(d.eco_ply), ecos(py.eco_ply)];
   let shared = je;
   if (JSON.stringify(je) !== JSON.stringify(pe)) {
@@ -120,7 +135,7 @@ async function replay(c, storage, driver, { html = true } = {}) {
     same(Object.fromEntries(gameAccuracies(db)), c.accuracies, `${c.name}.accuracies`);
     const d = queryAll(db);
     compare(db, d, c.out, rows.games, c.name);
-    same(render(revive(c.out), c.username, c.id), c.html, `${c.name}: render of Python's numbers`);
+    sameAt(render(revive(c.out), c.username, c.id), c, 'html', `${c.name}: render of Python's numbers`);
     const built = await build(db, files, p);
     same(built, { games: d.headline[0], out: `${p.siteDir}/insights.html` }, `${c.name}.build`);
     if (html) same(await files.readText(built.out), c.html, `${c.name}: insights.html`);
@@ -165,7 +180,7 @@ test('aggregates parity: your profiles, as in Python', { skip: !local.length && 
   const dir = mkdtempSync(join(tmpdir(), 'blundr-aggregates-'));
   try {
     for (const [i, f] of local.entries()) {
-      await replay(JSON.parse(readFileSync(f, 'utf8')), null, nodeSqlite(join(dir, String(i))), { html: false });
+      await replay(loadPath(f), null, nodeSqlite(join(dir, String(i))), { html: false });
     }
   } finally {
     rmSync(dir, { recursive: true, force: true });

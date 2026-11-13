@@ -29,8 +29,11 @@ let code = '';
 
 /** Bumped whenever the labelling rules change (js/core/classify.js, its thresholds in config.js): it is part of every
  * game's fingerprint, so the games already classified are classified once more and their reviews rebuilt.
- * 2: the losing side's material rule needs the loss at every cut of the lines and an eval drop (2026-11-12). */
-export const RULES_VERSION = 2;
+ * 2: the losing side's material rule needs the loss at every cut of the lines and an eval drop (2026-11-12).
+ * 3: a miss that ends a mistake's or blunder's worth below the position before the opponent's slip keeps that label;
+ *    a rook or more lost through any piece is a blunder; the getting-mated rules skip the engine's choice; a
+ *    sacrifice counts what the move captured (2026-11-13). */
+export const RULES_VERSION = 3;
 
 /** What stands in for classify.code_fingerprint: the build's version stamp and the opening book's, set once at
  * startup by whoever knows them (the desktop app: its version; the web worker: its build hash). Changing it makes

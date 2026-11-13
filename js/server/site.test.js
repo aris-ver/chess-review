@@ -4,12 +4,12 @@
 // whole float without its ".0" (50 where json.dumps writes 50.0) and without json.dumps' spaces, and the review's
 // fingerprint ("fp") isn't Python's digest, so it is left out of the comparison.
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 
-import { PARITY, load, same } from '../parity.js';
+import { PARITY, load, loadPath, same } from '../parity.js';
 import { setBook } from '../core/book.js';
 import { writeResults } from './eval-cache.js';
 import { nodeSqlite } from './db-node.js';
@@ -72,11 +72,11 @@ test('site: the review files as Python writes them', async () => {
 const localSite = name => PARITY + `local/site-${name}.json`;
 const local = existsSync(PARITY + 'local/')
   ? readdirSync(PARITY + 'local/').filter(f => /^storage-.*\.json$/.test(f)).sort()
-    .map(f => JSON.parse(readFileSync(PARITY + 'local/' + f, 'utf8')))
+    .map(f => loadPath(PARITY + 'local/' + f))
     .filter(c => existsSync(localSite(c.name))) : [];
 
 test('site: your profiles, as in Python', { skip: !local.length && 'no tests/parity/local site dump' }, async () => {
-  await replayAll(local.map(c => [c, JSON.parse(readFileSync(localSite(c.name), 'utf8'))]));
+  await replayAll(local.map(c => [c, loadPath(localSite(c.name))]));
 });
 
 test('site: slug and evalText', () => {

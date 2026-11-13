@@ -8,7 +8,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 
-import { load, PARITY, same } from '../parity.js';
+import { load, loadPath, PARITY, same } from '../parity.js';
 import { writeResults } from './eval-cache.js';
 import { nodeSqlite } from './db-node.js';
 import { EVALS_MULTIPV_SCHEMA, EVALS_SCHEMA, MOVES_SCHEMA, PROGRESS_DDL, SCHEMA_VERSION, Store, writeGames } from './db.js';
@@ -229,7 +229,7 @@ const locals = existsSync(localDir) ? readdirSync(localDir).filter(f => /^puzzle
 
 test('own puzzles: your profiles, as in Python', { skip: !locals.length && 'no tests/parity/local puzzles dump' }, async () => {
   for (const f of locals) {
-    const c = JSON.parse(readFileSync(localDir + f, 'utf8'));
+    const c = loadPath(localDir + f);
     await withStore(store => ownCase(store, c, c));
     const r = c.real_review;
     const sched = O.schedule(r.attempts);
@@ -239,7 +239,7 @@ test('own puzzles: your profiles, as in Python', { skip: !locals.length && 'no t
 });
 
 test('puzzles: your records, as in Python', { skip: !existsSync(localDir + 'puzzles-records.json') && 'no tests/parity/local puzzles dump' }, () => {
-  const c = JSON.parse(readFileSync(localDir + 'puzzles-records.json', 'utf8'));
+  const c = loadPath(localDir + 'puzzles-records.json');
   same(P.stats(c.attempts), c.stats, 'stats');
   for (const [day, out] of c.streaks) same(K.streaks(c.daily, day), out, `streaks(${day})`);
 });

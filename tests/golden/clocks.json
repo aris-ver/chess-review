@@ -80,7 +80,7 @@
   {
    "ply": 11,
    "san": "Ke8",
-   "label": "miss",
+   "label": "blunder",
    "best_san": "Qxg5",
    "wp_loss": 59.4
   },
@@ -97,9 +97,10 @@
    "ply": 11,
    "rank": 1,
    "crosses_boundary": true,
-   "headline": "Miss \u2014 win chance 93% \u2192 34%",
+   "headline": "Blunder \u2014 win chance 93% \u2192 34%",
    "text": [
     "This hangs the bishop on g4: 7. Qxg4 Nc6 8. Nxh7 Qd7 9. Qg6+.",
+    "Qxg5 kept the win.",
     "Played with 2:10 remaining."
    ],
    "hung": [

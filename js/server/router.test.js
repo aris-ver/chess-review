@@ -9,7 +9,7 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 
 import { setBook } from '../core/book.js';
-import { load, same } from '../parity.js';
+import { load, same, sameScrubbed } from '../parity.js';
 import { nodeSqlite } from './db-node.js';
 import { Store } from './db.js';
 import { memoryFiles } from './profiles-files.js';
@@ -72,7 +72,7 @@ test('the JS router answers the requests as serve.Handler does', async () => {
       same((out.headers['Content-Type'] ?? '').split(';')[0], s.type, `${what} type`);
       const text = typeof out.body === 'string' ? out.body : new TextDecoder().decode(out.body);
       if (s.lenient) assert.ok('error' in JSON.parse(text), `${what}: an error`);
-      else if (s.json !== undefined) same(scrub(JSON.parse(text)), scrub(s.json), what);
+      else if (s.json !== undefined) sameScrubbed(JSON.parse(text), s.json, scrub, what);
     }
   } finally {
     await store.close();

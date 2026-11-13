@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 
-import { PARITY, load, same } from '../parity.js';
+import { PARITY, load, loadPath, same } from '../parity.js';
 import { setBook } from '../core/book.js';
 import { webSqlite } from '../web/db.js';
 import { pendingKeys, writeResults } from './eval-cache.js';
@@ -80,7 +80,7 @@ test('storage parity: SQLite WASM answers as Python', async () => {
 test('storage parity: your profiles, as in Python', { skip: !local.length && 'no tests/parity/local storage dump' }, async () => {
   const dir = mkdtempSync(join(tmpdir(), 'blundr-parity-'));
   try {
-    for (const [i, f] of local.entries()) await replay(JSON.parse(readFileSync(f, 'utf8')), nodeSqlite(join(dir, String(i))));
+    for (const [i, f] of local.entries()) await replay(loadPath(f), nodeSqlite(join(dir, String(i))));
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

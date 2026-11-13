@@ -8,11 +8,11 @@
 import { isBook } from './book.js';
 import { boardFromFen, copy, fen, isCapture, isCheckmate, isGameOver, isLegal, legalMoveCount, legalMoves, moveFromUci, pieceTypeAt, push, san, uci } from './chess.js';
 import {
-  BLUNDER, CP_BLUNDER, CP_MISTAKE, EXCELLENT, GRADE_DEFAULT_RATING, GRADE_K_HIGH, GRADE_K_LOW, GRADE_RATING_HIGH,
+  BLUNDER, CP_BLUNDER, CP_MISTAKE, EXCELLENT, GRADE_DEFAULT_RATING, HANGS_DOWN, HANGS_DROP_CP, HANGS_LOST, HANGS_UP_TO_CP, GRADE_K_HIGH, GRADE_K_LOW, GRADE_RATING_HIGH,
   GRADE_RATING_LOW, INACCURACY, LOSING_MATERIAL_CP, LOSING_MATERIAL_DROP_CP, MATE_FROM_LOST_CP, MATERIAL_MISTAKE, MISS_AFTER_MIN,
   MISS_BEFORE_MIN, MISTAKE, ONLY_MOVE_GAP,
 } from './config.js';
-import { materialSwing, see } from './facts.js';
+import { VALUE, materialSwing, see } from './facts.js';
 import { moveAccuracy } from './accuracy.js';
 import { fenKey } from './fen.js';
 import { povWinPct } from './pov.js';
@@ -47,10 +47,27 @@ export function isSacrifice(board, m) {
 
 /** A sacrifice is only one if the material stays given: over the engine's line after the move the mover is still
  * down at least a pawn, or the line ends in mate. A piece offered to a pawn and won back two moves later by a fork
- * is a tactic, not a sacrifice. */
-export function sacrificeHolds(boardAfter, replyPv, mover, replyMate) {
+ * is a tactic, not a sacrifice. `captured` is what the move itself took: the line starts after it, so without it a
+ * queen traded for queen and knight would look like a queen given. */
+export function sacrificeHolds(boardAfter, replyPv, mover, replyMate, captured = 0) {
   if (replyMate != null && replyMate < 0) return true;     // the opponent (to move) gets mated: the material is beside the point
-  return materialSwing(boardAfter, replyPv.slice(0, SACRIFICE_PLIES), mover) <= -100;
+  return captured + materialSwing(boardAfter, replyPv.slice(0, SACRIFICE_PLIES), mover) <= -100;
+}
+
+/** What the move captures, centipawns (an en passant capture takes a pawn). */
+export function capturedValue(board, m) {
+  if (!isCapture(board, m)) return 0;
+  return VALUE[pieceTypeAt(board, m.to) ?? 'pawn'];
+}
+
+/** The move loses at least a rook's worth against the best move whichever piece it leaves hanging (a queen left to a
+ * discovered attack, say): at every cut of the two lines the played one is HANGS_LOST behind the best one and
+ * HANGS_DOWN behind where the mover started, so material the best move would have won doesn't count as lost. */
+export function hangsMaterial(board, m, bestPv, replyPv) {
+  const line = [uci(m), ...replyPv];
+  // both measured over the same plies materialLost compares (cut to the shorter line)
+  return [4, 6, 8].every(p => materialLost(board, m, bestPv, replyPv, p) >= HANGS_LOST
+    && materialSwing(board, line.slice(0, Math.min(p, line.length, bestPv.length)), board.turn) <= -HANGS_DOWN);
 }
 
 /** The move leaves its piece to be taken (per SEE), the engine's reply takes it, and along the engine's line the
@@ -168,15 +185,27 @@ export function classifyGame(game, rows, multipv = null) {
     else if (loss === null) label = null;
     else if (isBest || loss <= EXCELLENT) {
       if (10 < wpBefore && wpBefore < 90 && wpAfter >= 35 && isSacrifice(boardBefore, m)
-          && sacrificeHolds(board, nxtPv, boardBefore.turn, nxt.mate_in)) label = 'brilliant';
+          && sacrificeHolds(board, nxtPv, boardBefore.turn, nxt.mate_in, capturedValue(boardBefore, m))) label = 'brilliant';
       else if (isBest && only && !recapture && 10 < wpBefore && wpBefore < 95) label = 'great';
       else if (isBest || (cpBefore !== null && cpAfter !== null && cpAfter >= cpBefore)) label = 'best';
       else label = 'excellent';
     } else {
       label = labelFor(loss);
-      const opportunity = (prevLoss !== null && prevLoss > MISTAKE) || missedMate;
+      // A miss hands back what the opponent just gave: graded against the position before the opponent's slip, a
+      // move that ends up a mistake's or a blunder's worth worse than that keeps its own label (a queen hung right
+      // after the opponent's error is a blunder, not a miss). A missed mate is a miss only while still better.
+      const gift = prevLoss !== null && prevLoss > MISTAKE;
+      const opportunity = gift || missedMate;
       if (opportunity && wpBefore >= MISS_BEFORE_MIN && wpAfter >= MISS_AFTER_MIN
-          && (among(label, 'mistake', 'blunder') || (missedMate && among(label, 'good', 'inaccuracy')))) label = 'miss';
+          && (among(label, 'mistake', 'blunder') || (missedMate && among(label, 'good', 'inaccuracy')))) {
+        const gAfter = povWinPct(nxt.eval_cp, nxt.mate_in, nxt.side_to_move, mover, k);
+        const pr = i > 0 ? rows[i - 1] : null;                 // before the opponent's move
+        const gRef = pr && (pr.eval_cp != null || pr.mate_in != null)
+          ? povWinPct(pr.eval_cp, pr.mate_in, pr.side_to_move, mover, k) : null;
+        const net = gift && gRef !== null ? gRef - gAfter : null;
+        if (missedMate && gAfter > 50) label = 'miss';
+        else if (net !== null) label = net > BLUNDER ? 'blunder' : net > MISTAKE ? 'mistake' : 'miss';
+      }
     }
 
     if (among(label, 'best', 'excellent', 'good', 'inaccuracy', 'great', 'mistake') && !isBest
@@ -186,14 +215,18 @@ export function classifyGame(game, rows, multipv = null) {
     }
     if (among(label, 'best', 'excellent', 'good', 'inaccuracy', 'great') && !isBest
         && r.mate_in == null && nxt.mate_in == null && givesAway(boardBefore, m, rPv, nxtPv)) label = 'mistake';
+    if (among(label, 'best', 'excellent', 'good', 'inaccuracy', 'great', 'mistake') && !isBest
+        && r.mate_in == null && nxt.mate_in == null && cpBefore > LOSING_MATERIAL_CP && cpAfter < HANGS_UP_TO_CP
+        && cpBefore - cpAfter >= HANGS_DROP_CP && hangsMaterial(boardBefore, m, rPv, nxtPv)) label = 'blunder';
 
     if (r.mate_in === 1 && !isCheckmate(board) && among(label, 'best', 'excellent', 'good', 'inaccuracy')) label = 'miss';
-    if (r.mate_in != null && r.mate_in < 0 && matedInAfter !== null
+    // the two "getting mated" rules leave the engine's own choice alone: mate distances shift between searches
+    if (!isBest && r.mate_in != null && r.mate_in < 0 && matedInAfter !== null
         && matedInAfter < -r.mate_in - 1 && among(label, 'best', 'excellent', 'good')) {
       label = 'inaccuracy';                                 // walked into a faster mate than the one coming
     }
     if (cpBefore !== null && matedInAfter !== null) {
-      if (cpBefore <= MATE_FROM_LOST_CP && among(label, 'best', 'excellent', 'good', 'inaccuracy', 'great', 'mistake', 'blunder')) {
+      if (cpBefore <= MATE_FROM_LOST_CP && !isBest && among(label, 'best', 'excellent', 'good', 'inaccuracy', 'great', 'mistake', 'blunder')) {
         label = matedInAfter <= 3 ? 'mistake' : 'inaccuracy';   // lost already, now mated
       } else if (cpBefore <= LOSING_MATERIAL_CP && label === 'blunder') {
         label = 'mistake';

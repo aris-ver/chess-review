@@ -1749,7 +1749,7 @@
       "excellent": 2,
       "best": 2,
       "good": 1,
-      "miss": 1
+      "blunder": 1
      }
     },
     "start_fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
@@ -2024,7 +2024,7 @@
       "san": "Ke8",
       "uci": "f7e8",
       "fen": "rn1qkbnr/ppp3pp/3p4/6N1/3pP1b1/8/PPP2PPP/RNBQK2R w KQ - 2 7",
-      "label": "miss",
+      "label": "blunder",
       "is_mine": false,
       "wp_white": 62.5,
       "eval": "+1.4",
@@ -2035,6 +2035,7 @@
       "spent": 12,
       "comment": [
        "This hangs the bishop on g4: 7. Qxg4 Nc6.",
+       "Qxg5 was the only move.",
        "Played with 2:10 remaining."
       ],
       "hung": [
@@ -2094,11 +2095,12 @@
      {
       "ply": 11,
       "rank": 1,
-      "label": "miss",
+      "label": "blunder",
       "move": "6... Ke8",
-      "headline": "Miss \u2014 win chance 94% \u2192 37%",
+      "headline": "Blunder \u2014 win chance 94% \u2192 37%",
       "text": [
        "This hangs the bishop on g4: 7. Qxg4 Nc6.",
+       "Qxg5 was the only move.",
        "Played with 2:10 remaining."
       ],
       "refutation_uci": [
@@ -2659,7 +2661,7 @@
       "opp_accuracy": 85.8,
       "n_moves": 13,
       "n_key": 2,
-      "blunders": 0,
+      "blunders": 1,
       "brilliants": 0,
       "brilliants_any": 0
      },
@@ -2681,7 +2683,7 @@
       "opp_accuracy": 85.8,
       "n_moves": 13,
       "n_key": 2,
-      "blunders": 0,
+      "blunders": 1,
       "brilliants": 0,
       "brilliants_any": 0
      },
@@ -2703,7 +2705,7 @@
       "opp_accuracy": 85.8,
       "n_moves": 13,
       "n_key": 2,
-      "blunders": 0,
+      "blunders": 1,
       "brilliants": 0,
       "brilliants_any": 0
      },
@@ -2725,7 +2727,7 @@
       "opp_accuracy": 85.8,
       "n_moves": 13,
       "n_key": 2,
-      "blunders": 0,
+      "blunders": 1,
       "brilliants": 0,
       "brilliants_any": 0
      },
@@ -2747,7 +2749,7 @@
       "opp_accuracy": 85.8,
       "n_moves": 13,
       "n_key": 2,
-      "blunders": 0,
+      "blunders": 1,
       "brilliants": 0,
       "brilliants_any": 0
      },
@@ -2769,7 +2771,7 @@
       "opp_accuracy": 85.8,
       "n_moves": 13,
       "n_key": 2,
-      "blunders": 0,
+      "blunders": 1,
       "brilliants": 0,
       "brilliants_any": 0
      },
@@ -2791,7 +2793,7 @@
       "opp_accuracy": 85.8,
       "n_moves": 13,
       "n_key": 2,
-      "blunders": 0,
+      "blunders": 1,
       "brilliants": 0,
       "brilliants_any": 0
      }

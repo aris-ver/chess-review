@@ -18,6 +18,11 @@ export const MATERIAL_MISTAKE = 300;
 export const LOSING_MATERIAL_CP = -400;
 export const LOSING_MATERIAL_DROP_CP = 150;   // ...but only if the eval drops this much too: lines that merely cut a trade off at different plies leave it flat
 export const MATE_FROM_LOST_CP = -650;
+// A move that loses a rook or more against the best move is a blunder whichever piece it leaves (hangsMaterial):
+export const HANGS_LOST = 500;       // material behind the best move's line at 4, 6 and 8 plies
+export const HANGS_DOWN = 300;       // ...and behind where the mover started, so a capture the best move had isn't "lost"
+export const HANGS_DROP_CP = 500;    // the eval drops this much
+export const HANGS_UP_TO_CP = 400;   // the mover isn't still this far ahead after it (and wasn't below LOSING_MATERIAL_CP before)
 export const ONLY_MOVE_GAP = 15.0;
 export const MISS_BEFORE_MIN = 40.0;
 export const MISS_AFTER_MIN = 10.0;

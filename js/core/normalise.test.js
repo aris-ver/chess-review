@@ -1,9 +1,9 @@
 // normalise against scripts/dump_parity_games.py's normalise.json, and your own profiles' raw files when
 // `dump_parity_games.py --local` has dumped them to tests/parity/local/.
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync } from 'node:fs';
 import { test } from 'node:test';
 
-import { PARITY, load, same } from '../parity.js';
+import { PARITY, load, loadPath, same } from '../parity.js';
 import { normalise, parseChesscom, parseLichess, parsePgnText, timeClass } from './normalise.js';
 
 const N = load('normalise.json');
@@ -35,7 +35,7 @@ const local = existsSync(PARITY + 'local/')
 
 test('local: your profiles normalise as in Python', { skip: !local.length && 'no tests/parity/local normalise dump' }, () => {
   for (const f of local) {
-    const c = JSON.parse(readFileSync(PARITY + 'local/' + f, 'utf8'));
+    const c = loadPath(PARITY + 'local/' + f);
     same(normalise(c.files, c.username), c.out, f);
   }
 });

@@ -10,7 +10,7 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 
 import { setBook } from '../core/book.js';
-import { load, same } from '../parity.js';
+import { load, same, sameScrubbed } from '../parity.js';
 import { nodeSqlite } from './db-node.js';
 import { Store } from './db.js';
 import { Packs } from './packs.js';
@@ -78,7 +78,7 @@ test('the puzzle routes answer as serve.Handler does', async () => {
       same(out.status, s.status, `${what} status`);
       same((out.headers['Content-Type'] ?? '').split(';')[0], s.type, `${what} type`);
       const text = typeof out.body === 'string' ? out.body : new TextDecoder().decode(out.body);
-      if (s.json !== undefined) same(scrub(JSON.parse(text)), scrub(s.json), what);
+      if (s.json !== undefined) sameScrubbed(JSON.parse(text), s.json, scrub, what);
     }
   });
 });
