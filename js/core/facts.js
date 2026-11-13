@@ -6,7 +6,7 @@
 import {
   attackers, attacks, castlingMoves, colorAt, copy, givesCheck, hasCastlingRights, isAttackedBy, isCapture, isCheck,
   isCheckmate, isEnPassant, isGameOver, isLegal, isPinned, legalMoves, makeSquare, move, moveEquals, moveFromUci,
-  nullMove, opposite, pieceAt, pieceTypeAt, push, san, squareFile, squareRank, uci,
+  nullMove, opposite, parseSquare, pieceAt, pieceTypeAt, push, san, squareFile, squareRank, uci,
 } from './chess.js';
 import { ONLY_MOVE_GAP } from './config.js';
 import { povWinPct } from './pov.js';
@@ -95,6 +95,27 @@ export function hungPieces(board, victim) {
     }
   }
   return out.sort((a, b) => b.see - a.see);
+}
+
+/** Why a hung piece has no recapture when the move itself is to blame: the moved piece now stands between one of the
+ * mover's sliders and the square, so after `hung`'s capture nothing takes back (13.Kf1 with a knight forking the
+ * king and the rook on a1: the king shuts Rh1 off). {piece, square, by, by_square} for the cut-off slider and the
+ * moved piece, or null. Only when the engine's reply (`reply`, UCI) is that capture: otherwise the line shown under
+ * the sentence is about something else. `boardAfter` is the position after `played`, opponent to move. */
+export function blockedRecapture(boardAfter, played, hung, reply) {
+  const target = parseSquare(hung.square);
+  const cap = legalMoves(boardAfter).find(m => m.to === target && san(boardAfter, m) === hung.capture_san);
+  if (!cap || played.null || uci(cap) !== reply) return null;
+  const by = pieceTypeAt(boardAfter, played.to);
+  if (by === 'king' && Math.abs(squareFile(played.to) - squareFile(played.from)) > 1) return null;  // castling
+  const b = copy(boardAfter);
+  push(b, cap);
+  const mover = b.turn;
+  if (attackers(b, mover, target).nonEmpty()) return null;                   // something takes back already
+  const freed = attackers(b, mover, target, b.board.occupied.without(played.to)).without(played.to);
+  const sq = freed.first();
+  if (sq === undefined) return null;
+  return { piece: NAMES[pieceTypeAt(b, sq)], square: makeSquare(sq), by: NAMES[by], by_square: makeSquare(played.to) };
 }
 
 export function material(board, colour) {
@@ -346,6 +367,9 @@ export function extract(mv, board, evalBefore, evalAfter, multipv = null) {
     f.refutation = sans(boardAfter, pv, REFUTATION_PLIES);
     f.material_swing = materialSwing(boardAfter, pv.slice(0, REFUTATION_PLIES + 3), mover);
     if (!isGameOver(boardAfter)) f.hung_pieces = hungPieces(boardAfter, mover);
+    // only set when it applies, so the hung entries of every other move stay as they were
+    const blocked = f.hung_pieces.length ? blockedRecapture(boardAfter, played, f.hung_pieces[0], pv[0]) : null;
+    if (blocked) f.hung_pieces[0].blocked = blocked;
     if (pv.length) [f.motif, f.motif_detail] = motif(boardAfter, moveFromUci(pv[0]));
     // a good move's arrows tell one story: its threat if it makes one, else its idea -- and nothing on the move
     // that ends the game

@@ -6,6 +6,8 @@ import { test } from 'node:test';
 import { setBook } from './book.js';
 import { boardFromFen, moveFromUci } from './chess.js';
 import { classifyGame, hangsMaterial } from './classify.js';
+import { explain } from './explain.js';
+import { extract } from './facts.js';
 
 // 7.dxe4 in chess.com/game/live/187084467344 (White 547): 6...Nxe4 uncovered Be7 on the queen on g5; dxe4 takes
 // the knight and leaves the queen. -3.26 -> -8.64, a graded win% loss of 19.2 (just under the blunder line).
@@ -48,4 +50,24 @@ test('hung material: not when the queen is saved (the played line keeps the mate
   assert.equal(hangsMaterial(boardFromFen(BEFORE), moveFromUci('g5f4'), BEST_PV, pv), false);
   // a five-pawn eval drop that the win% curve alone grades a mistake: no material lost, so it stays one
   assert.equal(label(rows(-326, 830, 'g5f4', after, pv)), 'mistake');
+});
+
+// 14.Kf1 in the same game: 13...Nxc2+ forks the king and the rook on a1. Kd2 or Kf2 leave the back rank so Rh1
+// takes the knight back on a1; Kf1 stands between them and the rook is lost for nothing (+1.78 -> -4.71).
+const FORK = 'r4rk1/ppp2ppp/8/3B4/4PNb1/2N5/PPn3PP/R3K2R w KQ - 0 14';
+const forkFacts = (u, reply) => extract(
+  { game_id: 'g', ply: 26, side_to_move: 'white', is_mine: false, move_played: u, san: 'K', best_san: 'Kd2',
+    label: 'blunder', wp_before: 66.6, wp_after: 15.4, wp_loss: 51.2 },
+  boardFromFen(FORK), { eval_cp: 178, mate_in: null, pv: ['e1d2', 'c2a1', 'h2h3'] },
+  { eval_cp: 471, mate_in: null, pv: reply });
+
+test('explain: a king move that cuts the rook off from the recapture says so', () => {
+  const f = forkFacts('e1f1', ['c2a1', 'f1f2', 'c7c6', 'h2h3', 'g4d7']);
+  assert.deepEqual(f.hung_pieces[0].blocked, { piece: 'rook', square: 'h1', by: 'king', by_square: 'f1' });
+  assert.match(explain(f)[0], /^The king on f1 blocks the rook on h1 from taking back on a1, so the rook there is lost for nothing: 14\.\.\. Nxa1/);
+});
+
+test('explain: no blocked recapture when the rook can take back', () => {
+  const f = forkFacts('e1f2', ['c2a1', 'h1a1', 'c7c6']);
+  assert.equal(f.hung_pieces[0]?.blocked, undefined);
 });

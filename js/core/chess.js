@@ -9,10 +9,10 @@
 
 import {
   Chess, SquareSet, attacks as pieceAttacks, between, bishopAttacks, defined, fen as fenIO, kingAttacks, makeSquare,
-  normalizeMove, opposite, pawnAttacks, ray, rookAttacks, san as sanIO, squareFile, squareRank,
+  normalizeMove, opposite, parseSquare, pawnAttacks, ray, rookAttacks, san as sanIO, squareFile, squareRank,
 } from '../vendor/chessops.js';
 
-export { SquareSet, makeSquare, opposite, squareFile, squareRank };
+export { SquareSet, makeSquare, opposite, parseSquare, squareFile, squareRank };
 
 /** @typedef {import('../vendor/chessops.js').Chess} Position */
 /** @typedef {'pawn'|'knight'|'bishop'|'rook'|'queen'|'king'} Role */

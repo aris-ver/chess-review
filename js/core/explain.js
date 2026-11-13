@@ -45,6 +45,11 @@ export function explain(f) {
 
   if (f.missed_mate && best) s.push(`${best} forces mate: ${line(f.best_line, f.ply)}.`);
   else if (f.allowed_mate && ref) s.push(`After ${ref} there is no defence.`);
+  else if (hung?.blocked && ref) {
+    const b = hung.blocked;
+    s.push(`The ${b.by} on ${b.by_square} blocks the ${b.piece} on ${b.square} from taking back on ${hung.square}, `
+      + `so the ${hung.piece} there is lost for nothing: ${ref}.`);
+  }
   else if (hung && ref) s.push(`This hangs the ${hung.piece} on ${hung.square}: ${ref}.`);
   else if (f.motif && ref) s.push(`${f.refutation[0]} ${f.motif_detail}: ${ref}.`);
   else if (swing != null && swing <= -200 && ref) s.push(`Loses material after ${ref} (down ${formatG(Math.abs(swing) / 100)} pawns).`);
