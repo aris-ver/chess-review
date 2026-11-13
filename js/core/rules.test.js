@@ -4,10 +4,10 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 import { setBook } from './book.js';
-import { boardFromFen, moveFromUci } from './chess.js';
+import { boardFromFen, moveFromUci, san } from './chess.js';
 import { classifyGame, hangsMaterial } from './classify.js';
 import { explain } from './explain.js';
-import { extract } from './facts.js';
+import { extract, settledLength } from './facts.js';
 
 // 7.dxe4 in chess.com/game/live/187084467344 (White 547): 6...Nxe4 uncovered Be7 on the queen on g5; dxe4 takes
 // the knight and leaves the queen. -3.26 -> -8.64, a graded win% loss of 19.2 (just under the blunder line).
@@ -70,4 +70,72 @@ test('explain: a king move that cuts the rook off from the recapture says so', (
 test('explain: no blocked recapture when the rook can take back', () => {
   const f = forkFacts('e1f2', ['c2a1', 'h1a1', 'c7c6']);
   assert.equal(f.hung_pieces[0]?.blocked, undefined);
+});
+
+// --- what the bad-move sentences claim (explain.js over facts.lostPiece / tradeOver / bestSaves) ------------------
+// Positions from reviewed games, with the engine lines the review had.
+
+const bad = ({ fen, played, label = 'blunder', ply, wp = [50, 10], before, after, clock = null, spent = null }) => {
+  const board = boardFromFen(fen);
+  const m = moveFromUci(played);
+  const best = before.pv?.length ? san(board, moveFromUci(before.pv[0])) : null;
+  return extract({ game_id: 'g', ply, side_to_move: board.turn, is_mine: true, move_played: played, san: san(board, m),
+    best_san: best, label, wp_before: wp[0], wp_after: wp[1], wp_loss: wp[0] - wp[1], clock_remaining: clock,
+    time_spent: spent }, board, before, after);
+};
+
+test('explain: a piece that was already hanging is "left hanging", and the better move keeps it', () => {
+  // 4.Nc3: the queen on d5 already hit h1; Nf3 would have blocked
+  const f = bad({ fen: 'rnb1kbnr/ppp2ppp/8/3qp3/6P1/8/PP1PPP1P/RNBQKBNR w KQkq - 0 4', played: 'b1c3', ply: 6,
+    wp: [39, 7], before: { eval_cp: -122, mate_in: null, pv: ['g1f3', 'c8g4', 'b1c3'] },
+    after: { eval_cp: 687, mate_in: null, pv: ['d5h1', 'g1f3', 'c8g4', 'd1a4', 'g4d7'] } });
+  assert.equal(f.lost.kind, 'left');
+  assert.deepEqual(explain(f).slice(0, 2), ['This leaves the rook on h1 hanging: 4... Qxh1 5. Nf3 Bxg4 6. Qa4+ Bd7.',
+    'Nf3 keeps the rook on h1 safe.']);
+});
+
+test('explain: a capture that loses the capturing piece is a bad trade, not a hang', () => {
+  const f = bad({ fen: 'rnbqkbnr/ppp2ppp/8/3pp3/8/2N1P3/PPPP1PPP/R1BQKBNR w KQkq - 0 3', played: 'c3d5', ply: 4,
+    wp: [49, 11], before: { eval_cp: -11, mate_in: null, pv: ['d1h5', 'b8c6'] },
+    after: { eval_cp: 575, mate_in: null, pv: ['d8d5', 'd2d4', 'f8e7', 'c2c4', 'd5e6'] } });
+  assert.equal(explain(f)[0], 'Nxd5 takes a pawn but loses the knight: 3... Qxd5 4. d4 Be7 5. c4 Qe6.');
+});
+
+test('explain: a miss says what was missed, and that the move still mates', () => {
+  const f = bad({ fen: '2B2R2/4k3/2Q5/4B3/3p4/8/PPP2P1P/R3K3 w Q - 1 27', played: 'c6d7', label: 'miss', ply: 52,
+    wp: [100, 100], before: { eval_cp: null, mate_in: 1, pv: ['e5d6'] },
+    after: { eval_cp: null, mate_in: -2, pv: ['e7f8', 'e5d4', 'f8g8', 'd7g7'] } });
+  assert.deepEqual(explain(f), ['Missed Bd6#, which was mate.', 'After Qd7+ there is still mate in 2.']);
+});
+
+test('explain: allowing mate when already lost says so quietly', () => {
+  const f = bad({ fen: 'r3kbnr/3b1ppp/pN6/n5B1/B2P4/5N2/PP3PPP/R3K2R b KQkq - 0 14', played: 'a8b8', label: 'mistake',
+    ply: 27, wp: [7, 0], before: { eval_cp: -698, mate_in: null, pv: ['d7a4', 'b6a8'] },
+    after: { eval_cp: null, mate_in: 1, pv: ['a4d7'] } });
+  assert.deepEqual(explain(f), ['Mate follows: 15. Bxd7#.', 'Bxa4 was the best chance.']);
+});
+
+test('explain: a pawn let through to queen is named, and the clock only when it tells something', () => {
+  const f = bad({ fen: '1k6/ppp4p/6p1/8/8/B2p3P/PP4K1/8 w - - 0 40', played: 'h3h4', ply: 78, wp: [81, 4], clock: 18,
+    before: { eval_cp: 394, mate_in: null, pv: ['g2f3', 'd3d2'] },
+    after: { eval_cp: 887, mate_in: null, pv: ['d3d2', 'a3b4', 'd2d1q', 'b4c3', 'b7b5'] } });
+  assert.deepEqual(explain(f), ['This lets the d-pawn queen: 40... d2 41. Bb4 d1=Q 42. Bc3 b5.', 'Kf3 kept the win.',
+    'Played with 18 seconds left.']);
+  f.clock_remaining = 300;
+  assert.equal(explain(f).length, 2);
+  f.time_spent = 45;
+  assert.equal(explain(f)[2], 'Played after thinking for 45 seconds.');
+});
+
+test('explain: losing no material, the sentence says how the game changed', () => {
+  const f = bad({ fen: 'rnbqkbnr/pp3ppp/2p5/3p4/3PP3/2N5/PP3PPP/R1BQKBNR b KQkq - 0 5', played: 'b7b5', label: 'mistake',
+    ply: 9, wp: [51, 35], before: { eval_cp: 15, mate_in: null, pv: ['d5e4', 'c3e4'] },
+    after: { eval_cp: 163, mate_in: null, pv: ['e4e5', 'b8a6', 'f1d3', 'g8e7', 'c3e2'] } });
+  assert.deepEqual(explain(f), ['After 6. e5 Na6 7. Bd3 Ne7 8. Nce2, White is now winning.', 'dxe4 held the balance.']);
+});
+
+test('explain: a line is shown to the end of the exchange it stops in', () => {
+  // 1. Nxd5 ... the knight takes, the bishop takes back, the rook takes back: three plies, not one
+  const b = boardFromFen('4k3/8/4b3/3p4/8/2N5/8/3RK3 w - - 0 1');
+  assert.equal(settledLength(b, ['c3d5', 'e6d5', 'd1d5', 'e8e7'], 1), 3);
 });

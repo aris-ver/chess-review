@@ -37,6 +37,12 @@ export function moveFacts(f) {
     motif_detail: null,
     idea: [],                  // UCI arrows illustrating what a good move does
     threat: null,              // UCI, what a good move threatens next (threatMove)
+    still_mates: null,         // the move misses a faster mate but still mates, in this many
+    best_mate: null,           // the engine's choice mates, in this many
+    lost: null,                // the piece the refutation takes, and how the move lost it (lostPiece)
+    trade: null,               // material over the refutation, mover POV (tradeOver)
+    best_trade: null,          // material over the best line, mover POV
+    best_saves: null,          // the engine's choice keeps the lost piece: {piece, square, moved}
     clock_remaining: f.clock_remaining ?? null,
     time_spent: f.time_spent ?? null,
   };
@@ -326,6 +332,154 @@ export function threatMove(board, played, replyPv) {
   return best ? uci(best) : null;
 }
 
+// --- what a line wins or loses --------------------------------------------------------------------------------
+
+/** How many plies of `pvUci` to show: `n`, or up to two more when the last one shown is a capture the line answers
+ * by taking back on the same square (so a line never stops halfway through an exchange). */
+export function settledLength(board, pvUci, n) {
+  const b = copy(board);
+  const moves = [];
+  for (const u of pvUci) {
+    let m;
+    try {
+      m = moveFromUci(u);
+    } catch {
+      break;
+    }
+    if (!isLegal(b, m)) break;
+    moves.push([m, isCapture(b, m)]);
+    push(b, m);
+  }
+  let len = Math.min(n, moves.length);
+  while (len > 0 && len < moves.length && len < n + 2 && moves[len - 1][1] && moves[len][1]
+         && moves[len][0].to === moves[len - 1][0].to) len++;
+  return len;
+}
+
+const MINOR = r => (r === 'bishop' ? 'knight' : r);
+
+/** The material each side takes along `pvUci` (all of it: pass the plies shown), `pov`'s side first:
+ * {won: [roles], lost: [roles], net (centipawns), promotes: [{by_mover, file}], first} -- equal pieces taken on both
+ * sides cancel out (a bishop for a knight too), so `won` and `lost` say what changed hands. `first` is the square
+ * the line's first move captures on, when that move is `pov`'s and the other side takes nothing back. */
+export function tradeOver(board, pvUci, pov) {
+  const b = copy(board);
+  let won = [], lost = [], net = 0, first = null;
+  const promotes = [];
+  for (const [i, u] of pvUci.entries()) {
+    const m = moveFromUci(u);
+    if (!isLegal(b, m)) break;
+    const mine = b.turn === pov;
+    if (isCapture(b, m)) {
+      const role = isEnPassant(b, m) ? 'pawn' : pieceTypeAt(b, m.to);
+      (mine ? won : lost).push(role);
+      net += mine ? VALUE[role] : -VALUE[role];
+      if (i === 0 && mine) first = makeSquare(m.to);
+    }
+    if (m.promotion) {
+      promotes.push({ by_mover: mine, file: 'abcdefgh'[squareFile(m.to)] });
+      net += (mine ? 1 : -1) * (VALUE[m.promotion] - VALUE.pawn);
+    }
+    push(b, m);
+  }
+  if (lost.length) first = null;     // "wins the bishop on c3" only when nothing is given back
+  for (const exact of [true, false]) {
+    for (const r of [...lost]) {
+      const j = won.findIndex(w => (exact ? w === r : MINOR(w) === MINOR(r)));
+      if (j >= 0) {
+        won.splice(j, 1);
+        lost.splice(lost.indexOf(r), 1);
+      }
+    }
+  }
+  const order = (x, y) => VALUE[y] - VALUE[x];
+  won = won.sort(order);
+  lost = lost.sort(order);
+  return { won, lost, net, promotes, first };
+}
+
+/** The mover's piece the refutation actually takes, and how the move lost it -- or null when the line shown takes
+ * none of the pieces left hanging (then saying one hangs points at the wrong thing).
+ *
+ *   kind 'moved':     the moved piece itself, put where it is taken
+ *   kind 'trade':     the moved piece, after it captured something worth less (`captured`)
+ *   kind 'left':      a piece that was already hanging before the move and still is
+ *   kind 'unguarded': the moved piece guarded it from where it stood (`guard`)
+ *   kind 'exposed':   anything else the move left open (a line opened, a pin, ...)
+ *
+ * `taker` is the piece that takes it in the line; `blocked` comes over from blockedRecapture's entry. */
+export function lostPiece(board, played, hung, refutationUci) {
+  if (!hung.length || played.null) return null;
+  const mover = board.turn;
+  const after = copy(board);
+  push(after, played);
+  const taken = new Map();           // square -> the role that takes it
+  const moved = new Set();           // squares the mover's pieces left before the opponent got to take
+  const walk = copy(after);
+  for (const [i, u] of refutationUci.entries()) {
+    const m = moveFromUci(u);
+    if (!isLegal(walk, m)) break;
+    if (i % 2 === 0) {
+      if (isCapture(walk, m) && !moved.has(m.to) && !taken.has(m.to)) taken.set(m.to, pieceTypeAt(walk, m.from));
+    } else {
+      moved.add(m.from);
+    }
+    push(walk, m);
+  }
+  const h = hung.find(x => taken.has(parseSquare(x.square)));
+  if (!h) return null;
+  const sq = parseSquare(h.square);
+  const out = { piece: h.piece, square: h.square, taker: NAMES[taken.get(sq)], kind: 'exposed' };
+  if (h.blocked) out.blocked = h.blocked;
+  if (sq === played.to) {
+    if (isCapture(board, played)) {
+      out.kind = 'trade';
+      out.captured = NAMES[isEnPassant(board, played) ? 'pawn' : pieceTypeAt(board, played.to)];
+    } else {
+      out.kind = 'moved';
+    }
+    return out;
+  }
+  const passed = copy(board);
+  push(passed, nullMove());
+  let before = [];
+  try {
+    before = hungPieces(passed, mover);
+  } catch {
+    before = [];
+  }
+  if (before.some(x => x.square === h.square)) out.kind = 'left';
+  else if (attacks(board, played.from).has(sq) && !attacks(after, played.to).has(sq)) {
+    out.kind = 'unguarded';
+    out.guard = NAMES[pieceTypeAt(board, played.from)];
+  }
+  return out;
+}
+
+/** Would the engine's choice have kept `lost` (a piece left hanging, not the one that moved)? {piece, square, moved}
+ * where `moved` says the choice moves it away, or null. */
+export function bestSaves(board, bestUci, lost) {
+  if (!lost || !bestUci || !['left', 'unguarded', 'exposed'].includes(lost.kind)) return null;
+  let m;
+  try {
+    m = moveFromUci(bestUci);
+  } catch {
+    return null;
+  }
+  if (!isLegal(board, m)) return null;
+  const b = copy(board);
+  const mover = b.turn;
+  push(b, m);
+  const sq = parseSquare(lost.square);
+  if (m.from === sq) {
+    const there = hungPieces(b, mover).some(x => x.square === makeSquare(m.to));
+    return there ? null : { piece: lost.piece, square: lost.square, moved: true };
+  }
+  if (pieceTypeAt(b, sq) === null || colorAt(b, sq) !== mover) return null;
+  if (isGameOver(b) || hungPieces(b, mover).some(x => x.square === lost.square)) return null;
+  return { piece: lost.piece, square: lost.square, moved: false };
+}
+
 // --- assembly -------------------------------------------------------------------------------------------------
 
 export function sans(board, pvUci, limit) {
@@ -359,12 +513,17 @@ export function extract(mv, board, evalBefore, evalAfter, multipv = null) {
     wp_before: mv.wp_before, wp_after: mv.wp_after, wp_loss: mv.wp_loss,
     clock_remaining: mv.clock_remaining, time_spent: mv.time_spent,
   });
-  f.best_line = sans(board, evalBefore.pv || [], REFUTATION_PLIES);
+  const bestPv = evalBefore.pv || [];
+  const bestLen = settledLength(board, bestPv, REFUTATION_PLIES);
+  f.best_line = sans(board, bestPv, bestLen);
+  f.best_trade = tradeOver(board, bestPv.slice(0, bestLen), mover);
+  if ((evalBefore.mate_in ?? 0) > 0) f.best_mate = evalBefore.mate_in;
 
   if (evalAfter && Object.keys(evalAfter).length) {
     const pv = evalAfter.pv || [];
-    f.refutation_uci = pv.slice(0, REFUTATION_PLIES);
-    f.refutation = sans(boardAfter, pv, REFUTATION_PLIES);
+    const len = settledLength(boardAfter, pv, REFUTATION_PLIES);
+    f.refutation_uci = pv.slice(0, len);
+    f.refutation = sans(boardAfter, pv, len);
     f.material_swing = materialSwing(boardAfter, pv.slice(0, REFUTATION_PLIES + 3), mover);
     if (!isGameOver(boardAfter)) f.hung_pieces = hungPieces(boardAfter, mover);
     // only set when it applies, so the hung entries of every other move stay as they were
@@ -381,6 +540,13 @@ export function extract(mv, board, evalBefore, evalAfter, multipv = null) {
     const m0 = evalBefore.mate_in ?? null, m1 = evalAfter.mate_in ?? null;
     if (m0 !== null && m0 > 0 && !(m1 !== null && m1 < 0)) f.missed_mate = m0;
     if (m1 !== null && m1 > 0 && !(m0 !== null && m0 < 0)) f.allowed_mate = m1;
+    if (m1 !== null && m1 < 0) f.still_mates = -m1;
+
+    if (!isGameOver(boardAfter)) {
+      f.trade = tradeOver(boardAfter, f.refutation_uci, mover);
+      f.lost = lostPiece(board, played, f.hung_pieces, f.refutation_uci);
+      f.best_saves = bestSaves(board, bestPv[0], f.lost);
+    }
   }
 
   if (multipv && multipv.length) {

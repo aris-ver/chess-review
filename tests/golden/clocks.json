@@ -99,9 +99,8 @@
    "crosses_boundary": true,
    "headline": "Blunder \u2014 win chance 93% \u2192 34%",
    "text": [
-    "This hangs the bishop on g4: 7. Qxg4 Nc6 8. Nxh7 Qd7 9. Qg6+.",
-    "Qxg5 kept the win.",
-    "Played with 2:10 remaining."
+    "This leaves the bishop on g4 hanging: 7. Qxg4 Nc6 8. Nxh7 Qd7 9. Qg6+.",
+    "Qxg5 keeps the bishop on g4 safe."
    ],
    "hung": [
     "g4",
@@ -117,9 +116,8 @@
    "crosses_boundary": true,
    "headline": "Blunder \u2014 win chance 56% \u2192 18%",
    "text": [
-    "This hangs the bishop on f7: 5... Kxf7 6. c3 Ke8 7. cxd4 Nc6.",
-    "c3 held the balance.",
-    "Played with 2:45 remaining."
+    "Bxf7+ takes a pawn but loses the bishop: 5... Kxf7 6. c3 Ke8 7. cxd4 Nc6.",
+    "c3 held the balance."
    ],
    "hung": [
     "f7"
@@ -134,9 +132,8 @@
    "crosses_boundary": false,
    "headline": "Mistake \u2014 win chance 20% \u2192 7%",
    "text": [
-    "The position falls apart after 6... Qxg5 7. f3 Qh4+ 8. g3 Qe7.",
-    "c3 was the best chance.",
-    "Played with 2:40 remaining."
+    "This loses a knight: 6... Qxg5 7. f3 Qh4+ 8. g3 Qe7.",
+    "c3 wins two pawns."
    ],
    "hung": [],
    "motif": null,
