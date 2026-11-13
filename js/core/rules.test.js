@@ -7,7 +7,7 @@ import { setBook } from './book.js';
 import { boardFromFen, moveFromUci, san } from './chess.js';
 import { classifyGame, hangsMaterial } from './classify.js';
 import { comment, explain } from './explain.js';
-import { extract, settledLength } from './facts.js';
+import { extract, settledLength, tradeOver } from './facts.js';
 
 // 7.dxe4 in chess.com/game/live/187084467344 (White 547): 6...Nxe4 uncovered Be7 on the queen on g5; dxe4 takes
 // the knight and leaves the queen. -3.26 -> -8.64, a graded win% loss of 19.2 (just under the blunder line).
@@ -138,6 +138,15 @@ test('explain: a line is shown to the end of the exchange it stops in', () => {
   // 1. Nxd5 ... the knight takes, the bishop takes back, the rook takes back: three plies, not one
   const b = boardFromFen('4k3/8/4b3/3p4/8/2N5/8/3RK3 w - - 0 1');
   assert.equal(settledLength(b, ['c3d5', 'e6d5', 'd1d5', 'e8e7'], 1), 3);
+});
+
+test('explain: a promoted piece taken back counts as the pawn it was', () => {
+  // 1... fxg1=R 2. Rxg1: Black wins a knight for a pawn, not a knight for a rook, and has no new piece
+  const b = boardFromFen('k7/8/8/8/8/7K/5p2/4R1N1 b - - 0 1');
+  const t = tradeOver(b, ['f2g1r', 'e1g1'], 'black');
+  assert.deepEqual([t.won, t.lost, t.net, t.promotes], [['knight'], ['pawn'], 200, []]);
+  // kept, the promotion stays
+  assert.equal(tradeOver(b, ['f2g1q', 'h3g3'], 'black').promotes.length, 1);
 });
 
 // --- what the good-move sentences say (explain.comment over facts.describeMove / secondLine / offered) -------------

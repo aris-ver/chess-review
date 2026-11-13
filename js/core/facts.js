@@ -410,18 +410,31 @@ export function tradeOver(board, pvUci, pov) {
   const b = copy(board);
   let won = [], lost = [], net = 0, first = null;
   const promotes = [];
+  const promoted = new Map();        // square -> the promotes entry of the piece standing there
   for (const [i, u] of pvUci.entries()) {
     const m = moveFromUci(u);
     if (!isLegal(b, m)) break;
     const mine = b.turn === pov;
     if (isCapture(b, m)) {
       const role = isEnPassant(b, m) ? 'pawn' : pieceTypeAt(b, m.to);
-      (mine ? won : lost).push(role);
+      // a promoted piece taken back was a pawn: its promotion is undone and the pawn is what changed hands
+      const p = promoted.get(m.to);
+      if (p) {
+        promotes.splice(promotes.indexOf(p), 1);
+        promoted.delete(m.to);
+      }
+      (mine ? won : lost).push(p ? 'pawn' : role);
       net += mine ? VALUE[role] : -VALUE[role];
       if (i === 0 && mine) first = makeSquare(m.to);
     }
+    if (promoted.has(m.from)) {
+      promoted.set(m.to, promoted.get(m.from));
+      promoted.delete(m.from);
+    }
     if (m.promotion) {
-      promotes.push({ by_mover: mine, file: 'abcdefgh'[squareFile(m.to)] });
+      const p = { by_mover: mine, file: 'abcdefgh'[squareFile(m.to)] };
+      promotes.push(p);
+      promoted.set(m.to, p);
       net += (mine ? 1 : -1) * (VALUE[m.promotion] - VALUE.pawn);
     }
     push(b, m);
