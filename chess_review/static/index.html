@@ -707,6 +707,11 @@ svg.board.playable use.piece.own { cursor: grab; }
 .bubble p { margin: 4px 0 0; font-size: 13px; color: #333; }
 .bubble .var { font-size: 11px; color: var(--c-great); border: 1px solid var(--c-great); border-radius: 3px; padding: 0 5px; }
 .bubble .unanalysed { color: #777; }
+.bubble .tchip { color: #666; font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.bubble .tchip.low { color: #c33; font-weight: 600; }
+.bubble .playline { margin-top: 2px; padding: 3px 10px; font-size: 12px; font-weight: 600; background: #ececec; color: #1b1b1b; border: 1px solid #d4d4d4; border-radius: 5px; }
+@media (hover: hover) { .bubble .playline:hover { background: #e0e0e0; } }
+.bubble .lnhint { color: #777; font-size: 12px; }
 .bubble.loading .top { align-items: center; }
 .skel { background: #dedede; border-radius: 4px; height: 12px; position: relative; overflow: hidden; }
 .skel::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, rgba(255,255,255,.7), transparent); animation: shimmer 1.2s infinite; }
@@ -717,6 +722,7 @@ svg.board.playable use.piece.own { cursor: grab; }
 .actions { display: flex; gap: 8px; padding: 4px 10px 8px; }
 .actions button { flex: 1; padding: 7px 6px; font-weight: 600; background: var(--panel2); }
 .actions button.active { background: var(--accent); color: #1b1b1b; }
+.actions button.active:disabled { background: var(--panel2); color: inherit; }
 /* panel tabs: the game's overview, or its moves. No tab chosen (sandbox, puzzles) shows the moves. */
 .ptabs { display: flex; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
 .ptabs button { flex: 1; background: none; border: 0; border-bottom: 2px solid transparent; border-radius: 0; padding: 8px 6px; color: var(--muted); font-weight: 600; }
@@ -4066,7 +4072,13 @@ function applyMove(fen, uci) {
   }
   const rows = [];
   for (let r = 8; r >= 1; r--) { let row = '', empty = 0; for (const f of 'abcdefgh') { const p = pieces[f + r]; if (p) { if (empty) row += empty; empty = 0; row += p; } else empty++; } if (empty) row += empty; rows.push(row); }
-  const newFen = `${rows.join('/')} ${parts[1] === 'w' ? 'b' : 'w'} ${parts[2]} - 0 1`;
+  // castling rights go with a king move and with a rook leaving or taken on its corner (a played-out line's
+  // positions are sent on as they are when a move is tried from them)
+  let rights = parts[2];
+  const drop = cs => { if (cs) rights = rights.split('').filter(c => !cs.includes(c)).join('') || '-'; };
+  if (isKing) drop(white ? 'KQ' : 'kq');
+  for (const sq of [from, to]) drop({ h1: 'K', a1: 'Q', h8: 'k', a8: 'q' }[sq]);
+  const newFen = `${rows.join('/')} ${parts[1] === 'w' ? 'b' : 'w'} ${rights} - 0 1`;
   let san;
   if (isKing && Math.abs(from.charCodeAt(0) - to.charCodeAt(0)) === 2) san = to[0] === 'c' ? 'O-O-O' : 'O-O';
   else if (isPawn) san = (capture ? from[0] + 'x' : '') + to + (promo ? '=' + promo.toUpperCase() : '');
@@ -4298,6 +4310,7 @@ function fmtEvalBox(ev) {
 function renderNow() {
   const g = state.game, el = $('now');
   el.classList.remove('loading');
+  renderExplainBtn();
   if (g.puzzle && !inVariation()) return renderPuzzleNow();
   if (state.ply === 0 && g.sandbox) {
     const top = sandboxTop(currentFen());
@@ -4331,15 +4344,82 @@ function renderNow() {
       `<div class="skel line"></div><div class="skel short"></div>`;
     return;
   }
+  if (m.lineOf) {
+    // a move of a line Play line laid out: the explanation it plays stays up while the line runs
+    withHint(`<div class="top"><span class="verdict">${moveLabel(m.ply, m.san)}</span> <span class="var">line ${m.lineIdx + 1}/${m.lineLen}</span>` +
+      `<span class="evbox">${esc(fmtEvalBox(m.eval))}</span></div>` + m.lineOf.full.map(t => `<p>${esc(t)}</p>`).join('') +
+      `<p class="lnhint">← → step · ✕ or Esc goes back</p>`);
+    return;
+  }
   if (!m.label) { withHint(`<div class="top"><span class="verdict">${moveLabel(m.ply, m.san)}${vtag}</span><span class="unanalysed">not analysed</span></div>`); return; }
-  let html = `<div class="top">${icon(m.label)}<span class="verdict" style="color:${COLOR[m.label]}">${verdict(m)}</span>${vtag}<span class="evbox">${esc(fmtEvalBox(m.eval))}</span></div>`;
-  const lines = m.comment || [];
-  const detail = state.explain ? lines : lines.filter(t => !t.startsWith(m.san + ' is') && !t.startsWith(m.san + ' was'));
-  if (state.explain || BAD.has(m.label)) html += detail.map(t => `<p>${esc(t)}</p>`).join('');
-  else if (m.best_san && m.best_uci !== m.uci && !['book', 'forced'].includes(m.label)) html += `<p>${esc(m.best_san)} was the engine's choice.</p>`;
-  if (m.spent != null && state.explain) html += `<p style="color:#777">Thought for ${m.spent}s.</p>`;
+  let html = `<div class="top">${icon(m.label)}<span class="verdict" style="color:${COLOR[m.label]}">${verdict(m)}</span>${vtag}${timeChip(m)}<span class="evbox">${esc(fmtEvalBox(m.eval))}</span></div>`;
+  if (hasReasons(m)) {
+    // what the move did and why, without its line; Explain swaps in the line, and a way to play it out. A move with
+    // nothing to say has its header alone (and Explain greyed out).
+    html += (state.explain ? m.full : m.short).map(t => `<p>${esc(t)}</p>`).join('');
+    if (state.explain && m.line && m.line.uci.length) html += `<p><button class="playline" id="b-playline" title="Play the line on the board (← → to step, Esc to go back)">▶ Play line</button></p>`;
+  } else {
+    // a review written before the panel had its own fields: the comment as it was, less the clock sentence
+    const lines = (m.comment || []).filter(t => !t.startsWith('Played '));
+    const detail = state.explain ? lines : lines.filter(t => !t.startsWith(m.san + ' is') && !t.startsWith(m.san + ' was'));
+    if (state.explain || BAD.has(m.label)) html += detail.map(t => `<p>${esc(t)}</p>`).join('');
+    else if (m.best_san && m.best_uci !== m.uci && !['book', 'forced'].includes(m.label)) html += `<p>${esc(m.best_san)} was the engine's choice.</p>`;
+  }
   if (inVariation() && state.ply === line().length && m.next_best_san) html += `<p>${currentFen().split(' ')[1] === 'w' ? 'White' : 'Black'} to move — the engine plays <b>${esc(m.next_best_san)}</b> here. Press Best to play it, or try your own.</p>`;
   withHint(html);
+  const pl = $('b-playline');
+  if (pl) pl.onclick = () => playLine(m);
+}
+// The panel's own fields (site.panelFields): a review built before them has none, and keeps the old view.
+const hasReasons = m => !!m && Array.isArray(m.short);
+// Explain greys out on a move that has nothing to explain.
+function renderExplainBtn() {
+  const m = state.game && !(state.game.puzzle && !inVariation()) ? currentMove() : null;
+  const none = !!m && !m.lineOf && !m.pending && hasReasons(m) && !m.short.length;
+  const b = $('b-explain');
+  b.disabled = none;
+  b.title = none ? 'Nothing more to explain' : 'Show the full explanation';
+}
+// How long the move took, by the eval box: red when the mover's clock was under 30 s.
+function timeChip(m) {
+  if (m.spent == null) return '';
+  const low = m.clock != null && m.clock < 30;
+  const tip = m.clock != null ? `${fmtClock(m.clock)} left` : 'Time spent on this move';
+  return `<span class="tchip${low ? ' low' : ''}" title="${tip}">⏱ ${fmtSecs(m.spent)}</span>`;
+}
+// Explain's ▶ Play line: the move's line (site.panelFields' `line`: from base_ply, in the server's SAN) laid out as a
+// variation, played from its first move on. ← → step it, ✕ / Esc go back to the move.
+function playLine(m) {
+  const L = m.line, ln = line();
+  if (!L || !L.uci.length) return;
+  stopPlay();
+  const v = state.variation, inVar = inVariation();
+  // off a move tried on the board: the variation up to the line's start stays
+  const basePly = inVar ? v.basePly : L.base_ply;
+  const keep = inVar ? v.moves.slice(0, L.base_ply - v.basePly) : [];
+  let fen = L.base_ply === 0 ? state.game.start_fen : ln[L.base_ply - 1].fen;
+  const moves = [];
+  for (const [i, u] of L.uci.entries()) {
+    const prov = applyMove(fen, u);
+    if (!prov) break;
+    fen = prov.fen;
+    moves.push({ ply: L.base_ply + i, san: L.san[i] || prov.san, uci: u, fen, label: null, lineOf: m, lineIdx: i, lineLen: L.uci.length,
+                 is_mine: (L.base_ply + i) % 2 === 0 ? state.game.my_colour === 'white' : state.game.my_colour === 'black',
+                 wp_white: L.wp_white, eval: L.eval, wp_loss: null, best_san: L.san[i] || prov.san, best_uci: u,   // Best plays the line on
+                 clock: null, spent: null, comment: [], hung: [], reply_uci: null, idea: [], next_best_uci: null, next_best_san: null });
+  }
+  if (!moves.length) return;
+  moves.forEach(x => { x.lineLen = moves.length; });
+  state.variation = { basePly, moves: keep.concat(moves), back: inVar ? null : state.ply };
+  renderMoveList();
+  state.ply = L.base_ply;          // the board then plays the line's first move, with its sound
+  go(L.base_ply + 1, true);
+  if (moves.length > 1) startPlay();
+}
+// Leaving a variation: back to the move a played-out line came from, else to where the variation branched.
+function leaveVariation() {
+  const v = state.variation, p = v.back != null ? v.back : Math.min(state.ply, v.basePly);
+  dropVariation(); renderMoveList(); go(p); update(false);
 }
 // fen -> {engine, nodes, lines: [{rank, uci, san, eval, depth}, ...]}, the sandbox's current (unplayed) position,
 // filled in live as streamSandboxEval() reads the engine's search — see below.
@@ -4673,7 +4753,7 @@ function renderMoveList() {
   $('movelist').querySelectorAll('.m').forEach(el => el.onclick = () => { dropVariation(); renderMoveList(); go(+el.dataset.ply + 1); });
   $('movelist').querySelectorAll('.varrow .v').forEach(el => el.onclick = () => go(+el.dataset.ply + 1));
   const x = $('movelist').querySelector('.varrow .x');
-  if (x) x.onclick = () => { const p = Math.min(state.ply, v.basePly); dropVariation(); renderMoveList(); go(p); };
+  if (x) x.onclick = leaveVariation;
 }
 function patchMoveList() {
   const cells = $('movelist').querySelectorAll('.m');
@@ -4767,7 +4847,7 @@ document.addEventListener('keydown', e => {
   else if (e.key === 'p') togglePlay();
   else if (e.key === 'n' && state.game.puzzle) nextPuzzle();
   else if (e.key === ' ') { nextKey(); e.preventDefault(); }
-  else if (e.key === 'Escape') { if (state.variation) { const p = Math.min(state.ply, state.variation.basePly); dropVariation(); renderMoveList(); go(p); update(false); } else goBack(); }
+  else if (e.key === 'Escape') { if (state.variation) leaveVariation(); else goBack(); }
 });
 window.addEventListener('resize', () => state.game && renderEvalBar());
 
