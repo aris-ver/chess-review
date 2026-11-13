@@ -1941,7 +1941,7 @@
       ],
       "threat": null,
       "short": [
-       "d6 is an excellent move: it keeps the pawn on e5 safe."
+       "d6 keeps the pawn on e5 safe."
       ],
       "full": [
        "d6 is an excellent move: it keeps the pawn on e5 safe."
@@ -2250,8 +2250,28 @@
       "idea": [],
       "threat": null,
       "short": [],
-      "full": [],
-      "line": null
+      "full": [
+       "After 6... Qxg5 7. Bxg5 Bxd1 8. Kxd1 Ke8, Black's advantage grows."
+      ],
+      "line": {
+       "base_ply": 11,
+       "san": [
+        "Qxg5",
+        "Bxg5",
+        "Bxd1",
+        "Kxd1",
+        "Ke8"
+       ],
+       "uci": [
+        "d8g5",
+        "c1g5",
+        "g4d1",
+        "e1d1",
+        "f7e8"
+       ],
+       "eval": "-7.7",
+       "wp_white": 5.6
+      }
      },
      {
       "ply": 11,

@@ -15,7 +15,7 @@ import { gameAccuracy } from '../core/accuracy.js';
 import { boardFromFen } from '../core/chess.js';
 import { classifyGame } from '../core/classify.js';
 import { select } from '../core/critical.js';
-import { comment, explain, headline, moveLabel, moveLine, reasons } from '../core/explain.js';
+import { comment, explain, headline, moveLabel, moveLine, punishing, reasons } from '../core/explain.js';
 import { extract } from '../core/facts.js';
 import { povWinPct, toWhitePov } from '../core/pov.js';
 import { formatFixed, pyRound } from '../core/py.js';
@@ -47,7 +47,8 @@ function wpWhite(p) {
 /** What the move panel shows of a move beyond its comment: `short`, the sentences that say something, without their
  * lines; `full`, the same with their lines (the Explain view); `line`, the one line Explain plays out
  * (explain.moveLine), with the eval it ends on (the position it starts from, or for a great move's next best its own
- * MultiPV line). played: the move's UCI; before/after: the evals rows around the move; ranks: the MultiPV rows before it,
+ * MultiPV line). A bad move with no reason has no `short` but its punishing line, told in `full` (explain.punishing).
+ * played: the move's UCI; before/after: the evals rows around the move; ranks: the MultiPV rows before it,
  * or null. */
 export function panelFields(facts, played, opening, before, after, ranks) {
   const r = reasons(facts, opening);
@@ -62,7 +63,8 @@ export function panelFields(facts, played, opening, before, after, ranks) {
     }
     line = { ...rest, eval: p ? evalText(p.eval_cp, p.mate_in, p.side_to_move) : null, wp_white: p ? wpWhite(p) : null };
   }
-  return { short: r.map(x => x.short), full: r.map(x => x.text), line };
+  const p = !r.length && line ? punishing(facts, opening) : null;
+  return { short: r.map(x => x.short), full: p ? [p.text] : r.map(x => x.text), line };
 }
 
 function counts(moves, side) {

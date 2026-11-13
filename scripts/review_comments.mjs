@@ -17,7 +17,7 @@ import { join } from 'node:path';
 import { loadBook } from '../js/core/book.js';
 import * as C from '../js/core/chess.js';
 import { classifyGame } from '../js/core/classify.js';
-import { comment, line, moveLine, reasons } from '../js/core/explain.js';
+import { comment, line, moveLine, punishing, reasons } from '../js/core/explain.js';
 import { extract, tradeOver } from '../js/core/facts.js';
 import { bookKeysFromDir } from '../js/desktop/book.js';
 import { POSITIONS_SQL, loadMultipv } from '../js/server/classify.js';
@@ -220,12 +220,14 @@ for (const [k, v] of Object.entries(tally)) {
   out += `  ${String(v.n).padStart(5)}  ${k}\n`;
   for (const e of v.ex) out += `           ${e}\n`;
 }
-// the move panel: Explain is greyed out on a move with no reason; with one, it can play the move's line
-const panel = {};
+// the move panel: Explain is greyed out on a move with no reason, unless it is a bad move with a line that punishes it;
+// with one, it can play the move's line
+const panel = {}, lineOnly = [];
 for (const r of rows) {
+  if (!r.reasons.length && r.line) lineOnly.push(r);
   const p = panel[r.label] ??= { n: 0, empty: 0, playable: 0 };
   p.n++;
-  if (!r.reasons.length) p.empty++;
+  if (!r.reasons.length && !r.line) p.empty++;
   else if (r.line) p.playable++;
 }
 out += '\n== Explain: moves with nothing to explain (greyed out), and with a line to play\n';
@@ -235,5 +237,7 @@ for (const [label, p] of Object.entries(panel).sort((a, b) => b[1].n - a[1].n)) 
 }
 const tot = Object.values(panel).reduce((a, p) => ({ n: a.n + p.n, empty: a.empty + p.empty, playable: a.playable + p.playable }), { n: 0, empty: 0, playable: 0 });
 out += `  ${'all'.padEnd(11)} ${String(tot.n).padStart(5)}   empty ${pct(tot.empty, tot.n)}   playable line ${pct(tot.playable, tot.n)}\n`;
+out += `  ${String(lineOnly.length).padStart(5)}  with no reason, only the line that punishes the move (explain.punishing)\n`;
+for (const r of lineOnly.slice(0, nExamples)) out += `           ${r.game.split('/').pop()}@${r.ply} ${r.label} ${r.san} | ${punishing(r.f).text}\n`;
 console.log(out);
 if (rowsOut) writeFileSync(rowsOut, JSON.stringify(rows.map(({ f, pvBefore, pvAfter, ...r }) => ({ ...r, short: r.reasons.map(x => x.short), reasons: r.reasons.map(x => x.text), wp_before: f.wp_before, wp_after: f.wp_after, best: f.best_san }))));

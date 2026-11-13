@@ -46,15 +46,33 @@ test('panel: a bad move plays out the reply, from after the move', () => {
   assert.equal('on' in p.line, false);
 });
 
-test('panel: "After <line>, <state>." loses its line as "<State>."; standing alone is filler', () => {
+test('panel: "After <line>, <state>." loses its line as "<State>."; standing alone is filler, but a bad move keeps its line', () => {
   const f = facts({ fen: 'rnbqkbnr/pp3ppp/2p5/3p4/3PP3/2N5/PP3PPP/R1BQKBNR b KQkq - 0 5', played: 'b7b5', label: 'mistake',
     ply: 9, wp: [51, 35], before: { eval_cp: 15, mate_in: null, pv: ['d5e4', 'c3e4'] },
     after: { eval_cp: 163, mate_in: null, pv: ['e4e5', 'b8a6', 'f1d3', 'g8e7', 'c3e2'] } });
   assert.deepEqual(comment(f), ['After 6. e5 Na6 7. Bd3 Ne7 8. Nce2, White is now winning.', 'dxe4 held the balance.']);
   assert.deepEqual(sentences(f).map(x => x.short), ['White is now winning.', 'dxe4 held the balance.']);
-  // both sentences only say what the eval bar shows: nothing to explain, no line to play
+  // both sentences only say what the eval bar shows: nothing to explain under the header
   assert.deepEqual(reasons(f), []);
-  assert.equal(moveLine(f, 'b7b5'), null);
+  // but a mistake still has the line that punishes it: Explain shows it, and plays it from after the move
+  assert.deepEqual(moveLine(f, 'b7b5'), { base_ply: 10, san: ['e5', 'Na6', 'Bd3', 'Ne7', 'Nce2'],
+    uci: ['e4e5', 'b8a6', 'f1d3', 'g8e7', 'c3e2'], on: 'after' });
+  const p = panelFields(f, 'b7b5', null, { eval_cp: 15, mate_in: null, side_to_move: 'black' },
+    { eval_cp: 163, mate_in: null, side_to_move: 'white' }, null);
+  assert.deepEqual(p.short, []);
+  assert.deepEqual(p.full, ['After 6. e5 Na6 7. Bd3 Ne7 8. Nce2, White is now winning.']);
+  assert.equal(p.line.base_ply, 10);
+  assert.equal(p.line.eval, '+1.6');
+  // an inaccuracy's line is the engine playing on, not a refutation: nothing to explain, nothing to play
+  const inacc = facts({ fen: 'rnbqkbnr/pp3ppp/2p5/3p4/3PP3/2N5/PP3PPP/R1BQKBNR b KQkq - 0 5', played: 'b7b5', label: 'inaccuracy',
+    ply: 9, wp: [51, 47], before: { eval_cp: 15, mate_in: null, pv: ['a7a6', 'g1f3'] },
+    after: { eval_cp: 40, mate_in: null, pv: ['e4e5', 'b8a6', 'f1d3'] } });
+  assert.deepEqual(reasons(inacc), []);
+  assert.equal(moveLine(inacc, 'b7b5'), null);
+  assert.deepEqual(comment(inacc), ['b5 is an inaccuracy.', 'a6 was better.']);
+  const q = panelFields(inacc, 'b7b5', null, { eval_cp: 15, mate_in: null, side_to_move: 'black' },
+    { eval_cp: 40, mate_in: null, side_to_move: 'white' }, null);
+  assert.deepEqual([q.short, q.full, q.line], [[], [], null]);
 });
 
 test('panel: a verdict said again and a bare "X was better" are filler', () => {
@@ -82,6 +100,8 @@ test('panel: two sentences in one comment string are told apart', () => {
     label: 'excellent', ply: 6, wp: [55, 53], before: quiet(['c2c4', 'e7e6']), after: quiet(['c8f5']) });
   assert.deepEqual(comment(e), ['Be2 is an excellent move: it clears the way to castle. c4 was the engine\'s choice.']);
   assert.deepEqual(reasons(e).map(r => r.text), ['Be2 is an excellent move: it clears the way to castle.']);
+  // the short form leaves the verdict to the header, as a best move reads
+  assert.deepEqual(reasons(e).map(r => r.short), ['Be2 clears the way to castle.']);
   // about the move played: the move and the reply to it
   assert.deepEqual(moveLine(e, 'f1e2'), { base_ply: 6, san: ['Be2', 'Bf5'], uci: ['f1e2', 'c8f5'], on: 'played' });
 });
