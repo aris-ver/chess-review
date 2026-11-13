@@ -735,6 +735,7 @@ body.sandbox #movelist, body.puzzle #movelist { display: grid !important; }
 /* Start review: pinned to the bottom of the overview, so it shows however far down the panel is scrolled */
 .ovfoot { position: sticky; bottom: 0; z-index: 2; margin-top: 8px; padding: 10px 14px; background: var(--panel); }
 .ovfoot .ovstart { display: block; width: 100%; padding: 13px; font-size: 16px; font-weight: 700; }
+.ovfoot .ovengine { margin-top: 6px; text-align: center; font-size: 11px; color: var(--muted); }
 /* greyed while the web build's engine loads (web/shim.js: html.engine-loading) */
 .ovfoot .ovstart:disabled, .ovfoot .ovstart:disabled:hover { background: var(--panel2); border-color: var(--line); color: var(--muted); opacity: 1; }
 /* a phone upright: just over the nav pinned to the bottom, so it shows as the game opens; gone once pressed */
@@ -1585,7 +1586,7 @@ function ratingsHTML(ratings) {
 }
 // which engine answers on-demand questions, and how deep: shown next to every result
 state.engine = null;
-(async () => { try { const d = await (await fetch('api/engine')).json(); if (!d.error) { state.engine = d; if (state.game) { renderLines(); renderNow(); } } } catch (e) {} })();
+(async () => { try { const d = await (await fetch('api/engine')).json(); if (!d.error) { state.engine = d; if (state.game) { renderLines(); renderNow(); renderOverview(); } } } catch (e) {} })();
 // updates (desktop build only): one check per launch, the banner on the home screen does the rest
 state.update = null;
 const fmtMB = b => b ? `${(b / 1048576).toFixed(b < 10485760 ? 1 : 0)} MB` : '';
@@ -4569,8 +4570,10 @@ function renderOverview() {
   // and the board plays the game along with it. While the analysis runs there is nothing to press. Pressed once, a
   // phone drops it for this game (.used), as there it covers the panel.
   const used = state.ovUsed === g.id ? ' used' : '';
-  const foot = full ? `<div class="ovfoot${used}"><button class="primary ovstart" id="ov-start">Start review</button></div>`
-    : f == null ? `<div class="ovfoot${used}"><button class="primary ovstart" id="ov-analyse">Start review</button></div>` : '';
+  // which engine reviews the game, quietly under the button (once api/engine has answered)
+  const by = state.engine && state.engine.name ? `<div class="ovengine">Reviewed with ${esc(state.engine.name)}</div>` : '';
+  const foot = full ? `<div class="ovfoot${used}"><button class="primary ovstart" id="ov-start">Start review</button>${by}</div>`
+    : f == null ? `<div class="ovfoot${used}"><button class="primary ovstart" id="ov-analyse">Start review</button>${by}</div>` : '';
   if (!any && f == null) { $('overview').innerHTML = html + foot; bindOverview(); return; }
 
   // the labels: the four bad ones and the rest as "good moves", or all eleven
