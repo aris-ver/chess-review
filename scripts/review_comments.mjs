@@ -6,7 +6,9 @@
 //
 // DATA is the app's data folder (default: %LOCALAPPDATA%/chess-review, else ~/.local/share/chess-review). Its
 // databases are copied to a temp folder first, so a running app is never touched. Prints, per label, the shapes of
-// the first sentence, then the checks; --rows writes every move with its comment for a closer look.
+// the first sentence, then the checks, then per label how many moves have nothing for Explain to show (no sentence
+// that says something: explain.reasons) and how many have a line to play out; --rows writes every move with its
+// comment for a closer look.
 
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
@@ -15,7 +17,7 @@ import { join } from 'node:path';
 import { loadBook } from '../js/core/book.js';
 import * as C from '../js/core/chess.js';
 import { classifyGame } from '../js/core/classify.js';
-import { comment, line } from '../js/core/explain.js';
+import { comment, line, moveLine, reasons } from '../js/core/explain.js';
 import { extract, tradeOver } from '../js/core/facts.js';
 import { bookKeysFromDir } from '../js/desktop/book.js';
 import { POSITIONS_SQL, loadMultipv } from '../js/server/classify.js';
@@ -63,7 +65,8 @@ for (const id of profiles) {
       const before = byPly.get(m.ply), after = byPly.get(m.ply + 1);
       const f = extract(m, C.boardFromFen(before.fen), before, after, multipv[before.fen_key] ?? null, byPly.get(m.ply - 1) ?? null);
       rows.push({ game: game.game_id, ply: m.ply, san: m.san, label: m.label, fen: before.fen, f,
-        comment: comment(f, m.in_book ? game.opening_name : null), pvBefore: before.pv ?? [], pvAfter: after?.pv ?? [] });
+        comment: comment(f, m.in_book ? game.opening_name : null), pvBefore: before.pv ?? [], pvAfter: after?.pv ?? [],
+        reasons: reasons(f, m.in_book ? game.opening_name : null), line: moveLine(f, m.move_played, m.in_book ? game.opening_name : null) });
     }
   }
 }
@@ -217,5 +220,20 @@ for (const [k, v] of Object.entries(tally)) {
   out += `  ${String(v.n).padStart(5)}  ${k}\n`;
   for (const e of v.ex) out += `           ${e}\n`;
 }
+// the move panel: Explain is greyed out on a move with no reason; with one, it can play the move's line
+const panel = {};
+for (const r of rows) {
+  const p = panel[r.label] ??= { n: 0, empty: 0, playable: 0 };
+  p.n++;
+  if (!r.reasons.length) p.empty++;
+  else if (r.line) p.playable++;
+}
+out += '\n== Explain: moves with nothing to explain (greyed out), and with a line to play\n';
+const pct = (a, n) => `${String(a).padStart(5)} (${String(Math.round(100 * a / n)).padStart(3)}%)`;
+for (const [label, p] of Object.entries(panel).sort((a, b) => b[1].n - a[1].n)) {
+  out += `  ${label.padEnd(11)} ${String(p.n).padStart(5)}   empty ${pct(p.empty, p.n)}   playable line ${pct(p.playable, p.n)}\n`;
+}
+const tot = Object.values(panel).reduce((a, p) => ({ n: a.n + p.n, empty: a.empty + p.empty, playable: a.playable + p.playable }), { n: 0, empty: 0, playable: 0 });
+out += `  ${'all'.padEnd(11)} ${String(tot.n).padStart(5)}   empty ${pct(tot.empty, tot.n)}   playable line ${pct(tot.playable, tot.n)}\n`;
 console.log(out);
-if (rowsOut) writeFileSync(rowsOut, JSON.stringify(rows.map(({ f, pvBefore, pvAfter, ...r }) => ({ ...r, wp_before: f.wp_before, wp_after: f.wp_after, best: f.best_san }))));
+if (rowsOut) writeFileSync(rowsOut, JSON.stringify(rows.map(({ f, pvBefore, pvAfter, ...r }) => ({ ...r, short: r.reasons.map(x => x.short), reasons: r.reasons.map(x => x.text), wp_before: f.wp_before, wp_after: f.wp_after, best: f.best_san }))));
