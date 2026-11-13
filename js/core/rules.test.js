@@ -252,7 +252,7 @@ test('comment: the engine\'s choice says what it does, or else the move played d
 test('comment: an inaccuracy that costs 6% or more says why, when the material stays lost', () => {
   assert.deepEqual(said({ fen: 'r3kb1r/ppp1pppp/8/1N1Pn3/2P1n3/8/PB3KPP/3R1BNR w kq - 1 14', played: 'f2e3',
     label: 'inaccuracy', ply: 26, wp: [92, 84], before: quiet(['f2e1']),
-    after: quiet(['e5g4', 'e3e4', 'g4f2', 'e4f3', 'f2d1']) }),
+    after: quiet(['e5g4', 'e3e4', 'g4f2', 'e4f3', 'f2d1', 'b2c3']) }),
   ['Ke3 is an inaccuracy.', 'This loses a rook for a knight: 14... Ng4+ 15. Kxe4 Nf2+ 16. Kf3 Nxd1.', 'Ke1 was better.']);
 });
 
@@ -260,8 +260,11 @@ test('comment: a great move says what the next best move would have cost', () =>
   const fen = 'r2k1b1r/pp1n4/4p2p/2P1B1p1/3R4/5N2/P4PPP/2K4R b - - 2 19';
   const mpv = second => [{ rank: 1, move: 'h8h7', eval_cp: 0, mate_in: null, pv: ['h8h7'] }, { rank: 2, ...second }];
   const args = { fen, played: 'h8h7', label: 'great', ply: 37, before: quiet(['h8h7']), after: quiet(['e5g3']) };
+  assert.deepEqual(said({ ...args, multipv: mpv({ move: 'f8c5', eval_cp: -600, mate_in: null, pv: ['f8c5', 'e5h8', 'a7a6'] }) }),
+    ['Rh7 moves the rook out of danger.', 'The next best, Bxc5, loses a rook for a pawn: 19... Bxc5 20. Bxh8 a6.']);
+  // the engine's line running out on the capture: what comes back after it is unknown, so no material is claimed
   assert.deepEqual(said({ ...args, multipv: mpv({ move: 'f8c5', eval_cp: -600, mate_in: null, pv: ['f8c5', 'e5h8'] }) }),
-    ['Rh7 moves the rook out of danger.', 'The next best, Bxc5, loses a rook for a pawn: 19... Bxc5 20. Bxh8.']);
+    ['Rh7 moves the rook out of danger.', 'The next best, Bxc5, leaves White winning.']);
   assert.deepEqual(said({ ...args, multipv: mpv({ move: 'a7a6', eval_cp: -900, mate_in: null, pv: ['a7a6'] }) }),
     ['Rh7 moves the rook out of danger.', 'The next best, a6, leaves White winning.']);
   assert.deepEqual(said({ ...args, multipv: mpv({ move: 'a7a6', eval_cp: null, mate_in: -3, pv: ['a7a6'] }) }),

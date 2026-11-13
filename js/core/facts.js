@@ -396,7 +396,8 @@ export function settledTrade(board, pvUci, len, pov) {
   while (end > 0 && end < k.length && end < SETTLE_LIMIT
          && (k[end].capture || k[end].promotion || k[end - 1].capture || k[end - 1].check)) end++;
   t.settled = end <= len ? t.net : tradeOver(board, pvUci.slice(0, end), pov).net;
-  t.stable = Math.abs(t.settled - t.net) <= 100;
+  // the engine's line running out on a capture: what comes back after it is unknown
+  t.stable = Math.abs(t.settled - t.net) <= 100 && !(end > 0 && end === k.length && k[end - 1].capture);
   return t;
 }
 
