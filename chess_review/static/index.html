@@ -4372,10 +4372,12 @@ function renderNow() {
 }
 // The panel's own fields (site.panelFields): a review built before them has none, and keeps the old view.
 const hasReasons = m => !!m && Array.isArray(m.short);
-// Explain greys out on a move that has nothing to explain (a bad move with no reason still has its line to show).
+// Explain greys out on a move that has nothing to explain (a bad move with no reason still has its line to show, a
+// book move the opening it comes from).
 function renderExplainBtn() {
   const m = state.game && !(state.game.puzzle && !inVariation()) ? currentMove() : null;
-  const none = !!m && !m.lineOf && !m.pending && hasReasons(m) && !m.short.length && !(m.line && m.line.uci.length);
+  const none = !!m && !m.lineOf && !m.pending && hasReasons(m) && !m.short.length && !(m.full && m.full.length)
+    && !(m.line && m.line.uci.length);
   const b = $('b-explain');
   b.disabled = none;
   b.title = none ? 'Nothing more to explain' : 'Show the full explanation';

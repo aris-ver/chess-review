@@ -15,7 +15,7 @@ import { gameAccuracy } from '../core/accuracy.js';
 import { boardFromFen } from '../core/chess.js';
 import { classifyGame } from '../core/classify.js';
 import { select } from '../core/critical.js';
-import { comment, explain, headline, moveLabel, moveLine, punishing, reasons } from '../core/explain.js';
+import { comment, explain, headline, moveLabel, moveLine, punishing, reasons, theory } from '../core/explain.js';
 import { extract } from '../core/facts.js';
 import { povWinPct, toWhitePov } from '../core/pov.js';
 import { formatFixed, pyRound } from '../core/py.js';
@@ -64,7 +64,8 @@ export function panelFields(facts, played, opening, before, after, ranks) {
     line = { ...rest, eval: p ? evalText(p.eval_cp, p.mate_in, p.side_to_move) : null, wp_white: p ? wpWhite(p) : null };
   }
   const p = !r.length && line ? punishing(facts, opening) : null;
-  return { short: r.map(x => x.short), full: p ? [p.text] : r.map(x => x.text), line };
+  const t = !r.length && !p ? theory(facts, opening) : null;    // a book move: the opening it comes from
+  return { short: r.map(x => x.short), full: p ? [p.text] : t ? [t] : r.map(x => x.text), line };
 }
 
 function counts(moves, side) {

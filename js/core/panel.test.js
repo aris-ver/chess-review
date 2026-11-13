@@ -84,7 +84,7 @@ test('panel: a verdict said again and a bare "X was better" are filler', () => {
     wp: [50, 49.5], before: quiet(['g2g4']), after: quiet(['h8g8']) });
   assert.deepEqual(reasons(close), []);
   const best = facts({ fen: '7k/8/8/8/8/8/6PP/7K w - - 0 40', played: 'h1g1', label: 'best', ply: 78,
-    before: quiet(['h1g1']), after: quiet(['h8g8']) });
+    before: quiet(['h1h2']), after: quiet(['h8g8']) });
   assert.deepEqual(comment(best), ['Kg1 is the best move.']);
   assert.deepEqual(reasons(best), []);
 });
@@ -136,9 +136,21 @@ test('panel: a great move plays out the next best; a brilliant move the line aft
   assert.equal(moveLine(b, 'g8e7').base_ply, 54);
 });
 
-test('panel: book and forced moves have nothing to explain', () => {
+test('panel: a book move has no reason or line, but Explain says the opening it comes from', () => {
   const f = facts({ fen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1', played: 'e2e4', label: 'book', ply: 0,
     before: quiet(['e2e4']), after: quiet(['e7e5']) });
-  assert.deepEqual(reasons(f, 'King\'s Pawn'), []);
+  assert.deepEqual(reasons(f, 'King\'s Pawn Game'), []);
   assert.equal(moveLine(f, 'e2e4'), null);
+  const before = { eval_cp: 0, mate_in: null, side_to_move: 'white' }, after = { ...before, side_to_move: 'black' };
+  assert.deepEqual(panelFields(f, 'e2e4', 'King\'s Pawn Game', before, after, null),
+    { short: [], full: ['e4 is theory in the King\'s Pawn Game.'], line: null });
+  // no opening name: nothing to say beyond the header
+  assert.deepEqual(panelFields(f, 'e2e4', null, before, after, null), { short: [], full: [], line: null });
+});
+
+test('panel: a forced move has nothing to explain', () => {
+  const f = facts({ fen: '6rk/8/8/8/8/8/8/7K w - - 0 1', played: 'h1h2', label: 'forced', ply: 0,
+    before: quiet(['h1h2']), after: quiet([]) });
+  const before = { eval_cp: -900, mate_in: null, side_to_move: 'white' }, after = { ...before, side_to_move: 'black' };
+  assert.deepEqual(panelFields(f, 'h1h2', null, before, after, null), { short: [], full: [], line: null });
 });

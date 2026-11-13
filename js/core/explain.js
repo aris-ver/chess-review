@@ -413,6 +413,12 @@ export function reasons(f, opening = null) {
   return sentences(f, opening).filter(s => s.reason && !s.clock).map(({ text, short, on }) => ({ text, short, on }));
 }
 
+/** A book move's Explain: the opening it is theory in ("Nf6 is theory in the Sicilian Defense: Najdorf Variation."),
+ * or null (not book, or no opening name). Not a reason: the short form stays empty, the header already says book. */
+export function theory(f, opening = null) {
+  return f.label === 'book' && opening ? `${f.san} is theory in the ${opening}.` : null;
+}
+
 const PUNISHED = new Set(['mistake', 'blunder', 'miss']);
 
 /** A mistake, blunder or miss with no reason: the sentence that carries the line punishing it ("After 25. d6+ Kh8
