@@ -99,7 +99,7 @@
    "crosses_boundary": true,
    "headline": "Blunder \u2014 win chance 93% \u2192 34%",
    "text": [
-    "This leaves the bishop on g4 hanging: 7. Qxg4 Nc6 8. Nxh7 Qd7 9. Qg6+.",
+    "This leaves the bishop on g4 hanging: 7. Qxg4 Nc6 8. Nxh7 Qd7 9. Qg6+ Qf7 10. Qxf7+ Kxf7.",
     "Qxg5 keeps the bishop on g4 safe."
    ],
    "hung": [
@@ -132,7 +132,7 @@
    "crosses_boundary": false,
    "headline": "Mistake \u2014 win chance 20% \u2192 7%",
    "text": [
-    "This loses a knight: 6... Qxg5 7. f3 Qh4+ 8. g3 Qe7.",
+    "After 6... Qxg5 7. f3 Qh4+ 8. g3 Qe7 9. fxg4 Qxe4+ 10. Kf2, Black's advantage grows.",
     "c3 wins two pawns."
    ],
    "hung": [],

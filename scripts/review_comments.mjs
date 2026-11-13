@@ -15,8 +15,8 @@ import { join } from 'node:path';
 import { loadBook } from '../js/core/book.js';
 import * as C from '../js/core/chess.js';
 import { classifyGame } from '../js/core/classify.js';
-import { comment } from '../js/core/explain.js';
-import { extract } from '../js/core/facts.js';
+import { comment, line } from '../js/core/explain.js';
+import { extract, tradeOver } from '../js/core/facts.js';
 import { bookKeysFromDir } from '../js/desktop/book.js';
 import { POSITIONS_SQL, loadMultipv } from '../js/server/classify.js';
 import { nodeSqlite } from '../js/server/db-node.js';
@@ -63,7 +63,7 @@ for (const id of profiles) {
       const before = byPly.get(m.ply), after = byPly.get(m.ply + 1);
       const f = extract(m, C.boardFromFen(before.fen), before, after, multipv[before.fen_key] ?? null, byPly.get(m.ply - 1) ?? null);
       rows.push({ game: game.game_id, ply: m.ply, san: m.san, label: m.label, fen: before.fen, f,
-        comment: comment(f, m.in_book ? game.opening_name : null) });
+        comment: comment(f, m.in_book ? game.opening_name : null), pvBefore: before.pv ?? [], pvAfter: after?.pv ?? [] });
     }
   }
 }
@@ -99,6 +99,24 @@ for (const r of rows) {
 }
 
 const BAD = new Set(['mistake', 'blunder', 'miss']);
+
+/** {capture, promotion, check} for each legal ply of `pv` from `board`. */
+function plyKinds(board, pv) {
+  const b = C.copy(board);
+  const out = [];
+  for (const u of pv) {
+    let m;
+    try {
+      m = C.moveFromUci(u);
+    } catch {
+      break;
+    }
+    if (!C.isLegal(b, m)) break;
+    out.push({ capture: C.isCapture(b, m), promotion: !!m.promotion, check: C.givesCheck(b, m) });
+    C.push(b, m);
+  }
+  return out;
+}
 for (const r of rows) {
   const f = r.f, c = r.comment, c0 = c[0] ?? '', all = c.join(' ');
   const board = C.boardFromFen(r.fen);
@@ -114,6 +132,25 @@ for (const r of rows) {
     if (!C.isLegal(walk, m)) break;
     if (i % 2 === 0 && C.isCapture(walk, m)) taken.add(C.makeSquare(m.to));
     C.push(walk, m);
+  }
+  // the lines shown under a bad move or an inaccuracy, against where the engine's line settles
+  if (BAD.has(r.label) || r.label === 'inaccuracy') {
+    const shown = [[after, r.pvAfter, f.refutation, r.ply + 1]];
+    if (r.label === 'miss') shown.push([board, r.pvBefore, f.best_line, r.ply]);
+    for (const [b0, pv, sans, ply] of shown) {
+      const text = sans.length ? line(sans, ply) : null;
+      const said = text && c.find(x => x.includes(text));
+      if (!said) continue;
+      bump('line: shown');
+      const k = plyKinds(b0, pv), len = sans.length;
+      if (len < k.length && k[len].capture) bump('line: stops right before the engine takes something', r);
+      let end = len;
+      while (end > 0 && end < k.length && end < 16 && (k[end].capture || k[end].promotion || k[end - 1].capture || k[end - 1].check)) end++;
+      const off = Math.abs(tradeOver(b0, pv.slice(0, end), board.turn).net - tradeOver(b0, pv.slice(0, len), board.turn).net) >= 200;
+      if (off) bump('line: material 2+ pawns off where the exchange settles');
+      if (off && /\b(loses|wins)\b/.test(said)) bump('line: ... under a "loses"/"wins" claim', r);
+      if (len > 7) bump('line: longer than 7 plies');
+    }
   }
   if (!BAD.has(r.label)) continue;
   bump('bad: total');
@@ -163,4 +200,4 @@ for (const [k, v] of Object.entries(tally)) {
   for (const e of v.ex) out += `           ${e}\n`;
 }
 console.log(out);
-if (rowsOut) writeFileSync(rowsOut, JSON.stringify(rows.map(({ f, ...r }) => ({ ...r, wp_before: f.wp_before, wp_after: f.wp_after, best: f.best_san }))));
+if (rowsOut) writeFileSync(rowsOut, JSON.stringify(rows.map(({ f, pvBefore, pvAfter, ...r }) => ({ ...r, wp_before: f.wp_before, wp_after: f.wp_after, best: f.best_san }))));

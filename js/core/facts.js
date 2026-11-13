@@ -339,11 +339,13 @@ export function threatMove(board, played, replyPv) {
 
 // --- what a line wins or loses --------------------------------------------------------------------------------
 
-/** How many plies of `pvUci` to show: `n`, or up to two more when the last one shown is a capture the line answers
- * by taking back on the same square (so a line never stops halfway through an exchange). */
-export function settledLength(board, pvUci, n) {
+export const SETTLE_EXTRA = 6;          // most plies settledLength adds to a line
+const SETTLE_LIMIT = 16;               // how far tradeOver's `stable` looks for the exchange to end
+
+/** The legal moves of `pvUci` from `board`: {capture, promotion, check} per ply, stopping at the first that isn't. */
+function plyKinds(board, pvUci) {
   const b = copy(board);
-  const moves = [];
+  const out = [];
   for (const u of pvUci) {
     let m;
     try {
@@ -351,14 +353,37 @@ export function settledLength(board, pvUci, n) {
     } catch {
       break;
     }
-    if (!isLegal(b, m)) break;
-    moves.push([m, isCapture(b, m)]);
+    if (m.null || !isLegal(b, m)) break;
+    out.push({ capture: isCapture(b, m), promotion: !!m.promotion, check: givesCheck(b, m) });
     push(b, m);
   }
-  let len = Math.min(n, moves.length);
-  while (len > 0 && len < moves.length && len < n + 2 && moves[len - 1][1] && moves[len][1]
-         && moves[len][0].to === moves[len - 1][0].to) len++;
+  return out;
+}
+
+/** How many plies of `pvUci` to show: `n`, then on while the next ply takes something or promotes, or the last one
+ * shown gives check (its point comes after the answer) -- at most SETTLE_EXTRA more. So a line doesn't stop halfway
+ * through an exchange, or on a check before what it wins. */
+export function settledLength(board, pvUci, n) {
+  const k = plyKinds(board, pvUci);
+  let len = Math.min(n, k.length);
+  while (len > 0 && len < k.length && len < n + SETTLE_EXTRA
+         && (k[len].capture || k[len].promotion || k[len - 1].check)) len++;
   return len;
+}
+
+/** tradeOver for the first `len` plies of `pvUci`, plus `settled` (the net where the engine's line settles further
+ * on: it runs on while a capture, promotion or check follows a capture or check, up to SETTLE_LIMIT plies) and
+ * `stable` (the two are within a pawn). A line still winning or losing material when it stops shouldn't be told as
+ * "loses a rook". */
+export function settledTrade(board, pvUci, len, pov) {
+  const t = tradeOver(board, pvUci.slice(0, len), pov);
+  const k = plyKinds(board, pvUci);
+  let end = Math.min(len, k.length);
+  while (end > 0 && end < k.length && end < SETTLE_LIMIT
+         && (k[end].capture || k[end].promotion || k[end - 1].capture || k[end - 1].check)) end++;
+  t.settled = end <= len ? t.net : tradeOver(board, pvUci.slice(0, end), pov).net;
+  t.stable = Math.abs(t.settled - t.net) <= 100;
+  return t;
 }
 
 const MINOR = r => (r === 'bishop' ? 'knight' : r);
@@ -671,7 +696,7 @@ export function secondLine(board, multipv) {
   return {
     san: san(board, m), wp: povWinPct(r.eval_cp, r.mate_in, side, side),
     mate: r.mate_in == null ? null : -r.mate_in,
-    line: sans(board, pv, n), trade: tradeOver(board, pv.slice(0, n), side),
+    line: sans(board, pv, n), trade: settledTrade(board, pv, n, side),
   };
 }
 
@@ -702,7 +727,7 @@ export function offered(board, played, replyPv) {
     const b = copy(after);
     push(b, steps[0][0]);
     const rest = replyPv.slice(1);
-    back = tradeOver(b, rest.slice(0, settledLength(b, rest, REFUTATION_PLIES - 1)), mover);
+    back = settledTrade(b, rest, settledLength(b, rest, REFUTATION_PLIES - 1), mover);
   }
   return { piece: h.piece, square: h.square, taken, later, back };
 }
@@ -744,7 +769,7 @@ export function extract(mv, board, evalBefore, evalAfter, multipv = null, prevRo
   const bestPv = evalBefore.pv || [];
   const bestLen = settledLength(board, bestPv, REFUTATION_PLIES);
   f.best_line = sans(board, bestPv, bestLen);
-  f.best_trade = tradeOver(board, bestPv.slice(0, bestLen), mover);
+  f.best_trade = settledTrade(board, bestPv, bestLen, mover);
   if ((evalBefore.mate_in ?? 0) > 0) f.best_mate = evalBefore.mate_in;
 
   if (evalAfter && Object.keys(evalAfter).length) {
@@ -771,7 +796,7 @@ export function extract(mv, board, evalBefore, evalAfter, multipv = null, prevRo
     if (m1 !== null && m1 < 0) f.still_mates = -m1;
 
     if (!isGameOver(boardAfter)) {
-      f.trade = tradeOver(boardAfter, f.refutation_uci, mover);
+      f.trade = settledTrade(boardAfter, pv, len, mover);
       f.lost = lostPiece(board, played, f.hung_pieces, f.refutation_uci);
       f.best_saves = bestSaves(board, bestPv[0], f.lost);
     }

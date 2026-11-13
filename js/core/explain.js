@@ -49,9 +49,9 @@ export function pieces(roles) {
 }
 
 /** What a line wins for the mover, as words ('a knight', 'a rook for a knight', 'the bishop on c3'), or null when it
- * wins less than two pawns' worth. */
+ * wins less than two pawns' worth, or the line stops before the material settles (facts.settledTrade). */
 function gains(t) {
-  if (!t || t.net < 200) return null;
+  if (!t || t.net < 200 || t.stable === false) return null;
   const promo = t.promotes.find(p => p.by_mover);
   if (promo && !t.won.length) return `a new queen on the ${promo.file}-file`;
   if (!t.won.length) return null;
@@ -60,9 +60,9 @@ function gains(t) {
 }
 
 /** What a line loses for the mover, as a sentence about the line `ref`, or null when it loses less than two
- * pawns' worth (or what it loses isn't in the line shown). */
+ * pawns' worth (or what it loses isn't in the line shown, or the line stops before the material settles). */
 function losses(t, ref) {
-  if (!t || t.net > -200) return null;
+  if (!t || t.net > -200 || t.stable === false) return null;
   const promo = t.promotes.find(p => !p.by_mover);
   if (promo) return `This lets the ${promo.file}-pawn queen: ${ref}.`;
   if (!t.lost.length) return null;
@@ -145,7 +145,9 @@ export function explain(f) {
   const replyPly = f.ply + 1;
   const ref = f.refutation.length ? line(f.refutation, replyPly) : null;
   const best = f.best_san;
-  const l = ref ? f.lost : null;
+  // a piece the line takes but the engine's line wins back (its material settles above two pawns down) wasn't lost
+  const comesBack = f.trade?.stable === false && f.trade.settled > -200;
+  const l = ref && !comesBack ? f.lost : null;
   const lossLine = ref ? losses(f.trade, ref) : null;
   const lostAlready = f.wp_before != null && f.wp_before < 10;
 
@@ -231,7 +233,8 @@ function whyInaccurate(f) {
   if (f.allowed_mate) return [`This allows ${f.allowed_mate === 1 ? 'mate' : `mate in ${f.allowed_mate}`}: ${ref}.`, false];
   // material only when it stays lost: a few plies more of the engine's line don't win it back (the line shown can
   // stop mid-exchange, and a piece taken can be paid for)
-  const settled = f.trade && f.material_swing != null && Math.abs(f.material_swing - f.trade.net) <= 100;
+  const settled = f.trade && f.trade.stable !== false && f.material_swing != null
+    && Math.abs(f.material_swing - f.trade.net) <= 100;
   if (f.lost && settled && f.trade.net <= -100) return [lostSentence(f, f.lost, ref), true];
   if (f.motif) return [`${f.refutation[0]} ${f.motif_detail}: ${ref}.`, false];
   const l = settled ? losses(f.trade, ref) : null;
@@ -247,7 +250,7 @@ function great(f) {
   const alt = `The next best, ${sec.san},`;
   const t = sec.trade;
   if (sec.mate != null && sec.mate > 0) s.push(`${alt} lets ${them} mate${sec.mate === 1 ? '' : ` in ${sec.mate}`}.`);
-  else if (t && t.net <= -200 && t.lost.length && sec.line.length) {
+  else if (t && t.net <= -200 && t.stable !== false && t.lost.length && sec.line.length) {
     s.push(`${alt} loses ${pieces(t.lost)}${t.won.length ? ` for ${pieces(t.won)}` : ''}: ${line(sec.line, f.ply)}.`);
   }
   else {

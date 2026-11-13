@@ -260,3 +260,28 @@ test('comment: a brilliant move names the piece on offer and why taking it fails
   assert.deepEqual(said({ ...args, after: quiet(['d1g4', 'd7g4']) }),
     ['Ne7 is brilliant: it offers the knight on e7.', 'White does better not to take it: 28. Bxg4 Bxg4.']);
 });
+
+// --- where a line stops (facts.settledLength / settledTrade) -----------------------------------------------------
+
+test('explain: a line runs on through a check to what it wins', () => {
+  // 10.gxf3 ... 12.Nxc7+: the knight takes the rook on a8 after the king moves
+  const f = bad({ fen: 'r1b1kb1r/ppp1pppp/5n2/1N1Pn3/1qP5/5p2/PP1B2PP/R2QKBNR b KQkq - 3 9', played: 'b4b2', ply: 17,
+    wp: [80, 31], before: { eval_cp: 300, mate_in: null, pv: ['f3f2', 'e1f2', 'f6e4', 'f2e1', 'b4b2', 'a1c1'] },
+    after: { eval_cp: 400, mate_in: null, pv: ['g2f3', 'e7e6', 'a1c1', 'e5g6', 'b5c7', 'e8d8', 'c7a8', 'f8c5', 'd1b3'] } });
+  assert.equal(f.refutation.length, 7);
+  assert.equal(explain(f)[0], 'This loses a rook and two pawns: 10. gxf3 e6 11. Rc1 Ng6 12. Nxc7+ Kd8 13. Nxa8.');
+});
+
+test('explain: no "loses a bishop" when the line wins it back a move later', () => {
+  // 10...Nxd2 11.Nxd2 Bxd1 12.Bxd5 Rxd5, and 13.Rxd1 takes the bishop back
+  const f = bad({ fen: '2kr1b1r/ppp2ppp/2n5/3q4/4n1b1/5NP1/PPPN1PBP/R1BQ1RK1 w - - 2 10', played: 'b2b3', ply: 18,
+    wp: [45, 9], before: { eval_cp: 0, mate_in: null, pv: ['c2c3', 'e4d2'] },
+    after: { eval_cp: 500, mate_in: null, pv: ['e4d2', 'f3d2', 'g4d1', 'g2d5', 'd8d5', 'f1d1', 'f8b4', 'c2c4', 'd5d3'] } });
+  assert.equal(explain(f)[0], 'After 10... Nxd2 11. Nxd2 Bxd1 12. Bxd5 Rxd5 13. Rxd1, Black is now winning.');
+});
+
+test('settledLength: a long run of captures and checks stops six plies past the usual five', () => {
+  const b = boardFromFen('2kr1b1r/1bp2ppp/p2qp3/3pN3/B2nP3/2N1P2P/PPP3P1/R1BQ1RK1 w - - 0 12');
+  assert.equal(settledLength(b, ['e5f7', 'd4b5', 'a4b5', 'd5e4', 'd1d6', 'd8d6', 'f7h8', 'a6b5', 'f1f8', 'd6d8', 'f8d8',
+    'c8d8'], 5), 11);
+});
