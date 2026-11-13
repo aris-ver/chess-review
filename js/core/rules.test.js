@@ -101,6 +101,15 @@ test('explain: a capture that loses the capturing piece is a bad trade, not a ha
   assert.equal(explain(f)[0], 'Nxd5 takes a pawn but loses the knight: 3... Qxd5 4. d4 Be7 5. c4 Qe6.');
 });
 
+test('explain: a piece the line takes back is not lost: the sentence says how the game changed', () => {
+  // 5.Nxd5 Nxd5 6.exd5: a pawn and a knight for the knight
+  const f = bad({ fen: 'r1bqkb1r/ppp2ppp/2n2n2/1B1pp3/4P3/2N2N2/PPPP1PPP/R1BQK2R w KQkq - 0 5', played: 'c3d5',
+    label: 'miss', ply: 8, wp: [70, 49], before: { eval_cp: 100, mate_in: null, pv: ['f3e5', 'd8d6'] },
+    after: { eval_cp: 0, mate_in: null, pv: ['f6d5', 'e4d5'] } });
+  assert.equal(f.lost?.kind, 'trade');
+  assert.equal(explain(f)[1], 'After 5. Nxd5 Nxd5 6. exd5, the advantage is gone and the game is level.');
+});
+
 test('explain: a miss says what was missed, and that the move still mates', () => {
   const f = bad({ fen: '2B2R2/4k3/2Q5/4B3/3p4/8/PPP2P1P/R3K3 w Q - 1 27', played: 'c6d7', label: 'miss', ply: 52,
     wp: [100, 100], before: { eval_cp: null, mate_in: 1, pv: ['e5d6'] },

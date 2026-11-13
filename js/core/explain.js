@@ -155,7 +155,8 @@ export function explain(f) {
   const best = f.best_san;
   // a piece the line takes but the engine's line wins back (its material settles above two pawns down) wasn't lost
   const comesBack = f.trade?.stable === false && f.trade.settled > -200;
-  const l = ref && !comesBack ? f.lost : null;
+  // nor one the line takes back: the mover ends no worse than a pawn down (a blocked recapture is lost all the same)
+  const l = ref && !comesBack && f.lost && (f.lost.blocked || f.trade?.net <= -100) ? f.lost : null;
   const lossLine = ref ? losses(f.trade, ref) : null;
   const lostAlready = f.wp_before != null && f.wp_before < 10;
 
