@@ -239,7 +239,8 @@ main { padding: 16px 18px; max-width: 1800px; margin: 0 auto; }
 .dres .dh { font-size: 12px; font-weight: 700; color: #5f6b78; }
 .dres .sq { display: flex; gap: 6px; margin: 10px 0; }
 .dres .sq span { width: 30px; height: 30px; border-radius: 7px; display: flex; align-items: center; justify-content: center; font-size: 15px; box-sizing: border-box; }
-.dres .sq .ok { background: var(--win); } .dres .sq .miss { background: var(--c-inaccuracy); }
+.dres .sq .ok { background: var(--win); } .dres .sq .miss { background: var(--c-inaccuracy); color: #3a2f00; font-weight: 700; }
+.dres .sq .miss.many { background: var(--c-blunder); color: #fff; }
 .dres .sq .hint { background: #fff6cf; border: 2px solid var(--c-inaccuracy); } .dres .sq .shown { background: #b4bcc6; }
 .dres .stats { display: flex; flex-wrap: wrap; gap: 6px; }
 .dres .stats span { font-size: 12px; background: #fff; border: 1px solid #dfe4ea; border-radius: 12px; padding: 2px 9px; color: #333; }
@@ -2744,6 +2745,9 @@ async function playPack(id, stage, n) {
   if (!s.open) { toast(`Stage ${stage} isn't open yet`); location.replace('#/packs/' + id); return; }
   pz.ctx = { kind: 'pack', pack: id, name: k.name, stage, n, size: s.size };
   packStage[id] = stage;
+  // opened again from the ladder (or anywhere but the sandbox and settings): a new go, not the last one carried on.
+  // Carried on, a miss on it stayed with it, so a clean solve now didn't count as first try
+  if (!/^#\/(sandbox\/|settings$)/.test(fromHash || '')) pz.game = null;
   return showPuzzle(c.id);
 }
 async function playDaily() {
@@ -2783,15 +2787,19 @@ function ctxCrumb() {
   if (c.kind === 'daily') return { crumb: `Puzzle of the day · #${c.n}`, back: '#/packs', label: '← Puzzle packs' };
   return { crumb: `Puzzle packs · ${c.name} · stage ${c.stage} · ${c.n} of ${c.size}`, back: '#/packs/' + c.pack, label: '← ' + c.name };
 }
-// One mark per move of yours, for the share card: found first time, found after a miss or a hint, or shown.
+// One mark per move of yours, for the share card: found first time, found after misses ('miss' for one, 'miss2',
+// 'miss3'… for more) or a hint, or shown.
 function shareMarks() {
   const out = [];
   for (let i = 1; i < pz.p.moves.length; i += 2) {
-    const m = pz.marks[i] || [];
-    out.push(m.includes('shown') ? 'shown' : m.includes('hint') ? 'hint' : m.includes('miss') ? 'miss' : 'ok');
+    const m = pz.marks[i] || [], k = m.filter(x => x === 'miss').length;
+    out.push(m.includes('shown') ? 'shown' : m.includes('hint') ? 'hint' : k > 1 ? 'miss' + k : k ? 'miss' : 'ok');
   }
   return out;
 }
+// how many misses a mark stands for: 0 for any other mark
+const missCount = m => m === 'miss' ? 1 : /^miss\d+$/.test(m) ? +m.slice(4) : 0;
+const MISS_RED = 3;     // from this many misses on one move, its square goes red
 // The result: drawn as a card in the coach's bubble, and copied as text with emoji squares (what chat apps show) and
 // a link to the day's puzzle on blundr.gr, so whoever it's sent to can try the same one (from the desktop app too).
 const SHARE_SQ = { ok: '🟩', miss: '🟨', hint: '💡', shown: '⬛' };
@@ -2800,19 +2808,23 @@ const fmtTime = ms => ms ? `${Math.floor(ms / 60000)}:${String(Math.round(ms / 1
 function resultWords(r) {
   if (!r.solved) return 'Not solved';
   if (r.clean) return 'Solved without a mistake';
-  const n = k => (r.marks || []).filter(m => m === k).length, misses = n('miss'), hints = n('hint');
+  const marks = r.marks || [], misses = marks.reduce((s, m) => s + missCount(m), 0), hints = marks.filter(m => m === 'hint').length;
   return 'Solved with ' + [misses ? `${misses} miss${misses > 1 ? 'es' : ''}` : '', hints ? `${hints} hint${hints > 1 ? 's' : ''}` : ''].filter(Boolean).join(' and ');
 }
 function shareText(r, streak) {
   const t = fmtTime(r.ms);
   return `Blundr puzzle of the day #${r.n} · ${fmtDay(r.date)}\n${r.clean ? '✅' : r.solved ? '☑️' : '❌'} ${resultWords(r)}${t ? ' · ' + t : ''}\n` +
-    (r.marks || []).map(m => SHARE_SQ[m] || '⬜').join('') + (streak ? `\n🔥 ${streak}-day streak` : '') + `\nTry it yourself: ${DAILY_URL}`;
+    (r.marks || []).map(m => missCount(m) >= MISS_RED ? '🟥' : missCount(m) ? SHARE_SQ.miss : SHARE_SQ[m] || '⬜').join('') + (streak ? `\n🔥 ${streak}-day streak` : '') + `\nTry it yourself: ${DAILY_URL}`;
 }
 const SQ_TITLE = { ok: 'Found first time', miss: 'Found after a miss', hint: 'Found with a hint', shown: 'Shown the solution' };
 function resultCard(r, streak, inCard = false) {
   const t = fmtTime(r.ms);
   return `<div class="dres"><div class="dh">Puzzle of the day #${r.n} · ${esc(fmtDay(r.date))}</div>` +
-    `<div class="sq">${(r.marks || []).map((m, i) => `<span class="${m}" title="Move ${i + 1}: ${SQ_TITLE[m] || ''}">${m === 'hint' ? '💡' : ''}</span>`).join('')}</div>` +
+    `<div class="sq">${(r.marks || []).map((m, i) => {
+      const k = missCount(m);
+      if (k) return `<span class="miss${k >= MISS_RED ? ' many' : ''}" title="Move ${i + 1}: Found after ${k > 1 ? k + ' misses' : 'a miss'}">${k}</span>`;
+      return `<span class="${m}" title="Move ${i + 1}: ${SQ_TITLE[m] || ''}">${m === 'hint' ? '💡' : ''}</span>`;
+    }).join('')}</div>` +
     `<div class="stats"><span>${resultWords(r)}</span>${t ? `<span>⏱ ${t}</span>` : ''}${streak ? `<span>🔥 ${streak}-day streak</span>` : ''}</div>` +
     `<button ${inCard ? 'data-act="share"' : 'id="pz-share"'} class="primary" title="Copies your result and a link to get the app">Copy result to share</button></div>`;
 }
