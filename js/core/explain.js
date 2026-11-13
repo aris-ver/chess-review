@@ -232,18 +232,22 @@ export function does(d) {
   }
 }
 
+// castling, or a check that wins nothing: saying so says nothing about the move
+const bare = d => d.kind === 'castles' || (d.kind === 'check' && !gains(d.wins));
+
 /** The move's own sentence from what it does ('Nxe5 wins the pawn on e5.'), or null. */
 function itDoes(f) {
   const d = f.does;
-  if (!d || d.kind === 'castles') return null;
+  if (!d || bare(d)) return null;
   if (d.kind === 'mate' && d.n === 1) return `${f.san} is checkmate.`;
   return `${f.san} ${does(d)}.`;
 }
 
-/** What the engine's choice did instead: 'Nf3 was better: it protects the pawn on e5.' */
+/** What the engine's choice did instead: 'Nf3 was better: it protects the pawn on e5.' `plain` is the sentence when
+ * there is nothing to say, and leads the longer one ("Nf3 was the engine's choice: it ..."). */
 function betterDoes(f, plain = `${f.best_san} was better.`) {
-  const c = does(f.best_does);
-  return c ? `${f.best_san} was better: it ${c}.` : plain;
+  const c = f.best_does && !bare(f.best_does) ? does(f.best_does) : null;
+  return c ? `${plain.slice(0, -1)}: it ${c}.` : plain;
 }
 
 /** Why an inaccuracy cost what it did, when the facts show it: a sentence and whether it is about f.lost. */
@@ -324,7 +328,7 @@ export function comment(f, opening = null) {
     if (!f.best_san) return [`${what}.`];
     if (close) return [`${what}, as good as the engine's ${f.best_san}.`];
     const plain = f.label === 'excellent' ? `${f.best_san} was the engine's choice.` : `${f.best_san} was better.`;
-    const mine = !f.best_does && does(f.does);    // nothing to say for the engine's choice: say what the move does
+    const mine = !f.best_does && f.does && !bare(f.does) && does(f.does);    // nothing to say for the engine's choice: say what the move does
     return [mine ? `${what}: it ${mine}. ${plain}` : `${what}. ` + betterDoes(f, plain)];
   }
   if (f.label === 'inaccuracy') {

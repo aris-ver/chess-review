@@ -260,6 +260,17 @@ test('comment: the engine\'s choice says what it does, or else the move played d
   ['Be2 is an excellent move: it clears the way to castle. c4 was the engine\'s choice.']);
 });
 
+test('comment: an excellent move\'s engine choice is not "better"; castling and a bare check say nothing more', () => {
+  assert.deepEqual(said({ fen: 'r2qkb1r/2p1pppp/p4n2/2Pp4/5Bb1/3QPN2/PPP2PPP/RN2K2R b KQkq - 0 8', played: 'c7c6',
+    label: 'excellent', ply: 15, wp: [44, 40], before: quiet(['g4f3', 'g2f3']), after: quiet(['b1c3']) }),
+  ['c6 is an excellent move. Bxf3 was the engine\'s choice: it trades the bishop for the knight.']);
+  assert.deepEqual(said({ fen: 'r3k2r/pppppppp/8/8/8/8/PPPPPPPP/R3K2R w KQkq - 0 1', played: 'a1b1', label: 'good', ply: 0,
+    wp: [50, 45], before: quiet(['e1g1', 'e8g8']), after: quiet(['e8g8']) }),
+  ['Rb1 is a good move. O-O was better.']);
+  assert.deepEqual(said({ fen: '7k/8/8/8/8/8/R5PP/6K1 w - - 0 40', played: 'a2a8', ply: 78,
+    before: quiet(['a2a8']), after: quiet(['h8h7']) }), ['Ra8+ is the best move.']);
+});
+
 test('comment: an inaccuracy that costs 6% or more says why, when the material stays lost', () => {
   assert.deepEqual(said({ fen: 'r3kb1r/ppp1pppp/8/1N1Pn3/2P1n3/8/PB3KPP/3R1BNR w kq - 1 14', played: 'f2e3',
     label: 'inaccuracy', ply: 26, wp: [92, 84], before: quiet(['f2e1']),

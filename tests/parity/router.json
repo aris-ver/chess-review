@@ -1912,7 +1912,7 @@
       "clock": 170,
       "spent": 7,
       "comment": [
-       "Bc4 is an excellent move. Nxd4 was better: it takes back on d4."
+       "Bc4 is an excellent move. Nxd4 was the engine's choice: it takes back on d4."
       ],
       "hung": [],
       "reply_uci": "f8e7",
@@ -2237,7 +2237,7 @@
       "clock": null,
       "spent": null,
       "comment": [
-       "Nc6 is an excellent move. Nf6 was better: it attacks the pawn on e4."
+       "Nc6 is an excellent move. Nf6 was the engine's choice: it attacks the pawn on e4."
       ],
       "hung": [],
       "reply_uci": "d2d3",
