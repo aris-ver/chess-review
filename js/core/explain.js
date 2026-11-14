@@ -20,7 +20,7 @@ export function line(sans, startPly) {
 
 export function clock(seconds) {
   if (seconds >= 60) return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
-  return `${seconds} seconds`;
+  return seconds === 1 ? '1 second' : `${seconds} seconds`;
 }
 
 export function headline(f) {
@@ -125,7 +125,9 @@ function standingState(f) {
   else if (a >= 55) state = b >= 65 ? `${me} is only slightly better` : `${me}'s edge is smaller`;
   else if (a > 45) state = b >= 55 ? `the advantage is gone and the game is level` : `the game is level`;
   else if (a > 35) state = `${them} is now better`;
-  else if (b <= 35) state = `${them}'s advantage grows`;
+  // "now winning" only once the mover is down to 20% (about -3.8), and only when it wasn't so already
+  else if (a > 20) state = b <= 35 ? `${them}'s advantage grows` : `${them} is now clearly better`;
+  else if (b <= 20) state = `${them}'s advantage grows`;
   else state = b >= 65 ? `the win is gone: ${them} is now winning` : `${them} is now winning`;
   return state;
 }
@@ -140,8 +142,10 @@ function better(f, best, aboutLost) {
   const g = gains(f.best_trade);
   if (g) return S('before', `${best} wins ${g}.`);
   const b0 = f.wp_before != null ? band(f.wp_before) : 'equal';
-  if (b0 === 'winning') return F(f.wp_after >= 65 ? `${best} was stronger.` : `${best} kept the win.`);   // the win wasn't in danger
-  if (b0 === 'losing') return F(`${best} was the best chance.`);
+  // the win wasn't in danger; "kept the win" only from a real win (80%), else it kept the advantage
+  if (b0 === 'winning') return F(f.wp_after >= 65 ? `${best} was stronger.` : f.wp_before >= 80 ? `${best} kept the win.` : `${best} kept the advantage.`);
+  // "the best chance" only while there was one to keep: not from a merely worse position, nor from a lost one
+  if (b0 === 'losing') return F(f.wp_before > 5 && f.wp_before <= 25 ? `${best} was the best chance.` : `${best} was better.`);
   return F(`${best} held the balance.`);
 }
 
@@ -175,7 +179,8 @@ function missed(f, best) {
 function clockNote(f) {
   const left = f.clock_remaining, spent = f.time_spent;
   const parts = [];
-  if (left != null && left < 30) parts.push(`with ${clock(left)} left`);
+  if (left != null && left < 1) parts.push('with no time left');
+  else if (left != null && left < 30) parts.push(`with ${clock(left)} left`);
   if (spent != null && spent >= 30) parts.push(`after thinking for ${clock(spent)}`);
   else if (spent != null && spent <= 2 && left != null && left > 60) parts.push('in under 3 seconds');
   return parts.length ? `Played ${parts.join(', ')}.` : null;

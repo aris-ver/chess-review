@@ -28,7 +28,7 @@ const cases = {
   band: ([x, out]) => same(band(x), out, `band(${x})`),
   move_label: ([p, s, out]) => same(moveLabel(p, s), out, `moveLabel(${p}, ${s})`),
   line: ([sans, p, out]) => same(line(sans, p), out, `line(${sans}, ${p})`),
-  clock: ([s, out]) => same(clock(s), out, `clock(${s})`),
+  clock: c => sameAt(clock(c[0]), c, 1, `clock(${c[0]})`),   // PARITY_UPDATE rewrites it
 };
 
 for (const [name, check] of Object.entries(cases)) {

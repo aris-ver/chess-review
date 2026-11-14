@@ -142,7 +142,7 @@ test('explain: losing no material, the sentence says how the game changed', () =
   const f = bad({ fen: 'rnbqkbnr/pp3ppp/2p5/3p4/3PP3/2N5/PP3PPP/R1BQKBNR b KQkq - 0 5', played: 'b7b5', label: 'mistake',
     ply: 9, wp: [51, 35], before: { eval_cp: 15, mate_in: null, pv: ['d5e4', 'c3e4'] },
     after: { eval_cp: 163, mate_in: null, pv: ['e4e5', 'b8a6', 'f1d3', 'g8e7', 'c3e2'] } });
-  assert.deepEqual(explain(f), ['After 6. e5 Na6 7. Bd3 Ne7 8. Nce2, White is now winning.', 'dxe4 held the balance.']);
+  assert.deepEqual(explain(f), ['After 6. e5 Na6 7. Bd3 Ne7 8. Nce2, White is now clearly better.', 'dxe4 held the balance.']);
 });
 
 test('explain: a win that was never in danger is not "kept", and still winning big is not "much of it gone"', () => {
@@ -393,7 +393,7 @@ test('explain: a miss with nothing to say about the move missed still says what 
     label: 'miss', ply: 27, wp: [52, 22], before: { eval_cp: 0, mate_in: null, pv: ['g5e7', 'h1e1'] },
     after: { eval_cp: 250, mate_in: null, pv: ['h1e1', 'b8d7', 'e4d6', 'e5d6', 'f3c6', 'e8f7', 'c6a8', 'd7c5'] } });
   assert.deepEqual(explain(f), ['Missed Qe7: 14... Qe7 15. Rhe1.',
-    'After 14... Qh4 15. Rhe1 Nd7 16. Nd6+ Bxd6 17. Qxc6, White is now winning.']);
+    'After 14... Qh4 15. Rhe1 Nd7 16. Nd6+ Bxd6 17. Qxc6, White is now clearly better.']);
 });
 
 test('explain: "kept White winning" is followed by what the move played gave away', () => {
@@ -506,4 +506,23 @@ test('labels: a miss stays a miss though the mover is still clearly winning', ()
     ['g1f3', { eval_cp: 1500 }, 'd2d4']], { eval_cp: -800 }).at(-1), 'miss');
   // a mate in three missed, still +8 after it
   assert.deepEqual(labels(START, [['e2e4', { mate_in: 3 }, 'd2d4']], { eval_cp: -800 }), ['miss']);
+});
+
+test('explain: "now winning" only from 20% down, "kept the win" only from 80%, "the best chance" only between 5 and 25%', () => {
+  const at = (wp, clock = null) => explain(bad({ fen: 'rnbqkbnr/pp3ppp/2p5/3p4/3PP3/2N5/PP3PPP/R1BQKBNR b KQkq - 0 5',
+    played: 'b7b5', label: 'mistake', ply: 9, wp, clock, before: { eval_cp: 15, mate_in: null, pv: ['d5e4', 'c3e4'] },
+    after: { eval_cp: 163, mate_in: null, pv: ['e4e5', 'b8a6', 'f1d3', 'g8e7', 'c3e2'] } }));
+  const state = wp => at(wp)[0].replace(/^After .*?, /, '');
+  assert.equal(state([60, 30]), 'White is now clearly better.');
+  assert.equal(state([60, 15]), 'White is now winning.');
+  assert.equal(state([30, 15]), 'White is now winning.');   // crossing 20% it is
+  assert.equal(state([18, 10]), 'White\'s advantage grows.');
+  assert.equal(state([30, 25]), 'White\'s advantage grows.');
+  assert.equal(at([70, 60])[1], 'dxe4 kept the advantage.');
+  assert.equal(at([85, 60])[1], 'dxe4 kept the win.');
+  assert.equal(at([30, 10])[1], 'dxe4 was better.');
+  assert.equal(at([15, 5])[1], 'dxe4 was the best chance.');
+  assert.equal(at([2, 1])[1], 'dxe4 was better.');
+  assert.ok(at([60, 30], 0).includes('Played with no time left.'), String(at([60, 30], 0)));
+  assert.ok(at([60, 30], 1).includes('Played with 1 second left.'), String(at([60, 30], 1)));
 });

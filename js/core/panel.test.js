@@ -65,8 +65,8 @@ test('panel: "After <line>, <state>." loses its line as "<State>."; standing alo
   const f = facts({ fen: 'rnbqkbnr/pp3ppp/2p5/3p4/3PP3/2N5/PP3PPP/R1BQKBNR b KQkq - 0 5', played: 'b7b5', label: 'mistake',
     ply: 9, wp: [51, 35], before: { eval_cp: 15, mate_in: null, pv: ['d5e4', 'c3e4'] },
     after: { eval_cp: 163, mate_in: null, pv: ['e4e5', 'b8a6', 'f1d3', 'g8e7', 'c3e2'] } });
-  assert.deepEqual(comment(f), ['After 6. e5 Na6 7. Bd3 Ne7 8. Nce2, White is now winning.', 'dxe4 held the balance.']);
-  assert.deepEqual(sentences(f).map(x => x.short), ['White is now winning.', 'dxe4 held the balance.']);
+  assert.deepEqual(comment(f), ['After 6. e5 Na6 7. Bd3 Ne7 8. Nce2, White is now clearly better.', 'dxe4 held the balance.']);
+  assert.deepEqual(sentences(f).map(x => x.short), ['White is now clearly better.', 'dxe4 held the balance.']);
   // both sentences only say what the eval bar shows: nothing to explain under the header
   assert.deepEqual(reasons(f), []);
   // but a mistake still has the line that punishes it: Explain shows it, and plays it from after the move
@@ -75,7 +75,7 @@ test('panel: "After <line>, <state>." loses its line as "<State>."; standing alo
   const p = panelFields(f, 'b7b5', null, { eval_cp: 15, mate_in: null, side_to_move: 'black' },
     { eval_cp: 163, mate_in: null, side_to_move: 'white' }, null);
   assert.deepEqual(p.short, []);
-  assert.deepEqual(p.full, ['After 6. e5 Na6 7. Bd3 Ne7 8. Nce2, White is now winning.']);
+  assert.deepEqual(p.full, ['After 6. e5 Na6 7. Bd3 Ne7 8. Nce2, White is now clearly better.']);
   assert.equal(p.line.base_ply, 10);
   assert.equal(p.line.eval, '+1.6');
   // an inaccuracy's line is the engine playing on, not a refutation: nothing to explain, nothing to play
