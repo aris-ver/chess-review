@@ -31,11 +31,12 @@ export const EVALS = 'evals.sqlite';
 export const PROGRESS = 'progress.sqlite';
 export const profileDb = id => `profiles/${id}/games.sqlite`;
 
-// 2: puzzle_solved.clean (SOLVED_CLEAN). 3: a profile's own_puzzles (OWN_PUZZLES_SCHEMA). A database made at an
+// 2: puzzle_solved.clean (SOLVED_CLEAN). 3: a profile's own_puzzles (OWN_PUZZLES_SCHEMA). 4: evals_fast, the
+// positions of the engine cache searched by a fast review (EVALS_FAST_SCHEMA). A database made at an
 // earlier version is brought up to this one as it is opened (UPGRADES), and a new one is made at 1 and brought up the
 // same way, so the two have the same schema to the letter (sqlite_master's text of an altered table isn't what a
 // CREATE TABLE of it would say).
-export const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 4;
 
 /** (name, SQL type) in order, as normalise.GAMES_SCHEMA */
 export const GAMES_SCHEMA = [
@@ -107,6 +108,12 @@ export const EVALS_MULTIPV_SCHEMA = [
   ['pv', 'JSON'],
 ];
 
+/** The keys of the evals (and evals_multipv) rows a fast review searched, at FAST_NODES rather than the full
+ * DEFAULT_NODES (eval-cache.js writeResults): a full search of the position replaces them and drops its mark. */
+export const EVALS_FAST_SCHEMA = [
+  ['fen_key', 'TEXT'],
+];
+
 /** One line of puzzle_attempts.jsonl ({id, ts, solved, ms, hinted, rating}; own puzzles have no rating). `archive`
  * is the reset it was moved aside by (`reset-<when>`, as the .reset-<when>.jsonl file was named), NULL while
  * current; seq keeps the file's order. */
@@ -161,6 +168,7 @@ function table(name, schema, extra = []) {
 export const EVALS_DDL = [
   table('evals', EVALS_SCHEMA, ['PRIMARY KEY (fen_key)']),
   table('evals_multipv', EVALS_MULTIPV_SCHEMA, ['PRIMARY KEY (fen_key, rank)']),
+  table('evals_fast', EVALS_FAST_SCHEMA, ['PRIMARY KEY (fen_key)']),
 ].join('\n');
 
 export const PROGRESS_DDL = [
@@ -191,6 +199,9 @@ const UPGRADES = [
   }],
   [3, db => {
     if (hasTable(db, 'moves')) db.exec(table('own_puzzles', OWN_PUZZLES_SCHEMA, ['PRIMARY KEY (id)']));
+  }],
+  [4, db => {
+    if (hasTable(db, 'evals')) db.exec(table('evals_fast', EVALS_FAST_SCHEMA, ['PRIMARY KEY (fen_key)']));
   }],
 ];
 
@@ -354,7 +365,7 @@ export class Store {
     else if (name === PROGRESS) await this.progress();
   }
 
-  /** The engine cache on its own (evals, evals_multipv). */
+  /** The engine cache on its own (evals, evals_multipv, evals_fast). */
   evals() {
     return this.connect(EVALS, EVALS_DDL);
   }

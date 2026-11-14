@@ -7,7 +7,7 @@ import { cpSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
 import { loadBook } from '../core/book.js';
-import { DEFAULT_NODES } from '../core/config.js';
+import { DEFAULT_NODES, FAST_NODES } from '../core/config.js';
 import { nodeSqlite } from '../server/db-node.js';
 import { Store } from '../server/db.js';
 import { nodeFiles } from '../server/profiles-files-node.js';
@@ -122,7 +122,7 @@ function startServer({ quit }) {
     pack: new Pack(() => readJson(BUNDLED.puzzles)), packs: new Packs(() => readJson(BUNDLED.packs)),
     updater: makeUpdater(quit),
   };
-  return serve({ env, pool: engines, nodes: DEFAULT_NODES, log });
+  return serve({ env, pool: engines, nodes: DEFAULT_NODES, fastNodes: FAST_NODES, log });
 }
 
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);

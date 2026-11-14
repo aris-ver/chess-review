@@ -17,6 +17,7 @@ import { build as classify } from './classify.js';
 import { robustMultipv } from './explore.js';
 import { countNew, fetchProfile, gameIds, rebuild } from './games.js';
 import { NoSuchPlayer } from './ingest.js';
+import { loadSettings } from './settings.js';
 import { build as buildSite, slug, updateIndex, writeGame } from './site.js';
 
 export const BACKGROUND = ['puzzles', 'build'];      // jobs that give way to anything the user asks for
@@ -39,6 +40,7 @@ export class Job {
     this.preempted = false;         // stopped to make way for another job: it comes back once that one is done
     this.gameDone = 0; this.gameTotal = 0;
     this.phase = null; this.puzzles = null; this.note = null;
+    this.fast = null;               // analyse, analyse_all: at the fast nodes (true) or the full ones; null: the saved default
   }
 
   toDict() {
@@ -48,6 +50,7 @@ export class Job {
       done: this.done, total: this.total, game_done: this.gameDone, game_total: this.gameTotal,
       error: this.error, elapsed: pyRound(this.now() - this.started, 1),
       phase: this.phase, puzzles: this.puzzles, note: this.note,
+      ...(this.fast ? { fast: true } : {}),     // only when it is: a full job's dict is as it always was
     };
   }
 }
@@ -75,11 +78,13 @@ export class LivePace {
 }
 
 /** analyse.Analyser.run over the engine pool (WebRunner's BrowserAnalyser): one lane per engine, results written
- * every `batch` (or as `live` paces them), what is in hand kept when stopped. */
+ * every `batch` (or as `live` paces them), what is in hand kept when stopped. nodes: per position; fastNodes: per
+ * position of a fast analysis, null where there is none. */
 export class Analyser {
-  constructor(pool, nodes) {
+  constructor(pool, nodes, fastNodes = null) {
     this.pool = pool;
     this.nodes = nodes;
+    this.fastNodes = fastNodes;
     this.lastUsed = 0;
   }
 
@@ -87,14 +92,17 @@ export class Analyser {
     return Math.max(1, this.pool.size | 0);
   }
 
-  async evaluate(key) {
-    const [main, ranks] = await robustMultipv(boardFromKey(key), this.pool, this.nodes);
+  async evaluate(key, nodes = this.nodes) {
+    const [main, ranks] = await robustMultipv(boardFromKey(key), this.pool, nodes);
     return [key, main, ranks];
   }
 
-  /** Returns the count analysed. onProgress(done, total) may be async; flushes never overlap. */
-  async run(keys, db, { onProgress = null, batch = 20, shouldStop = null, live = null } = {}) {
+  /** Returns the count analysed. onProgress(done, total) may be async; flushes never overlap. fast: at fastNodes,
+   * the results marked as such (eval-cache.js writeResults). */
+  async run(keys, db, { onProgress = null, batch = 20, shouldStop = null, live = null, fast = false } = {}) {
     keys = [...keys];
+    fast = fast && this.fastNodes !== null;
+    const nodes = fast ? this.fastNodes : this.nodes;
     if (!keys.length) return 0;
     const buf = [];
     let next = 0, done = 0, stop = false, timer = null, chain = Promise.resolve();
@@ -102,7 +110,7 @@ export class Analyser {
       chain = chain.then(async () => {
         if (!buf.length) return;
         const started = monotonic();
-        writeResults(db, buf.splice(0));
+        writeResults(db, buf.splice(0), { fast });
         if (onProgress) await onProgress(done, keys.length);
         live?.wrote(started);
       });
@@ -117,7 +125,7 @@ export class Analyser {
     };
     const lane = async () => {
       while (!stop && next < keys.length) {
-        buf.push(await this.evaluate(keys[next++]));
+        buf.push(await this.evaluate(keys[next++], nodes));
         done += 1;
         this.lastUsed = Date.now();
         live?.got();
@@ -184,11 +192,12 @@ export class NewGames {
 }
 
 export class Runner {
-  /** env: games.js's env (store, files, profiles, fetch, …); pool: the EnginePool; nodes: per position;
-   * work: extra job kinds (routes-puzzles.js's build and puzzles); now: seconds, for the job clock. */
-  constructor(env, { pool, nodes, work = {}, newGames = null, now = seconds } = {}) {
+  /** env: games.js's env (store, files, profiles, fetch, …); pool: the EnginePool; nodes: per position; fastNodes:
+   * per position of a fast analysis, null where there is none (the phones'); work: extra job kinds
+   * (routes-puzzles.js's build and puzzles); now: seconds, for the job clock. */
+  constructor(env, { pool, nodes, fastNodes = null, work = {}, newGames = null, now = seconds } = {}) {
     this.env = { site: (db, p) => buildSite(db, env.files, p), ...env };
-    this.analyser = new Analyser(pool, nodes);
+    this.analyser = new Analyser(pool, nodes, fastNodes);
     this.newGames = newGames ?? new NewGames(this.env);
     this.work = work;
     this.now = now;
@@ -204,6 +213,12 @@ export class Runner {
 
   newJob(kind, profile, gameId = null, slug = null) {
     return new Job(++this.ids, kind, profile, gameId, slug, this.now);
+  }
+
+  /** Whether an analysis nobody chose the depth of is a fast one: the saved default (settings.json's analysis). */
+  async defaultFast() {
+    if (this.analyser.fastNodes === null) return false;
+    return (await loadSettings(this.env.files)).analysis === 'fast';
   }
 
   /** The builds still to do from the last run (puzzle_builds.json). */
@@ -267,6 +282,7 @@ export class Runner {
     else await new Promise(r => setTimeout(r, 0));   // off the request: it answers with the job still queued, as Python does
     try {
       job.status = 'running';
+      if (job.fast === null && ['analyse', 'analyse_all', 'build'].includes(job.kind)) job.fast = await this.defaultFast();
       await this._work(job);
       job.status = job.stopRequested ? 'stopped' : 'done';
     } catch (e) {
@@ -404,7 +420,7 @@ export class Runner {
   async _analyse(job) {
     const { env } = this, p = job.profile;
     const db = await env.store.profile(p);
-    let [keys, stats] = pendingKeys(db, job.gameId);
+    let [keys, stats] = pendingKeys(db, job.gameId, { full: !job.fast });
     job.total = keys.length;
     env.log?.info?.(`analyse ${p.id}/${job.slug}: ${JSON.stringify(stats)}`);
     keys = liveOrder(db, job.gameId, keys);
@@ -412,7 +428,7 @@ export class Runner {
     // the review is on screen, following the analysis: rewritten as results come in, not in batches
     await this.analyser.run(keys, db, {
       onProgress: async done => { job.done = done; await write(); },
-      batch: this.analyser.workers, shouldStop: () => job.stopRequested, live: new LivePace(LIVE_WRITE_S),
+      batch: this.analyser.workers, shouldStop: () => job.stopRequested, live: new LivePace(LIVE_WRITE_S), fast: job.fast,
     });
     job.status = 'finishing';
     await write();
@@ -443,7 +459,7 @@ export class Runner {
     job.gameTotal = keys.length;
     await this.analyser.run(keys, db, {
       onProgress: done => { job.gameDone = done; },
-      batch: this.analyser.workers * 2, shouldStop: () => job.stopRequested,
+      batch: this.analyser.workers * 2, shouldStop: () => job.stopRequested, fast: job.fast,
     });
     await updateIndex(env.files, p, await writeGame(db, env.files, p, gid));
   }

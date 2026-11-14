@@ -3,7 +3,7 @@
 // the page's shim (web/shim.js) reads.
 
 import { loadBook } from '../core/book.js';
-import { DEFAULT_NODES } from '../core/config.js';
+import { DEFAULT_NODES, FAST_NODES } from '../core/config.js';
 import { build as buildAggregates } from '../server/aggregates.js';
 import { build as classify, setCodeFingerprint } from '../server/classify.js';
 import { Store } from '../server/db.js';
@@ -52,9 +52,10 @@ export async function reclassifyAll(env, log = consoleLog) {
  * site: the static files the server reads, as fetch-able texts: { book, puzzles, packs } → Promise<string>
  * (puzzles may come late: puzzle requests wait for `packReady`). before(env): runs once the env is built and before
  * serve() starts anything (the migration's reclassification). build: the code's version (the worker's v/<version>/),
- * which with the book is part of every game's fingerprint. Returns { router, env, packReady }. */
+ * which with the book is part of every game's fingerprint. fastNodes: per position of a fast analysis, null for none
+ * (the phones' lite engine). Returns { router, env, packReady }. */
 export async function startApp({ driver, files, pool, fetch = globalThis.fetch?.bind(globalThis), site, log = consoleLog,
-                                 nodes = DEFAULT_NODES, scan = true, before = null, build = '' }) {
+                                 nodes = DEFAULT_NODES, fastNodes = FAST_NODES, scan = true, before = null, build = '' }) {
   let packRows = null;
   const packReady = site.puzzles().then(text => { packRows = JSON.parse(text); });
   packReady.catch(e => log.error('the puzzle pack failed to load', e));
@@ -74,7 +75,7 @@ export async function startApp({ driver, files, pool, fetch = globalThis.fetch?.
   const store = new Store(driver);
   const env = { store, files, profiles: new Profiles(files, store), fetch, log, pack, packs };
   if (before) await before(env);
-  const router = await serve({ env, pool, nodes, log, scan });
+  const router = await serve({ env, pool, nodes, fastNodes, log, scan });
   return { router, env, packReady };
 }
 

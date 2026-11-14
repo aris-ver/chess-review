@@ -2,6 +2,11 @@
 // both places until Python is retired (and the parity dumps are regenerated).
 
 export const DEFAULT_NODES = 1_000_000;
+// A fast review: the same engine and net at half the nodes, about twice as quick. Measured against a 4M-node search
+// on 292 positions of three reviewed games, it was closer than the reference reviews themselves (mean win% error
+// 1.71 against 2.48, p90 4.4 against 4.6, no position off by more than 10 points, the labels 75% the same against
+// 60%). The phones' lite net fell short of that, so it never stands in for this.
+export const FAST_NODES = 500_000;
 
 export const GRADE_K_LOW = 0.002;
 export const GRADE_RATING_LOW = 1000;

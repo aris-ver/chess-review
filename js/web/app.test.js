@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 
+import { FAST_NODES } from '../core/config.js';
 import { EVALS, GAMES_SCHEMA, PROFILE_DDL, Store, profileDb } from '../server/db.js';
 import { memoryFiles } from '../server/profiles-files.js';
 import { Profiles } from '../server/profiles.js';
@@ -71,6 +72,13 @@ test('the server answers as messages: JSON with header pairs, a pasted game, the
   const themes = await a.json('GET', '/api/puzzles/themes');
   assert.equal(themes.status, 200);
   assert.deepEqual(themes.json.themes.map(t => t.id), ['opening']);
+});
+
+test('a fast analysis: FAST_NODES unless the worker says otherwise, none for the phones', async () => {
+  assert.equal((await (await app()).json('GET', '/api/engine')).json.fast_nodes, FAST_NODES);
+  assert.equal((await (await app({ fastNodes: 7 })).json('GET', '/api/engine')).json.fast_nodes, 7);
+  assert.equal((await (await app({ fastNodes: undefined })).json('GET', '/api/engine')).json.fast_nodes, FAST_NODES);
+  assert.ok(!('fast_nodes' in (await (await app({ fastNodes: null })).json('GET', '/api/engine')).json));
 });
 
 test('eval_stream: a response, chunks of NDJSON, and the engine stopped once the page lets go', async () => {
