@@ -1,7 +1,7 @@
 // The small pure functions against scripts/dump_parity.py's pure.json.
 import { test } from 'node:test';
 
-import { load, same } from '../parity.js';
+import { load, same, sameAt } from '../parity.js';
 import { moveAccuracy } from './accuracy.js';
 import { fen } from './chess.js';
 import { base, gradeK, increment, labelFor, moverRating, onlyMove } from './classify.js';
@@ -18,7 +18,7 @@ const cases = {
   win_pct: ([cp, k, out]) => same(winPct(cp, k), out, `winPct(${cp}, ${k})`),
   to_pov: ([cp, m, s, p, out]) => same(toPov(cp, m, s, p), out, `toPov(${cp}, ${m}, ${s}, ${p})`),
   pov_win_pct: ([cp, m, s, p, k, out]) => same(povWinPct(cp, m, s, p, k), out, `povWinPct(${cp}, ${m}, ${s}, ${p}, ${k})`),
-  move_accuracy: ([x, out]) => same(moveAccuracy(x), out, `moveAccuracy(${x})`),
+  move_accuracy: c => sameAt(moveAccuracy(c[0]), c, 1, `moveAccuracy(${c[0]})`),   // PARITY_UPDATE rewrites it
   label_for: ([x, out]) => same(labelFor(x), out, `labelFor(${x})`),
   grade_k: ([r, out]) => same(gradeK(r), out, `gradeK(${r})`),
   increment: ([tc, out]) => same(increment(tc), out, `increment(${tc})`),

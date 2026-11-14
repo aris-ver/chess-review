@@ -1,13 +1,14 @@
 // Game accuracy, lichess style (lila AccuracyPercent).
 //
-// Per move: 103.1668 * exp(-0.04354 * win%loss) - 3.1669.
-// Per game and side: the average of (a) the harmonic mean of the move accuracies and (b) their mean weighted by
+// Per move: 103.1668 * exp(-0.04354 * win%loss) - 3.1669, plus lila's +1 "uncertainty bonus", clamped to 0..100.
+// Per game and side: the average of (a) the harmonic mean of the move accuracies, each floored at 1 as lila does
+// (so one lost move no longer halves the game), and (b) their mean weighted by
 // position volatility (stdev of win% over a sliding window), so blunders and sharp positions weigh more than a plain
 // mean. Book moves are excluded.
 
 import { pstdev, pyRound, pySum } from './py.js';
 
-export const moveAccuracy = wpLoss => Math.max(0.0, Math.min(100.0, 103.1668 * Math.exp(-0.04354 * wpLoss) - 3.1669));
+export const moveAccuracy = wpLoss => Math.max(0.0, Math.min(100.0, 103.1668 * Math.exp(-0.04354 * wpLoss) - 3.1669 + 1));
 
 /** White-POV win% after each ply, derived from the mover-POV numbers on classified move rows. */
 function wpWhiteSequence(moves, startWpWhite) {
@@ -38,6 +39,6 @@ export function gameAccuracy(moves, side, startWpWhite = 50.0) {
   }
   if (!accs.length) return null;
   const weighted = pySum(accs.map((a, i) => a * weights[i])) / pySum(weights);
-  const harmonic = accs.length / pySum(accs.map(a => 1 / Math.max(a, 1e-9)));
+  const harmonic = accs.length / pySum(accs.map(a => 1 / Math.max(a, 1)));
   return pyRound((weighted + harmonic) / 2, 1);
 }

@@ -4556,12 +4556,12 @@ function accuracyOf(g, side, keep) {
   const accs = [], weights = [];
   for (const m of g.moves) {
     if (sideOf(m) !== side || m.wp_loss == null || m.label === 'book' || !keep(m)) continue;
-    accs.push(Math.max(0, Math.min(100, 103.1668 * Math.exp(-0.04354 * m.wp_loss) - 3.1669)));
+    accs.push(Math.max(0, Math.min(100, 103.1668 * Math.exp(-0.04354 * m.wp_loss) - 3.1669 + 1)));
     weights.push(vols[m.ply]);
   }
   if (!accs.length) return null;
   const weighted = accs.reduce((a, x, i) => a + x * weights[i], 0) / weights.reduce((a, x) => a + x, 0);
-  const harmonic = accs.length / accs.reduce((a, x) => a + 1 / Math.max(x, 1e-9), 0);
+  const harmonic = accs.length / accs.reduce((a, x) => a + 1 / Math.max(x, 1), 0);
   return (weighted + harmonic) / 2;
 }
 // Where the middlegame and the endgame begin, as position indexes (0 is the start), after lichess's Divider: the

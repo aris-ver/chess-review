@@ -32,8 +32,9 @@ let code = '';
  * 2: the losing side's material rule needs the loss at every cut of the lines and an eval drop (2026-11-12).
  * 3: a miss that ends a mistake's or blunder's worth below the position before the opponent's slip keeps that label;
  *    a rook or more lost through any piece is a blunder; the getting-mated rules skip the engine's choice; a
- *    sacrifice counts what the move captured (2026-11-13). */
-export const RULES_VERSION = 3;
+ *    sacrifice counts what the move captured (2026-11-13).
+ * 4: accuracy: lila's +1 per move and a harmonic floor of 1 (2026-11-14). */
+export const RULES_VERSION = 4;
 
 /** What stands in for classify.code_fingerprint: the build's version stamp and the opening book's, set once at
  * startup by whoever knows them (the desktop app, js/desktop/main.js: its version; the web worker, js/web/app.js:
