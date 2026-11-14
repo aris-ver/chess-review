@@ -17,6 +17,7 @@ import { classifyGame } from '../core/classify.js';
 import { select } from '../core/critical.js';
 import { comment, explain, headline, moveLabel, moveLine, punishing, reasons, theory } from '../core/explain.js';
 import { extract } from '../core/facts.js';
+import { cleanOpeningName } from '../core/normalise.js';
 import { povWinPct, toWhitePov } from '../core/pov.js';
 import { formatFixed, pyRound } from '../core/py.js';
 import { POSITIONS_SQL, gameFingerprint, loadMultipv, sha1 } from './classify.js';
@@ -79,6 +80,7 @@ export function buildGame(game, positions, moves, critical, multipv, username = 
   const posByPly = new Map(positions.map(p => [p.ply, p]));
   const critByPly = new Map(critical.map(c => [c.ply, c]));
   const p0 = positions[0];
+  const opening = cleanOpeningName(game.opening_name);   // names stored before cleanOpeningName came in
 
   const outMoves = [], keyMoments = [];
   for (const m of moves) {
@@ -92,8 +94,8 @@ export function buildGame(game, positions, moves, critical, multipv, username = 
       wp_loss: m.wp_loss == null ? null : pyRound(m.wp_loss, 1),
       best_san: m.best_san, best_uci: before.best_move,
       clock: m.clock_remaining, spent: m.time_spent,
-      comment: facts ? comment(facts, m.in_book ? game.opening_name : null) : [],
-      ...(facts ? panelFields(facts, m.move_played, m.in_book ? game.opening_name : null, before, after, multipv[before.fen_key] ?? null)
+      comment: facts ? comment(facts, m.in_book ? opening : null) : [],
+      ...(facts ? panelFields(facts, m.move_played, m.in_book ? opening : null, before, after, multipv[before.fen_key] ?? null)
         : { short: [], full: [], line: null }),
       hung: facts ? facts.hung_pieces.map(h => h.square) : [],
       reply_uci: facts && facts.refutation_uci.length ? facts.refutation_uci[0] : null,
@@ -122,7 +124,7 @@ export function buildGame(game, positions, moves, critical, multipv, username = 
     played_at: game.played_at,
     time_control: game.time_control, time_class: game.time_class,
     my_colour: game.my_colour, result: game.result, termination: game.termination,
-    eco: game.eco, opening_name: game.opening_name, left_book_ply: leftBook,
+    eco: game.eco, opening_name: opening, left_book_ply: leftBook,
     white: { ...white, accuracy: gameAccuracy(moves, 'white', wpWhite(p0)), counts: counts(moves, 'white') },
     black: { ...black, accuracy: gameAccuracy(moves, 'black', wpWhite(p0)), counts: counts(moves, 'black') },
     start_fen: p0.fen, start_wp_white: wpWhite(p0),

@@ -378,11 +378,25 @@ export function playedAt(headers, fallbackEpoch = null) {
   return fallbackEpoch === null || fallbackEpoch === undefined ? null : utcIso(fallbackEpoch);
 }
 
-/** normalise._opening_name: the last part of chess.com's ECOUrl, or the Opening tag. */
+/** normalise._opening_name: the last part of chess.com's ECOUrl (cleaned), or the Opening tag. */
 export function openingName(headers) {
   const url = headers.value('ECOUrl');
-  if (url) return url.replace(/\/+$/, '').split('/').at(-1).replace(/-(?=[A-Za-z0-9])/g, ' ');
+  if (url) return cleanOpeningName(url.replace(/\/+$/, '').split('/').at(-1).replace(/-(?=[A-Za-z0-9])/g, ' '));
   return headers.value('Opening');
+}
+
+const POSSESSIVE = /\b(King|Queen|Bishop|Petrov|Alekhine|Bird|Owen|Anderssen)s\b/g;
+
+/** chess.com's ECOUrl slug as a name: without the move text it ends in, apostrophes back where the slug dropped them.
+ * Names stored before this are cleaned where they are read (site.js, aggregates.js), so the databases stay as they
+ * are. A PGN Opening tag or lichess's name is already a proper name and never comes here. */
+export function cleanOpeningName(name) {
+  if (!name) return name;
+  return name
+    .replace(/(?:\.\.\.|\s)\d+\.(?:\.\.)?[A-Za-z].*$/, '')     // " 1...e5", " 3.cxd5 exd5 4.Nc3", "Defense...4.Nc3 Nf6"
+    .replace(POSSESSIVE, "$1's")
+    .replace(/\bVan t Kruijs\b/, "Van 't Kruijs")
+    .trim();
 }
 
 function isStandard(game) {

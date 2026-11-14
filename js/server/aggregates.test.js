@@ -10,6 +10,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 
+import { cleanOpeningName } from '../core/normalise.js';
 import { PARITY, load, loadPath, same, sameAt, strict, updatingDumps } from '../parity.js';
 import { webSqlite } from '../web/db.js';
 import { build, floatStr, gameAccuracies, queryAll, render, sqlRound } from './aggregates.js';
@@ -80,7 +81,7 @@ function compare(db, d, py, games, what) {
     if (!g.eco) continue;
     const e = g.eco.slice(0, 3);
     if (!openings.has(e)) openings.set(e, new Set());
-    openings.get(e).add(g.opening_name);
+    openings.get(e).add(cleanOpeningName(g.opening_name));   // the stored name, as aggregates reads it
   }
   for (const r of d.by_eco) assert.ok(openings.get(r[0])?.has(r[1]), `${what}.by_eco ${r[0]}: ${r[1]}`);
   const noOpening = rows => rows.map(r => [r[0], null, ...r.slice(2)]);

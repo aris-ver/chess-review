@@ -18,6 +18,7 @@
 // Python fetches rows as tuples; they are arrays here, in the same column order, so render() reads them by index.
 
 import { gameAccuracy } from '../core/accuracy.js';
+import { cleanOpeningName } from '../core/normalise.js';
 import { povWinPct } from '../core/pov.js';
 import { formatFixed, pyRound, pySum } from '../core/py.js';
 
@@ -95,7 +96,7 @@ function query(db) {
            avg(wp_loss) bleed, 100.0 * sum(label='blunder') / count(*) blunder_pct,
            100.0 * count(DISTINCT CASE WHEN result='win' THEN game_id END) / count(DISTINCT game_id) win_rate
     FROM my WHERE eco IS NOT NULL GROUP BY 1 HAVING games >= 3 ORDER BY bleed DESC LIMIT 15
-  `).map(r => tuple(r, { 3: 2, 4: 1, 5: 0 }));
+  `).map(r => tuple({ ...r, opening: cleanOpeningName(r.opening) }, { 3: 2, 4: 1, 5: 0 }));   // names stored before cleanOpeningName
 
   out.by_ply = db.all(`
     SELECT ${caseOf('ply', PLY_BUCKETS)} bucket, count(*) moves, avg(wp_loss) bleed,
