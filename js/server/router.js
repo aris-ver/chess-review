@@ -81,7 +81,7 @@ export class Router {
         if (out) return out;
       }
       if (method === 'GET' || method === 'HEAD') return await this.get(url);
-      if (method === 'POST') return await this.post(url.pathname, body);
+      if (method === 'POST') return await this.post(url.pathname, body, url.searchParams);
       return json({ error: `Unsupported method (${pyRepr(method)})` }, 501);
     } catch (e) {     // the desktop server would log it and drop the connection; the bridge answers this
       this.log?.error?.(`${method} ${path} failed: ${e?.stack ?? e}`);
@@ -141,7 +141,10 @@ export class Router {
     }
     if (path === '/api/engine') {
       try {
-        return json({ name: await this.explorer.name(), nodes: this.explorer.nodes, multipv: MULTIPV_N });
+        // fast_nodes: a fast analysis's, left out where there is none (the page then offers no choice)
+        const fast = runner.analyser.fastNodes;
+        return json({ name: await this.explorer.name(), nodes: this.explorer.nodes, ...(fast ? { fast_nodes: fast } : {}),
+                      multipv: MULTIPV_N });
       } catch (e) {
         return json({ error: String(e.message ?? e) }, 500);
       }
@@ -210,7 +213,7 @@ export class Router {
     return { status: 200, headers: { 'Content-Type': TYPES[ext] ?? 'application/octet-stream' }, body: bytes };
   }
 
-  async post(path, raw) {
+  async post(path, raw, query = new URLSearchParams()) {
     const { runner: r, env } = this;
     if (path === '/api/pgn') return this.pgn(this.body(raw));
     if (path === '/api/profiles') {
@@ -260,7 +263,12 @@ export class Router {
       if (action.startsWith('analyse/')) {
         const gameId = await this.gameIdFor(p, m[3]);
         if (gameId === null) return json({ error: 'unknown game' }, 404);
-        return this.start(r.newJob('analyse', p, gameId, m[3]));
+        const job = r.newJob('analyse', p, gameId, m[3]);
+        // ?mode=fast | full: the depth the page chose for this review; without one, the saved default (Runner.defaultFast)
+        const mode = query.get('mode');
+        if (mode === 'fast' && r.analyser.fastNodes !== null) job.fast = true;
+        else if (mode === 'full' || mode === 'fast') job.fast = false;
+        return this.start(job);
       }
       return this.start(r.newJob(action, p));
     }
@@ -314,8 +322,9 @@ export class Router {
 
 /** Everything serve.main sets up before serving, over the given adapters: the profiles' start-up chores, the job
  * runner (carrying on the builds the last run left), the explorer and the new-games scan. Returns the Router.
- * env: games.js's env; pool: the engine pool; nodes: per position. */
-export async function serve({ env, pool, nodes, log = null, scan = true, work = {} }) {
+ * env: games.js's env; pool: the engine pool; nodes: per position; fastNodes: per position of a fast analysis, null
+ * for none (then the page offers no choice). */
+export async function serve({ env, pool, nodes, fastNodes = null, log = null, scan = true, work = {} }) {
   await env.profiles.migrateLegacy();
   await env.profiles.expireShown();     // "new" flags the list displayed in an earlier run: seen
   const onSwitch = env.onSwitch;     // a sync switch or release: the own puzzles' cache goes, then the app's own hook
@@ -323,7 +332,7 @@ export async function serve({ env, pool, nodes, log = null, scan = true, work = 
     puzzleRoutes.forget(env);
     await onSwitch?.();
   };
-  const runner = new Runner(env, { pool, nodes, work: Object.assign({}, ...ROUTES.map(r => r.work), work) });
+  const runner = new Runner(env, { pool, nodes, fastNodes, work: Object.assign({}, ...ROUTES.map(r => r.work), work) });
   await runner.loadBuilds();
   await runner.kick();
   const explorer = new Explorer(pool, { nodes, evals: await env.store.evals() });

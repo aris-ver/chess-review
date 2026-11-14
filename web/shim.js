@@ -74,7 +74,10 @@
     'body.hasbar:has(#review:not(.hidden)) #web-loading{bottom:calc(138px + env(safe-area-inset-bottom))}' +
     // over the page's Start review, pinned above that nav
     'body:has(#review:not(.hidden) .panel[data-tab="overview"] .ovfoot:not(.used)) #web-loading{bottom:calc(136px + env(safe-area-inset-bottom))}' +
-    'body.hasbar:has(#review:not(.hidden) .panel[data-tab="overview"] .ovfoot:not(.used)) #web-loading{bottom:calc(198px + env(safe-area-inset-bottom))}}' +
+    'body.hasbar:has(#review:not(.hidden) .panel[data-tab="overview"] .ovfoot:not(.used)) #web-loading{bottom:calc(198px + env(safe-area-inset-bottom))}' +
+    // ...one row higher with Fast | Full (or the full re-analysis offer) under it
+    'body:has(#review:not(.hidden) .panel[data-tab="overview"] .ovfoot:not(.used) :is(.ovmode,.ovdeeper)) #web-loading{bottom:calc(170px + env(safe-area-inset-bottom))}' +
+    'body.hasbar:has(#review:not(.hidden) .panel[data-tab="overview"] .ovfoot:not(.used) :is(.ovmode,.ovdeeper)) #web-loading{bottom:calc(232px + env(safe-area-inset-bottom))}}' +
     '@media (max-width:900px) and (orientation:landscape) and (max-height:500px){body:has(#review:not(.hidden)) #web-loading' +
     '{top:calc(64px + env(safe-area-inset-top));bottom:auto!important;left:auto;right:max(12px,env(safe-area-inset-right));max-width:min(420px,45vw)}}';
   document.head.appendChild(style);

@@ -21,6 +21,7 @@ import { cleanOpeningName } from '../core/normalise.js';
 import { povWinPct, toWhitePov } from '../core/pov.js';
 import { formatFixed, pyRound } from '../core/py.js';
 import { POSITIONS_SQL, gameFingerprint, loadMultipv, sha1 } from './classify.js';
+import { fastGames, isFastGame } from './eval-cache.js';
 
 /** The review's file name: a chess.com/lichess game's number, else a hash of its id. */
 export function slug(gameId) {
@@ -150,11 +151,17 @@ export function indexEntry(game, review) {
   };
 }
 
-/** The review JSON, stamped with the fingerprint of what it was built from (see cached). */
-function review(game, positions, multipv, username) {
+/** What a review's fingerprint is made of besides the game and its evals: a fast one (some positions searched by a
+ * fast analysis) says so, a full one is as it always was. */
+const fpExtra = (username, fast) => (fast ? [username, 'fast'] : [username]);
+
+/** The review JSON, stamped with the fingerprint of what it was built from (see cached). fast: some of its positions
+ * were searched by a fast analysis (fast: true in the JSON, and the page offers a full one). */
+function review(game, positions, multipv, username, fast = false) {
   const moves = classifyGame(game, positions, multipv);
   const out = buildGame(game, positions, moves, select(moves), multipv, username);
-  out.fp = gameFingerprint(game, positions, multipv, username);
+  if (fast) out.fast = true;
+  out.fp = gameFingerprint(game, positions, multipv, ...fpExtra(username, fast));
   return out;
 }
 
@@ -174,7 +181,7 @@ const reviewPath = (p, id) => `${p.siteDir}/games/${id}.json`;
 /** One game's review, built from the database now. */
 export function gameReview(db, p, game) {
   const positions = db.all(`${POSITIONS_SQL} WHERE p.game_id = ? ORDER BY p.game_id, p.ply`, [game.game_id]);
-  return review(game, positions, loadMultipv(db, game.game_id), p.username);
+  return review(game, positions, loadMultipv(db, game.game_id), p.username, isFastGame(db, game.game_id));
 }
 
 /** Rebuild one game's JSON (the server does, during on-demand analysis). Returns the index entry. */
@@ -208,6 +215,7 @@ export async function build(db, files, p) {
     byGame.get(r.game_id).push(r);
   }
   const username = p.username;
+  const fast = fastGames(db);
   await files.mkdir(`${p.siteDir}/games`);
   const index = [];
   let rebuilt = 0;
@@ -216,9 +224,10 @@ export async function build(db, files, p) {
     if (!pos || pos.length < 2) continue;
     // only games that are new, or whose evals (or the code) changed since their JSON was written, are redone
     const path = reviewPath(p, slug(g.game_id));
-    let r = await cached(files, path, gameFingerprint(g, pos, multipv, username));
+    const isFast = fast.has(g.game_id);
+    let r = await cached(files, path, gameFingerprint(g, pos, multipv, ...fpExtra(username, isFast)));
     if (r === null) {
-      r = review(g, pos, multipv, username);
+      r = review(g, pos, multipv, username, isFast);
       await files.writeText(path, JSON.stringify(r));
       rebuilt += 1;
     }
