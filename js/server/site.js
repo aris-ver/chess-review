@@ -47,8 +47,8 @@ function wpWhite(p) {
 }
 
 /** What the move panel shows of a move beyond its comment: `short`, the sentences that say something, without their
- * lines; `full`, the same with their lines (the Explain view); `line`, the one line Explain plays out
- * (explain.moveLine), with the eval it ends on (the position it starts from, or for a great move's next best its own
+ * lines; `full`, the same with their lines (the Explain view); `line`, the one line Explain plays out: the sequence
+ * its text prints, or null (explain.moveLine), with the eval it ends on (the position it starts from, or for a great move's next best its own
  * MultiPV line). A bad move with no reason has no `short` but its punishing line, told in `full` (explain.punishing).
  * played: the move's UCI; before/after: the evals rows around the move; ranks: the MultiPV rows before it,
  * or null. */

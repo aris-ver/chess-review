@@ -1,17 +1,21 @@
 // The move panel's text (explain.reasons / moveLine, sent by site.panelFields): each sentence with its line and
-// without, filler left out, and the one line Explain plays out. comment() itself is unchanged (the parity dumps).
+// without, filler left out, and the one line Explain plays out: the sequence its text prints, or none. comment()
+// itself is unchanged (the parity dumps).
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 import { setBook } from './book.js';
 import { boardFromFen, moveFromUci, san } from './chess.js';
-import { comment, moveLine, reasons, sentences } from './explain.js';
+import { comment, line, moveLine, reasons, sentences } from './explain.js';
 import { extract } from './facts.js';
 import { panelFields } from '../server/site.js';
 
 setBook([]);
 
-const facts = ({ fen, played, label, ply, wp = [50, 50], before, after, multipv = null, clock = null, spent = null, prev = null }) => {
+// every fixture the tests build, for the invariant at the end
+const SEEN = [];
+const facts = x => { const f = facts0(x); SEEN.push([x, f]); return f; };
+const facts0 = ({ fen, played, label, ply, wp = [50, 50], before, after, multipv = null, clock = null, spent = null, prev = null }) => {
   const board = boardFromFen(fen);
   const best = before.pv?.length ? san(board, moveFromUci(before.pv[0])) : null;
   return extract({ game_id: 'g', ply, side_to_move: board.turn, is_mine: true, move_played: played,
@@ -109,28 +113,53 @@ test('panel: two sentences in one comment string are told apart', () => {
     label: 'good', ply: 15, wp: [44, 40], before: quiet(['g4f3', 'g2f3']), after: quiet(['b1c3']) });
   assert.deepEqual(comment(f), ['c6 is a good move. Bxf3 was better: it trades the bishop for the knight.']);
   assert.deepEqual(reasons(f).map(r => r.text), ['Bxf3 was better: it trades the bishop for the knight.']);
-  // the reason is about the engine's choice: its line, from before the move
-  assert.deepEqual(moveLine(f, 'c7c6'), { base_ply: 15, san: ['Bxf3', 'gxf3'], uci: ['g4f3', 'g2f3'], on: 'before' });
+  // the reason is about the engine's choice, but prints none of its line: nothing to play
+  assert.equal(moveLine(f, 'c7c6'), null);
   const e = facts({ ...PUSH, label: 'excellent', wp: [50, 48], before: quiet(['d2d3', 'b8c6']) });
   assert.deepEqual(comment(e), ['h3 is an excellent move: it threatens to take the bishop on g4. d3 was the engine\'s choice.']);
   assert.deepEqual(reasons(e).map(r => r.text), ['h3 is an excellent move: it threatens to take the bishop on g4.']);
   // the short form leaves the verdict to the header, as a best move reads
   assert.deepEqual(reasons(e).map(r => r.short), ['h3 threatens to take the bishop on g4.']);
-  // about the move played: the move and the reply to it
-  assert.deepEqual(moveLine(e, 'h2h3'), { base_ply: 6, san: ['h3', 'Bh5', 'd3', 'Nc6'], uci: ['h2h3', 'g4h5', 'd2d3', 'b8c6'], on: 'played' });
+  // about the move played, with no line printed: nothing to play
+  assert.equal(moveLine(e, 'h2h3'), null);
 });
 
-test('panel: a miss plays out the move missed; a bare "Missed X" is filler', () => {
+test('panel: a miss plays out the move missed when it prints it; a bare "Missed X" is filler', () => {
   const m = facts({ fen: '2B2R2/4k3/2Q5/4B3/3p4/8/PPP2P1P/R3K3 w Q - 1 27', played: 'c6d7', label: 'miss', ply: 52,
     wp: [100, 100], before: { eval_cp: null, mate_in: 1, pv: ['e5d6'] },
     after: { eval_cp: null, mate_in: -2, pv: ['e7f8', 'e5d4', 'f8g8', 'd7g7'] } });
   assert.deepEqual(reasons(m).map(r => r.short), ['Missed Bd6#, which was mate.', 'After Qd7+ there is still mate in 2.']);
-  assert.deepEqual(moveLine(m, 'c6d7'), { base_ply: 52, san: ['Bd6#'], uci: ['e5d6'], on: 'before' });
+  // the mating move is named, no sequence printed: no line to play
+  assert.equal(moveLine(m, 'c6d7'), null);
   const stronger = facts({ fen: 'r3qrk1/pp1b1ppp/2n2n2/1BbN4/8/4BN2/PPP2PPP/R2QK2R b KQ - 2 11', played: 'c5e3',
     label: 'miss', ply: 21, wp: [92, 80], before: { eval_cp: 100, mate_in: null, pv: ['f6d5', 'd1d5'] },
     after: { eval_cp: 0, mate_in: null, pv: ['d5e3', 'f6g4', 'd1d2', 'g4e3', 'f2e3', 'a7a6'] } });
   assert.equal(comment(stronger)[0], 'Missed Nxd5, which was stronger: 11... Nxd5 12. Qxd5.');
   assert.ok(!reasons(stronger).some(r => r.text.startsWith('Missed')));
+  // with no reason, Explain shows the move missed with its line, and plays that
+  assert.deepEqual(moveLine(stronger, 'c5e3'), { base_ply: 21, san: ['Nxd5', 'Qxd5'], uci: ['f6d5', 'd1d5'], on: 'before' });
+  const p = panelFields(stronger, 'c5e3', null, { eval_cp: 100, mate_in: null, side_to_move: 'black' },
+    { eval_cp: 0, mate_in: null, side_to_move: 'white' }, null);
+  assert.deepEqual(p.full, ['Missed Nxd5, which was stronger: 11... Nxd5 12. Qxd5.']);
+  assert.equal(p.line.base_ply, 21);
+});
+
+test('panel: a missed mate in two or more plays out the mate it prints', () => {
+  const f = facts({ fen: '7k/2r3pp/8/8/8/8/8/RR4K1 w - - 0 1', played: 'a1a2', label: 'blunder', ply: 0, wp: [100, 50],
+    before: { eval_cp: null, mate_in: 2, pv: ['b1b8', 'c7c8', 'b8c8'] }, after: { eval_cp: 0, mate_in: null, pv: ['c7c1', 'b1c1'] } });
+  assert.deepEqual(reasons(f).map(r => r.text), ['Rb8+ mates in 2: 1. Rb8+ Rc8 2. Rxc8#.']);
+  assert.deepEqual(reasons(f).map(r => r.short), ['Rb8+ mates in 2.']);
+  assert.deepEqual(moveLine(f, 'a1a2'), { base_ply: 0, san: ['Rb8+', 'Rc8', 'Rxc8#'], uci: ['b1b8', 'c7c8', 'b8c8'], on: 'before' });
+});
+
+test('panel: a bad move whose only reason names the engine\'s move has no line to play', () => {
+  // 3.a3? leaves the queen on h4 en prise: "Nxh4 wins the queen" names the move, prints no sequence
+  const f = facts({ fen: 'rnb1kbnr/pppp1ppp/8/4p3/4P2q/5N2/PPPP1PPP/RNBQKB1R w KQkq - 2 3', played: 'a2a3', label: 'mistake', ply: 4,
+    wp: [80, 55], before: { eval_cp: 800, mate_in: null, pv: ['f3h4', 'g8f6'] }, after: { eval_cp: 0, mate_in: null, pv: ['h4h5', 'd2d3'] } });
+  assert.deepEqual(reasons(f).map(r => r.text), ['Nxh4 wins the queen on h4.']);
+  assert.equal(moveLine(f, 'a2a3'), null);
+  const p = panelFields(f, 'a2a3', null, { eval_cp: 800, mate_in: null, side_to_move: 'white' }, { eval_cp: 0, mate_in: null, side_to_move: 'black' }, null);
+  assert.deepEqual([p.full, p.line], [['Nxh4 wins the queen on h4.'], null]);
 });
 
 test('panel: a great move plays out the next best; a brilliant move the line after the offer', () => {
@@ -150,6 +179,15 @@ test('panel: a great move plays out the next best; a brilliant move the line aft
   assert.deepEqual(reasons(b).map(r => r.short), ['Ne7 is brilliant: it offers the knight on e7.',
     'Taking it does not pay: Black is winning.']);
   assert.equal(moveLine(b, 'g8e7').base_ply, 54);
+});
+
+test('panel: a great move whose next best only leaves the game level has no line to play', () => {
+  const fen = 'r2k1b1r/pp1n4/4p2p/2P1B1p1/3R4/5N2/P4PPP/2K4R b - - 2 19';
+  const multipv = [{ rank: 1, move: 'h8h7', eval_cp: 0, mate_in: null, pv: ['h8h7'] },
+    { rank: 2, move: 'f8e7', eval_cp: 0, mate_in: null, pv: ['f8e7', 'd4d7'] }];
+  const g = facts({ fen, played: 'h8h7', label: 'great', ply: 37, before: quiet(['h8h7']), after: quiet(['e5g3']), multipv });
+  assert.deepEqual(reasons(g).map(r => r.text), ['The next best, Be7, leaves the game level.']);
+  assert.equal(moveLine(g, 'h8h7'), null);
 });
 
 test('panel: a book move has no reason or line, but Explain says the opening it comes from', () => {
@@ -195,20 +233,20 @@ test('panel: getting out of check, blocking it and taking back go without saying
   assert.deepEqual(comment(empty(inacc)), ['a3 is an inaccuracy.', 'Be2 was better: it clears the way to castle.']);
 });
 
-test('panel: material won and a threat made are still said, and played out', () => {
+test('panel: material won and a threat made are still said, with nothing to play', () => {
   // 4...Qxh1 takes the rook 4.Nc3 left: said even with the game decided
   const f = facts({ fen: 'rnb1kbnr/ppp2ppp/8/3qp3/6P1/2N5/PP1PPP1P/R1BQKBNR b KQkq - 1 4', played: 'd5h1', label: 'best', ply: 7,
     wp: [93, 93], before: { eval_cp: 687, mate_in: null, pv: ['d5h1', 'g1f3'] }, after: { eval_cp: -687, mate_in: null, pv: ['g1f3', 'c8g4'] },
     prev: { fen: HANG.fen, move_played: 'b1c3' } });
   assert.deepEqual(reasons(f).map(r => r.short), ['Qxh1 wins the rook on h1.']);
-  assert.deepEqual(moveLine(f, 'd5h1'), { base_ply: 7, san: ['Qxh1', 'Nf3', 'Bxg4'], uci: ['d5h1', 'g1f3', 'c8g4'], on: 'played' });
+  assert.equal(moveLine(f, 'd5h1'), null);
   const t = facts(PUSH);
   assert.deepEqual(reasons(t).map(r => r.short), ['h3 threatens to take the bishop on g4.']);
-  assert.equal(moveLine(t, 'h2h3').on, 'played');
+  assert.equal(moveLine(t, 'h2h3'), null);
   // the engine's choice made the threat: that is why it was better
   const g = facts({ ...PUSH, played: 'a2a3', label: 'good', wp: [50, 46], after: quiet(['b8c6', 'h2h3']) });
   assert.deepEqual(reasons(g).map(r => r.short), ['h3 was better: it threatens to take the bishop on g4.']);
-  assert.deepEqual(moveLine(g, 'a2a3'), { base_ply: 6, san: ['h3', 'Bh5'], uci: ['h2h3', 'g4h5'], on: 'before' });
+  assert.equal(moveLine(g, 'a2a3'), null);
 });
 
 test('panel: with the game decided either way, only material and mate are worth a word', () => {
@@ -219,4 +257,18 @@ test('panel: with the game decided either way, only material and mate are worth 
     ['a3 is a good move. h3 was better: it threatens to take the bishop on g4.']);
   // a move that takes the game there, or out of it, is not one of them
   assert.equal(reasons(facts({ ...PUSH, wp: [88, 91] })).length, 1);
+});
+
+// --- the rule over every fixture above: a line only where Explain prints it, and then exactly that line ---
+
+test('panel: Play line plays exactly the sequence the Explain text prints, and only then', () => {
+  assert.ok(SEEN.length > 20);
+  const numbered = /\b\d+\.(\.\.)? \S/;
+  for (const [x, f] of SEEN) {
+    const other = f.side === 'white' ? 'black' : 'white';
+    const p = panelFields(f, x.played, null, { ...x.before, side_to_move: f.side }, { ...x.after, side_to_move: other }, x.multipv ?? null);
+    const text = p.full.join(' ');
+    if (p.line) assert.ok(text.includes(line(p.line.san, p.line.base_ply)), `${f.san}: ${text}`);
+    if (!numbered.test(text)) assert.equal(p.line, null, `${f.san}: ${text}`);
+  }
 });

@@ -68,12 +68,13 @@ function gains(t) {
 // false. `clock`: the "Played ..." sentence.
 // `glue`: comment() runs it on after the sentence before, in one string. `on`: the line a reason is about (moveLine):
 // 'after' the opponent's reply and on, 'before' the engine's choice and on, 'played' the move and the reply,
-// 'second' a great move's next best.
+// 'second' a great move's next best. `shows`: `text` prints that line, move for move (only withRef() sentences with
+// a line do); a sentence that merely names a move ("Bxa5 was the only move.") prints none, and has nothing to play.
 
 const S = (on, text, short = text) => ({ text, short, reason: true, on });
 const F = (text, short = text) => ({ text, short, reason: false });
 /** A sentence ending in its line: built with the line `ref` and without it. */
-const withRef = (on, fn, ref, reason = true) => ({ text: fn(ref), short: fn(null), reason, on });
+const withRef = (on, fn, ref, reason = true) => ({ text: fn(ref), short: fn(null), reason, on, shows: !!ref });
 /** ': <line>.' or '.'. */
 const end = ref => (ref ? `: ${ref}.` : '.');
 
@@ -239,7 +240,7 @@ function explainSentences(f) {
   }
   else if (f.missed_mate && best) {
     s.push(f.missed_mate === 1 ? S('before', `${best} was mate.`)
-      : S('before', `${best} mates in ${f.missed_mate}: ${line(f.best_line, f.ply)}.`, `${best} mates in ${f.missed_mate}.`));
+      : withRef('before', r => `${best} mates in ${f.missed_mate}${end(r)}`, f.best_line.length ? line(f.best_line, f.ply) : null));
   }
   else if (ref) [s[0], aboutLost] = cost();
 
@@ -438,10 +439,11 @@ export function comment(f, opening = null) {
 }
 
 /** The sentences that say something: no verdict said again, no bare "X was better", no standing the eval bar
- * shows, no clock. Each {text (with its line), short (without), on (the line it is about)}. Empty: there is nothing
- * more to explain. */
+ * shows, no clock. Each {text (with its line), short (without), on (the line it is about), shows (text prints that
+ * line)}. Empty: there is nothing more to explain. */
 export function reasons(f, opening = null) {
-  return sentences(f, opening).filter(s => s.reason && !s.clock).map(({ text, short, on }) => ({ text, short, on }));
+  return sentences(f, opening).filter(s => s.reason && !s.clock)
+    .map(({ text, short, on, shows }) => ({ text, short, on, shows: !!shows }));
 }
 
 /** A book move's Explain: the opening it is theory in ("Nf6 is theory in the Sicilian Defense: Najdorf Variation."),
@@ -453,24 +455,26 @@ export function theory(f, opening = null) {
 const PUNISHED = new Set(['mistake', 'blunder', 'miss']);
 
 /** A mistake, blunder or miss with no reason: the sentence that carries the line punishing it ("After 25. d6+ Kh8
- * 26. dxe7, White is now winning.", or the move a miss missed), as {text, short, on}, or null. Explain shows it and
- * plays its line; the short form stays empty (no filler under the header). Inaccuracies are left out: their line is
- * the engine's play on, not a refutation. */
+ * 26. dxe7, White is now winning.", or the move a miss missed), as {text, short, on, shows}, or null. Explain
+ * shows it and plays its line; the short form stays empty (no filler under the header). Inaccuracies are left out:
+ * their line is the engine's play on, not a refutation. */
 export function punishing(f, opening = null) {
   if (!PUNISHED.has(f.label)) return null;
   const ss = sentences(f, opening);
   if (ss.some(s => s.reason && !s.clock)) return null;
-  const p = ss.find(s => !s.clock && s.on && s.text !== s.short);
-  return p ? { text: p.text, short: p.short, on: p.on } : null;
+  const p = ss.find(s => !s.clock && s.on && s.shows);
+  return p ? { text: p.text, short: p.short, on: p.on, shows: true } : null;
 }
 
-/** The one line the move's explanation plays out, as {base_ply (main-line moves before it), san, uci, on}, or null: the
- * line its first reason is about (the opponent's reply to a bad move, the move a miss missed, what the engine's choice
- * does, the move played and its reply), and a great move's next best before all. With no reason, a bad move's
- * punishing line (punishing()); else null, nothing to play. played: the move's UCI. */
+/** The one line the move's explanation plays out, as {base_ply (main-line moves before it), san, uci, on}, or null:
+ * the sequence its Explain text prints, move for move -- of the sentences shown (its reasons, or with none a bad
+ * move's punishing() sentence) the first that prints its line (shows): the opponent's reply to a bad move, the move a
+ * miss missed, the engine's mate, a great move's next best losing material, the move played and its reply. A sentence
+ * that only names a move ("Bxa5 was the only move.", "Missed Qd7#, which was mate.") prints no sequence: with no
+ * sentence that does, null, nothing to play. played: the move's UCI. */
 export function moveLine(f, played, opening = null) {
   const rs = reasons(f, opening);
-  const r = rs.find(x => x.on === 'second') ?? rs.find(x => x.on) ?? punishing(f, opening);    // a great move: what the next best leaves
+  const r = (rs.length ? rs : [punishing(f, opening)]).find(x => x?.shows);
   if (!r) return null;
   const mk = (base, san, uci) => (san.length && uci.length >= san.length
     ? { base_ply: base, san: [...san], uci: uci.slice(0, san.length), on: r.on } : null);

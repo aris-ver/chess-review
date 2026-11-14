@@ -4421,7 +4421,7 @@ function renderNow() {
     // what the move did and why, without its line; Explain swaps in the line, and a way to play it out. A move with
     // nothing to say has its header alone (and Explain greyed out).
     html += (state.explain ? m.full : m.short).map(t => `<p>${esc(t)}</p>`).join('');
-    if (state.explain && m.line && m.line.uci.length) html += `<p><button class="playline" id="b-playline" title="Play the line on the board (← → to step, Esc to go back)">▶ Play line</button></p>`;
+    if (state.explain && lineShown(m)) html += `<p><button class="playline" id="b-playline" title="Play the line on the board (← → to step, Esc to go back)">▶ Play line</button></p>`;
   } else {
     // a review written before the panel had its own fields: the comment as it was, less the clock sentence
     const lines = (m.comment || []).filter(t => !t.startsWith('Played '));
@@ -4436,12 +4436,20 @@ function renderNow() {
 }
 // The panel's own fields (site.panelFields): a review built before them has none, and keeps the old view.
 const hasReasons = m => !!m && Array.isArray(m.short);
-// Explain greys out on a move that has nothing to explain (a bad move with no reason still has its line to show, a
-// book move the opening it comes from).
+// A line as explain.line() prints it ("4... Qxh1 5. Nf3"). ▶ Play line is offered only when the Explain text shows
+// the very sequence it plays (a review stored before that rule may still carry a line its text doesn't print).
+const lineText = L => L.san.map((s, i) => {
+  const p = L.base_ply + i, n = Math.floor(p / 2) + 1;
+  return p % 2 === 0 ? `${n}. ${s}` : i === 0 ? `${n}... ${s}` : s;
+}).join(' ');
+const lineShown = m => !!(m.line && m.line.uci.length && m.line.san && (m.full || []).some(t => t.includes(lineText(m.line))));
+// Explain greys out on a move where it would change nothing: no line to play, and the full sentences the same as the
+// short ones (a bad move with no reason still has its line to show, a book move the opening it comes from).
 function renderExplainBtn() {
   const m = state.game && !(state.game.puzzle && !inVariation()) ? currentMove() : null;
-  const none = !!m && !m.lineOf && !m.pending && hasReasons(m) && !m.short.length && !(m.full && m.full.length)
-    && !(m.line && m.line.uci.length);
+  const same = !!m && Array.isArray(m.full) && m.full.length === m.short?.length && m.full.every((t, i) => t === m.short[i]);
+  const none = !!m && !m.lineOf && !m.pending && hasReasons(m) && !lineShown(m)
+    && (same || (!m.short.length && !(m.full && m.full.length)));
   const b = $('b-explain');
   b.disabled = none;
   b.title = none ? 'Nothing more to explain' : 'Show the full explanation';

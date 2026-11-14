@@ -1922,25 +1922,7 @@
       "full": [
        "d6 is an excellent move: it keeps the pawn on e5 safe."
       ],
-      "line": {
-       "base_ply": 3,
-       "san": [
-        "d6",
-        "Bc4",
-        "c5",
-        "c3",
-        "Nf6"
-       ],
-       "uci": [
-        "d7d6",
-        "f1c4",
-        "c7c5",
-        "c2c3",
-        "g8f6"
-       ],
-       "eval": "+0.5",
-       "wp_white": 54.6
-      }
+      "line": null
      },
      {
       "ply": 4,
@@ -2028,25 +2010,7 @@
       "full": [
        "Nxd4 was the engine's choice: it takes back on d4."
       ],
-      "line": {
-       "base_ply": 6,
-       "san": [
-        "Nxd4",
-        "Nf6",
-        "Bd3",
-        "Be7",
-        "O-O"
-       ],
-       "uci": [
-        "f3d4",
-        "g8f6",
-        "f1d3",
-        "f8e7",
-        "e1g1"
-       ],
-       "eval": "+0.5",
-       "wp_white": 55
-      }
+      "line": null
      },
      {
       "ply": 7,
@@ -2262,25 +2226,7 @@
        "Qxg4 wins the bishop on g4.",
        "The next best, f3, leaves Black winning."
       ],
-      "line": {
-       "base_ply": 12,
-       "san": [
-        "f3",
-        "Bd7",
-        "f4",
-        "Nc6",
-        "c3"
-       ],
-       "uci": [
-        "f2f3",
-        "g4d7",
-        "f3f4",
-        "b8c6",
-        "c2c3"
-       ],
-       "eval": "-6.4",
-       "wp_white": 8.5
-      }
+      "line": null
      }
     ],
     "key_moments": [
@@ -2477,25 +2423,7 @@
       "full": [
        "Nf6 was the engine's choice: it attacks the pawn on e4."
       ],
-      "line": {
-       "base_ply": 3,
-       "san": [
-        "Nf6",
-        "d4",
-        "exd4",
-        "Nf3",
-        "Nc6"
-       ],
-       "uci": [
-        "g8f6",
-        "d2d4",
-        "e5d4",
-        "g1f3",
-        "b8c6"
-       ],
-       "eval": "+0.1",
-       "wp_white": 50.6
-      }
+      "line": null
      },
      {
       "ply": 4,
@@ -3913,33 +3841,7 @@
     "full": [
      "Nf6 attacks the pawn on e4."
     ],
-    "line": {
-     "base_ply": 5,
-     "san": [
-      "Nf6",
-      "Ng5",
-      "d5",
-      "exd5",
-      "Na5",
-      "Bb5+",
-      "c6",
-      "dxc6",
-      "bxc6"
-     ],
-     "uci": [
-      "g8f6",
-      "f3g5",
-      "d7d5",
-      "e4d5",
-      "c6a5",
-      "c4b5",
-      "c7c6",
-      "d5c6",
-      "b7c6"
-     ],
-     "eval": "+0.3",
-     "wp_white": 52.8
-    }
+    "line": null
    }
   },
   {
