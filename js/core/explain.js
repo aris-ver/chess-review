@@ -64,7 +64,8 @@ function gains(t) {
 // Each sentence is built as {text, short, reason}: `text` the full sentence, line and all; `short` the same sentence
 // without its line ("This leaves the rook on h1 hanging." for "...hanging: 4... Qxh1 5. Nf3."); `reason` whether it
 // says something the move's header (its verdict, eval and the eval bar) and the arrows don't. Filler -- the verdict
-// said again, a bare "X was better", how the game stands -- has reason false. `clock`: the "Played ..." sentence.
+// said again, a bare "X was better", how the game stands, what goes without saying (obvious()) -- has reason
+// false. `clock`: the "Played ..." sentence.
 // `glue`: comment() runs it on after the sentence before, in one string. `on`: the line a reason is about (moveLine):
 // 'after' the opponent's reply and on, 'before' the engine's choice and on, 'played' the move and the reply,
 // 'second' a great move's next best.
@@ -277,19 +278,41 @@ export function does(d) {
 // castling, or a check that wins nothing: saying so says nothing about the move
 const bare = d => d.kind === 'castles' || (d.kind === 'check' && !gains(d.wins));
 
+// what the board shows as the move is played: a capture that wins nothing (taking back, a trade), a new queen
+const SEEN = new Set(['recapture', 'trade', 'takes', 'promotes']);
+// what still says something with the game decided: material and mate
+const TELLING = new Set(['mate', 'wins', 'fork', 'check']);
+
+/** The game is decided either way, before the move and after it: nothing but material and mate is at stake. */
+const decided = f => f.wp_before != null && f.wp_after != null
+  && ((f.wp_before >= 90 && f.wp_after >= 90) || (f.wp_before <= 10 && f.wp_after <= 10));
+
+/** What a move does goes without saying (filler: the panel leaves it out, comment() keeps it): answering a check,
+ * getting ready to castle, a trade offered, a push prepared (THIN); for the move played (`own`) also what the board
+ * shows -- a capture that wins nothing, a new queen, an attacked piece stepping away; and with the game decided
+ * anything but material and mate. */
+function obvious(f, d, own) {
+  if (THIN.has(d.kind)) return true;
+  if (own && (SEEN.has(d.kind) || (d.kind === 'saves' && d.moved))) return true;
+  return decided(f) && !TELLING.has(d.kind) && !(d.kind === 'threat' && d.mate);
+}
+
 /** The move's own sentence from what it does ('Nxe5 wins the pawn on e5.'), or null. */
 function itDoes(f) {
   const d = f.does;
   if (!d || bare(d)) return null;
   if (d.kind === 'mate' && d.n === 1) return F(`${f.san} is checkmate.`);   // the board says so
-  return S('played', `${f.san} ${does(d)}.`);
+  const text = `${f.san} ${does(d)}.`;
+  return obvious(f, d, true) ? F(text) : S('played', text);
 }
 
 /** What the engine's choice did instead: 'Nf3 was better: it protects the pawn on e5.' `plain` is the sentence when
  * there is nothing to say (filler), and leads the longer one ("Nf3 was the engine's choice: it ..."). */
 function betterDoes(f, plain = `${f.best_san} was better.`) {
   const c = f.best_does && !bare(f.best_does) ? does(f.best_does) : null;
-  return c ? S('before', `${plain.slice(0, -1)}: it ${c}.`) : F(plain);
+  if (!c) return F(plain);
+  const text = `${plain.slice(0, -1)}: it ${c}.`;
+  return obvious(f, f.best_does, false) ? F(text) : S('before', text);
 }
 
 /** Why an inaccuracy cost what it did, when the facts show it: a sentence and whether it is about f.lost. */
@@ -378,7 +401,10 @@ export function sentences(f, opening = null) {
     const mine = !f.best_does && f.does && !bare(f.does) && does(f.does);    // nothing to say for the engine's choice: say what the move does
     // two sentences in one string, as the panel has always had them
     // the panel's short form leaves the verdict to the header: 'dxe5 takes back on e5.', as a best move reads
-    if (mine) return [S('played', `${what}: it ${mine}.`, `${f.san} ${mine}.`), { ...F(plain), glue: true }];
+    if (mine) {
+      const own = obvious(f, f.does, true) ? F(`${what}: it ${mine}.`) : S('played', `${what}: it ${mine}.`, `${f.san} ${mine}.`);
+      return [own, { ...F(plain), glue: true }];
+    }
     return [F(`${what}.`), { ...betterDoes(f, plain), glue: true }];
   }
   if (f.label === 'inaccuracy') {

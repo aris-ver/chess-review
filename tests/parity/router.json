@@ -2019,33 +2019,9 @@
        "f3d4"
       ],
       "threat": null,
-      "short": [
-       "exd4 trades pawns."
-      ],
-      "full": [
-       "exd4 trades pawns."
-      ],
-      "line": {
-       "base_ply": 5,
-       "san": [
-        "exd4",
-        "Nxd4",
-        "Nf6",
-        "Bd3",
-        "Be7",
-        "O-O"
-       ],
-       "uci": [
-        "e5d4",
-        "f3d4",
-        "g8f6",
-        "f1d3",
-        "f8e7",
-        "e1g1"
-       ],
-       "eval": "+0.5",
-       "wp_white": 55.0
-      }
+      "short": [],
+      "full": [],
+      "line": null
      },
      {
       "ply": 6,
@@ -2148,33 +2124,9 @@
        "e8f7"
       ],
       "threat": null,
-      "short": [
-       "Bxf7+ takes the pawn on f7."
-      ],
-      "full": [
-       "Bxf7+ takes the pawn on f7."
-      ],
-      "line": {
-       "base_ply": 8,
-       "san": [
-        "Bxf7+",
-        "Kxf7",
-        "Ng5+",
-        "Ke7",
-        "Qxg4",
-        "Qd7"
-       ],
-       "uci": [
-        "c4f7",
-        "e8f7",
-        "f3g5",
-        "f7e7",
-        "d1g4",
-        "d8d7"
-       ],
-       "eval": "+1.2",
-       "wp_white": 61
-      }
+      "short": [],
+      "full": [],
+      "line": null
      },
      {
       "ply": 9,
@@ -2199,33 +2151,9 @@
       "reply_uci": "e1g1",
       "idea": [],
       "threat": null,
-      "short": [
-       "Kxf7 takes back on f7."
-      ],
-      "full": [
-       "Kxf7 takes back on f7."
-      ],
-      "line": {
-       "base_ply": 9,
-       "san": [
-        "Kxf7",
-        "O-O",
-        "Ke8",
-        "c3",
-        "Nc6",
-        "cxd4"
-       ],
-       "uci": [
-        "e8f7",
-        "e1g1",
-        "f7e8",
-        "c2c3",
-        "b8c6",
-        "c3d4"
-       ],
-       "eval": "-4.2",
-       "wp_white": 17.3
-      }
+      "short": [],
+      "full": [],
+      "line": null
      },
      {
       "ply": 10,

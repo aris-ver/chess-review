@@ -11,12 +11,12 @@ import { panelFields } from '../server/site.js';
 
 setBook([]);
 
-const facts = ({ fen, played, label, ply, wp = [50, 50], before, after, multipv = null, clock = null, spent = null }) => {
+const facts = ({ fen, played, label, ply, wp = [50, 50], before, after, multipv = null, clock = null, spent = null, prev = null }) => {
   const board = boardFromFen(fen);
   const best = before.pv?.length ? san(board, moveFromUci(before.pv[0])) : null;
   return extract({ game_id: 'g', ply, side_to_move: board.turn, is_mine: true, move_played: played,
     san: san(board, moveFromUci(played)), best_san: best, label, wp_before: wp[0], wp_after: wp[1],
-    wp_loss: wp[0] - wp[1], clock_remaining: clock, time_spent: spent }, board, before, after, multipv);
+    wp_loss: wp[0] - wp[1], clock_remaining: clock, time_spent: spent }, board, before, after, multipv, prev);
 };
 const quiet = pv => ({ eval_cp: 0, mate_in: null, pv });
 
@@ -24,6 +24,21 @@ const quiet = pv => ({ eval_cp: 0, mate_in: null, pv });
 const HANG = { fen: 'rnb1kbnr/ppp2ppp/8/3qp3/6P1/8/PP1PPP1P/RNBQKBNR w KQkq - 0 4', played: 'b1c3', label: 'blunder',
   ply: 6, wp: [39, 7], before: { eval_cp: -122, mate_in: null, pv: ['g1f3', 'c8g4', 'b1c3'] },
   after: { eval_cp: 687, mate_in: null, pv: ['d5h1', 'g1f3', 'c8g4', 'd1a4', 'g4d7'] }, spent: 83 };
+
+// 4.h3 hits the bishop on g4
+const PUSH = { fen: 'rn1qkbnr/ppp2ppp/3p4/4p3/2B1P1b1/5N2/PPPP1PPP/RNBQK2R w KQkq - 2 4', played: 'h2h3', label: 'best', ply: 6,
+  before: quiet(['h2h3', 'g4h5']), after: quiet(['g4h5', 'd2d3', 'b8c6']) };
+
+/** The move's facts, once checked that the panel has nothing for it: no text, no line, Explain greyed out. */
+const empty = x => {
+  const f = facts(x);
+  const other = f.side === 'white' ? 'black' : 'white';
+  assert.deepEqual(reasons(f), []);
+  assert.equal(moveLine(f, x.played), null);
+  assert.deepEqual(panelFields(f, x.played, null, { ...x.before, side_to_move: f.side }, { ...x.after, side_to_move: other }, null),
+    { short: [], full: [], line: null });
+  return f;
+};
 
 test('panel: a sentence with its line, and the same sentence without it', () => {
   const f = facts(HANG);
@@ -96,14 +111,13 @@ test('panel: two sentences in one comment string are told apart', () => {
   assert.deepEqual(reasons(f).map(r => r.text), ['Bxf3 was better: it trades the bishop for the knight.']);
   // the reason is about the engine's choice: its line, from before the move
   assert.deepEqual(moveLine(f, 'c7c6'), { base_ply: 15, san: ['Bxf3', 'gxf3'], uci: ['g4f3', 'g2f3'], on: 'before' });
-  const e = facts({ fen: 'r1bqkb1r/ppp1pppp/2n2n2/3p4/3P4/4PN2/PPP2PPP/RNBQKB1R w KQkq - 1 4', played: 'f1e2',
-    label: 'excellent', ply: 6, wp: [55, 53], before: quiet(['c2c4', 'e7e6']), after: quiet(['c8f5']) });
-  assert.deepEqual(comment(e), ['Be2 is an excellent move: it clears the way to castle. c4 was the engine\'s choice.']);
-  assert.deepEqual(reasons(e).map(r => r.text), ['Be2 is an excellent move: it clears the way to castle.']);
+  const e = facts({ ...PUSH, label: 'excellent', wp: [50, 48], before: quiet(['d2d3', 'b8c6']) });
+  assert.deepEqual(comment(e), ['h3 is an excellent move: it threatens to take the bishop on g4. d3 was the engine\'s choice.']);
+  assert.deepEqual(reasons(e).map(r => r.text), ['h3 is an excellent move: it threatens to take the bishop on g4.']);
   // the short form leaves the verdict to the header, as a best move reads
-  assert.deepEqual(reasons(e).map(r => r.short), ['Be2 clears the way to castle.']);
+  assert.deepEqual(reasons(e).map(r => r.short), ['h3 threatens to take the bishop on g4.']);
   // about the move played: the move and the reply to it
-  assert.deepEqual(moveLine(e, 'f1e2'), { base_ply: 6, san: ['Be2', 'Bf5'], uci: ['f1e2', 'c8f5'], on: 'played' });
+  assert.deepEqual(moveLine(e, 'h2h3'), { base_ply: 6, san: ['h3', 'Bh5', 'd3', 'Nc6'], uci: ['h2h3', 'g4h5', 'd2d3', 'b8c6'], on: 'played' });
 });
 
 test('panel: a miss plays out the move missed; a bare "Missed X" is filler', () => {
@@ -124,7 +138,9 @@ test('panel: a great move plays out the next best; a brilliant move the line aft
   const multipv = [{ rank: 1, move: 'h8h7', eval_cp: 0, mate_in: null, pv: ['h8h7'] },
     { rank: 2, move: 'f8c5', eval_cp: -600, mate_in: null, pv: ['f8c5', 'e5h8', 'a7a6'] }];
   const g = facts({ fen, played: 'h8h7', label: 'great', ply: 37, before: quiet(['h8h7']), after: quiet(['e5g3']), multipv });
-  assert.deepEqual(reasons(g).map(r => r.short), ['Rh7 moves the rook out of danger.', 'The next best, Bxc5, loses a rook for a pawn.']);
+  // the rook stepping away goes without saying; what the next best loses is why the move is great
+  assert.equal(comment(g)[0], 'Rh7 moves the rook out of danger.');
+  assert.deepEqual(reasons(g).map(r => r.short), ['The next best, Bxc5, loses a rook for a pawn.']);
   assert.deepEqual(moveLine(g, 'h8h7'), { base_ply: 37, san: ['Bxc5', 'Bxh8', 'a6'], uci: ['f8c5', 'e5h8', 'a7a6'], on: 'second' });
   const p = panelFields(g, 'h8h7', null, { ...quiet(['h8h7']), side_to_move: 'black' }, { ...quiet(['e5g3']), side_to_move: 'white' }, multipv);
   assert.equal(p.line.eval, '+6.0');    // the next best's own eval, White's view
@@ -153,4 +169,54 @@ test('panel: a forced move has nothing to explain', () => {
     before: quiet(['h1h2']), after: quiet([]) });
   const before = { eval_cp: -900, mate_in: null, side_to_move: 'white' }, after = { ...before, side_to_move: 'black' };
   assert.deepEqual(panelFields(f, 'h1h2', null, before, after, null), { short: [], full: [], line: null });
+});
+
+// --- what goes without saying: the comment keeps it; the panel has no text and no line, and Explain is greyed out ---
+
+test('panel: getting out of check, blocking it and taking back go without saying', () => {
+  // the king steps out of a check, a queen down or not
+  const kd8 = { fen: '4k3/8/8/8/8/8/5Q2/4R1K1 b - - 0 40', played: 'e8d8', label: 'best', ply: 79, wp: [5, 5],
+    before: { eval_cp: -780, mate_in: null, pv: ['e8d8', 'f2f6'] }, after: { eval_cp: 780, mate_in: null, pv: ['f2f6', 'd8c7'] } };
+  assert.deepEqual(comment(empty(kd8)), ['Kd8 gets the king out of check.']);
+  empty({ ...kd8, wp: [50, 50], before: quiet(kd8.before.pv), after: quiet(kd8.after.pv) });
+  const block = { fen: 'rnbqk1nr/pppp1ppp/8/4p3/1b1PP3/8/PPP2PPP/RNBQKBNR w KQkq - 1 3', played: 'c2c3', label: 'best', ply: 4,
+    before: quiet(['c2c3', 'b4a5']), after: quiet(['b4a5', 'd4e5']) };
+  assert.deepEqual(comment(empty(block)), ['c3 blocks the check.']);
+  // 2...Qxd5 takes back the pawn that took on d5
+  const back = { fen: 'rnbqkbnr/ppp1pppp/8/3P4/8/8/PPPP1PPP/RNBQKBNR b KQkq - 0 2', played: 'd8d5', label: 'best', ply: 3,
+    before: quiet(['d8d5', 'b1c3']), after: quiet(['b1c3', 'd5a5']),
+    prev: { fen: 'rnbqkbnr/ppp1pppp/8/3p4/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2', move_played: 'e4d5' } };
+  assert.deepEqual(comment(empty(back)), ['Qxd5 takes back on d5.']);
+  // getting ready to castle, as the move played and as the engine's choice
+  const prep = { fen: 'r1bqkb1r/ppp1pppp/2n2n2/3p4/3P4/4PN2/PPP2PPP/RNBQKB1R w KQkq - 1 4', played: 'f1e2', label: 'excellent',
+    ply: 6, wp: [55, 53], before: quiet(['c2c4', 'e7e6']), after: quiet(['c8f5']) };
+  assert.deepEqual(comment(empty(prep)), ['Be2 is an excellent move: it clears the way to castle. c4 was the engine\'s choice.']);
+  const inacc = { ...prep, played: 'a2a3', label: 'inaccuracy', wp: [55, 50], before: quiet(['f1e2', 'c8f5']) };
+  assert.deepEqual(comment(empty(inacc)), ['a3 is an inaccuracy.', 'Be2 was better: it clears the way to castle.']);
+});
+
+test('panel: material won and a threat made are still said, and played out', () => {
+  // 4...Qxh1 takes the rook 4.Nc3 left: said even with the game decided
+  const f = facts({ fen: 'rnb1kbnr/ppp2ppp/8/3qp3/6P1/2N5/PP1PPP1P/R1BQKBNR b KQkq - 1 4', played: 'd5h1', label: 'best', ply: 7,
+    wp: [93, 93], before: { eval_cp: 687, mate_in: null, pv: ['d5h1', 'g1f3'] }, after: { eval_cp: -687, mate_in: null, pv: ['g1f3', 'c8g4'] },
+    prev: { fen: HANG.fen, move_played: 'b1c3' } });
+  assert.deepEqual(reasons(f).map(r => r.short), ['Qxh1 wins the rook on h1.']);
+  assert.deepEqual(moveLine(f, 'd5h1'), { base_ply: 7, san: ['Qxh1', 'Nf3', 'Bxg4'], uci: ['d5h1', 'g1f3', 'c8g4'], on: 'played' });
+  const t = facts(PUSH);
+  assert.deepEqual(reasons(t).map(r => r.short), ['h3 threatens to take the bishop on g4.']);
+  assert.equal(moveLine(t, 'h2h3').on, 'played');
+  // the engine's choice made the threat: that is why it was better
+  const g = facts({ ...PUSH, played: 'a2a3', label: 'good', wp: [50, 46], after: quiet(['b8c6', 'h2h3']) });
+  assert.deepEqual(reasons(g).map(r => r.short), ['h3 was better: it threatens to take the bishop on g4.']);
+  assert.deepEqual(moveLine(g, 'a2a3'), { base_ply: 6, san: ['h3', 'Bh5'], uci: ['h2h3', 'g4h5'], on: 'before' });
+});
+
+test('panel: with the game decided either way, only material and mate are worth a word', () => {
+  // the same threat, lost and won: nothing is at stake
+  assert.deepEqual(comment(empty({ ...PUSH, wp: [4, 4] })), ['h3 threatens to take the bishop on g4.']);
+  assert.deepEqual(comment(empty({ ...PUSH, wp: [96, 96] })), ['h3 threatens to take the bishop on g4.']);
+  assert.deepEqual(comment(empty({ ...PUSH, played: 'a2a3', label: 'good', wp: [96, 94], after: quiet(['b8c6', 'h2h3']) })),
+    ['a3 is a good move. h3 was better: it threatens to take the bishop on g4.']);
+  // a move that takes the game there, or out of it, is not one of them
+  assert.equal(reasons(facts({ ...PUSH, wp: [88, 91] })).length, 1);
 });
