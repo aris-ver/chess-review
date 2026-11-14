@@ -33,8 +33,11 @@ let code = '';
  * 3: a miss that ends a mistake's or blunder's worth below the position before the opponent's slip keeps that label;
  *    a rook or more lost through any piece is a blunder; the getting-mated rules skip the engine's choice; a
  *    sacrifice counts what the move captured (2026-11-13).
- * 4: accuracy: lila's +1 per move and a harmonic floor of 1 (2026-11-14). */
-export const RULES_VERSION = 4;
+ * 4: accuracy: lila's +1 per move and a harmonic floor of 1 (2026-11-14).
+ * 5: best is the engine's move or a checkmate; still >= 90% is no inaccuracy/mistake; a piece given away needs an
+ *    eval drop; brilliant is the engine's move; out of book stays out; key moments are mistakes, misses, blunders
+ *    (2026-11-14). */
+export const RULES_VERSION = 5;
 
 /** What stands in for classify.code_fingerprint: the build's version stamp and the opening book's, set once at
  * startup by whoever knows them (the desktop app, js/desktop/main.js: its version; the web worker, js/web/app.js:

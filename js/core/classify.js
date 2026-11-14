@@ -10,7 +10,7 @@ import { boardFromFen, copy, fen, isCapture, isCheckmate, isGameOver, isLegal, l
 import {
   BLUNDER, CP_BLUNDER, CP_MISTAKE, EXCELLENT, GRADE_DEFAULT_RATING, HANGS_DOWN, HANGS_DROP_CP, HANGS_LOST, HANGS_UP_TO_CP, GRADE_K_HIGH, GRADE_K_LOW, GRADE_RATING_HIGH,
   GRADE_RATING_LOW, INACCURACY, LOSING_MATERIAL_CP, LOSING_MATERIAL_DROP_CP, MATE_FROM_LOST_CP, MATERIAL_MISTAKE, MISS_AFTER_MIN,
-  MISS_BEFORE_MIN, MISTAKE, ONLY_MOVE_GAP,
+  MISS_BEFORE_MIN, MISTAKE, ONLY_MOVE_GAP, STILL_WON,
 } from './config.js';
 import { VALUE, materialSwing, see } from './facts.js';
 import { moveAccuracy } from './accuracy.js';
@@ -134,7 +134,7 @@ export function classifyGame(game, rows, multipv = null) {
   const inc = increment(game.time_control), start = base(game.time_control);
   const lastClock = { white: start, black: start };
   const myColour = game.my_colour;
-  let prevLoss = null;
+  let prevLoss = null, leftBook = false;   // once a move leaves the book, the game stays out of it
   let lastCapture = null;      // the square the previous move captured on
   multipv = multipv || {};
 
@@ -176,7 +176,8 @@ export function classifyGame(game, rows, multipv = null) {
     const capture = isCapture(board, m);
     const recapture = capture && m.to === lastCapture;
     push(board, m);
-    const inBook = isBook(fenKey(fen(board)));
+    const inBook = !leftBook && isBook(fenKey(fen(board)));
+    if (!inBook) leftBook = true;
     const rPv = r.pv || [], nxtPv = nxt.pv || [];
 
     let label;
@@ -184,10 +185,13 @@ export function classifyGame(game, rows, multipv = null) {
     else if (nLegal === 1) label = 'forced';
     else if (loss === null) label = null;
     else if (isBest || loss <= EXCELLENT) {
-      if (10 < wpBefore && wpBefore < 90 && wpAfter >= 35 && isSacrifice(boardBefore, m)
+      // brilliant is the engine's move: a sacrifice it doesn't play is search noise at best
+      if (isBest && 10 < wpBefore && wpBefore < 90 && wpAfter >= 35 && isSacrifice(boardBefore, m)
           && sacrificeHolds(board, nxtPv, boardBefore.turn, nxt.mate_in, capturedValue(boardBefore, m))) label = 'brilliant';
       else if (isBest && only && !recapture && 10 < wpBefore && wpBefore < 95) label = 'great';
-      else if (isBest || (cpBefore !== null && cpAfter !== null && cpAfter >= cpBefore)) label = 'best';
+      // best: the engine's move, or a checkmate (`board` is the position after the move); a slower mate inside a
+      // forced mate stays excellent
+      else if (isBest || isCheckmate(board)) label = 'best';
       else label = 'excellent';
     } else {
       label = labelFor(loss);
@@ -206,6 +210,8 @@ export function classifyGame(game, rows, multipv = null) {
         if (missedMate && gAfter > 50) label = 'miss';
         else if (net !== null) label = net > BLUNDER ? 'blunder' : net > MISTAKE ? 'mistake' : 'miss';
       }
+      // still clearly winning after it: a slower win is no inaccuracy or mistake (the material rules below still apply)
+      if (among(label, 'inaccuracy', 'mistake') && wpAfter >= STILL_WON) label = 'good';
     }
 
     if (among(label, 'best', 'excellent', 'good', 'inaccuracy', 'great', 'mistake') && !isBest
@@ -214,7 +220,9 @@ export function classifyGame(game, rows, multipv = null) {
       if (cpDrop >= CP_MISTAKE && isSacrifice(boardBefore, m)) label = cpDrop >= CP_BLUNDER ? 'blunder' : 'mistake';
     }
     if (among(label, 'best', 'excellent', 'good', 'inaccuracy', 'great') && !isBest
-        && r.mate_in == null && nxt.mate_in == null && givesAway(boardBefore, m, rPv, nxtPv)) label = 'mistake';
+        && r.mate_in == null && nxt.mate_in == null
+        && cpBefore !== null && cpAfter !== null && cpBefore - cpAfter >= LOSING_MATERIAL_DROP_CP   // the eval agrees
+        && givesAway(boardBefore, m, rPv, nxtPv)) label = 'mistake';
     if (among(label, 'best', 'excellent', 'good', 'inaccuracy', 'great', 'mistake') && !isBest
         && r.mate_in == null && nxt.mate_in == null && cpBefore > LOSING_MATERIAL_CP && cpAfter < HANGS_UP_TO_CP
         && cpBefore - cpAfter >= HANGS_DROP_CP && hangsMaterial(boardBefore, m, rPv, nxtPv)) label = 'blunder';

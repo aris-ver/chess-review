@@ -4,10 +4,12 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 import { setBook } from './book.js';
-import { boardFromFen, moveFromUci, san } from './chess.js';
+import { boardFromFen, fen, moveFromUci, push, san } from './chess.js';
 import { classifyGame, hangsMaterial } from './classify.js';
+import { select } from './critical.js';
 import { comment, explain } from './explain.js';
 import { extract, settledLength, tradeOver } from './facts.js';
+import { fenKey } from './fen.js';
 
 // 7.dxe4 in chess.com/game/live/187084467344 (White 547): 6...Nxe4 uncovered Be7 on the queen on g5; dxe4 takes
 // the knight and leaves the queen. -3.26 -> -8.64, a graded win% loss of 19.2 (just under the blunder line).
@@ -409,4 +411,99 @@ test('explain: taking a bishop and being taken back is a trade, not a bishop los
   assert.equal(f.lost, null);
   assert.deepEqual(explain(f), ['Missed Nxd5, which kept Black winning: 11... Nxd5 12. Qxd5.',
     'After 11... Bxe3 12. Nxe3 Ng4 13. Qd2 Nxe3 14. fxe3, the advantage is gone and the game is level.']);
+});
+
+// --- what earns which label (2026-11-14): best, still won, a piece given away, brilliant, book, key moments ---------
+// Made-up evals over our own small positions: the rules read the evals, not the board's real worth.
+
+const START = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+const LOW = { game_id: 'g', my_colour: 'white', my_rating: 600, opponent_rating: 600, time_control: '600' };
+
+/** Rows for a game that starts at `start` and plays `moves`: each [uci, before, best, pv] where before is
+ * {eval_cp} or {mate_in} side-to-move POV; `last` is the eval of the final position. */
+function line(start, moves, last) {
+  const board = boardFromFen(start);
+  const out = [];
+  moves.forEach(([u, ev, best = u, pv = [best]], i) => {
+    out.push({ game_id: 'g', ply: i + 1, fen: fen(board), side_to_move: board.turn, move_played: u, clock_remaining: null,
+      eval_cp: ev.eval_cp ?? null, mate_in: ev.mate_in ?? null, best_move: best, pv });
+    push(board, moveFromUci(u));
+  });
+  out.push({ game_id: 'g', ply: moves.length + 1, fen: fen(board), side_to_move: board.turn, move_played: null,
+    clock_remaining: null, eval_cp: last.eval_cp ?? null, mate_in: last.mate_in ?? null, best_move: last.pv?.[0] ?? null,
+    pv: last.pv ?? [] });
+  return out;
+}
+const labels = (start, moves, last) => classifyGame(LOW, line(start, moves, last)).map(m => m.label);
+
+test('labels: a move that is not the engine\'s is excellent, not best, though the eval stays the same', () => {
+  assert.deepEqual(labels(START, [['e2e4', { eval_cp: 30 }, 'd2d4']], { eval_cp: -30 }), ['excellent']);
+});
+
+test('labels: a checkmate is best, whichever mate the engine had', () => {
+  assert.deepEqual(labels('7k/6pp/8/8/8/8/8/RR4K1 w - - 0 1', [['b1b8', { mate_in: 1 }, 'a1a8']], { mate_in: 0 }), ['best']);
+});
+
+test('labels: inside a forced mate, a move that keeps a slower mate stays excellent', () => {
+  assert.deepEqual(labels('2r4k/6pp/8/8/8/8/8/RR4K1 w - - 0 1', [['g1f1', { mate_in: 2 }, 'b1b8']], { mate_in: -3 }),
+    ['excellent']);
+});
+
+test('labels: still clearly winning after it, a slower win is good; below 90% it is graded as before', () => {
+  // +10.71 -> +7.31 for a 600-rated player: a mistake's worth on the graded curve, still 93.6% on Lichess's
+  assert.deepEqual(labels(START, [['e2e4', { eval_cp: 1071 }, 'd2d4']], { eval_cp: -731 }), ['good']);
+  // +7.00 -> +4.80: 85% after, an inaccuracy as it always was
+  assert.deepEqual(labels(START, [['e2e4', { eval_cp: 700 }, 'd2d4']], { eval_cp: -480 }), ['inaccuracy']);
+});
+
+// The knight on f2 goes to e4, where the pawn on d5 takes it for nothing.
+const HANG = '4k3/8/8/3p4/8/8/5N2/Q3K3 w - - 0 1';
+const hang = (before, after, best = 'f2d3') =>
+  labels(HANG, [['f2e4', { eval_cp: before }, best, best === 'f2e4' ? ['f2e4', 'd5e4', 'e1e2'] : [best, 'e8e7']]],
+    { eval_cp: -after, pv: ['d5e4', 'e1e2'] });
+
+test('labels: a piece dropped at +11 is still a mistake when the eval falls three pawns', () => {
+  assert.deepEqual(hang(1100, 800), ['mistake']);
+});
+
+test('labels: a piece given away is a mistake only when the eval drops 1.5 pawns with it', () => {
+  assert.deepEqual(hang(1100, 1000), ['good']);
+  assert.deepEqual(hang(1100, 900), ['mistake']);
+});
+
+test('labels: a sacrifice that holds is brilliant only as the engine\'s move', () => {
+  assert.deepEqual(hang(50, 50), ['excellent']);
+  assert.deepEqual(hang(50, 50, 'f2e4'), ['brilliant']);
+});
+
+test('labels: once out of book, a position the book knows again is no book move', () => {
+  const b = boardFromFen(START);
+  push(b, moveFromUci('e2e4'));
+  const k1 = fenKey(fen(b));
+  push(b, moveFromUci('e7e5'));
+  push(b, moveFromUci('g1f3'));
+  setBook([k1, fenKey(fen(b))]);
+  try {
+    const moves = classifyGame(LOW, line(START, [['e2e4', { eval_cp: 30 }], ['e7e5', { eval_cp: -30 }], ['g1f3', { eval_cp: 30 }]],
+      { eval_cp: -30 }));
+    assert.deepEqual(moves.map(m => m.label), ['book', 'best', 'best']);
+    assert.deepEqual(moves.map(m => m.in_book), [true, false, false]);
+  } finally {
+    setBook([]);
+  }
+});
+
+test('key moments: only mistakes, misses and blunders', () => {
+  const m = label => ({ game_id: 'g', ply: 20, wp_before: 60, wp_after: 51, wp_loss: 9, is_forced: false, in_book: false, label });
+  assert.deepEqual(select([m('good')]), []);
+  assert.deepEqual(select([m('inaccuracy')]), []);
+  assert.equal(select([m('mistake')]).length, 1);
+});
+
+test('labels: a miss stays a miss though the mover is still clearly winning', () => {
+  // the opponent's slip (1...e5 at -8 -> -15) is handed back down to +8: a miss, not a "good" slower win
+  assert.equal(labels(START, [['e2e4', { eval_cp: 30 }], ['e7e5', { eval_cp: -800 }, 'd7d5'],
+    ['g1f3', { eval_cp: 1500 }, 'd2d4']], { eval_cp: -800 }).at(-1), 'miss');
+  // a mate in three missed, still +8 after it
+  assert.deepEqual(labels(START, [['e2e4', { mate_in: 3 }, 'd2d4']], { eval_cp: -800 }), ['miss']);
 });

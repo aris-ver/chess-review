@@ -1795,8 +1795,8 @@
      "rating": 1500,
      "accuracy": 86.5,
      "counts": {
-      "best": 3,
-      "excellent": 2,
+      "best": 1,
+      "excellent": 4,
       "mistake": 1,
       "great": 1
      }
@@ -1871,7 +1871,7 @@
       "san": "Nf3",
       "uci": "g1f3",
       "fen": "rnbqkbnr/pppp1ppp/8/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R b KQkq - 1 2",
-      "label": "best",
+      "label": "excellent",
       "is_mine": true,
       "wp_white": 53.4,
       "eval": "+0.4",
@@ -1881,7 +1881,7 @@
       "clock": 178,
       "spent": 4,
       "comment": [
-       "Nf3 attacks the pawn on e5."
+       "Nf3 is an excellent move, as good as the engine's Nc3."
       ],
       "hung": [],
       "reply_uci": "b8c6",
@@ -1889,33 +1889,9 @@
        "f3e5"
       ],
       "threat": null,
-      "short": [
-       "Nf3 attacks the pawn on e5."
-      ],
-      "full": [
-       "Nf3 attacks the pawn on e5."
-      ],
-      "line": {
-       "base_ply": 2,
-       "san": [
-        "Nf3",
-        "Nc6",
-        "Bb5",
-        "Nd4",
-        "Nxd4",
-        "exd4"
-       ],
-       "uci": [
-        "g1f3",
-        "b8c6",
-        "f1b5",
-        "c6d4",
-        "f3d4",
-        "e5d4"
-       ],
-       "eval": "+0.4",
-       "wp_white": 53.4
-      }
+      "short": [],
+      "full": [],
+      "line": null
      },
      {
       "ply": 3,
@@ -2104,7 +2080,7 @@
       "san": "Bxf7+",
       "uci": "c4f7",
       "fen": "rn1qkbnr/ppp2Bpp/3p4/8/3pP1b1/5N2/PPP2PPP/RNBQK2R b KQkq - 0 5",
-      "label": "best",
+      "label": "excellent",
       "is_mine": true,
       "wp_white": 61.0,
       "eval": "+1.2",
@@ -2114,7 +2090,7 @@
       "clock": 165,
       "spent": 7,
       "comment": [
-       "Bxf7+ takes the pawn on f7."
+       "Bxf7+ is an excellent move, as good as the engine's c3."
       ],
       "hung": [
        "f7"

@@ -1,13 +1,15 @@
 // Stage 4b: pick the 3-5 moves per game that decided it (selected live by the review).
 //
-// Candidates are unforced moves (either side) losing >= MISTAKE win%, ignoring the first OPENING_SKIP_PLIES unless
-// the move is already a blunder. Ranked by whether the move crossed a decision boundary (winning / equal / losing
+// Candidates are unforced moves (either side) labelled mistake, miss or blunder and losing >= MISTAKE win%, ignoring
+// the first OPENING_SKIP_PLIES unless the move is already a blunder's worth. Ranked by whether the move crossed a decision boundary (winning / equal / losing
 // bands of the mover's win%), then by win% loss. A game may have zero.
 
 import { BLUNDER, CRITICAL_MAX, MISTAKE, OPENING_SKIP_PLIES } from './config.js';
 
 export const WINNING = 65.0;
 export const LOSING = 35.0;
+
+const KEY = new Set(['mistake', 'miss', 'blunder']);   // a good move or an inaccuracy decided nothing worth stopping at
 
 export function band(wp) {
   if (wp >= WINNING) return 'winning';
@@ -19,7 +21,7 @@ export function band(wp) {
 export function select(moves) {
   const cands = [];
   for (const m of moves) {
-    if (m.wp_loss == null || m.is_forced || m.in_book) continue;
+    if (m.wp_loss == null || m.is_forced || m.in_book || !KEY.has(m.label)) continue;
     if (m.wp_loss < MISTAKE) continue;
     if (m.ply < OPENING_SKIP_PLIES && m.wp_loss <= BLUNDER) continue;
     const b0 = band(m.wp_before), b1 = band(m.wp_after);

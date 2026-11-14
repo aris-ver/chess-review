@@ -26,6 +26,7 @@ export const HANGS_UP_TO_CP = 400;   // the mover isn't still this far ahead aft
 export const ONLY_MOVE_GAP = 15.0;
 export const MISS_BEFORE_MIN = 40.0;
 export const MISS_AFTER_MIN = 10.0;
+export const STILL_WON = 90.0;       // mover's Lichess win% after the move; from here a slower win is not an inaccuracy or a mistake (chess.com: 51 of 51)
 export const MULTIPV_N = 3;
 export const OPENING_SKIP_PLIES = 8;
 export const CRITICAL_MAX = 5;
