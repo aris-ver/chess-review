@@ -23,14 +23,21 @@ function chunked(keys, fn, size = 500) {
 
 /** [fen_key, evals row, evals_multipv rows] per position searched (what evaluateMultipv returns, with its key) into
  * the cache. A position already there keeps its row, unless a fast search wrote it and this one is full: then this
- * one replaces it. fast: these were searched at FAST_NODES, and are marked so. Terminal positions have no lines: a
- * rank-0 sentinel marks them as done so they are never queued again. */
+ * one replaces it, unless the engine gave it no eval (it failed every try): the fast rows and mark are kept. fast:
+ * these were searched at FAST_NODES, and are marked so. Terminal positions have no lines: a rank-0 sentinel marks
+ * them as done so they are never queued again. */
 export function writeResults(db, results, { fast = false } = {}) {
   db.tx(() => {
     const keys = [...new Set(results.map(([k]) => k))];
     let had = null;
     if (!fast) {
-      const marked = chunked(keys, ks => db.column(`SELECT fen_key FROM evals_fast WHERE fen_key IN (${placeholders(ks.length)})`, ks));
+      let marked = chunked(keys, ks => db.column(`SELECT fen_key FROM evals_fast WHERE fen_key IN (${placeholders(ks.length)})`, ks));
+      const failed = new Set(results.filter(([, m]) => m.eval_cp == null && m.mate_in == null).map(([k]) => k));
+      const keep = new Set(marked.filter(k => failed.has(k)));
+      if (keep.size) {
+        results = results.filter(([k]) => !keep.has(k));
+        marked = marked.filter(k => !keep.has(k));
+      }
       chunked(marked, ks => {
         for (const t of ['evals', 'evals_multipv', 'evals_fast']) db.run(`DELETE FROM ${t} WHERE fen_key IN (${placeholders(ks.length)})`, ks);
         return [];

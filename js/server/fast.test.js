@@ -188,6 +188,11 @@ test('fast: the cache: a full search replaces a fast one and its mark, a fast on
     assert.deepEqual(pendingKeys(db, 'g2')[0], []);
     assert.deepEqual([...fastGames(db)], ['g1']);
     assert.ok(isFastGame(db, 'g1') && !isFastGame(db, 'g2'));
+    // a full search of b that the engine failed every try (no eval) keeps the fast rows and mark
+    writeResults(db, [[b, { nodes: 0, eval_cp: null, mate_in: null, best_move: null, pv: [] }, []]]);
+    assert.equal(db.value('SELECT eval_cp FROM evals WHERE fen_key = ?', [b]), 10);
+    assert.deepEqual(db.column('SELECT rank FROM evals_multipv WHERE fen_key = ?', [b]), [1]);
+    assert.deepEqual(db.column('SELECT fen_key FROM evals_fast'), [b]);
     // a full search of b replaces its rows and mark
     writeResults(db, [row(b, 40, NODES), row(c, 50, NODES)]);
     assert.equal(db.value('SELECT eval_cp FROM evals WHERE fen_key = ?', [b]), 40);

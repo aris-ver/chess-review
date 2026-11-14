@@ -3760,8 +3760,9 @@ async function pollStatus() {
           gameWatch = { id: gj.id, slug: g.id, at: -1 };
           if (g.fast && g.analysed >= 0.999) state.deepening = g.id;     // opened while it is searched again in full
         }
-        // a game opened at its start while its analysis runs (started from the list, say): play along, once
-        if (!state.livePlayed.has(g.id) && state.ply === 0 && !state.variation) { state.livePlayed.add(g.id); startPlay(true); }
+        // a game opened at its start while its analysis runs (started from the list, say): play along, once; not
+        // while a finished fast review is searched again in full, whose moves are all there already
+        if (!state.livePlayed.has(g.id) && state.deepening !== g.id && state.ply === 0 && !state.variation) { state.livePlayed.add(g.id); startPlay(true); }
         const [done] = jobProgress(gj);
         if (gj.status !== 'queued' && done !== gameWatch.at) { gameWatch.at = done; await reloadGame(); }
         renderAnalyseBox(gj);
