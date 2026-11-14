@@ -742,6 +742,17 @@ body.sandbox #movelist, body.puzzle #movelist { display: grid !important; }
 .ovfoot { position: sticky; bottom: 0; z-index: 2; margin-top: 8px; padding: 10px 14px; background: var(--panel); }
 .ovfoot .ovstart { display: block; width: 100%; padding: 13px; font-size: 16px; font-weight: 700; }
 .ovfoot .ovengine { margin-top: 6px; text-align: center; font-size: 11px; color: var(--muted); }
+/* Fast | Full under Start review (a game not analysed yet), and its one-line hint */
+.ovmode { display: flex; margin: 8px auto 0; width: min(260px, 100%); border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+.ovmode button { flex: 1; padding: 5px 0; border: 0; border-radius: 0; background: var(--panel2); color: var(--muted); font-size: 13px; font-weight: 600; }
+.ovmode button + button { border-left: 1px solid var(--line); }
+.ovmode button.on { background: var(--accent); color: #1b1b1b; }
+@media (hover: hover) { .ovmode button:not(.on):hover { color: var(--text); } }
+.ovfoot .ovhint { margin-top: 5px; text-align: center; font-size: 11px; color: var(--muted); }
+/* an analysed fast review: the offer of a full one */
+.ovfoot .ovdeeper { margin-top: 6px; text-align: center; font-size: 12px; color: var(--muted); }
+.ovfoot .ovdeeper a { color: var(--accent); }
+html.engine-loading .ovfoot .ovdeeper a, .ovfoot .ovdeeper a.busy { color: var(--muted); pointer-events: none; }
 /* greyed while the web build's engine loads (web/shim.js: html.engine-loading) */
 .ovfoot .ovstart:disabled, .ovfoot .ovstart:disabled:hover { background: var(--panel2); border-color: var(--line); color: var(--muted); opacity: 1; }
 /* a phone upright: just over the nav pinned to the bottom, so it shows as the game opens; gone once pressed */
@@ -752,6 +763,12 @@ body.sandbox #movelist, body.puzzle #movelist { display: grid !important; }
   .panel .ovfoot.used { display: none; }
   body:has(#review:not(.hidden) .panel[data-tab="overview"] .ovfoot:not(.used)) main { padding-bottom: calc(150px + env(safe-area-inset-bottom)); }
   body.hasbar:has(#review:not(.hidden) .panel[data-tab="overview"] .ovfoot:not(.used)) main { padding-bottom: calc(216px + env(safe-area-inset-bottom)); }
+  /* Fast | Full, or the full re-analysis offer: one short row more, no hint */
+  .ovmode { height: 28px; margin-top: 6px; } .ovmode button { padding: 0; }
+  .ovfoot .ovhint { display: none; }
+  .ovfoot .ovdeeper { margin-top: 5px; line-height: 23px; }
+  body:has(#review:not(.hidden) .panel[data-tab="overview"] .ovfoot:not(.used) :is(.ovmode, .ovdeeper)) main { padding-bottom: calc(184px + env(safe-area-inset-bottom)); }
+  body.hasbar:has(#review:not(.hidden) .panel[data-tab="overview"] .ovfoot:not(.used) :is(.ovmode, .ovdeeper)) main { padding-bottom: calc(250px + env(safe-area-inset-bottom)); }
 }
 /* on its side the nav is in the panel: the button stays at the overview's foot */
 @media (max-width: 900px) and (orientation: landscape) and (max-height: 500px) {
@@ -852,6 +869,8 @@ svg.graph { width: 100%; height: 52px; display: block; cursor: pointer; backgrou
 .tsounds .all { grid-column: 1 / -1; justify-self: start; }
 .tactions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; border-top: 1px solid var(--line); padding-top: 12px; }
 .tactions .pending { color: var(--muted); font-size: 12px; }
+.tgrid.modes { grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); align-content: start; }     /* Analysis: Fast and Full, said in a line each */
+.tgrid.modes .tile { aspect-ratio: auto; padding: 12px 10px; } .tgrid.modes .tn { font-size: 14px; font-weight: 600; }
 @media (max-width: 760px) {
   .themes { grid-template-columns: 1fr; margin-top: 8px; }
   .tpreview { position: static; max-width: 420px; width: 100%; margin: 0 auto; }
@@ -866,7 +885,7 @@ svg.graph { width: 100%; height: 52px; display: block; cursor: pointer; backgrou
   <button id="b-back" class="back hidden" title="Back (Esc)">←<span class="t" id="back-t"> Back</span></button>
   <span class="crumb" id="crumb"></span>
   <div class="right">
-    <button id="b-settings" class="snd" title="Pieces, board and sounds"><svg viewBox="0 0 24 24"><path fill-rule="evenodd" d="M19.14 12.94c.04-.3.06-.61.06-.94s-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.49.49 0 0 0-.59-.22l-2.39.96a7 7 0 0 0-1.62-.94l-.36-2.54a.48.48 0 0 0-.48-.41h-3.84a.47.47 0 0 0-.47.41l-.36 2.54a7.4 7.4 0 0 0-1.62.94l-2.39-.96a.48.48 0 0 0-.59.22L2.74 8.87a.47.47 0 0 0 .12.61l2.03 1.58a6 6 0 0 0 0 1.88l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54a7 7 0 0 0 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32a.47.47 0 0 0-.12-.61zM12 15.6a3.6 3.6 0 1 1 0-7.2 3.6 3.6 0 0 1 0 7.2z"/></svg></button>
+    <button id="b-settings" class="snd" title="Settings"><svg viewBox="0 0 24 24"><path fill-rule="evenodd" d="M19.14 12.94c.04-.3.06-.61.06-.94s-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.49.49 0 0 0-.59-.22l-2.39.96a7 7 0 0 0-1.62-.94l-.36-2.54a.48.48 0 0 0-.48-.41h-3.84a.47.47 0 0 0-.47.41l-.36 2.54a7.4 7.4 0 0 0-1.62.94l-2.39-.96a.48.48 0 0 0-.59.22L2.74 8.87a.47.47 0 0 0 .12.61l2.03 1.58a6 6 0 0 0 0 1.88l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54a7 7 0 0 0 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32a.47.47 0 0 0-.12-.61zM12 15.6a3.6 3.6 0 1 1 0-7.2 3.6 3.6 0 0 1 0 7.2z"/></svg></button>
     <span class="vol"><button id="b-sound" class="snd" title="Volume"></button><input type="range" min="0" max="100" step="1" aria-label="Volume"></span>
     <button id="b-refresh" class="pctx" title="Fetch new games"><span class="i">⟳</span><span class="t"> Refresh games</span></button>
     <span id="jobstat" style="color:var(--muted);font-size:12px"></span>
@@ -962,10 +981,10 @@ svg.graph { width: 100%; height: 52px; display: block; cursor: pointer; backgrou
         <div class="tcredit" id="tcredit"></div>
       </div>
       <div class="tpanel">
-        <div class="ttabs" id="ttabs"><button data-tab="pieces" class="active">Pieces</button><button data-tab="board">Board</button><button data-tab="sound">Sounds</button></div>
+        <div class="ttabs" id="ttabs"><button data-tab="pieces" class="active">Pieces</button><button data-tab="board">Board</button><button data-tab="sound">Sounds</button><button data-tab="analysis" id="ttab-analysis" class="hidden">Analysis</button></div>
         <div class="tgrid" id="tgrid"></div>
         <div class="tsounds hidden" id="tsounds"></div>
-        <div class="tactions">
+        <div class="tactions" id="tactions">
           <button id="t-reset" title="Back to the defaults (applied when you press Apply)">Reset to defaults</button>
           <span class="pending" id="t-pending"></span>
           <span style="margin-left:auto"></span>
@@ -1592,7 +1611,7 @@ function ratingsHTML(ratings) {
 }
 // which engine answers on-demand questions, and how deep: shown next to every result
 state.engine = null;
-(async () => { try { const d = await (await fetch('api/engine')).json(); if (!d.error) { state.engine = d; if (state.game) { renderLines(); renderNow(); renderOverview(); } } } catch (e) {} })();
+(async () => { try { const d = await (await fetch('api/engine')).json(); if (!d.error) { state.engine = d; if (state.game) { renderLines(); renderNow(); renderOverview(); } if (!$('settings').classList.contains('hidden')) renderSettings(); } } catch (e) {} })();
 // updates (desktop build only): one check per launch, the banner on the home screen does the rest
 state.update = null;
 const fmtMB = b => b ? `${(b / 1048576).toFixed(b < 10485760 ? 1 : 0)} MB` : '';
@@ -1717,13 +1736,17 @@ async function showSettings() {
   showSection('settings');
   document.body.classList.remove('sandbox', 'puzzle'); stopSandboxStream();
   state.game = null; state.profile = null; state.games = null; dropVariation(); stopPolling(); stopPlay();
-  setContext(false); $('crumb').textContent = 'Pieces, board and sounds';
+  setContext(false); $('crumb').textContent = 'Settings';
   settings.pend = { pieces: theme.pieces, board: theme.board, sound: theme.sound };
   renderSettings();
 }
 const changed = () => Object.keys(THEME_DEFAULT).some(k => settings.pend[k] !== theme[k]);
+const ANALYSIS_TILES = [['fast', 'Fast', 'About twice as quick, slightly less deep'], ['full', 'Full', 'The deepest analysis, about twice as long']];
 function renderSettings() {
   const p = settings.pend;
+  // Analysis: only where the engine offers a fast analysis (not the phones' lite one)
+  $('ttab-analysis').classList.toggle('hidden', !fastOffered());
+  if (settings.tab === 'analysis' && !fastOffered()) settings.tab = 'pieces';
   paintBoard(p.board, $('settings'));    // the preview and the piece tiles sit on the board being tried
   document.querySelectorAll('#ttabs button').forEach(b => b.classList.toggle('active', b.dataset.tab === settings.tab));
   renderPreview();
@@ -1735,10 +1758,20 @@ function renderSettings() {
   else if (settings.tab === 'board')
     html = THEMES.boards.map(t => tile(t.id, t.id === p.board,
       `<span class="tb" style="background-image:url('themes/boards/${t.thumb}')"></span><span class="tn">${esc(t.name)}</span>`)).join('');
+  else if (settings.tab === 'analysis')
+    html = ANALYSIS_TILES.map(([id, name, what]) => tile(id, id === analysisDefault(), `<span class="tn">${name}</span><span class="ta">${what}</span>`)).join('');
   else
     html = THEMES.sounds.map(t => tile(t.id, t.id === p.sound, `<span class="tn">${esc(t.name)}</span><span class="ta">${esc(t.author)}</span>`)).join('');
   $('tgrid').innerHTML = html;
+  $('tgrid').classList.toggle('modes', settings.tab === 'analysis');
+  $('tactions').classList.toggle('hidden', settings.tab === 'analysis');     // saved as it is picked: nothing to apply
   $('tgrid').querySelectorAll('.tile').forEach(b => b.onclick = () => {
+    if (settings.tab === 'analysis') {
+      setAnalysisDefault(b.dataset.id);
+      toast(`New reviews: ${b.dataset.id === 'fast' ? 'Fast' : 'Full'} analysis`);
+      renderSettings();
+      return;
+    }
     p[settings.tab] = b.dataset.id;      // the tabs are named after the choices
     if (settings.tab === 'sound') { warmSounds(p.sound); play('self', 0, p.sound); }   // a taste of the pack straight away
     renderSettings();
@@ -3414,7 +3447,8 @@ async function reloadGame() {
   if (!state.game) return;
   let g; try { g = await loadGame(state.game.id); } catch (e) { return; }     // the next poll tries again
   if (!g || !g.key_moments) return;                                           // an error's answer: the same
-  if (g.analysed === state.game.analysed && g.key_moments.length === state.game.key_moments.length) return;
+  // the same review (a fast one searched again in full changes its evals, not how much is analysed)
+  if (g.analysed === state.game.analysed && g.key_moments.length === state.game.key_moments.length && g.fp === state.game.fp) return;
   const body = document.querySelector('.panel .body'), scrollTop = body.scrollTop;
   state.game = g;
   notePace();       // when each batch of analysed moves came in
@@ -3454,6 +3488,7 @@ function moveReady(g, i) {
 function liveFrontier() {
   const g = state.game;
   if (!g || g.puzzle || g.sandbox || !state.profile || !gameJob(g.id)) return null;
+  if (g.analysed >= 0.999 && state.deepening === g.id) return null;    // a fast review searched again in full stays as it is
   let i = 0;
   while (i < g.moves.length && moveReady(g, i)) i++;
   return i;
@@ -3540,8 +3575,20 @@ function renderAnalyseBox(job) {
   const [done, total] = jobProgress(job);
   prog.firstElementChild.style.width = (total ? Math.round(100 * done / total) : 0) + '%';
 }
-async function startReview() {
-  const r = await fetch(`api/${P()}/analyse/${state.game.id}`, { method: 'POST' });
+// How deep a review goes: Fast (the engine at half its nodes, about twice as quick) or Full. Settings' Analysis tab
+// sets the default (kept in settings.json too, for the batch jobs that start without a page to ask); the overview's
+// Fast | Full changes it for one review. Only where the engine offers a fast analysis (api/engine's fast_nodes).
+const analysisDefault = () => { try { return localStorage.getItem('analysis') === 'fast' ? 'fast' : 'full'; } catch (e) { return 'full'; } };
+const fastOffered = () => !!(state.engine && state.engine.fast_nodes);
+const MODE_HINT = { fast: 'About twice as quick, slightly less deep. You can re-analyse at full depth later.',
+                    full: 'The deepest analysis. Takes about twice as long.' };
+function setAnalysisDefault(mode) {
+  try { localStorage.setItem('analysis', mode); } catch (e) {}
+  // the web build answers the page's settings itself (web/shim.js): said to the server outright, for its batch jobs
+  fetch('api/settings', { method: 'POST', body: JSON.stringify({ analysis: mode }) }).catch(() => {});
+}
+async function startReview(mode = analysisDefault()) {
+  const r = await fetch(`api/${P()}/analyse/${state.game.id}?mode=${mode}`, { method: 'POST' });
   const d = await r.json();
   if (!r.ok) { toast(d.error === 'busy' ? `Busy: ${jobText(d.job)}` : d.error); return; }
   jobsNow = [d.job, ...jobsNow];
@@ -3552,6 +3599,18 @@ async function startReview() {
   syncLive();
   if (state.ply >= line().length) go(0, true);
   startPlay(true);
+  pollStatus();
+}
+// A fast review searched again at full depth: the review stays as it is meanwhile, and is redrawn as it ends.
+async function deepenReview() {
+  const r = await fetch(`api/${P()}/analyse/${state.game.id}?mode=full`, { method: 'POST' });
+  const d = await r.json();
+  if (!r.ok) { toast(d.error === 'busy' ? `Busy: ${jobText(d.job)}` : d.error); return; }
+  toast('Re-analysing at full depth');
+  state.deepening = state.game.id;
+  jobsNow = [d.job, ...jobsNow];
+  renderAnalyseBox(d.job);
+  renderOverview();
   pollStatus();
 }
 // A profile is fetched a page at a time, newest first: under its list, the button for the page before. It shows the
@@ -3697,7 +3756,10 @@ async function pollStatus() {
       // the game on screen: its analysis as it goes, and once it has ended
       const gj = gameJob(g.id);
       if (gj) {
-        if (!gameWatch || gameWatch.id !== gj.id || gameWatch.slug !== g.id) gameWatch = { id: gj.id, slug: g.id, at: -1 };
+        if (!gameWatch || gameWatch.id !== gj.id || gameWatch.slug !== g.id) {
+          gameWatch = { id: gj.id, slug: g.id, at: -1 };
+          if (g.fast && g.analysed >= 0.999) state.deepening = g.id;     // opened while it is searched again in full
+        }
         // a game opened at its start while its analysis runs (started from the list, say): play along, once
         if (!state.livePlayed.has(g.id) && state.ply === 0 && !state.variation) { state.livePlayed.add(g.id); startPlay(true); }
         const [done] = jobProgress(gj);
@@ -3707,6 +3769,7 @@ async function pollStatus() {
         const ended = (d.recent || []).find(x => x.id === gameWatch.id);
         gameWatch = null;
         await reloadGame(); renderAnalyseBox(null);
+        state.deepening = null; renderOverview();     // the ended job's offers (a fast review's full one) come back
         if (ended && ended.kind === 'analyse') { if (ended.status === 'error') toast('Analysis failed: ' + ended.error); else if (ended.status === 'done') play('notify'); }
       }
       syncLive();
@@ -4626,6 +4689,11 @@ function renderOverview() {
   let html = '';
   if (f != null) html += `<div class="ovlive">${job && job.status === 'queued' ? 'Waiting its turn…' : f >= n ? 'Finishing…' : f ? `Analysed ${f} of ${n} moves` : 'Starting the engines…'}` +
     `<div class="bar"><div style="width:${n ? Math.round(100 * f / n) : 0}%"></div></div></div>`;
+  else if (full && job && state.deepening === g.id) {
+    const [done, total] = jobProgress(job);
+    html += `<div class="ovlive">${job.status === 'queued' ? 'Re-analysis waiting its turn…' : `Re-analysing at full depth: ${done} of ${total} positions`}` +
+      `<div class="bar"><div style="width:${total ? Math.round(100 * done / total) : 0}%"></div></div></div>`;
+  }
   const left = g.left_book_ply, who = left % 2 === 0 ? g.white.name : g.black.name;
   const book = left != null && left < n ? `left the book with <a href="#" data-ply="${left}">${moveLabel(left, g.moves[left].san)}</a> (${esc(who)})` : 'all of it in the book';
   html += `<div class="ovopen">${g.opening_name ? `<b>${g.eco || ''} ${esc(g.opening_name)}</b> · ${book}` : book[0].toUpperCase() + book.slice(1)}</div>`;
@@ -4654,8 +4722,16 @@ function renderOverview() {
   const used = state.ovUsed === g.id ? ' used' : '';
   // which engine reviews the game, quietly under the button (once api/engine has answered)
   const by = state.engine && state.engine.name ? `<div class="ovengine">Reviewed with ${esc(state.engine.name)}</div>` : '';
-  const foot = full ? `<div class="ovfoot${used}"><button class="primary ovstart" id="ov-start">Start review</button>${by}</div>`
-    : f == null ? `<div class="ovfoot${used}"><button class="primary ovstart" id="ov-analyse">Start review</button>${by}</div>` : '';
+  // not analysed yet: Fast | Full under the button, the default preselected (a click changes this review only);
+  // analysed fast: the offer of a full one, until it runs
+  if (state.ovMode && state.ovMode.id !== g.id) state.ovMode = null;
+  const mode = state.ovMode ? state.ovMode.mode : analysisDefault();
+  const modes = fastOffered() ? `<div class="ovmode" role="group" aria-label="How deep to analyse">` +
+      [['fast', 'Fast'], ['full', 'Full']].map(([m, t]) => `<button data-mode="${m}" class="${m === mode ? 'on' : ''}" aria-pressed="${m === mode}">${t}</button>`).join('') +
+      `</div><div class="ovhint">${MODE_HINT[mode]}</div>` : '';
+  const deeper = g.fast && !job ? `<div class="ovdeeper">Fast analysis · <a href="#" id="ov-deeper">Re-analyse at full depth</a></div>` : '';
+  const foot = full ? `<div class="ovfoot${used}"><button class="primary ovstart" id="ov-start">Start review</button>${deeper}${by}</div>`
+    : f == null ? `<div class="ovfoot${used}"><button class="primary ovstart" id="ov-analyse">Start review</button>${modes}${by}</div>` : '';
   if (!any && f == null) { $('overview').innerHTML = html + foot; bindOverview(); return; }
 
   // the labels: the four bad ones and the rest as "good moves", or all eleven
@@ -4708,8 +4784,19 @@ function bindOverview() {
     const loading = () => document.documentElement.classList.contains('engine-loading');
     analyse.disabled = loading();
     analyse.title = loading() ? 'The engine is still loading' : '';
-    analyse.onclick = async () => { used(analyse); analyse.disabled = true; try { await startReview(); } finally { analyse.disabled = loading(); } };
+    analyse.onclick = async () => {
+      const mode = state.ovMode && state.ovMode.id === state.game.id ? state.ovMode.mode : analysisDefault();
+      used(analyse); analyse.disabled = true; try { await startReview(mode); } finally { analyse.disabled = loading(); }
+    };
   }
+  ov.querySelectorAll('.ovmode button').forEach(b => b.onclick = () => { state.ovMode = { id: state.game.id, mode: b.dataset.mode }; renderOverview(); });
+  const deeper = $('ov-deeper');
+  if (deeper) deeper.onclick = async e => {
+    e.preventDefault();
+    if (document.documentElement.classList.contains('engine-loading') || deeper.classList.contains('busy')) return;
+    deeper.classList.add('busy');
+    try { await deepenReview(); } finally { deeper.classList.remove('busy'); }
+  };
   highlightCurrent();
 }
 addEventListener('engineready', () => { const a = $('ov-analyse'); if (a) { a.disabled = false; a.title = ''; } });
@@ -4951,11 +5038,17 @@ else if (location.search.includes('selftest')) (async () => {
     // Start review on a game not analysed yet: the overview's button starts the analysis (the POST faked), the moves show and the board follows, quietly
     state.game = { ...partial(0), analysed: 0 }; jobsNow = []; syncLive(); setTab('overview'); renderOverview(); go(0);
     const realFetch = window.fetch;
-    window.fetch = (input, init = {}) => init.method === 'POST' && String(input).includes('/analyse/')
+    // Fast | Full under the button where the engine offers a fast analysis, preselected from the default
+    const modeCtl = document.querySelector('.ovfoot .ovmode'), picked = modeCtl && modeCtl.querySelector('button.on');
+    say(`Fast | Full: offered ${fastOffered()}, control ${!!modeCtl}, picked ${picked ? picked.dataset.mode : '-'} (default ${analysisDefault()}) ` +
+        `${!!modeCtl === fastOffered() && (!modeCtl || picked.dataset.mode === analysisDefault()) ? 'ok' : 'BAD'}`);
+    let posted = '';
+    window.fetch = (input, init = {}) => init.method === 'POST' && String(input).includes('/analyse/') && (posted = String(input))
       ? Promise.resolve(new Response(JSON.stringify({ job: { id: -1, kind: 'analyse', profile: state.profile, game: real.id, status: 'running', done: 0, total: 2 } })))
       : realFetch(input, init);
     const cta = $('ov-analyse');
     try { if (cta) await cta.onclick(); } finally { window.fetch = realFetch; pollGen++; stopPolling(); }
+    say(`Start review asked for ${posted} ${posted.endsWith(`?mode=${analysisDefault()}`) ? 'ok' : 'BAD'}`);
     const dots = () => !!$('now').querySelector('.dots');
     say(`Start review (not analysed): button ${!!cta}, tab ${state.tab}, frontier ${liveFrontier()} (expect the ${nBook} book moves, no evals yet), playing=${!!state.playing}, quiet=${state.quiet}, coach dots=${dots()} ` +
         `${cta && state.tab === 'moves' && liveFrontier() === nBook && state.playing && state.quiet && dots() ? 'ok' : 'BAD'}`);
