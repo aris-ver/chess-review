@@ -19,3 +19,6 @@ Product decisions are in docs/training-grounds.md ("Decided"). Coordination deci
   the page loads no tables. Rejected: shipping .bin to the page (second loader, UI-thread parse, logic twice).
 - 2026-11-16: "Develop your instinct" is a home-page section after Puzzles opening #/drills: the page has no tab bar,
   Puzzles is reached the same way.
+- 2026-11-16: KBNK L2 is mate in 19-24, +10, counter shown, king in or next to a wrong corner (user's choice): the
+  planned 12-18 band holds no wrong-corner start. Rejected: keeping 12-18 with the king two squares off the corner.
+- 2026-11-16: the .bin tables stay uncommitted; CI caches data/endgames keyed on the generator's hash (+2 min cold).

@@ -17,6 +17,9 @@ Pipeline: Opus plans and checks (Fable until phase 2's first review), Sonnet or 
 - 2026-11-16: phase 3 spec p3-spec.md (server move route). Built by Opus on claude/instinct-p3 (be2ca69, 981d29c),
   played in Electron and web by the builder. Paused at the 5-hour limit, resumed after the reset. Opus VERDICT: OK
   (low items only, in HANDOFF). Cherry-picked to main as 38aeb9d, 6bbd5c9.
+- 2026-11-16: 'abandoned' race fixed on main (4041ac5). Phase 4 (KBBK, KBNK) spec p4-spec.md, built by Opus on
+  claude/instinct-p4 (2218690, cffac3e), Opus VERDICT: OK; user set KBNK L2 to 19-24 in a wrong corner; fix round
+  27966b7, Opus recheck VERDICT: OK. Fast-forwarded to main.
 
 ## Next
 
