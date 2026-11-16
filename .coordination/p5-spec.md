@@ -226,3 +226,10 @@ folder. docs/training-grounds.md "Rook endings (v2)" updated to what was built.
 3. 4 levels per rook ending.
 4. Card titles "Lucena" and "Philidor" everywhere, with a plain line under each ("win rook and pawn against rook",
    "hold rook against rook and pawn").
+
+## Round 1 result (2026-11-17, Opus VERDICT: OK, merged to main at 7e21cef)
+KQKR 43 s, 748 KB gzipped, longest mate 35 (lichess dtm 69); KRKR 37 s, 263 KB, longest 19. For round 3:
+- fromFen now returns names with no table (KRKQ, KQKP, KBKN...); probe throws "no KRKQ table" on them. Grading must
+  flip KRKQ to KQKR (and read the result for the other side) or check the name against ENDING_NAMES before probing.
+- whiteMoves throws for KQKR and KRKR, so bestLine and lineFrom do too; don't wire a line request for them.
+- The spec's "KQKR flipped is still KQKR" is wrong: flipped it is KRKQ.

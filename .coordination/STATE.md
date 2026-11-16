@@ -30,3 +30,4 @@ Pipeline: Opus plans and checks (Fable until phase 2's first review), Sonnet or 
 5. Phase 5 (v2): rook endings.
 - 2026-11-16: released: main pushed (blundr.gr deployed, run 43955323797), desktop v1.1.0 published. Phase 5 spec
   being planned by Opus.
+- 2026-11-17: phase 5 round 1 (KQKR, KRKR tables) built by Opus, Opus VERDICT: OK, fast-forwarded to main (7e21cef).
