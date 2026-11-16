@@ -9,21 +9,25 @@
 // 600 candidates have been asked about (a family that falls short is reported, never loosened).
 //
 // A candidate is accepted when lichess says: Lucena 'win' (Philidor 'draw'), and at least one legal white move changes
-// that (so no start can be played carelessly). Lucena also asks /standard/mainline and keeps the number of white moves
-// to the first promotion on it; a mainline with none drops the candidate, and level 4 also needs 10 or more.
+// that (so no start can be played carelessly). Lucena also gets the number of white moves to its first promotion on
+// the tablebase line, found by following lichess's first move for white and the longest defence for black, one /standard
+// request per ply (the spec's
+// /standard/mainline answers about one call a minute before it returns 429, which would take hours); a line with no
+// promotion drops the candidate, and level 4 also needs 10 or more.
 //
-// Manners: one request at a time, at least 600 ms between their starts, 429 waits 60 s, a 5xx or a network error
-// retries after 5, 15 and 45 s and then skips the candidate (written to the cache too, so --offline sees the same).
-// Every answer is cached, trimmed to the fields used, in data/tablebase-cache.jsonl, one line per URL, and read first.
-// --offline uses only the cache and fails on a miss; with a full cache the output is byte-identical (the date in the
-// header is the cache's first line). Dev only: never from builds, tests or CI.
+// Manners: one request at a time, at least 1.1 s between their starts (600 ms drew a 429 within a dozen requests),
+// 429 waits 60 s, a 5xx or a network error retries after 5, 15 and 45 s and then skips the candidate (written to the
+// cache too, so --offline sees the same). Every answer is cached, trimmed to the fields used, in
+// data/tablebase-cache.jsonl, one line per URL, and read first. --offline uses only the cache and fails on a miss; with
+// a full cache the output is byte-identical (the date in the header is the cache's first line). Dev only: never from
+// builds, tests or CI.
 
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { Chess, fen as fenIO } from '../js/vendor/chessops.js';
-import { legalMoves, makeSquare } from '../js/core/chess.js';
+import { boardFromFen, fen as fenOf, legalMoves, makeSquare, parseUci, push } from '../js/core/chess.js';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 export const DEFAULT_OUT = join(ROOT, 'js', 'core', 'rook-starts.js');
@@ -33,7 +37,7 @@ export const PER_FAMILY = 60;
 export const MAX_CANDIDATES = 600;
 const USER_AGENT = 'chess-review-dev-script';
 const API = 'https://tablebase.lichess.ovh/standard';
-const GAP_MS = 600;
+const GAP_MS = 1100;   // 600 ms drew a 429 within a dozen requests
 const RETRY_MS = [5_000, 15_000, 45_000];
 const RATE_LIMIT_MS = 60_000;
 
@@ -248,12 +252,49 @@ class Tablebase {
 }
 
 const fenParam = fen => fen.replace(/ /g, '_');
-const trimPosition = j => ({ category: j.category, dtz: j.dtz, moves: j.moves.map(m => [m.uci, m.category]) });
-const trimMainline = j => ({ mainline: j.mainline.map(m => m.uci) });
+// the cache keeps a position as {c: category, z: dtz, m: 'uci:code:dtz uci:code:dtz ...'}
+const CODES = { win: 'w', loss: 'l', draw: 'd', 'cursed-win': 'c', 'blessed-loss': 'b', 'maybe-win': 'x', 'maybe-loss': 'y', unknown: 'u' };
+const CATEGORIES = Object.fromEntries(Object.entries(CODES).map(([k, v]) => [v, k]));
+const trimPosition = j => ({ c: j.category, z: j.dtz, m: j.moves.map(m => `${m.uci}:${CODES[m.category]}:${m.dtz ?? 0}`).join(' ') });
+const decode = b => ({
+  category: b.c, dtz: b.z,
+  moves: b.m ? b.m.split(' ').map(t => { const [u, c, z] = t.split(':'); return [u, CATEGORIES[c], Number(z)]; }) : [],
+});
 
-/** White moves played up to and including the first promotion on a mainline, or null when there is none. */
-export function movesToPromotion(ucis) {
-  for (let i = 0; i < ucis.length; i += 2) if (ucis[i].length === 5) return i / 2 + 1;
+/** The position after a move, as the FEN the cache is keyed by (clocks fixed, so a position is one entry). */
+export function after(fen, uci) {
+  const pos = boardFromFen(fen);
+  push(pos, parseUci(pos, uci));
+  return fenOf(pos).split(' ').slice(0, 4).join(' ') + ' 0 1';
+}
+
+/** The reply the line takes: for the defender, the longest resistance among the moves in the best category lichess
+ *  lists first (the longest DTZ); for the winner just the first listed move. Measured against /standard/mainline on
+ *  seven starts: off by 0 to 2 moves, none biased. */
+function bestMove(p, winner) {
+  if (winner) return p.moves[0][0];
+  let best = p.moves[0];
+  for (const m of p.moves) if (m[1] === best[1] && Math.abs(m[2]) > Math.abs(best[2])) best = m;
+  return best[0];
+}
+
+/** White moves played up to and including the first promotion when white plays lichess's first move and black the
+ *  longest defence (an estimate of what /standard/mainline plays); null when the line ends or 80 moves pass with no promotion;
+ *  undefined when a position could not be fetched. position(fen) gives {moves: [[uci, category, dtz], ...]} or null. */
+export async function promoteByWalk(fen, position, maxMoves = 80) {
+  let cur = fen;
+  for (let n = 1; n <= maxMoves; n++) {
+    const p = await position(cur);
+    if (!p) return undefined;
+    if (!p.moves.length) return null;
+    const mv = bestMove(p, true);
+    if (mv.length === 5) return n;
+    cur = after(cur, mv);
+    const q = await position(cur);
+    if (!q) return undefined;
+    if (!q.moves.length) return null;
+    cur = after(cur, bestMove(q, false));
+  }
   return null;
 }
 
@@ -278,7 +319,11 @@ async function buildEnding(ending, tb, log) {
       if (!start) continue;
       seen.add(fen);
       tried++;
-      const pos = await tb.get(`${API}?fen=${fenParam(fen)}`, trimPosition);
+      const position = async f => {
+        const b = await tb.get(`${API}?fen=${fenParam(f)}`, trimPosition);
+        return b && decode(b);
+      };
+      const pos = await position(fen);
       if (!pos) { rejected.skipped++; continue; }
       if (pos.category !== want) { rejected.not_wanted++; continue; }
       const good = pos.moves.filter(([, c]) => c === moveWant).length;
@@ -287,9 +332,8 @@ async function buildEnding(ending, tb, log) {
       if (ending === 'Philidor' && family === 'L4' && good > 3) { rejected.too_many_good++; continue; }
       let promote = null;
       if (ending === 'Lucena') {
-        const line = await tb.get(`${API}/mainline?fen=${fenParam(fen)}`, trimMainline);
-        if (!line) { rejected.skipped++; continue; }
-        promote = movesToPromotion(line.mainline);
+        promote = await promoteByWalk(fen, position);
+        if (promote === undefined) { rejected.skipped++; continue; }
         if (promote === null) { rejected.no_promotion++; continue; }
         if (family === 'L4' && promote < 10) { rejected.too_close++; continue; }
       }
@@ -313,7 +357,7 @@ function render(built, tb) {
     lines.push(`//   ${s.ending} ${s.family}: ${s.accepted} (${s.tried}${why ? '; ' + why : ''})`);
   }
   lines.push('// Entry: fen (white to move), family, good (moves that keep the result), legal (all moves), dtz, promote (Lucena:',
-    '// white moves to the first promotion on the lichess mainline; null for Philidor). The pawn is on file b-d.',
+    '// white moves to the first promotion on the best-move line; null for Philidor). The pawn is on file b-d.',
     'export const ROOK_STARTS = {');
   built.forEach((b, i) => {
     lines.push(`  ${i ? 'Philidor' : 'Lucena'}: [`);
@@ -351,7 +395,8 @@ export function parseArgs(argv) {
 async function main() {
   const opts = parseArgs(process.argv.slice(2));
   const t0 = Date.now();
-  const r = await build({ cache: opts.cache, offline: opts.offline });
+  const log = s => console.log(new Date().toISOString().slice(11, 19) + ' ' + s);
+  const r = await build({ cache: opts.cache, offline: opts.offline, log });
   writeFileSync(opts.out, r.text);
   const short = r.stats.filter(s => s.accepted < PER_FAMILY);
   console.log(`wrote ${opts.out}: ${r.requests} requests, ${((Date.now() - t0) / 1000).toFixed(0)} s`);
