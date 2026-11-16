@@ -6,9 +6,10 @@ export const MAX_LINES = 200000;          // per account: years of puzzles a day
 export const MAX_BATCH = 20000;           // per request
 export const MAX_LINE = 2000;             // bytes; a real line is ~100, a personal puzzle's ~350
 // puzzle progress, profiles.jsonl: the list of profiles added ({source, username, added, pinned}, no games), and
+// drill_attempts.jsonl: the endgame drills' record (one line per attempt, merged like the puzzle files), and
 // profiles/<id>/own_puzzles.jsonl: that profile's personal puzzles (a position from one of its games and the line
 // that solves it, one per line), so another device can play them without the games
-const FILE = /^((profiles\/[a-z0-9_.-]{1,80}\/)?puzzle_(attempts|solved|daily)(\.reset-[0-9-]{1,40})?|profiles\/[a-z0-9_.-]{1,80}\/own_puzzles|profiles)\.jsonl$/;
+const FILE = /^((profiles\/[a-z0-9_.-]{1,80}\/)?puzzle_(attempts|solved|daily)(\.reset-[0-9-]{1,40})?|profiles\/[a-z0-9_.-]{1,80}\/own_puzzles|drill_attempts|profiles)\.jsonl$/;
 const OWN_PUZZLES = /\/own_puzzles\.jsonl$/;
 
 export class BadRequest extends Error {}

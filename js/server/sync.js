@@ -10,6 +10,7 @@
 //
 //     puzzle_attempts[.<archive>].jsonl             progress.sqlite puzzle_attempts, archive NULL or <archive>
 //     puzzle_solved.jsonl, puzzle_daily.jsonl       progress.sqlite puzzle_solved, puzzle_daily
+//     drill_attempts.jsonl                          progress.sqlite drill_attempts (the endgame drills' record)
 //     profiles/<id>/puzzle_attempts[.<a>].jsonl     profiles/<id>/games.sqlite puzzle_attempts
 //     profiles/<id>/own_puzzles.jsonl               profiles/<id>/games.sqlite own_puzzles (a line per row as it is)
 //
@@ -26,7 +27,7 @@
 // `onSwitch` (called once the profiles changed hands, or their own puzzles changed: own puzzles' cache), and
 // `ownPuzzles` (profile id -> the own_puzzles table brought up to date with the puzzles its games give here).
 
-import { EVALS, PROFILE_DDL, PROGRESS, PROGRESS_DDL, ATTEMPTS_SCHEMA, DAILY_SCHEMA, OWN_PUZZLES_SCHEMA, SOLVED_ROW, profileDb } from './db.js';
+import { EVALS, PROFILE_DDL, PROGRESS, PROGRESS_DDL, ATTEMPTS_SCHEMA, DAILY_SCHEMA, DRILL_ATTEMPTS_SCHEMA, OWN_PUZZLES_SCHEMA, SOLVED_ROW, profileDb } from './db.js';
 import { BadRequest, pyRepr, truthy } from './http.js';
 import { bestOwn } from './own-puzzles.js';
 import { profileId, pyDumps, validId } from './profiles.js';
@@ -62,9 +63,11 @@ const KEYS = {
   puzzle_attempts: ['id', 'ts', 'solved', 'ms', 'hinted', 'rating'],
   puzzle_solved: ['id', 'ts', 'clean'],
   puzzle_daily: ['date', 'n', 'id', 'solved', 'clean', 'ms', 'marks'],
+  drill_attempts: ['id', 'ts', 'ending', 'level', 'fen', 'dtm', 'budget', 'moves_used', 'result', 'ms', 'worst_loss'],
 };
 const ALWAYS = new Set(['ms']);
-const SCHEMAS = { puzzle_attempts: ATTEMPTS_SCHEMA, puzzle_solved: SOLVED_ROW, puzzle_daily: DAILY_SCHEMA, own_puzzles: OWN_PUZZLES_SCHEMA };
+const SCHEMAS = { puzzle_attempts: ATTEMPTS_SCHEMA, puzzle_solved: SOLVED_ROW, puzzle_daily: DAILY_SCHEMA, drill_attempts: DRILL_ATTEMPTS_SCHEMA,
+  own_puzzles: OWN_PUZZLES_SCHEMA };
 export const OWN = 'own_puzzles.jsonl';
 
 export function rowLine(table, row) {
@@ -91,6 +94,7 @@ export function locate(file) {
   if (m) return { db: PROGRESS, table: 'puzzle_attempts', archive: m[1] ?? null, dir: null };
   if (file === 'puzzle_solved.jsonl') return { db: PROGRESS, table: 'puzzle_solved', archive: null, dir: null };
   if (file === 'puzzle_daily.jsonl') return { db: PROGRESS, table: 'puzzle_daily', archive: null, dir: null };
+  if (file === 'drill_attempts.jsonl') return { db: PROGRESS, table: 'drill_attempts', archive: null, dir: null };
   return null;
 }
 
@@ -182,6 +186,7 @@ export function tidy(file, lines) {
   if (!file.includes('/') && name.startsWith('puzzle_attempts')) out = oncePer('id', out);
   else if (name === 'puzzle_solved.jsonl') out = bestSolved(out);
   else if (name === 'puzzle_daily.jsonl') out = oncePer('date', out);
+  else if (file === 'drill_attempts.jsonl') out = oncePer('id', out);
   else if (name === OWN) out = bestOwn(out);
   return out;
 }
@@ -272,13 +277,14 @@ export class Sync {
     return sorted(archives.map(a => attemptsFile(a, dir)));
   }
 
-  /** The library's files under root: puzzle_attempts*.jsonl, then puzzle_solved and puzzle_daily if they have lines. */
+  /** The library's files under root: puzzle_attempts*.jsonl, then puzzle_solved, puzzle_daily and drill_attempts if
+   * they have lines. */
   async libraryFiles(root) {
     const name = at(root, PROGRESS);
     const out = await this.attemptFiles(name);
     const db = await this.db(name);
     if (db) {
-      for (const t of ['puzzle_solved', 'puzzle_daily']) if (db.value(`SELECT count(*) FROM ${t}`)) out.push(`${t}.jsonl`);
+      for (const t of ['puzzle_solved', 'puzzle_daily', 'drill_attempts']) if (db.value(`SELECT count(*) FROM ${t}`)) out.push(`${t}.jsonl`);
     }
     return out;
   }

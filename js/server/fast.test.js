@@ -223,8 +223,8 @@ test('fast: an evals.sqlite at schema 3 opens at 4 with evals_fast, the other ta
     const store = new Store(nodeSqlite(dir)), blank = new Store(nodeSqlite(fresh));
     try {
       const db = await store.evals();
-      assert.equal(SCHEMA_VERSION, 4);
-      assert.equal(db.value('PRAGMA user_version'), 4);
+      assert.equal(SCHEMA_VERSION, 5);
+      assert.equal(db.value('PRAGMA user_version'), 5);
       assert.deepEqual(master(db), master(await blank.evals()));
       assert.deepEqual(master(db).map(r => r.name), ['evals', 'evals_fast', 'evals_multipv']);
       assert.equal(db.value('SELECT eval_cp FROM evals'), 5);

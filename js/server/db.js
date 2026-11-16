@@ -32,11 +32,12 @@ export const PROGRESS = 'progress.sqlite';
 export const profileDb = id => `profiles/${id}/games.sqlite`;
 
 // 2: puzzle_solved.clean (SOLVED_CLEAN). 3: a profile's own_puzzles (OWN_PUZZLES_SCHEMA). 4: evals_fast, the
-// positions of the engine cache searched by a fast review (EVALS_FAST_SCHEMA). A database made at an
+// positions of the engine cache searched by a fast review (EVALS_FAST_SCHEMA). 5: progress.sqlite's drill_attempts
+// (DRILL_ATTEMPTS_SCHEMA), the endgame drills' record. A database made at an
 // earlier version is brought up to this one as it is opened (UPGRADES), and a new one is made at 1 and brought up the
 // same way, so the two have the same schema to the letter (sqlite_master's text of an altered table isn't what a
 // CREATE TABLE of it would say).
-export const SCHEMA_VERSION = 4;
+export const SCHEMA_VERSION = 5;
 
 /** (name, SQL type) in order, as normalise.GAMES_SCHEMA */
 export const GAMES_SCHEMA = [
@@ -128,6 +129,25 @@ export const ATTEMPTS_SCHEMA = [
   ['rating', 'INTEGER'],
 ];
 
+/** One attempt at an endgame drill (docs/training-grounds.md; server/drills.js): a line of drill_attempts.jsonl, {id,
+ * ts, ending, level, fen, dtm, budget, moves_used, result, ms, worst_loss}. `fen` is the start position as shown.
+ * dtm and budget are null for the king and pawn endings; worst_loss is the moves the costliest move cost, -1 when no
+ * move lost ground, null when a move threw the result. The level an ending is at is worked out from these rows. */
+export const DRILL_ATTEMPTS_SCHEMA = [
+  ['seq', 'INTEGER'],
+  ['id', 'TEXT'],
+  ['ts', 'INTEGER'],
+  ['ending', 'TEXT'],
+  ['level', 'INTEGER'],
+  ['fen', 'TEXT'],
+  ['dtm', 'INTEGER'],
+  ['budget', 'INTEGER'],
+  ['moves_used', 'INTEGER'],
+  ['result', 'TEXT'],
+  ['ms', 'INTEGER'],
+  ['worst_loss', 'INTEGER'],
+];
+
 /** puzzle_solved.jsonl: {id, ts}, as the Python app wrote it and schema 1 made it; and since schema 2 {id, ts,
  * clean: true} for a puzzle solved without a mistake or a hint on a later go (SOLVED_CLEAN, NULL otherwise). */
 export const SOLVED_SCHEMA = [
@@ -202,6 +222,13 @@ const UPGRADES = [
   }],
   [4, db => {
     if (hasTable(db, 'evals')) db.exec(table('evals_fast', EVALS_FAST_SCHEMA, ['PRIMARY KEY (fen_key)']));
+  }],
+  [5, db => {
+    if (hasTable(db, 'puzzle_solved')) {
+      db.exec(table('drill_attempts', DRILL_ATTEMPTS_SCHEMA));
+      db.exec('CREATE INDEX IF NOT EXISTS drill_attempts_ending ON drill_attempts (ending);');
+      db.exec('CREATE INDEX IF NOT EXISTS drill_attempts_id ON drill_attempts (id);');
+    }
   }],
 ];
 
@@ -370,7 +397,8 @@ export class Store {
     return this.connect(EVALS, EVALS_DDL);
   }
 
-  /** Puzzle progress across profiles (puzzle_attempts, puzzle_solved, puzzle_daily). */
+  /** Puzzle progress across profiles (puzzle_attempts, puzzle_solved, puzzle_daily) and the endgame drills' record
+   * (drill_attempts). */
   progress() {
     return this.connect(PROGRESS, PROGRESS_DDL);
   }
