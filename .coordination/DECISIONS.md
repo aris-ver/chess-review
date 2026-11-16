@@ -15,3 +15,7 @@ Product decisions are in docs/training-grounds.md ("Decided"). Coordination deci
   own_puzzles still never see it (they would otherwise remove every line).
 - 2026-11-16: star = a solved attempt counted at the current level when that level is the top one, sticky
   (docs/training-grounds.md "when its top level is reached"); practice solves via ?level=N do not earn it.
+- 2026-11-16: the drill's moves, status and review go through stateless server routes (POST /api/drills/move, /line);
+  the page loads no tables. Rejected: shipping .bin to the page (second loader, UI-thread parse, logic twice).
+- 2026-11-16: "Develop your instinct" is a home-page section after Puzzles opening #/drills: the page has no tab bar,
+  Puzzles is reached the same way.

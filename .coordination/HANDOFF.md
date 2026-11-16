@@ -11,30 +11,33 @@ DECISIONS.md.
   Spec: p2-spec.md (routes, shapes, progression, star rule). Checker VERDICT: OK. npm test 299 pass 0 fail 2 skip on main;
   worker vitest 39/39.
 
-## Now: phase 3 built, check pending (paused 2026-11-16, 5-hour limit at 94%)
-- Spec: p3-spec.md. Decided: stateless POST /api/drills/move and /api/drills/line on the local server (on the web that
-  is the tabs' worker, so no network hop); the page loads no tables.
-- Built by Opus on branch claude/instinct-p3 (worktree .claude/worktrees/instinct-p3), NOT merged, NOT checked:
-  be2ca69 routes + table wiring (build_web.js, desktop build.js/main.js/paths.js, web app.js/worker.js), 981d29c page.
-- Builder's report (unverified): npm test 307 pass 0 fail 2 skip (bin/ and tests/parity/local symlinked from main),
-  worker vitest 39/39 (needs web-dist built first). Played in Electron (temp data dir) and the local web build at
-  390x844: KQK solve, fail + review, level up, KQRK/KRRK/KPK wins on real tables, KPK-hold. Screenshots p3-shots/ and
-  p3-build-handover.md in the coordinator's side-session-notes folder.
-- Builder's choices to check: no tab bar exists, so "Develop your instinct" is a home section after Puzzles opening
-  #/drills; level sent to the move route, budget recomputed server side; client fens checked on placement and side to
-  move only, the server judges its own replay; 'abandoned' only after a move; line route also returns {uci, san, fen};
-  KPK-hold has its own review; attempt retries in memory only (5 tries); both builds build missing tables (~16 s cold).
-- Next: Opus checker on main..claude/instinct-p3 (must end "VERDICT: OK": route validation, page wiring, both builds,
-  replay one drill in Electron and in the web build), fix round if needed, merge --ff-only from WSL, commit
-  .coordination, write the phase 4 handoff. Then remove worktrees instinct-p1/p2/p3 with Windows git.
+- Phase 3 on main (38aeb9d routes + table wiring, 6bbd5c9 page; cherry-picked from claude/instinct-p3 because main had
+  moved and the worktree's line-ending-only vendor_*.sh blocked a rebase). Spec: p3-spec.md. Stateless POST
+  /api/drills/move and /api/drills/line on the local server (on the web the tabs' worker), the page loads no tables.
+  build_web.js and js/desktop/build.js call ensureTables and ship endgames/*.bin; env.drillTables in web worker and
+  Electron main. "Develop your instinct" is a home-page section after Puzzles (the page has no tab bar) opening #/drills.
+  Opus checker VERDICT: OK; played to the end in Electron and in the web build at 390x844 by builder and checker.
+  Notes and screenshots: p3-build-handover.md, p3-shots/ in the coordinator's side-session-notes folder.
+
+## Next: phase 4 (KBBK, KBNK)
+- Tables (4-piece, offline like KQRK), shipping, levels per docs/training-grounds.md (KBNK zone by right/wrong corner,
+  budget under the 50-move rule). Cards and page should need only the new endings in ENDINGS.
+- Before shipping drills at all: deploy the Worker first. A new client against the old Worker gets 400 on sync once it
+  has a drill attempt, which stalls puzzle sync (no data loss). Nothing is pushed yet.
 - The page sends an `id` with every POST /api/drills/attempt; worst_loss null for 'threw'; KPK dtm and budget null.
-- Release order: deploy the Worker before shipping a desktop build with drills. A new client against the old Worker gets
-  400 on sync once it has a drill attempt, which stalls puzzle sync (no data loss).
 
 ## Known low items (tuning later)
+- Leaving in the 350 ms before the reply shows (index.html giveUpDrill) records 'abandoned' even if the reply ended the
+  drill. Small, but 'abandoned' is a fail and can move the level down; fix with phase 4.
+- The move route trusts the client's black replies (only legality checked), so crafted fens can get 'solved'; the
+  attempt route trusts the result anyway (own data only). Crafted KPK-hold input can give a 500 (kpkAttackerMove after
+  a black under-promotion, holdLine with a pawn on rank 1); an honest game never reaches it.
+- Escape/Back mid-drill counts as a miss without a confirm (per spec).
+- Attempt retries are in memory only; closing the tab before the save lands loses the attempt.
+- Both builds build missing tables, about 12-16 s cold (CI too).
+- web build needs data/book; a fresh worktree lacks it (symlink from main for checks).
 - An empty or tiny zone hands its turn to the next one (double share); KQK L5 edge has 3 positions, recur ~every 50.
 - KPK only-move count follows one fixed line, approximate.
-- KQRK/KRRK deal path tested only with a fake table; run it once against the real 4-piece tables in phase 3.
 - Export files drill_attempts.jsonl under `puzzle_progress`; guest-data count label "puzzle_records" includes drills.
 - A dealt but unplayed position can be dealt again (repeat guard uses recorded attempts only).
 
@@ -43,6 +46,8 @@ DECISIONS.md.
   Sonnet, harder ones Opus. Check usage (get_usage) before each agent.
 - Builder works in a worktree made with Windows git
   (`git -c safe.directory=* -C <repo> worktree add -b claude/<name> .claude/worktrees/<name> main`), tests from WSL
-  (Node at ~/.nvm/versions/node/v22.23.4/bin), merge to main from WSL with --ff-only. No push without the user.
-- Worktrees .claude/worktrees/instinct-p1 and instinct-p2 are merged and can be removed with Windows git
-  `worktree remove` (instinct-p2 has worker/node_modules from `npm ci`; both show vendor_*.sh as modified, line endings only).
+  (Node at ~/.nvm/versions/node/v22.23.4/bin), merge to main from WSL with --ff-only (or cherry-pick when main moved).
+  No push without the user. Copy data/endgames into a new worktree from an old one to skip the cold build.
+- Worktrees .claude/worktrees/instinct-p1, p2, p3 are merged and can be removed with Windows git `worktree remove`
+  (p3 has node_modules with Electron 44.9.3, borrow it for Electron checks first; all show vendor_*.sh as modified,
+  line endings only).

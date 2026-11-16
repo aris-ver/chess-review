@@ -15,7 +15,8 @@ Pipeline: Opus plans and checks (Fable until phase 2's first review), Sonnet or 
   wipe the drill record via sync, star from a practice solve, null fen crash. Fix round 9b367d8; Opus VERDICT: OK.
   Merged to main, npm test 299 pass 0 fail, worker vitest 39/39.
 - 2026-11-16: phase 3 spec p3-spec.md (server move route). Built by Opus on claude/instinct-p3 (be2ca69, 981d29c),
-  played in Electron and web by the builder. Check pending: paused at the 5-hour limit.
+  played in Electron and web by the builder. Paused at the 5-hour limit, resumed after the reset. Opus VERDICT: OK
+  (low items only, in HANDOFF). Cherry-picked to main as 38aeb9d, 6bbd5c9.
 
 ## Next
 
