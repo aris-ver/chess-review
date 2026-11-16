@@ -14,6 +14,8 @@ Pipeline: Opus plans and checks (Fable until phase 2's first review), Sonnet or 
 - 2026-11-16: phase 2 built by Sonnet as 76d21a1 (builder planned itself, p2-spec.md). Fable NOT OK: old clients would
   wipe the drill record via sync, star from a practice solve, null fen crash. Fix round 9b367d8; Opus VERDICT: OK.
   Merged to main, npm test 299 pass 0 fail, worker vitest 39/39.
+- 2026-11-16: phase 3 spec p3-spec.md (server move route). Built by Opus on claude/instinct-p3 (be2ca69, 981d29c),
+  played in Electron and web by the builder. Check pending: paused at the 5-hour limit.
 
 ## Next
 

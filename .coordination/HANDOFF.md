@@ -11,16 +11,23 @@ DECISIONS.md.
   Spec: p2-spec.md (routes, shapes, progression, star rule). Checker VERDICT: OK. npm test 299 pass 0 fail 2 skip on main;
   worker vitest 39/39.
 
-## Next: phase 3 (page tab, board, counter, review)
-- Own tab "Develop your instinct" in the shared page (web and desktop, same UI). User plays white; mate counter on easy
-  levels; review after each drill.
-- Missing piece: the defender's reply, status checks and review need the tables. Decide first: a stateless server route
-  (e.g. POST /api/drills/move {ending, fen} -> reply, status, loss) using env.drillTables, or ship .bin to the client.
-  Server route is the simpler fit (tables already lazy on env); the client must then round-trip per move.
-- Wire the .bin files into build_web.js and js/desktop/build.js (ensureTables(dir) is exported) and pass a DrillTables
-  built with tablesFromFiles into env.drillTables in the web worker and Electron main. Without it routes answer 503.
-- The page must send an `id` with every POST /api/drills/attempt (retries are then idempotent) and echo the dealt fields;
-  worst_loss null for 'threw'; KPK endings dtm and budget null.
+## Now: phase 3 built, check pending (paused 2026-11-16, 5-hour limit at 94%)
+- Spec: p3-spec.md. Decided: stateless POST /api/drills/move and /api/drills/line on the local server (on the web that
+  is the tabs' worker, so no network hop); the page loads no tables.
+- Built by Opus on branch claude/instinct-p3 (worktree .claude/worktrees/instinct-p3), NOT merged, NOT checked:
+  be2ca69 routes + table wiring (build_web.js, desktop build.js/main.js/paths.js, web app.js/worker.js), 981d29c page.
+- Builder's report (unverified): npm test 307 pass 0 fail 2 skip (bin/ and tests/parity/local symlinked from main),
+  worker vitest 39/39 (needs web-dist built first). Played in Electron (temp data dir) and the local web build at
+  390x844: KQK solve, fail + review, level up, KQRK/KRRK/KPK wins on real tables, KPK-hold. Screenshots p3-shots/ and
+  p3-build-handover.md in the coordinator's side-session-notes folder.
+- Builder's choices to check: no tab bar exists, so "Develop your instinct" is a home section after Puzzles opening
+  #/drills; level sent to the move route, budget recomputed server side; client fens checked on placement and side to
+  move only, the server judges its own replay; 'abandoned' only after a move; line route also returns {uci, san, fen};
+  KPK-hold has its own review; attempt retries in memory only (5 tries); both builds build missing tables (~16 s cold).
+- Next: Opus checker on main..claude/instinct-p3 (must end "VERDICT: OK": route validation, page wiring, both builds,
+  replay one drill in Electron and in the web build), fix round if needed, merge --ff-only from WSL, commit
+  .coordination, write the phase 4 handoff. Then remove worktrees instinct-p1/p2/p3 with Windows git.
+- The page sends an `id` with every POST /api/drills/attempt; worst_loss null for 'threw'; KPK dtm and budget null.
 - Release order: deploy the Worker before shipping a desktop build with drills. A new client against the old Worker gets
   400 on sync once it has a drill attempt, which stalls puzzle sync (no data loss).
 
