@@ -15,3 +15,4 @@
 *.parquet binary
 *.whl binary
 *.zip binary
+*.bin binary
