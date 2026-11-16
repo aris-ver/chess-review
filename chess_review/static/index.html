@@ -421,6 +421,21 @@ body:not(.puzzle) .pzover { display: none; }
 .pzcard .x { position: absolute; top: 4px; right: 4px; width: 36px; height: 36px; padding: 0; border: 0; background: none; color: var(--muted); font-size: 18px; }
 @media (hover: hover) { .pzcard .x:hover { background: var(--panel2); color: var(--text); } }
 .pzcard .dres { margin: 0 0 10px; text-align: left; }     /* the daily's result, just solved */
+/* the endgame drills (#/drills): the ending cards, and the review of an attempt in the coach's bubble */
+.card .dstar { color: #e8b83a; font-weight: 800; }
+body.drill .player .cap { display: none; }     /* an ending has no captures to count: the full set would read as all taken */
+.dnote { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 14px; margin: 0 0 12px; font-size: 14px; }
+.dlist { display: flex; flex-direction: column; gap: 1px; margin: 6px 0 2px; font-size: 13px; }
+.drow { display: grid; grid-template-columns: 24px minmax(0, 1fr) auto auto; gap: 8px; align-items: center; padding: 3px 6px; border-radius: 5px; cursor: pointer; font-variant-numeric: tabular-nums; }
+.drow .n { color: #777; } .drow .san { font-weight: 700; } .drow .dist { color: #555; font-size: 12px; }
+.drow .kind { font-size: 11px; font-weight: 700; padding: 0 6px; border-radius: 4px; color: #10141a; background: var(--kc); white-space: nowrap; }
+.drow .k-best { --kc: #36bcd8; } .drow .k-slack { --kc: #eacb5a; } .drow .k-lost { --kc: #f2944e; } .drow .k-threw { --kc: #e0355e; color: #fff; }
+.drow.worst { box-shadow: inset 3px 0 0 #e0355e; background: #fdecef; }
+.drow.sel { background: #e3f1fa; } .drow.worst.sel { background: #f7dce3; }
+@media (hover: hover) { .drow:hover { background: #f0f2f5; } }
+.bubble .dworst { font-weight: 600; color: #1b1b1b; }
+.bubble .dlevel { font-weight: 700; color: #1d7f4e; }
+.bubble a.dlink { color: #1f6fb2; cursor: pointer; }
 
 /* game list */
 .filters { display: flex; gap: 8px; margin-bottom: 12px; align-items: center; }
@@ -608,6 +623,8 @@ table.games button.an { padding: 3px 9px; font-size: 12px; font-weight: 600; whi
   /* the daily played already, opened again: its result card, with the share button, is there from the start. A
      daily just solved shows its card over the board instead (showPzOver), and in the coach as it scrolls */
   body.puzzle.dreview .coach:has(.dres) { height: auto; max-height: 40dvh; }
+  /* a drill's review, open: the move list in the coach, the board gives up the room */
+  body.puzzle.drillrev .coach { height: auto; max-height: 40dvh; }
   .pzinfo { grid-area: info; padding: 0 2px; height: 20px; flex-wrap: nowrap; white-space: nowrap; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
   .pzinfo::-webkit-scrollbar { display: none; }
   .pzinfo > * { flex: none; }
@@ -620,7 +637,7 @@ table.games button.an { padding: 3px 9px; font-size: 12px; font-weight: 600; whi
 /* a short phone: the coach would leave the board under 300px, and the card over the board already says how it went.
    It stays for the daily's result, the only place its share button is */
 @media (max-width: 900px) and (orientation: portrait) and (max-height: 600px) {
-  body.puzzle:not(.dreview) .coach { display: none; }
+  body.puzzle:not(.dreview):not(.drillrev) .coach { display: none; }
 }
 /* touch screens: no long-press selection or callout on the boards, and no cursor-following piece in the editor */
 @media (hover: none) and (pointer: coarse) {
@@ -912,6 +929,10 @@ svg.graph { width: 100%; height: 52px; display: block; cursor: pointer; backgrou
         <div class="card pztile covered" id="card-library"><div class="cover" data-cover="library"></div><div class="cbody"><span class="src">Lichess</span><span class="who">Puzzle library</span><span class="desc" id="card-library-desc">Tactics from Lichess, picked near your level, by theme if you like.</span></div></div>
         <div class="card pztile covered" id="card-mine"><div class="cover" data-cover="mine"></div><div class="cbody"><span class="src">Your games</span><span class="who">Personal puzzles</span><span class="desc" id="card-mine-desc">The moves you missed in a player's games, from a profile or any username, back until you find them.</span></div></div>
       </div>
+      <h2>Develop your instinct</h2>
+      <div class="cards pztiles">
+        <div class="card pztile covered" id="card-drills"><div class="cover" data-cover="drills"></div><div class="cbody"><span class="src">Endgames</span><span class="who">Basic endings, played out</span><span class="desc" id="card-drills-desc">Six basic endings against a defender that never gives up, from a new position every time.</span></div></div>
+      </div>
       <h2>Review something else</h2>
       <div class="acts">
         <button id="b-pgn" title="Paste the PGN of one game or many">Paste a PGN</button>
@@ -930,6 +951,14 @@ svg.graph { width: 100%; height: 52px; display: block; cursor: pointer; backgrou
   </section>
   <section id="pzpacks" class="hidden">
     <div class="home" id="pzpacksbox"></div>
+  </section>
+  <section id="drills" class="hidden">
+    <div class="home">
+      <h2>Develop your instinct</h2>
+      <p class="lead">Each ending starts from a position you haven't seen, against a defender that always picks the most stubborn move. Mate within the moves you're given, or hold the draw. After every attempt you can go through your moves and see where the mate got further away. Three solved out of your last four take you up a level; two misses in a row take you down one.</p>
+      <div class="dnote hidden" id="drillnote"></div>
+      <div class="cards pztiles" id="drillcards"></div>
+    </div>
   </section>
   <section id="pzpick" class="hidden">
     <div class="home">
@@ -1380,6 +1409,7 @@ function upTo(h = location.hash || '#/') {
   if (h === '#/daily') return last(v => v === '#/' || v === '#/packs') || '#/';
   if ((m = h.match(/^#\/packs\/([a-z0-9-]+)\/\d+\/\d+$/))) return '#/packs/' + m[1];
   if (h.startsWith('#/packs/')) return '#/packs';
+  if (h.startsWith('#/drills/')) return '#/drills';
   if (h.startsWith('#/puzzles/mine/')) return '#/puzzles/mine';
   if (/^#\/puzzles\/[A-Za-z0-9]+$/.test(h) && h !== '#/puzzles/mine' && ownPuzzle()) return '#/puzzles/mine';
   if ((m = h.match(/^#\/p\/([A-Za-z0-9_.-]+)\/game\//))) return '#/p/' + m[1];
@@ -1388,6 +1418,7 @@ function upTo(h = location.hash || '#/') {
 function upLabel(to) {
   let m;
   if (to === '#/packs') return 'Puzzle packs';
+  if (to === '#/drills') return 'Endings';
   if ((m = to.match(/^#\/packs\/([a-z0-9-]+)$/))) return (packCache[m[1]] || {}).name || 'Pack';
   if (to === '#/puzzles/mine') return 'Personal puzzles';
   if (/^#\/p\/[^/]+$/.test(to)) return 'Games';
@@ -1543,6 +1574,7 @@ function goTo(h) {
 async function route() {
   const h = location.hash || '#/';
   noteVisit(h);
+  leaveDrill(h);       // a drill left half played counts as given up
   if (state.game && state.game.puzzle) state.exploring = false;   // a puzzle's pending timer would leave the next board locked
   // leaving a review: remember the move and which way up the board was, so coming back lands there
   if (state.game && !h.includes(`/game/${state.game.id}`)) state.resume = { id: state.game.id, ply: state.ply, flipped: state.flipped };
@@ -1556,6 +1588,9 @@ async function route() {
   const km = h.match(/^#\/packs\/([a-z0-9-]+)(?:\/(\d+)\/(\d+))?$/);
   if (km) return km[2] ? playPack(km[1], +km[2], +km[3]) : showLadder(km[1]);
   if (h === '#/daily') return playDaily();
+  if (h === '#/drills') return showDrills();
+  const dm = h.match(/^#\/drills\/([A-Za-z-]+)$/);
+  if (dm) return openDrill(dm[1]);
   pz.ctx = null;
   if (h === '#/puzzles/mine') return showPersonal();
   const mm = h.match(/^#\/puzzles\/mine\/([A-Za-z0-9_.-]+)$/);
@@ -1694,14 +1729,14 @@ function renderUpdate() {
 const updateChecked = checkUpdate();      // its banner sits at the top of home: given a moment before that shows (#boot)
 const fmtNodes = n => n >= 1e6 ? `${(n / 1e6).toFixed(n % 1e6 ? 1 : 0)}M nodes` : `${Math.round(n / 1e3)}k nodes`;
 const engineName = snap => (snap && snap.engine) || (state.engine && state.engine.name) || 'Engine';
-const SECTIONS = ['home', 'list', 'review', 'editor', 'imgpage', 'settings', 'pzpick', 'pzpacks'];
+const SECTIONS = ['home', 'list', 'review', 'editor', 'imgpage', 'settings', 'pzpick', 'pzpacks', 'drills'];
 function showSection(id) { SECTIONS.forEach(s => $(s).classList.toggle('hidden', s !== id)); }
 async function showHome() {
   showSection('home');
   document.body.classList.remove('sandbox', 'puzzle'); stopSandboxStream();
   state.game = null; state.profile = null; state.games = null; dropVariation(); stopPlay();
   setContext(false); $('crumb').textContent = '';
-  await Promise.all([renderPuzzleCards(), renderProfiles()]);     // both drawn before the first screen shows (#boot)
+  await Promise.all([renderPuzzleCards(), renderProfiles(), renderDrillTile()]);     // all drawn before the first screen shows (#boot)
   pollStatus();
 }
 // the add-profile form and the PGN box stay folded away until their button is clicked
@@ -1723,6 +1758,7 @@ $('card-daily').onclick = () => location.hash = '#/daily';
 $('card-packs').onclick = () => location.hash = '#/packs';
 $('card-library').onclick = () => location.hash = '#/puzzles';
 $('card-mine').onclick = () => location.hash = '#/puzzles/mine';
+$('card-drills').onclick = () => location.hash = '#/drills';
 
 // ---------- settings: pick pieces, board and sounds; the preview shows the pick, Apply makes it the app's ----------
 const settings = { tab: 'pieces', pend: null };
@@ -2313,6 +2349,8 @@ $('pzover').addEventListener('click', e => {
   if (act === 'retry') takeBackMiss();
   else if (act === 'solution') puzzleSolution();
   else if (act === 'next') nextPuzzle();
+  else if (act === 'dnext') drillNext();
+  else if (act === 'dreview') openDrillReview();
 });
 async function reportPuzzle(solved) {
   pz.reported = true;
@@ -2521,6 +2559,380 @@ async function renderPuzzleCards() {
   return packs;     // the daily's card says which one is waiting: in place before the home screen shows
 }
 
+// ---------- endgame drills: "Develop your instinct" (docs/training-grounds.md) ----------
+// #/drills lists the six endings, each at its level, with its star; #/drills/<ending> deals a position at that level
+// (api/drills/next) and plays it on the review screen, in the puzzles' layout, you as White. The page holds no tables:
+// each of your moves goes to api/drills/move with every position so far, and the answer is the defender's reply and,
+// once the drill is over, the result and its review. The attempt is then recorded (api/drills/attempt) under an id of
+// its own, so a retry after a failed request counts once. Leaving a drill half played records it as given up.
+const DRILL_ENDINGS = {
+  KQRK: { name: 'Queen and rook', desc: 'The shortest mates. Box the king in with both pieces instead of chasing it with checks.' },
+  KRRK: { name: 'Two rooks', desc: 'The rooks take turns cutting the king off, one rank at a time.' },
+  KQK: { name: 'Queen', desc: 'Shrink the box, bring your king up, and watch out for stalemate on the edge.' },
+  KRK: { name: 'Rook', desc: 'The longest of the four. The rook cuts the king off; your own king does the pushing.' },
+  KPK: { name: 'King and pawn', desc: 'Take the pawn through to a new queen. Where your king stands decides it.' },
+  'KPK-hold': { name: 'Stop the pawn', desc: 'You have the lone king. Hold the draw against king and pawn.' },
+};
+const DRILL_ORDER = ['KQRK', 'KRRK', 'KQK', 'KRK', 'KPK', 'KPK-hold'];
+const DRILL_SOLVED = { mate: ['solved'], attack: ['promoted'], hold: ['held', 'pawn_taken', 'stalemate'] };
+// a move's kind (api/drills/move): its name in the review, and the badge it gets on the board there
+const DRILL_KIND = { best: ['Best', 'best'], slack: ['Slack', 'inaccuracy'], lost: ['Lost ground', 'mistake'], threw: ['Threw it', 'blunder'] };
+const DR_REPLY_MS = 350;      // the defender's reply comes this long after your move
+const DR_LINE_MS = 700;       // each move of "Best from here"
+const dr = { statuses: null, notice: null, drill: null, status: null, hash: null, fens: [], answers: [], token: 0, over: false,
+             busy: false, result: null, review: null, worst: null, ms: null, id: null, recorded: false, recording: null,
+             levelMsg: '', reviewOpen: false, chosen: null, line: 0, t0: 0 };
+const drillSolved = (mode, result) => DRILL_SOLVED[mode].includes(result);
+const drillMoves = k => `${k} move${k === 1 ? '' : 's'}`;
+const newDrillId = () => ((window.crypto && crypto.randomUUID) ? crypto.randomUUID()
+  : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`).replace(/[^A-Za-z0-9_-]/g, '');
+const drillPly = (m, i, mine) => Object.assign(puzzlePly(m, i), { is_mine: mine });
+const drillStatus = e => (dr.statuses || []).find(s => s.ending === e) || null;
+async function drillStatuses() {
+  try { const r = await fetch('api/drills/status'); if (r.ok) dr.statuses = (await r.json()).endings; } catch (e) {}
+  return dr.statuses;
+}
+// the home tile: how it's going, once something was played
+async function renderDrillTile() {
+  await drillRecorded();
+  const all = await drillStatuses();
+  const played = (all || []).reduce((n, s) => n + s.played, 0);
+  if (!played) return;
+  const solved = all.reduce((n, s) => n + s.solved, 0), stars = all.filter(s => s.star).length;
+  $('card-drills-desc').textContent = `${played} played · ${solved} solved${stars ? ` · ${stars} ★` : ''}. Six basic endings, a new position every time.`;
+}
+async function showDrills() {
+  leavePuzzleScreen('drills'); $('crumb').textContent = 'Develop your instinct';
+  renderDrillCards();
+  await drillRecorded();     // a drill just left: its attempt in the counts
+  await drillStatuses();
+  if (location.hash === '#/drills') renderDrillCards();
+}
+function renderDrillCards() {
+  const box = $('drillcards');
+  box.innerHTML = DRILL_ORDER.map(e => {
+    const s = drillStatus(e), info = DRILL_ENDINGS[e];
+    const star = s && s.star ? ' <span class="dstar" title="Solved at the top level">★</span>' : '';
+    const counts = s && s.played ? `<br>${s.played} played · ${s.solved} ${e === 'KPK-hold' ? 'held' : 'solved'}` : '';
+    return `<div class="card pztile covered" data-go="#/drills/${e}">${coverHtml('d-' + e)}<div class="cbody">` +
+      `<span class="src">${s ? `Level ${s.level} of ${s.top}` : 'Level 1'}${star}</span><span class="who">${esc(info.name)}</span>` +
+      `<span class="desc">${esc(info.desc)}${counts}</span></div></div>`;
+  }).join('');
+  box.querySelectorAll('[data-go]').forEach(el => el.onclick = () => { location.hash = el.dataset.go; });
+  $('drillnote').classList.toggle('hidden', !dr.notice);
+  $('drillnote').textContent = dr.notice || '';
+}
+// the attempt before this one has to be on the record before the next is dealt: it can move the level
+const drillRecorded = () => Promise.race([dr.recording || Promise.resolve(), new Promise(res => setTimeout(res, 4000))]);
+async function fetchDrill(ending) {
+  await drillRecorded();
+  try { const r = await fetch('api/drills/next?ending=' + encodeURIComponent(ending)); return { r, d: await r.json() }; }
+  catch (e) { return { r: { ok: false, status: 0 }, d: { error: String(e.message || e) } }; }
+}
+async function openDrill(ending) {
+  if (!DRILL_ENDINGS[ending]) { location.replace('#/drills'); return; }
+  const h = location.hash;
+  const { r, d } = await fetchDrill(ending);
+  if (location.hash !== h) return;
+  if (!r.ok) return drillUnavailable(r.status, d);
+  dr.notice = null;
+  startDrill(d.drill, d.status, h);
+}
+// no drill to deal: why, on the endings' page
+function drillUnavailable(status, d) {
+  dr.notice = status === 503 ? "The endgame tables aren't available here, so no drill can be dealt right now."
+    : `No drill could be dealt: ${(d && d.error) || 'no answer'}.`;
+  toast(dr.notice, 5000);
+  if (location.hash.startsWith('#/drills/')) leaveDeal('#/drills'); else renderDrillCards();
+}
+function drillGame(d) {
+  const side = name => ({ name, rating: null, accuracy: null, counts: {} });
+  return { id: 'drill-' + dr.id, url: null, puzzle: true, drill: true, played_at: null, time_control: null, time_class: null, termination: null,
+           my_colour: 'white', result: null, eco: null, opening_name: null, left_book_ply: 0, white: side('You'),
+           black: side(d.mode === 'hold' ? 'Attacker' : 'Defender'), start_fen: d.fen, start_wp_white: null, start_eval_text: null,
+           analysed: 1, moves: [], key_moments: [] };
+}
+function startDrill(drill, status, hash) {
+  dr.token++;
+  Object.assign(dr, { drill, status, hash, fens: [drill.fen], answers: [], over: false, busy: false, result: null, review: null,
+                      worst: null, ms: null, id: newDrillId(), recorded: false, levelMsg: '', reviewOpen: false, chosen: null, t0: Date.now() });
+  showPzOver(null);
+  state.profile = null; state.games = null; state.game = drillGame(drill);
+  state.ply = 0; state.flipped = false; dropVariation(); state.sel = null; state.step = null; state.exploring = false; $('pieces').innerHTML = '';
+  enterDrillView(); renderMoveList(); update(false);
+}
+function enterDrillView() {
+  stopSandboxStream(); stopPolling(); stopPlay();
+  showSection('review');
+  document.body.classList.remove('sandbox', 'dreview'); document.body.classList.add('puzzle', 'drill');
+  document.body.classList.toggle('drillrev', dr.over && dr.reviewOpen);
+  const name = DRILL_ENDINGS[dr.drill.ending].name;
+  setContext(false); $('crumb').textContent = `Develop your instinct · ${name}`;
+  $('ginfo').textContent = ''; $('ptitle-t').textContent = `${name} · level ${dr.drill.level}`;
+  renderDrillBox(); updateBack();
+}
+// on the way to another screen (route): a drill left half played is given up, and the next visit deals a new one
+function leaveDrill(h) {
+  if (!h.startsWith('#/drills/')) document.body.classList.remove('drill', 'drillrev');
+  if (dr.drill && h !== dr.hash) { giveUpDrill(false); dr.drill = null; dr.token++; }
+}
+addEventListener('pagehide', () => { if (dr.drill && state.game && state.game.drill) giveUpDrill(false); });
+// your move: shown at once, sent with every position so far, the defender's reply played a moment later
+async function drillMove(uci) {
+  const g = state.game;
+  if (dr.over || dr.busy || inVariation()) { renderBoard(); return; }
+  const i = g.moves.length;
+  if (state.ply !== i) { go(i); return; }       // stepped back through the moves: the drill carries on from its end
+  const prov = applyMove(currentFen(), uci); if (!prov) return;
+  const tok = dr.token, d0 = dr.drill;
+  const mv = drillPly({ uci, san: prov.san, fen: prov.fen }, i, true);
+  g.moves.push(mv);
+  dr.busy = true; state.exploring = true;
+  renderMoveList(); go(g.moves.length); renderDrillBox();
+  let r, d;
+  try {
+    r = await fetch('api/drills/move', { method: 'POST', body: JSON.stringify({ ending: d0.ending, level: d0.level, fens: [...dr.fens, prov.fen] }) });
+    d = await r.json();
+  } catch (e) { r = { ok: false, status: 0 }; d = { error: String(e.message || e) }; }
+  if (tok !== dr.token || state.game !== g) return;
+  if (!r.ok) {       // taken back: the board as it was
+    g.moves.pop(); dr.busy = false; state.exploring = false;
+    state.ply = Math.min(state.ply, g.moves.length);
+    renderMoveList(); update(false); renderDrillBox();
+    toast(r.status === 503 ? "The endgame tables aren't available right now." : `That move couldn't be checked: ${d.error || 'no answer'}`);
+    play('illegal');
+    return;
+  }
+  Object.assign(mv, { san: d.san, fen: d.fen_move });
+  dr.fens.push(d.fen_move); dr.answers.push(d);
+  renderMoveList(); highlightCurrent();
+  if (!d.reply) { finishDrill(d); return; }
+  setTimeout(() => {
+    if (tok !== dr.token || state.game !== g) return;
+    g.moves.push(drillPly({ uci: d.reply, san: d.reply_san, fen: d.fen }, g.moves.length, false));
+    dr.fens.push(d.fen);
+    const atEnd = state.ply === g.moves.length - 1;
+    dr.busy = false; state.exploring = false;
+    renderMoveList();
+    if (atEnd) go(g.moves.length); else highlightCurrent();
+    if (d.result) finishDrill(d); else { renderDrillBox(); renderNow(); }
+  }, DR_REPLY_MS);
+}
+// Give up (or leave): the review from the moves so far, the worst of them as the server would pick it
+function giveUpDrill(show = true) {
+  if (!dr.drill || dr.over || (show && dr.busy) || !dr.answers.length) return false;     // leaving: a move on its way is left out
+  const moves = dr.answers.map(a => ({ dtm: a.dtm_after, kind: a.kind, loss: a.loss }));
+  let worst = -1, cost = 0;
+  moves.forEach((m, k) => { const c = m.loss ?? Infinity; if (c > cost) { cost = c; worst = k; } });
+  finishDrill({ result: 'abandoned', review: { moves, worst }, worst_loss: worst < 0 ? -1 : moves[worst].loss }, show);
+  return true;
+}
+function finishDrill(d, show = true) {
+  const g = state.game, mode = dr.drill.mode;
+  Object.assign(dr, { over: true, busy: false, result: d.result, review: d.review, worst: d.worst_loss, ms: Date.now() - dr.t0 });
+  dr.recording = recordDrill();
+  if (!show || !g || !g.drill) return;
+  state.exploring = false;
+  (d.review.moves || []).forEach((m, k) => { const mv = g.moves[2 * k]; if (mv && DRILL_KIND[m.kind]) mv.label = DRILL_KIND[m.kind][1]; });
+  const ok = drillSolved(mode, d.result);
+  g.result = ok ? (mode === 'hold' ? 'draw' : 'win') : null;
+  dr.chosen = d.review.worst >= 0 ? d.review.worst : null;
+  dr.reviewOpen = !ok;        // a miss opens its review; a solve offers it
+  document.body.classList.toggle('drillrev', dr.reviewOpen);
+  if (ok) play('win', 250);
+  renderMoveList(); highlightCurrent(); renderBoard(); renderNow(); renderDrillBox(); renderNav();
+  if (ok) {
+    const tok = dr.token;
+    setTimeout(() => { if (tok === dr.token && dr.over && !dr.reviewOpen && state.game === g) showDrillCard(); }, 450);
+  }
+}
+// the attempt on the record, tried again with the same id until it's in; then the level it leaves the ending at
+async function recordDrill() {
+  if (dr.recorded) return;
+  dr.recorded = true;
+  const d = dr.drill, tok = dr.token, starBefore = !!(dr.status && dr.status.star);
+  const body = JSON.stringify({ id: dr.id, ending: d.ending, level: d.level, fen: d.fen, dtm: d.dtm, budget: d.budget,
+    moves_used: dr.answers.length, result: dr.result, ms: dr.ms, worst_loss: dr.result === 'threw' ? null : dr.worst });
+  for (let i = 0; i < 5; i++) {
+    let r = null;
+    try { r = await fetch('api/drills/attempt', { method: 'POST', body, keepalive: true }); } catch (e) {}
+    if (r && r.ok) {
+      let a = null; try { a = await r.json(); } catch (e) {}
+      if (a && a.status) drillLevelNews(a, tok, starBefore);
+      return;
+    }
+    if (r && r.status === 400) { console.warn('the drill attempt was refused', await r.text().catch(() => '')); return; }
+    await new Promise(res => setTimeout(res, 1000 * 2 ** i));
+  }
+  toast("This attempt couldn't be saved.");
+}
+function drillLevelNews(a, tok, starBefore) {
+  const s = a.status;
+  if (dr.statuses) { const i = dr.statuses.findIndex(x => x.ending === s.ending); if (i >= 0) dr.statuses[i] = s; }
+  if (tok !== dr.token) return;
+  const msgs = [];
+  if (s.level > a.before) msgs.push(`Level ${s.level} reached.`);
+  else if (s.level < a.before) msgs.push(`Back to level ${s.level} for now.`);
+  if (s.star && !starBefore) msgs.push('Star earned: solved at the top level.');
+  dr.levelMsg = msgs.join(' '); dr.status = s;
+  if (state.game && state.game.drill) { renderNow(); renderDrillBox(); if (pz.over === 'drill') showDrillCard(); }
+}
+async function drillNext() {
+  if (!dr.drill || dr.busy) return;
+  const ending = dr.drill.ending, h = dr.hash;
+  if (!dr.over) giveUpDrill(false);
+  showPzOver(null);
+  const tok = ++dr.token;
+  const { r, d } = await fetchDrill(ending);
+  if (tok !== dr.token || location.hash !== h) return;
+  if (!r.ok) return drillUnavailable(r.status, d);
+  startDrill(d.drill, d.status, h);
+}
+function openDrillReview() {
+  if (!dr.over) return;
+  dr.reviewOpen = true; document.body.classList.add('drillrev');
+  showPzOver(null); renderNow(); renderDrillBox();
+}
+// a move of yours in the review: the board after it
+function chooseDrillMove(k) {
+  dr.chosen = k;
+  if (state.variation) { dropVariation(); renderMoveList(); }
+  go(2 * k + 1); renderNow(); renderDrillBox();
+}
+// "Best from here": the table's line from where you played the chosen move, played out as a variation
+async function drillBest() {
+  const g = state.game, k = dr.chosen ?? 0, tok = dr.token;
+  const fen = k === 0 ? g.start_fen : g.moves[2 * k - 1].fen;
+  let d; try { d = await (await fetch('api/drills/line', { method: 'POST', body: JSON.stringify({ ending: dr.drill.ending, fen }) })).json(); } catch (e) { d = { error: String(e) }; }
+  if (tok !== dr.token || state.game !== g) return;
+  if (!d.moves) { toast(d.error || 'No line from here'); return; }
+  if (!d.moves.length) { toast("There's no line from here: the position was already a draw."); return; }
+  if (state.variation) { dropVariation(); renderMoveList(); }
+  const base = 2 * k;
+  go(base);
+  state.variation = { basePly: base, back: base + 1, moves: d.moves.map((m, j) => Object.assign(drillPly(m, base + j, j % 2 === 0), j % 2 === 0 ? { label: 'best' } : {})) };
+  dr.line = k;
+  renderMoveList(); renderNow();
+  let at = base;
+  const step = () => {
+    if (tok !== dr.token || !state.variation || state.ply !== at || state.game !== g) return;
+    go(++at, true);
+    if (at < base + d.moves.length) setTimeout(step, DR_LINE_MS);
+  };
+  setTimeout(step, 250);
+}
+function showDrillCard() {
+  const el = $('pzover');
+  pz.over = 'drill';
+  el.classList.remove('hidden', 'dim');
+  el.innerHTML = `<div class="pzcard"><button class="x" data-act="close" title="Close (Esc)" aria-label="Close">✕</button>` +
+    `<h3>${icon('best')}<span>${esc(drillHeadline())}</span></h3><p>${esc(drillSummary())}${dr.levelMsg ? `<br><b>${esc(dr.levelMsg)}</b>` : ''}</p>` +
+    `<div class="btns"><button class="primary" data-act="dnext">Next position →</button><button data-act="dreview">Review your moves</button></div></div>`;
+}
+function drillHeadline() {
+  const r = dr.result, mode = dr.drill.mode;
+  if (drillSolved(mode, r)) return mode === 'mate' ? 'Mate!' : mode === 'attack' ? 'Promoted!' : 'Held!';
+  return { budget: 'Out of moves', stalemate: 'Stalemate', piece_lost: 'Piece lost', repetition: 'Repetition', fifty: 'Fifty-move rule',
+           threw: mode === 'hold' ? 'The pawn gets through' : 'The win slipped away', promoted: 'The pawn promoted', pawn_lost: 'Pawn lost',
+           abandoned: 'Given up' }[r] || 'Over';
+}
+function drillSummary() {
+  const d = dr.drill, n = dr.answers.length, r = dr.result;
+  if (r === 'solved') return n === d.dtm ? `Mate in ${n}: the fastest there is.` : `Mate in ${n}, the fastest was ${d.dtm}.`;
+  if (d.mode === 'attack' && r === 'promoted') return `A new queen after ${drillMoves(n)}, and the win is safe.`;
+  if (d.mode === 'hold' && r === 'held') return `${drillMoves(n)} held. The attacker got nowhere.`;
+  if (d.mode === 'hold' && r === 'pawn_taken') return `You took the pawn after ${drillMoves(n)}.`;
+  if (d.mode === 'hold' && r === 'stalemate') return 'Stalemate: a draw, so the defence held.';
+  return {
+    budget: `All ${d.budget} moves used, and no mate yet.`,
+    stalemate: d.mode === 'mate' ? "The king had no move and wasn't in check: a draw." : 'No move left for the defender: a draw.',
+    piece_lost: 'The defender took a piece that was left unguarded.',
+    repetition: 'The same position came up a third time: a draw.',
+    fifty: 'Fifty moves without a capture or a pawn move: a draw.',
+    threw: d.mode === 'hold' ? 'That king move let the pawn through.' : 'That move turned the win into a draw.',
+    promoted: 'The pawn reached the last rank.',
+    pawn_lost: 'The defender took the pawn.',
+    abandoned: 'You left this one before the end.',
+  }[r] || '';
+}
+function drillReviewHtml() {
+  const rv = dr.review, g = state.game, d = dr.drill;
+  if (!rv || !rv.moves.length) return '<p>No moves to go through.</p>';
+  const rows = rv.moves.map((m, k) => {
+    const mv = g.moves[2 * k]; if (!mv) return '';
+    const dist = d.mode === 'hold' ? (m.kind === 'threw' ? 'lost' : 'holds') : m.dtm === 0 ? 'mate' : m.dtm == null ? 'draw'
+      : d.mode === 'mate' ? `mate in ${m.dtm}` : 'wins';
+    const [name] = DRILL_KIND[m.kind] || [m.kind];
+    return `<div class="drow${k === rv.worst ? ' worst' : ''}${k === dr.chosen ? ' sel' : ''}" data-k="${k}"><span class="n">${k + 1}.</span>` +
+      `<span class="san">${esc(mv.san)}</span><span class="dist">${dist}</span><span class="kind k-${m.kind}">${name}${m.loss > 0 ? ` +${m.loss}` : ''}</span></div>`;
+  }).join('');
+  let worst;
+  if (rv.worst < 0) worst = d.mode === 'hold' ? 'Every move kept the draw.' : 'Every move was the fastest one.';
+  else {
+    const m = rv.moves[rv.worst], at = `Move ${rv.worst + 1}, ${g.moves[2 * rv.worst].san},`;
+    worst = m.kind === 'threw' ? `${at} ${d.mode === 'hold' ? 'let the pawn through' : 'gave the win away'}.`
+      : `${at} lost ${drillMoves(m.loss)} here.`;
+  }
+  return `<p class="dworst">${esc(worst)}</p><div class="dlist">${rows}</div>` +
+    `<p>Pick a move to see it on the board; Best from here plays the table's line from there instead.</p>`;
+}
+function renderDrillNow() {
+  const el = $('now'), d = dr.drill;
+  if (!d) { el.innerHTML = ''; return; }
+  const top = (ic, text, colour) => `<div class="top">${ic ? icon(ic) : ''}<span class="verdict"${colour ? ` style="color:${colour}"` : ''}>${text}</span></div>`;
+  if (inVariation()) {
+    const end = state.ply === line().length;
+    el.innerHTML = top('best', 'Best from here', COLOR.best) + `<p>The table's line from your move ${dr.line + 1}${end ? '' : ', played out on the board'}. ` +
+      `<a class="dlink" data-act="dback">Back to your moves</a></p>`;
+  } else if (!dr.over) {
+    const n = dr.answers.length;
+    if (d.mode === 'mate') {
+      const dist = n ? dr.answers[n - 1].dtm : d.dtm, left = d.budget - n;
+      el.innerHTML = top(null, n ? 'Your move' : 'Mate the king') +
+        `<p>${d.counter && dist != null ? `Mate in ${dist}. ` : ''}${drillMoves(left)} left.${n ? '' : ' The defender always finds the most stubborn reply.'}</p>`;
+    } else if (d.mode === 'attack') {
+      el.innerHTML = top(null, n ? 'Your move' : 'Promote the pawn') + '<p>Get a new queen without letting the win slip. One careless king move can be enough.</p>';
+    } else {
+      el.innerHTML = top(null, n ? 'Your move' : 'Hold the draw') +
+        `<p>Take the pawn, reach a stalemate, or last ${d.hold_moves} moves: ${n} so far.</p>`;
+    }
+  } else {
+    const ok = drillSolved(d.mode, dr.result);
+    let html = top(ok ? 'best' : 'miss', esc(drillHeadline()), ok ? COLOR.best : COLOR.miss) + `<p>${esc(drillSummary())}</p>`;
+    if (dr.levelMsg) html += `<p class="dlevel">${esc(dr.levelMsg)}</p>`;
+    html += dr.reviewOpen ? drillReviewHtml() : '<p><a class="dlink" data-act="dreview">Review your moves</a></p>';
+    el.innerHTML = html;
+  }
+  el.querySelectorAll('[data-act="dreview"]').forEach(a => a.onclick = openDrillReview);
+  el.querySelectorAll('[data-act="dback"]').forEach(a => a.onclick = () => { leaveVariation(); renderNow(); });
+  el.querySelectorAll('.drow').forEach(row => row.onclick = () => chooseDrillMove(+row.dataset.k));
+}
+function renderDrillBox() {
+  const d = dr.drill; if (!d || !state.game || !state.game.drill) return;
+  const s = dr.status, n = dr.answers.length;
+  let cnt, extra = '';
+  if (d.mode === 'mate') {
+    cnt = `${drillMoves(d.budget - n)} left`;
+    const dist = n ? dr.answers[n - 1].dtm : d.dtm;
+    if (d.counter && !dr.over && dist != null) extra = `<br>Mate in ${dist}`;
+  } else if (d.mode === 'hold') cnt = `Held ${n} of ${d.hold_moves}`;
+  else cnt = drillMoves(n);
+  const head = `<div class="pzhead"><span class="cnt">${cnt}</span><span class="meta">Level ${d.level} of ${s ? s.top : '?'}${s && s.star ? ' ★' : ''}${extra}</span></div>`;
+  let btns;
+  if (!dr.over) btns = `<button id="dr-a"${dr.busy ? ' disabled' : ''} title="${n ? 'End this one here: it counts as a miss' : 'Another position: this one is not counted'}">${n ? 'Give up' : 'Skip'}</button>`;
+  else btns = (dr.reviewOpen ? `<button id="dr-a" title="Play the table's line from the chosen move">Best from here</button>`
+    : `<button id="dr-a" title="Go through your moves">Review</button>`) +
+    `<button class="primary" id="pz-next" title="Next position (n)">Next position →</button>`;
+  const goal = d.mode === 'mate' ? `mate within ${drillMoves(d.budget)}` : d.mode === 'attack' ? 'promote and keep the win' : `hold ${d.hold_moves} moves`;
+  $('pzbox').innerHTML = head + `<div class="pzbtns">${btns}</div>` +
+    `<div class="pzinfo">${esc(DRILL_ENDINGS[d.ending].name)} · ${goal}</div>` +
+    `<div class="pzfoot"><button id="dr-back" title="Back to the endings">← Endings</button></div>`;
+  const a = $('dr-a');
+  a.onclick = !dr.over ? () => { if (dr.answers.length) giveUpDrill(); else drillNext(); } : dr.reviewOpen ? drillBest : openDrillReview;
+  if ($('pz-next')) $('pz-next').onclick = drillNext;
+  $('dr-back').onclick = goBack;
+}
+
 // ---------- puzzle packs and the puzzle of the day (packs.py) ----------
 // The shelf (#/packs) shows every pack by family with its progress; a pack (#/packs/<id>) is its ladder of stages,
 // one stage at a time on a carousel, a numbered tile per puzzle;#/packs/<id>/<stage>/<n> plays one, and Next goes on to the one after it. A stage
@@ -2541,6 +2953,10 @@ const COVERS = {
   'openings': [['wn', 'wp', 'bp']], 'mixed': [['wk', 'bq', 'wn']],
   // the home tiles
   'daily': [['wk'], null, '#e8b83a'], 'packs': [['wn', 'wb', 'wr'], null, '#5c9fd6'], 'library': [['wq', 'bk'], null, '#4cc2a8'], 'mine': [['wp', 'bp'], null, '#a879e0'],
+  'drills': [['wk', 'wr', 'bk'], null, '#e0a53a'],
+  // the endgame drills' cards (DRILL_ENDINGS)
+  'd-KQRK': [['wq', 'wr', 'bk'], null, '#e8604c'], 'd-KRRK': [['wr', 'wr', 'bk'], null, '#5c9fd6'], 'd-KQK': [['wq', 'bk'], null, '#a879e0'],
+  'd-KRK': [['wr', 'bk'], null, '#4cc2a8'], 'd-KPK': [['wp', 'wk'], null, '#e0a53a'], 'd-KPK-hold': [['wk', 'bp'], null, '#8fb4bf'],
 };
 function coverHtml(key, family, day) {
   const [pcs, mark, colour] = COVERS[key] || [['wn']];
@@ -4176,6 +4592,7 @@ function givesCheck(pieces, white) {
 async function commitMove(uci, instant) {
   state.sel = null; state.legal = null;
   if (instant) skipAnim = true;
+  if (state.game.drill) return drillMove(uci);     // a drill's board is the drill's alone, played or reviewed
   if (state.game.puzzle && !pz.done && !inVariation()) return puzzleMove(uci);   // solved: the board is free to explore
   await explore(currentFen(), uci);
 }
@@ -4375,6 +4792,7 @@ function renderNow() {
   const g = state.game, el = $('now');
   el.classList.remove('loading');
   renderExplainBtn();
+  if (g.drill) return renderDrillNow();
   if (g.puzzle && !inVariation()) return renderPuzzleNow();
   if (state.ply === 0 && g.sandbox) {
     const top = sandboxTop(currentFen());
@@ -4943,6 +5361,7 @@ document.addEventListener('keydown', e => {
   else if (e.key === 'End') go(line().length);
   else if (e.key === 'f') $('b-flip').onclick();
   else if (e.key === 'p') togglePlay();
+  else if (e.key === 'n' && state.game.drill) { if (dr.over) drillNext(); }
   else if (e.key === 'n' && state.game.puzzle) nextPuzzle();
   else if (e.key === ' ') { nextKey(); e.preventDefault(); }
   else if (e.key === 'Escape') { if (state.variation) leaveVariation(); else goBack(); }
