@@ -24,3 +24,6 @@ Product decisions are in docs/training-grounds.md ("Decided"). Coordination deci
 - 2026-11-16: the .bin tables stay uncommitted; CI caches data/endgames keyed on the generator's hash (+2 min cold).
 - 2026-11-16: phase 5 start positions are verified with the lichess tablebase API by a dev script and the verified list is
   committed; builds and runtime never call the API (user's choice). Rejected: local Syzygy files (setup, new dependency).
+- 2026-11-16: phase 5 (user): Lucena graded solved once Stockfish sees mate after promotion, tables below 5 pieces
+  (KQKR and KRKR); rook drills on computers only for now, phones show "needs a computer"; 4 levels; titles Lucena and
+  Philidor. Rejected: playing Q+R vs R out to mate; the lite net or a 99 MB phone download this phase.

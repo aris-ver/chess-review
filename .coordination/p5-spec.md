@@ -217,3 +217,12 @@ folder. docs/training-grounds.md "Rook endings (v2)" updated to what was built.
 - Outcome grading forgives some mistakes (above); the hint is approximate by design.
 - Families with few verified positions show up in round 2's report; fix by changing the family, not loosening the
   lichess check.
+
+## Decided by the user (2026-11-16), overrides the open questions above
+1. Promotion grading as proposed: solved once Stockfish scores mate for white after the promotion; anything down to 4
+   pieces graded by our tables. KRKR is built alongside KQKR.
+2. Phones: computer first. Rook drills ship on desktop and desktop browsers; on phones the two cards show "needs a
+   computer" and no full-net download is offered this phase. An opt-in download comes later, after a real iPhone test.
+3. 4 levels per rook ending.
+4. Card titles "Lucena" and "Philidor" everywhere, with a plain line under each ("win rook and pawn against rook",
+   "hold rook against rook and pawn").
