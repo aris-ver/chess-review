@@ -9,3 +9,9 @@ Product decisions are in docs/training-grounds.md ("Decided"). Coordination deci
 - 2026-11-16: KPK attack and defence are separate endings ('KPK', 'KPK-hold') with separate levels.
 - 2026-11-16: worktrees are made with Windows git (`-c safe.directory=*`); the Agent tool's worktree isolation fails
   on this repo's UNC path.
+- 2026-11-16: phase 2 skipped the separate planner and built with Sonnet to save usage; checking kept.
+- 2026-11-16: planning and checking moved from Fable to Opus (user: Fable burns the limits).
+- 2026-11-16: drill sync file is gated by its own client flag `drills`, not own_puzzles, so v1.0.x clients that send
+  own_puzzles still never see it (they would otherwise remove every line).
+- 2026-11-16: star = a solved attempt counted at the current level when that level is the top one, sticky
+  (docs/training-grounds.md "when its top level is reached"); practice solves via ?level=N do not earn it.

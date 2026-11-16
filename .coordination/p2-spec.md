@@ -4,7 +4,8 @@ Branch claude/instinct-p2 (from 31acada). No UI, no build wiring (phase 3).
 
 ## Files
 - js/server/db.js: DRILL_ATTEMPTS_SCHEMA, SCHEMA_VERSION 5, UPGRADES step 5.
-- js/server/sync.js: drill_attempts.jsonl as a virtual file. worker/src/store.js: the Worker accepts the name.
+- js/server/sync.js: drill_attempts.jsonl as a virtual file. worker/src/store.js: the Worker accepts the name,
+  gated behind the client flag `drills` (?drills=1 / drills: true) so older clients never see or remove it.
 - js/server/drills.js (record, level, deal, table loading), js/server/routes-drills.js, registered in router.js ROUTES.
 - Tests: drills.test.js, routes-drills.test.js; fast.test.js asserts schema 5.
 
@@ -22,7 +23,8 @@ Sync: `drill_attempts.jsonl`, one line per attempt, nulls omitted except ms, mer
 - Level from the record, per ending, replayed in seq order, start 1. Only attempts at the current level count. Run =
   last 4 attempts at the current level since arriving. 3 solved in the run: up (not above top). Else last 2 of the run
   failed: down (not below 1). A move clears the run.
-- Star: any solved attempt at the top level (LEVELS[ending].length). Sticky; reaching the top alone is not it.
+- Star: a solved attempt counted at the current level when that is the top level (LEVELS[ending].length). Sticky; a
+  practice solve at the top (current level lower) does not earn it, nor does reaching the top alone. (Fix round 9b367d8.)
 - Edge cases: at level 1 two fails stay at 1; at the top the run keeps sliding and a solve there keeps the star; an
   attempt at a practice level (not the current one) is on the record and moves nothing; unknown-ending rows are ignored.
 
