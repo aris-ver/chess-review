@@ -608,6 +608,7 @@ table.games button.an { padding: 3px 9px; font-size: 12px; font-weight: 600; whi
   body.puzzle .boardbox { width: min(100cqw, 100cqh); flex: none; }
   body.puzzle .panel .phead { grid-area: title; min-width: 0; padding: 0 2px; border: 0; }
   body.puzzle .phead .ptitle { text-align: left; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  body.drill .phead .ptlvl { display: none; }     /* a drill's level is beside it (Level 2 of 5): the ending's name gets the room */
   body.puzzle .phead .pbtn { padding: 2px 10px; }
   .pzhead { grid-area: stats; align-self: center; padding: 0 2px; margin-left: 8px; }
   .pzhead .r { display: none; }     /* "Your games": the title says it */
@@ -2670,7 +2671,7 @@ function enterDrillView() {
   document.body.classList.toggle('drillrev', dr.over && dr.reviewOpen);
   const name = DRILL_ENDINGS[dr.drill.ending].name;
   setContext(false); $('crumb').textContent = `Develop your instinct · ${name}`;
-  $('ginfo').textContent = ''; $('ptitle-t').textContent = `${name} · level ${dr.drill.level}`;
+  $('ginfo').textContent = ''; $('ptitle-t').innerHTML = `${esc(name)}<span class="ptlvl"> · level ${dr.drill.level}</span>`;
   renderDrillBox(); updateBack();
 }
 // on the way to another screen (route): a drill left half played is given up, and the next visit deals a new one

@@ -7,8 +7,9 @@
 // by the black king's zone (corner, edge, ring, centre), taken in turn, and never one of the last 50 dealt, mirrors and
 // rotations included (positionKey). Each is shown turned by a random symmetry. KBBK deals only bishops on opposite
 // colours. KBNK also places the black king by the corners (cornerDistances): a right corner is one of the bishop's
-// colour, where the mate is; level 1 starts with the king in one (KBNK_RIGHT), level 2 in or by a wrong one
-// (KBNK_WRONG), and from level 3 the buckets are the zones on each side, nearer a right corner or not (SIDES).
+// colour, where the mate is; level 1 starts with the king in or next to one (KBNK_RIGHT), level 2 in or next to a
+// wrong one (KBNK_WRONG; those start at mate in 19), and from level 3 the buckets are the zones on each side, nearer
+// a right corner or not (SIDES).
 //
 // The king and pawn endings are two drills with levels of their own, both read from the KPK table. 'KPK' is the
 // attack: white's king and pawn, to promote and keep the win (attackStatus). 'KPK-hold' is the defence: the user has
@@ -33,7 +34,7 @@ export const LEVELS = {
   KQK: [lvl(3, 5, 10, true), lvl(5, 7, 6, true), lvl(6, 8, 4, false), lvl(8, 10, 3, false), lvl(9, 10, 1, false)],
   KRK: [lvl(5, 8, 12, true), lvl(8, 11, 8, true), lvl(10, 13, 6, false), lvl(12, 15, 4, false), lvl(14, 16, 2, false)],
   KBBK: [lvl(6, 10, 12, true), lvl(10, 13, 9, true), lvl(12, 16, 6, false), lvl(15, 18, 4, false), lvl(17, 19, 3, false)],
-  KBNK: [lvl(8, 12, 15, true), lvl(12, 18, 10, true), lvl(18, 24, 8, false), lvl(24, 30, 6, false), lvl(28, 33, 4, false)],
+  KBNK: [lvl(8, 12, 15, true), lvl(19, 24, 10, true), lvl(18, 24, 8, false), lvl(24, 30, 6, false), lvl(28, 33, 4, false)],
   // lo and hi count only-moves here; no budget, no counter
   KPK: [lvl(1, 1, null, false), lvl(2, 2, null, false), lvl(3, 3, null, false), lvl(4, Infinity, null, false)],
   'KPK-hold': [lvl(1, 1, null, false), lvl(2, 2, null, false), lvl(3, 3, null, false), lvl(4, Infinity, null, false)],
@@ -42,7 +43,7 @@ export const ENDINGS = ['KQRK', 'KRRK', 'KQK', 'KRK', 'KPK', 'KPK-hold', 'KBBK',
 export const ZONES = ['corner', 'edge', 'ring', 'centre'];
 export const SIDES = ['right', 'wrong'];    // KBNK: the black king nearer a right corner, or not
 export const KBNK_RIGHT = 1;       // level 1: at most this far (king moves) from a right corner
-export const KBNK_WRONG = 2;       // level 2: at most this far from a wrong corner
+export const KBNK_WRONG = 1;       // level 2: at most this far from a wrong corner
 export const RECENT = 50;          // positions never dealt again
 export const HOLD_MOVES = 20;      // a KPK defence held this long is a success
 const ONLY_CAP = 4;

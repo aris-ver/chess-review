@@ -1,7 +1,7 @@
 # Develop your instinct: endgame drills
 
-Drafted 2026-11-16. A plan, nothing built yet. The numbers in the level tables are starting points, to be tuned
-from real attempts.
+Drafted 2026-11-16. v1 and v1.1 are built (phases 1 to 4); v2 is still a plan. The numbers in the level tables are
+starting points, to be tuned from real attempts.
 
 ## Goal
 
@@ -36,7 +36,7 @@ squares, and run out of clock or stalemate on the way.
 ## Scope
 
 **v1**, in the order the tab shows them: KQRK, KRRK, KQK, KRK, KPK (attack and defence).
-**v1.1**: KBBK, KBNK. They're rare in real games, so they come after.
+**v1.1**: KBBK, KBNK. They're rare in real games, so they come after. Built in phase 4.
 **v2**: rook endings (Lucena, Philidor), graded by outcome. See "Rook endings (v2)".
 
 ## Tables
@@ -58,7 +58,7 @@ squares, and run out of clock or stalemate on the way.
   runtime.
 - Measure the 3-piece build on a mid-range phone. If it takes more than about 300 ms, ship those tables too.
 
-## Mate drills (KQRK, KRRK, KQK, KRK, later KBBK and KBNK)
+## Mate drills (KQRK, KRRK, KQK, KRK, KBBK, KBNK)
 
 **Attempt.** The user plays white and has to mate within the budget:
 `budget = DTM of the start position + slack`.
@@ -102,25 +102,30 @@ Then "Next position". After a solve: "Mate in 12, the fastest was 9."
 |      | 4 | 12-15 | +4  | hidden |
 |      | 5 | 14-16 | +2  | hidden |
 | KBBK | 1 | 6-10  | +12 | shown  |
+|      | 2 | 10-13 | +9  | shown  |
 |      | 3 | 12-16 | +6  | hidden |
+|      | 4 | 15-18 | +4  | hidden |
 |      | 5 | 17-19 | +3  | hidden |
-| KBNK | 1 | 8-12, king already in a corner the bishop controls | +15 | shown |
-|      | 2 | 12-18, king in the wrong corner | +10 | shown |
+| KBNK | 1 | 8-12, king in or next to a corner the bishop controls | +15 | shown |
+|      | 2 | 19-24, king in or next to a wrong corner | +10 | shown |
 |      | 3 | 18-24 | +8  | hidden |
 |      | 4 | 24-30 | +6  | hidden |
 |      | 5 | 28-33 | +4  | hidden |
 
-KQRK and KRRK have only 3 levels: their mates are short, so there's little room for more. (KBBK levels 2 and 4 sit
-between their neighbours.) The top level is never slack +0: perfect play is unreasonable even for strong players.
-KBNK's budget stays under the 50-move rule at every level.
+KQRK and KRRK have only 3 levels: their mates are short, so there's little room for more. The top level is never
+slack +0: perfect play is unreasonable even for strong players. KBNK's budget stays under the 50-move rule at every
+level (37 moves at most, at level 5). KBNK level 2 starts at mate in 19 because no position with the
+king in or next to a wrong corner is any shorter: driving it out of there is the long part. KBBK deals only bishops
+on opposite colours; on one colour they can't mate.
 
 ### Start positions
 
 Random squares repeat themselves in disguise: a mirrored or rotated position teaches nothing new. So:
 
 1. Keep every legal position whose DTM is in the level's band, with white to move and black not in check.
-2. Sort them into buckets by the black king's zone (centre 4x4, middle ring, edge, corner) and, for KBNK, by whether
-   it's near the right corner or the wrong one. Use the buckets in turn, then pick at random inside one.
+2. Sort them into buckets by the black king's zone (centre 4x4, middle ring, edge, corner) and, for KBNK from
+   level 3, by whether it's nearer a right corner or a wrong one (levels 1 and 2 fix the corner themselves). Use the
+   buckets in turn, then pick at random inside one.
 3. Store the last 50 positions in their symmetry-normalised form and never deal one of those again.
 
 ## KPK drills

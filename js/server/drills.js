@@ -131,6 +131,10 @@ export function parseAttempt(b) {
   }
   const key = positionKey(b.fen), want = `${pawn ? 'KPK' : ending}:${ending === 'KPK-hold' ? 'b' : 'w'}:`;
   if (!key?.startsWith(want)) throw new BadRequest(`fen: not a ${ending} start position: ${b.fen}`);
+  if (ending === 'KBBK') {
+    const colour = sq => ((sq & 7) + (sq >> 3)) & 1, [b1, b2] = fromFen(b.fen).pieces;
+    if (colour(b1) === colour(b2)) throw new BadRequest(`fen: bishops on one colour can't mate: ${b.fen}`);
+  }
   const ok = RESULTS[kindOf(ending)];
   if (typeof b.result !== 'string' || ![...ok.solved, ...ok.failed].includes(b.result)) {
     throw new BadRequest(`result: one of ${[...ok.solved, ...ok.failed].join(', ')} for ${ending}`);

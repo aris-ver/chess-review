@@ -272,7 +272,7 @@ test('KBBK and KBNK levels: five each, every budget under the 50-move rule', () 
   assert.deepEqual(LEVELS.KBBK.map(l => [l.lo, l.hi, l.slack, l.counter]),
     [[6, 10, 12, true], [10, 13, 9, true], [12, 16, 6, false], [15, 18, 4, false], [17, 19, 3, false]]);
   assert.deepEqual(LEVELS.KBNK.map(l => [l.lo, l.hi, l.slack, l.counter]),
-    [[8, 12, 15, true], [12, 18, 10, true], [18, 24, 8, false], [24, 30, 6, false], [28, 33, 4, false]]);
+    [[8, 12, 15, true], [19, 24, 10, true], [18, 24, 8, false], [24, 30, 6, false], [28, 33, 4, false]]);
   // the 50-move rule is a fail whatever the budget says
   assert.equal(status({ fens: ['8/8/8/3k4/8/8/8/1N2KB2 w - - 100 51'], movesUsed: 20, budget: 37 }), 'fifty');
 });

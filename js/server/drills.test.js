@@ -112,6 +112,10 @@ test('parseAttempt: checks the body, and says what is wrong', () => {
   no(null, /object/);
   no([], /object/);
   no({ ...good, ending: 'KNNK' }, /ending/);
+  // KBBK: the bishops on opposite colours only (c1 and f1), never on one (c1 and g1)
+  const kbbk = { ...good, ending: 'KBBK', level: 1, dtm: 8, budget: 20, fen: '4k3/8/8/8/8/8/8/2B1KB2 w - - 0 1' };
+  assert.equal(D.parseAttempt(kbbk).ending, 'KBBK');
+  no({ ...kbbk, fen: '4k3/8/8/8/8/8/8/2B1K1B1 w - - 0 1' }, /one colour/);
   no({ ...good, ending: 'constructor' }, /ending/);
   no({ ...good, ending: undefined }, /ending/);
   no({ ...good, level: 0 }, /level/);
