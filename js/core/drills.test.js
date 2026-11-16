@@ -5,7 +5,7 @@ import { test } from 'node:test';
 
 import { boardFromFen, fen as fenOf, parseUci, push } from './chess.js';
 import {
-  LEVELS, ENDINGS, HOLD_MOVES, ZONES, bestLine, budget, candidates, defenceStatus, defenderMove, flipFen, kindOfMove,
+  LEVELS, ENDINGS, HOLD_MOVES, ZONES, attackStatus, bestLine, budget, defenceStatus, defenderMove, flipFen, kindOfMove,
   kpkAttackerMove, kpkGrade, onlyMoves, pickStart, positionKey, review, status, zone,
 } from './drills.js';
 import { fromFen, generate, probe } from './endgame-table.js';
@@ -27,7 +27,8 @@ const after = (fen, uci) => { const b = boardFromFen(fen); push(b, parseUci(b, u
 const fastest = fen => bestLine(tables, fen, 1)[0];
 
 test('levels, endings and zones', () => {
-  assert.deepEqual(ENDINGS, ['KQRK', 'KRRK', 'KQK', 'KRK', 'KPK']);
+  assert.deepEqual(ENDINGS, ['KQRK', 'KRRK', 'KQK', 'KRK', 'KPK', 'KPK-hold']);
+  assert.equal(LEVELS['KPK-hold'].length, 4);
   assert.equal(LEVELS.KQRK.length, 3);
   assert.equal(LEVELS.KRK.length, 5);
   assert.deepEqual(LEVELS.KQK[4], { lo: 9, hi: 10, slack: 1, counter: false });
@@ -57,21 +58,24 @@ test('start positions sit in the level band, white to move, black not in check',
   }
 });
 
-test('buckets are taken in turn', () => {
-  const c = candidates(tables, 'KRK', 2);
-  const nonEmpty = ZONES.filter(z => c[z].length);
-  assert.equal(nonEmpty.length, 4);
+test('zones are taken in turn, an empty one passing to the next', () => {
   const rand = rng(2);
   for (let turn = 0; turn < 8; turn++) {
     const s = pickStart(tables, 'KRK', 2, { rng: rand, turn });
-    assert.equal(zone(fromFen(s.fen).bk), nonEmpty[turn % 4]);
+    assert.equal(zone(fromFen(s.fen).bk), ZONES[turn % 4]);
   }
-  // KQK level 5 has no corner positions: three buckets
-  const top = candidates(tables, 'KQK', 5);
-  assert.equal(top.corner.length, 0);
+  // KQK level 5 has no position with the black king in a corner: that turn deals from the edge
   const zones = [0, 1, 2, 3].map(turn => zone(fromFen(pickStart(tables, 'KQK', 5, { rng: rand, turn }).fen).bk));
-  assert.deepEqual(zones, ['edge', 'ring', 'centre', 'edge']);
-  assert.equal(candidates(tables, 'KRK', 2), c);    // memoised
+  assert.deepEqual(zones, ['edge', 'edge', 'ring', 'centre']);
+});
+
+test('an unknown ending or level is a RangeError', () => {
+  assert.throws(() => pickStart(tables, 'KXK', 1), { name: 'RangeError', message: /unknown ending KXK/ });
+  assert.throws(() => pickStart(tables, 'KQK', 6), { name: 'RangeError', message: /KQK has levels 1 to 5, not 6/ });
+  assert.throws(() => pickStart(tables, 'KQK', 0), RangeError);
+  assert.throws(() => pickStart(tables, 'KQK', '1'), RangeError);
+  assert.throws(() => pickStart(tables, 'toString', 1), RangeError);
+  assert.throws(() => pickStart(tables, 'KQRK', 1), { name: 'RangeError', message: /no KQRK table/ });
 });
 
 test('no position dealt twice in 50, mirrors included', () => {
@@ -194,9 +198,30 @@ test('KPK attack: only-moves, grading, start positions', () => {
     const s = pickStart(tables, 'KPK', level, { rng: rand });
     assert.equal(at(s.fen).result, 'win');
     assert.equal(s.budget, null);
+    assert.equal(s.dtm, null);
     const n = onlyMoves(tables, s.fen);
     assert.ok(level === 4 ? n >= 4 : n === level, `${s.fen} ${n}`);
   }
+});
+
+test('KPK attack: every way it ends', () => {
+  const end = fens => attackStatus(tables, { fens });
+  const start = '4k3/8/8/8/8/8/4P3/4K3 w - - 0 1';
+  assert.equal(end([start]), null);
+  assert.equal(end([start, 'k7/8/1K6/8/8/8/8/4Q3 b - - 0 1']), 'promoted');
+  assert.equal(end([start, 'k7/8/1K6/8/8/8/8/4R3 b - - 0 1']), 'promoted');
+  assert.equal(end([start, 'k1N5/8/1K6/8/8/8/8/8 b - - 0 1']), 'threw');         // a knight can't mate
+  assert.equal(end([start, 'k1B5/8/1K6/8/8/8/8/8 b - - 0 1']), 'threw');
+  assert.equal(end([start, 'kQ6/8/8/8/8/8/8/7K b - - 0 1']), 'threw');           // the new queen hangs
+  assert.equal(at('k7/8/8/8/8/8/P7/K7 b - - 0 1').result, 'draw');
+  assert.equal(end([start, 'k7/8/8/8/8/8/P7/K7 b - - 0 1']), 'threw');          // the rook's pawn with the king in its corner
+  assert.equal(end([start, '8/8/8/8/8/8/8/k1K5 w - - 0 1']), 'pawn_lost');
+  assert.equal(end([start, '4k3/4P3/4K3/8/8/8/8/8 b - - 0 1']), 'stalemate');
+  assert.equal(end([start, 'K7/P1k5/8/8/8/8/8/8 w - - 0 1']), 'stalemate');      // white's own king blocks the pawn
+  const a = '4k3/8/4K3/4P3/8/8/8/8 w - - 0 1', b = '4k3/8/4K3/4P3/8/8/8/8 b - - 0 1';
+  assert.equal(end([a, b, a, b]), null);
+  assert.equal(end([a, b, a, b, a]), 'repetition');
+  assert.equal(end([start, '4k3/8/4K3/4P3/8/8/8/8 w - - 100 80']), 'fifty');
 });
 
 test('KPK defence: flipped positions, the attacker, the end', () => {
@@ -204,7 +229,9 @@ test('KPK defence: flipped positions, the attacker, the end', () => {
   assert.equal(flipFen(flipFen('8/8/8/8/8/8/4P3/4K2k w - - 0 1')), '8/8/8/8/8/8/4P3/4K2k w - - 0 1');
   const rand = rng(7);
   for (let level = 1; level <= 4; level++) {
-    const s = pickStart(tables, 'KPK', level, { rng: rand, mode: 'defence' });
+    const s = pickStart(tables, 'KPK-hold', level, { rng: rand });
+    assert.equal(s.dtm, null);
+    assert.equal(s.budget, null);
     assert.match(s.fen, / w /);
     assert.match(s.fen.split(' ')[0], /p/);
     assert.equal(probe(tables, fromFen(flipFen(s.fen))).result, 'draw');
@@ -217,6 +244,8 @@ test('KPK defence: flipped positions, the attacker, the end', () => {
   const uci = kpkAttackerMove(tables, won, rng(8));
   const next = after(won, uci);
   assert.ok(['loss', 'mate'].includes(probe(tables, fromFen(flipFen(next))).result), next);
+  // no reply when the attacker has no move (a stalemate defenceStatus has already ended)
+  assert.equal(kpkAttackerMove(tables, flipFen('K7/P1k5/8/8/8/8/8/8 w - - 0 1'), rng(9)), null);
   // the defence ends: pawn taken, stalemate, held
   assert.equal(defenceStatus({ fens: ['8/8/8/8/8/8/8/k1K5 w - - 0 1'] }), 'pawn_taken');
   assert.equal(defenceStatus({ fens: ['8/8/8/8/1k6/8/1p6/1K6 w - - 0 1'] }), null);

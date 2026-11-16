@@ -7,11 +7,15 @@
 // king's zone (corner, edge, ring, centre), taken in turn, and never one of the last 50 dealt, mirrors and rotations
 // included (positionKey). Each is shown turned by a random symmetry.
 //
-// KPK has no budget: a level is how many only-moves (the one move that keeps the result) the position needs along the
-// table's line, 4 meaning 4 or more. Attack is white's king and pawn to promote and win. Defence gives the user white's
-// lone king against black's king and pawn: those positions are flipped (colours and ranks, flipFen) before they're
-// probed, so the tables only ever hold white's pawn. A defence is held when the pawn is taken, on a stalemate, or
-// after HOLD_MOVES moves; either side's move that changes the result ends the attempt (kpkGrade).
+// The king and pawn endings are two drills with levels of their own, both read from the KPK table. 'KPK' is the
+// attack: white's king and pawn, to promote and keep the win (attackStatus). 'KPK-hold' is the defence: the user has
+// white's lone king against black's king and pawn, and those positions are flipped (colours and ranks, flipFen)
+// before they're probed, so the table only ever holds white's pawn. A defence is held when the pawn is taken, on a
+// stalemate, or after HOLD_MOVES moves (defenceStatus). A level there is how many only-moves (the one move that keeps
+// the result) the position needs along the table's line, 4 meaning 4 or more; either side's move that changes the
+// result ends the attempt (kpkGrade). Neither has a budget or a counter: for both, pickStart's dtm and budget are
+// null. In a review (and so the record's worst_loss) a move's loss is null when it threw the result, and the worst
+// is -1 when nothing lost ground.
 //
 // FENs in and out are the board's as the user sees it; squares are 0..63 with a1 = 0. `tables` is {name: table}, the
 // endings' tables and their DEPENDS. Randomness comes from `rng` (Math.random unless given), so tests can seed it.
@@ -27,12 +31,25 @@ export const LEVELS = {
   KRK: [lvl(5, 8, 12, true), lvl(8, 11, 8, true), lvl(10, 13, 6, false), lvl(12, 15, 4, false), lvl(14, 16, 2, false)],
   // lo and hi count only-moves here; no budget, no counter
   KPK: [lvl(1, 1, null, false), lvl(2, 2, null, false), lvl(3, 3, null, false), lvl(4, Infinity, null, false)],
+  'KPK-hold': [lvl(1, 1, null, false), lvl(2, 2, null, false), lvl(3, 3, null, false), lvl(4, Infinity, null, false)],
 };
-export const ENDINGS = ['KQRK', 'KRRK', 'KQK', 'KRK', 'KPK'];
+export const ENDINGS = ['KQRK', 'KRRK', 'KQK', 'KRK', 'KPK', 'KPK-hold'];
 export const ZONES = ['corner', 'edge', 'ring', 'centre'];
 export const RECENT = 50;          // positions never dealt again
 export const HOLD_MOVES = 20;      // a KPK defence held this long is a success
 const ONLY_CAP = 4;
+const ZONE_TRIES = 20000;          // random draws in a zone before pickStart moves on to the next one
+const ANY_TRIES = 200000;          // then draws in any zone
+
+/** The level's row in LEVELS; a RangeError for an ending or level that doesn't exist. */
+export function levelOf(ending, level) {
+  const levels = Object.hasOwn(LEVELS, ending) ? LEVELS[ending] : null;
+  if (!levels) throw new RangeError(`unknown ending ${ending}: one of ${ENDINGS.join(', ')}`);
+  if (!Number.isInteger(level) || level < 1 || level > levels.length) {
+    throw new RangeError(`${ending} has levels 1 to ${levels.length}, not ${level}`);
+  }
+  return levels[level - 1];
+}
 
 /** The black king's zone: 'corner' (4 squares), 'edge' (24), 'ring' (the 20 next in) or 'centre' (the middle 16). */
 export function zone(sq) {
@@ -167,11 +184,13 @@ export function onlyMoves(tables, fen) {
 export const kpkGrade = (before, after) => (won(before) === won(after) ? 'ok' : 'threw');
 
 /** The attacker's reply in a KPK defence: `fen` has black's king and pawn to move. Wins as fast as the table says,
- * else squeezes; returns UCI on the board as shown. */
+ * else squeezes; returns UCI on the board as shown, or null when black has no move. Callers check defenceStatus()
+ * first: a stalemate or a taken pawn has ended the attempt before there's a reply to make. */
 export function kpkAttackerMove(tables, fen, rng = Math.random) {
   const pos = fromFen(flipFen(fen));
   if (!pos || pos.name !== 'KPK' || pos.turn !== 'w') throw new Error(`not a KPK defence position: ${fen}`);
   const m = squeeze(tables, pos, rng);
+  if (!m) return null;
   return uciOf(m.from ^ 56, m.to ^ 56, m.promotion);
 }
 
@@ -185,75 +204,74 @@ export function defenceStatus({ fens }) {
   return Math.floor((fens.length - 1) / 2) >= HOLD_MOVES ? 'held' : null;
 }
 
-// --- start positions ---
-
-const candidateMemo = new WeakMap();
-
-/** The level's start positions as canonical table indices, by the black king's zone ({corner, edge, ring, centre}).
- * Mate drills and KPK attack: white to move; KPK defence (mode 'defence'): black to move in table terms. */
-export function candidates(tables, ending, level, mode = 'attack') {
-  const data = tables[ending].data;
-  let memo = candidateMemo.get(data);
-  if (!memo) candidateMemo.set(data, memo = new Map());
-  const memoKey = `${mode}:${level}`;
-  if (memo.has(memoKey)) return memo.get(memoKey);
-  const { lo, hi } = LEVELS[ending][level - 1];
-  const buckets = Object.fromEntries(ZONES.map(z => [z, []]));
-  const size = tableSize(ending);
-  for (let i = 0; i < size; i++) {
-    const v = data[i];
-    if (ending !== 'KPK' && (v < lo || v > hi)) continue;
-    if (ending === 'KPK' && mode === 'attack' && !v) continue;
-    const p = decode(ending, i);
-    if (canonical(p) !== i) continue;
-    let pos = p, count;
-    if (ending !== 'KPK') {
-      if (probe(tables, p).result !== 'win') continue;
-    } else if (mode === 'attack') {
-      if (probe(tables, p).result !== 'win') continue;
-      count = attackOnly(tables, p);
-    } else {
-      pos = { ...p, turn: 'b' };
-      const r = probe(tables, pos);
-      if (r.result !== 'draw' || inCheck(tables, pos)) continue;
-      count = defenceOnly(tables, pos);
-    }
-    if (count !== undefined && (count < lo || count > hi)) continue;
-    buckets[zone(pos.bk)].push(i);
-  }
-  const out = Object.fromEntries(ZONES.map(z => [z, Uint32Array.from(buckets[z])]));
-  memo.set(memoKey, out);
-  return out;
+/** A KPK attack's end, from the FENs as shown (the start first): 'promoted' (a queen or rook that keeps the win),
+ * 'threw' (a move, or a promotion to a bishop or knight, that gave the win away), 'pawn_lost', 'stalemate',
+ * 'repetition', 'fifty', or null while it goes on. */
+export function attackStatus(tables, { fens }) {
+  const last = fens[fens.length - 1], pos = fromFen(last);
+  if (!pos || !pos.pieces.length) return 'pawn_lost';
+  const board = boardFromFen(last);
+  if (!legalMoves(board).length && !isCheck(board)) return 'stalemate';
+  const r = probe(tables, pos);
+  if (pos.name !== 'KPK') return won(r) ? 'promoted' : 'threw';
+  if (!won(r)) return 'threw';
+  if (repeated(fens)) return 'repetition';
+  if (+last.split(' ')[4] >= 100) return 'fifty';
+  return null;
 }
+
+// --- start positions ---
 
 // black in check: the same position with white to move is illegal
 const inCheck = (tables, pos) => probe(tables, { ...pos, turn: 'w' }).result === 'illegal';
 
-/** A start position for the level: {fen, dtm, budget, key}. `turn` counts attempts (it picks the zone bucket),
- * `recent` holds the keys dealt before. KPK defence (mode 'defence') deals black's king and pawn, white to move. */
-export function pickStart(tables, ending, level, { rng = Math.random, recent = [], turn = 0, mode = 'attack' } = {}) {
-  const c = candidates(tables, ending, level, mode);
-  const nonEmpty = ZONES.filter(z => c[z].length);
-  if (!nonEmpty.length) return null;
-  const skip = new Set(recent.slice(-RECENT));
-  const keyOf = i => `${ending}:${mode === 'defence' ? 'b' : 'w'}:${i}`;
+/** A start position for the level: {fen, dtm, budget, key}, or null when none turns up. Table indices are drawn at
+ * random and kept when they're in the level's band, canonical (one index for a position and its mirrors), legal, in
+ * the zone this attempt's `turn` picks (ZONES in turn, `turn` counting attempts) and not in `recent` (the keys dealt
+ * before); a zone that yields nothing in ZONE_TRIES draws passes to the next. 'KPK-hold' deals black's king and
+ * pawn, white to move. */
+export function pickStart(tables, ending, level, { rng = Math.random, recent = [], turn = 0 } = {}) {
+  const { lo, hi, slack } = levelOf(ending, level);
+  const hold = ending === 'KPK-hold', name = hold ? 'KPK' : ending;
+  const data = tables[name]?.data;
+  if (!data) throw new RangeError(`no ${name} table for ${ending}`);
+  const size = tableSize(name), skip = new Set(recent.slice(-RECENT));
+  const keyOf = i => `${name}:${hold ? 'b' : 'w'}:${i}`;
+  const fits = (i, want) => {
+    const v = data[i];
+    if (name !== 'KPK' ? v < lo || v > hi : !hold && !v) return false;
+    const p = decode(name, i);
+    if (want && zone(p.bk) !== want) return false;
+    if (canonical(p) !== i || skip.has(keyOf(i))) return false;
+    if (name !== 'KPK') return probe(tables, p).result === 'win';
+    let n;
+    if (!hold) {
+      if (probe(tables, p).result !== 'win') return false;
+      n = attackOnly(tables, p);
+    } else {
+      const pos = { ...p, turn: 'b' };
+      if (probe(tables, pos).result !== 'draw' || inCheck(tables, pos)) return false;
+      n = defenceOnly(tables, pos);
+    }
+    return n >= lo && n <= hi;
+  };
   let chosen = -1;
-  for (let k = 0; k < nonEmpty.length && chosen < 0; k++) {
-    const list = c[nonEmpty[(turn + k) % nonEmpty.length]], start = Math.floor(rng() * list.length);
-    for (let j = 0; j < list.length; j++) {
-      const i = list[(start + j) % list.length];
-      if (!skip.has(keyOf(i))) { chosen = i; break; }
+  for (let k = 0; k <= ZONES.length && chosen < 0; k++) {
+    const want = k < ZONES.length ? ZONES[(turn + k) % ZONES.length] : null;
+    for (let tries = want ? ZONE_TRIES : ANY_TRIES; tries > 0; tries--) {
+      const i = Math.floor(rng() * size);
+      if (fits(i, want)) { chosen = i; break; }
     }
   }
-  if (chosen < 0) chosen = c[nonEmpty[turn % nonEmpty.length]][0];
-  const p = decode(ending, chosen);
-  const t = ending === 'KPK' ? Math.floor(rng() * 2) : Math.floor(rng() * 8);
+  if (chosen < 0) return null;
+  const p = decode(name, chosen);
+  const t = name === 'KPK' ? Math.floor(rng() * 2) : Math.floor(rng() * 8);
   const pos = { ...p, wk: transform(t, p.wk), bk: transform(t, p.bk), pieces: p.pieces.map(s => transform(t, s)),
-    turn: mode === 'defence' ? 'b' : 'w' };
-  const r = probe(tables, pos);
-  const slack = LEVELS[ending][level - 1].slack;
-  const fen = mode === 'defence' ? flipFen(toFen(pos)) : toFen(pos);
-  return { fen, dtm: r.dtm, budget: slack == null ? null : budget(r.dtm, slack), key: keyOf(chosen) };
+    turn: hold ? 'b' : 'w' };
+  const fen = hold ? flipFen(toFen(pos)) : toFen(pos);
+  if (name === 'KPK') return { fen, dtm: null, budget: null, key: keyOf(chosen) };
+  const { dtm } = probe(tables, pos);
+  return { fen, dtm, budget: budget(dtm, slack), key: keyOf(chosen) };
 }
 
 // --- playing ---
