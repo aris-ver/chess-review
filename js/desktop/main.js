@@ -4,6 +4,7 @@
 
 import { app, BrowserWindow, Menu, dialog, shell } from 'electron';
 import { cpSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 
 import { loadBook } from '../core/book.js';
@@ -15,6 +16,7 @@ import { Profiles } from '../server/profiles.js';
 import { serve } from '../server/router.js';
 import { Account } from '../server/account.js';
 import { setCodeFingerprint } from '../server/classify.js';
+import { DrillTables, tablesFromFiles } from '../server/drills.js';
 import { Pack } from '../server/puzzles.js';
 import { Packs } from '../server/packs.js';
 import { ELECTRON_ASSETS, GITHUB_REPO, Updater } from '../server/updater.js';
@@ -121,6 +123,11 @@ function startServer({ quit }) {
     store, files, profiles: new Profiles(files, store), fetch: globalThis.fetch, log, account,
     pack: new Pack(() => readJson(BUNDLED.puzzles)), packs: new Packs(() => readJson(BUNDLED.packs)),
     updater: makeUpdater(quit),
+    // the endgame drills' tables, read the first time a drill needs one (a file that isn't there: the routes say so)
+    drillTables: new DrillTables(tablesFromFiles(path => readFile(path).catch(err => {
+      if (err.code === 'ENOENT') return null;
+      throw err;
+    }), BUNDLED.endgames)),
   };
   return serve({ env, pool: engines, nodes: DEFAULT_NODES, fastNodes: FAST_NODES, log });
 }

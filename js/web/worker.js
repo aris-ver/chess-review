@@ -5,6 +5,7 @@
 
 import '../../web/config.js';
 import { EnginePool, physicalCores } from '../../web/engines.js';
+import { DrillTables, tablesFromFiles } from '../server/drills.js';
 import { opfsFiles, memoryFiles } from '../server/profiles-files.js';
 import { answer, consoleLog as log, reclassifyAll, startApp } from './app.js';
 import { webSqlite } from './db.js';
@@ -41,6 +42,14 @@ const text = async path => {
   if (!r.ok) throw new Error(`${path}: HTTP ${r.status}`);
   return r.text();
 };
+// the endgame drills' tables (endgames/*.bin beside the code, scripts/build_web.js), fetched the first time a drill
+// asks for one; a failed fetch is asked again next time
+const drillTables = () => new DrillTables(tablesFromFiles(async path => {
+  const r = await fetch(site(path));
+  if (r.status === 404) return null;
+  if (!r.ok) throw new Error(`${path}: HTTP ${r.status}`);
+  return new Uint8Array(await r.arrayBuffer());
+}, 'endgames'));
 
 /** Elected: open the data, start the server, and answer from then on. Requests wait for it. */
 function lead() {
@@ -70,6 +79,7 @@ function lead() {
       // a fast analysis: half the nodes, on the full engine only (the phones' lite one offers no choice)
       fastNodes: LITE ? null : (CR_CONFIG.nodes ? Math.max(1, CR_CONFIG.nodes >> 1) : undefined),
       site: { book: () => text('book_keys.txt'), puzzles: () => text('puzzles.json'), packs: () => text('packs.json') },
+      drillTables: drillTables(),
       before: moved && moved.status === 'done' ? async env => {
         progress('app', 0, 1, 'Classifying your games again (once)');
         await reclassifyAll(env, log);

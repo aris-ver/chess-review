@@ -31,9 +31,10 @@
 // them. What it loads from is injected (load(name) → {name, data}): tablesFromFiles() reads the .bin files, a test
 // gives it small generated tables or a fake.
 
-import { DEPENDS, gunzip, unpack } from '../core/endgame-table.js';
-import { boardFromFen } from '../core/chess.js';
-import { ENDINGS, HOLD_MOVES, LEVELS, RECENT, levelOf, pickStart, positionKey } from '../core/drills.js';
+import { DEPENDS, blackMoves, fromFen, gunzip, probe, unpack } from '../core/endgame-table.js';
+import { boardFromFen, copy, fen as fenOf, legalMoves, makeSquare, parseUci, push, san, uci as uciOf } from '../core/chess.js';
+import { ENDINGS, HOLD_MOVES, LEVELS, RECENT, attackStatus, bestLine, defenceStatus, defenderMove, flipFen, kindOfMove,
+  kpkAttackerMove, kpkGrade, levelOf, pickStart, positionKey, review, status as mateStatus } from '../core/drills.js';
 import { DRILL_ATTEMPTS_SCHEMA } from './db.js';
 import { BadRequest } from './http.js';
 
@@ -240,4 +241,201 @@ export function nextDrill(db, tables, ending, { level = null, rng = Math.random 
   const drill = { ending, level: at, mode, fen: start.fen, dtm: start.dtm, budget: start.budget, counter: row.counter,
     hold_moves: mode === 'hold' ? HOLD_MOVES : null };
   return { drill, level: at, status: st };
+}
+
+// ---------- playing a drill ----------
+//
+// The page holds no tables: each of the user's moves goes to the move route with every position so far, and the
+// answer is the defender's reply and where the drill stands (playMove). Nothing is kept between moves; the positions
+// are replayed and checked here each time, and the replay's own FENs (counters counted) are what gets judged.
+
+export const MAX_FENS = 300;     // positions in one move request: 150 of the user's moves, more than any budget
+const isWon = r => r.result === 'win' || r.result === 'loss' || r.result === 'mate';
+const placementOf = f => f.trim().split(/\s+/).slice(0, 2).join(' ');
+export const modeOf = ending => (ending === 'KPK' ? 'attack' : ending === 'KPK-hold' ? 'hold' : 'mate');
+const tableName = ending => (ending === 'KPK-hold' ? 'KPK' : ending);
+const blackHasMen = f => /[pqrbn]/.test(f.split(' ')[0]);
+
+function fenField(v, what) {
+  if (typeof v !== 'string' || !v.length || v.length > 100) throw new BadRequest(`${what}: a position expected`);
+  try {
+    return boardFromFen(v);
+  } catch {
+    throw new BadRequest(`${what}: not a position: ${v}`);
+  }
+}
+
+// a KPK defence position (black has the pawn) probed in table terms: the colours swapped, so white has it
+const flipped = (tables, f) => probe(tables, fromFen(flipFen(f)));
+
+// where a drill stands after `fens` (the start first), movesUsed being the user's moves so far
+function standing(tables, mode, fens, movesUsed, budget) {
+  if (mode === 'mate') return mateStatus({ fens, movesUsed, budget });
+  if (mode === 'attack') return attackStatus(tables, { fens });
+  const last = fens[fens.length - 1];
+  if (blackHasMen(last) && fens.length > 1 && kpkGrade(flipped(tables, fens[fens.length - 2]), flipped(tables, last)) === 'threw') {
+    return last.split(' ')[1] === 'b' ? 'threw' : 'promoted';
+  }
+  return defenceStatus({ fens });
+}
+
+/** A move request checked and replayed: {ending, level, mode, dtm, budget, fens, sans}. `b` is {ending, level, fens}:
+ * fens every position from the dealt one (white to move, a start position of the ending, in the level's band for a
+ * mate drill) up to and including the user's last move, one legal move apart, with no earlier position where the
+ * drill was already over. The budget is worked out from the start position and the level, as the deal did. The fens
+ * returned are the replay's (the counters counted), sans the moves'. A BadRequest says what's wrong. */
+export function parseMove(tables, b) {
+  if (b === null || typeof b !== 'object' || Array.isArray(b)) throw new BadRequest('a move request object expected');
+  if (!isEnding(b.ending)) throw new BadRequest(`ending: one of ${ENDINGS.join(', ')}`);
+  const ending = b.ending, mode = modeOf(ending);
+  const level = int(b.level, 'level', { min: 1, max: topLevel(ending) });
+  const row = levelOf(ending, level);
+  if (!Array.isArray(b.fens) || b.fens.length < 2 || b.fens.length > MAX_FENS) {
+    throw new BadRequest(`fens: 2 to ${MAX_FENS} positions expected`);
+  }
+  if (b.fens.length % 2) throw new BadRequest('fens: the last position must follow a move of yours');
+  const board = fenField(b.fens[0], 'fens[0]');
+  const want = `${tableName(ending)}:${ending === 'KPK-hold' ? 'b' : 'w'}:`;
+  if (board.turn !== 'white' || !positionKey(b.fens[0])?.startsWith(want)) {
+    throw new BadRequest(`fens[0]: not a ${ending} start position: ${b.fens[0]}`);
+  }
+  let dtm = null, budget = null;
+  if (mode === 'mate') {
+    const r = probe(tables, fromFen(b.fens[0]));
+    if (r.result !== 'win' || r.dtm < row.lo || r.dtm > row.hi) throw new BadRequest(`fens[0]: not a ${ending} level ${level} start`);
+    dtm = r.dtm;
+    budget = dtm + row.slack;
+  }
+  const fens = [fenOf(board)], sans = [];
+  for (let k = 1; k < b.fens.length; k++) {
+    const what = `fens[${k}]`;
+    if (typeof b.fens[k] !== 'string' || b.fens[k].length > 100) throw new BadRequest(`${what}: a position expected`);
+    const target = placementOf(b.fens[k]);
+    const m = legalMoves(board).find(mv => {
+      const next = copy(board);
+      push(next, mv);
+      return placementOf(fenOf(next)) === target;
+    });
+    if (!m) throw new BadRequest(`${what}: not one legal move on from ${fens[k - 1]}`);
+    sans.push(san(board, m));
+    push(board, m);
+    fens.push(fenOf(board));
+    if (k < b.fens.length - 1 && standing(tables, mode, fens, Math.floor(fens.length / 2), budget)) {
+      throw new BadRequest(`${what}: the drill was over there`);
+    }
+  }
+  return { ending, level, mode, dtm, budget, fens, sans };
+}
+
+// the review of a KPK defence: each of the user's moves kept the draw ('best') or gave it away ('threw')
+function holdReview(tables, fens) {
+  const moves = [];
+  let worst = -1;
+  for (let k = 0; k + 1 < fens.length; k += 2) {
+    const threw = blackHasMen(fens[k + 1]) && kpkGrade(flipped(tables, fens[k]), flipped(tables, fens[k + 1])) === 'threw';
+    if (threw && worst < 0) worst = moves.length;
+    moves.push({ dtm: null, kind: threw ? 'threw' : 'best', loss: threw ? null : 0 });
+  }
+  return { moves, worst };
+}
+
+/** The review of a finished drill ({moves: [{dtm, kind, loss}], worst}, as core/drills.js review() gives it) and the
+ * record's worst_loss from it. */
+export function reviewOf(tables, mode, fens, result) {
+  const rv = mode === 'hold' ? holdReview(tables, fens) : review(tables, fens);
+  const worstLoss = result === 'threw' ? null : rv.worst < 0 ? -1 : rv.moves[rv.worst].loss;
+  return { review: rv, worst_loss: worstLoss };
+}
+
+/** The user's last move judged and answered (req from parseMove): {san, fen_move (after the move), kind, loss,
+ * dtm_after (mate distance after it; null in a KPK drill), reply (UCI; null when the drill ended on the move),
+ * reply_san, fen (after the reply), dtm (mate distance after the reply), moves_used, budget, result (null while it
+ * goes on), review and worst_loss (once there's a result)}. */
+export function playMove(tables, req, rng = Math.random) {
+  const { mode, fens, budget } = req, movesUsed = fens.length / 2;
+  const before = fens[fens.length - 2], after = fens[fens.length - 1];
+  let kind, loss, dtmAfter = null;
+  if (mode === 'hold') {
+    const keeps = !blackHasMen(after) || kpkGrade(flipped(tables, before), flipped(tables, after)) === 'ok';
+    kind = keeps ? 'best' : 'threw';
+    loss = keeps ? 0 : null;
+  } else {
+    const b = probe(tables, fromFen(before)), a = probe(tables, fromFen(after));
+    kind = b.result === 'win' ? kindOfMove(b.dtm, a) : 'threw';
+    loss = kind === 'threw' ? null : a.dtm - (b.dtm - 1);
+    if (mode === 'mate') dtmAfter = isWon(a) ? a.dtm : null;
+  }
+  const out = { san: req.sans[req.sans.length - 1], fen_move: after, kind, loss, dtm_after: dtmAfter, reply: null,
+    reply_san: null, fen: null, dtm: null, moves_used: movesUsed, budget, result: null, review: null, worst_loss: null };
+  let all = fens;
+  out.result = standing(tables, mode, all, movesUsed, budget);
+  if (!out.result) {
+    const reply = mode === 'hold' ? kpkAttackerMove(tables, after, rng) : defenderMove(tables, after, rng);
+    if (reply) {
+      const board = boardFromFen(after), m = parseUci(board, reply);
+      out.reply_san = san(board, m);
+      push(board, m);
+      out.reply = uciOf(m);
+      out.fen = fenOf(board);
+      all = [...fens, out.fen];
+      if (mode === 'mate') {
+        const pos = fromFen(out.fen), r = pos && pos.name === req.ending ? probe(tables, pos) : null;
+        out.dtm = r && r.result === 'win' ? r.dtm : null;
+      }
+      out.result = standing(tables, mode, all, movesUsed, budget);
+    }
+  }
+  if (out.result) Object.assign(out, reviewOf(tables, mode, all, out.result));
+  return out;
+}
+
+// the drawing line of a KPK defence from fen (as shown, either side to move): the user's king keeps the draw (takes
+// the pawn when it can, else the first holding move) and the attacker squeezes, until the drill would end
+function holdLine(tables, fen, max = 2 * HOLD_MOVES) {
+  const line = [];
+  let cur = fen;
+  while (line.length < max && /p/.test(cur.split(' ')[0]) && !defenceStatus({ fens: [cur] })) {
+    let uci;
+    if (cur.split(' ')[1] === 'w') {
+      const pos = fromFen(flipFen(cur));
+      const holds = blackMoves(tables, pos).filter(m => m.result === 'draw');
+      if (!holds.length) break;
+      const m = holds.find(x => x.capture) ?? holds[0];
+      uci = makeSquare(pos.bk ^ 56) + makeSquare(m.to ^ 56);
+    } else {
+      uci = kpkAttackerMove(tables, cur, () => 0);
+      if (!uci) break;
+    }
+    const board = boardFromFen(cur);
+    push(board, parseUci(board, uci));
+    cur = fenOf(board);
+    line.push(uci);
+  }
+  return line;
+}
+
+/** A line request checked: {ending, fen}, fen a position of the ending's own table (either side to move; for the
+ * KPK defence, black has the pawn). */
+export function parseLine(b) {
+  if (b === null || typeof b !== 'object' || Array.isArray(b)) throw new BadRequest('a line request object expected');
+  if (!isEnding(b.ending)) throw new BadRequest(`ending: one of ${ENDINGS.join(', ')}`);
+  fenField(b.fen, 'fen');
+  const hold = b.ending === 'KPK-hold';
+  const ok = positionKey(b.fen)?.startsWith(`${tableName(b.ending)}:`) && (!b.ending.startsWith('KPK') || !fromFen(b.fen) === hold);
+  if (!ok) throw new BadRequest(`fen: not a ${b.ending} position: ${b.fen}`);
+  return { ending: b.ending, fen: b.fen };
+}
+
+/** The table's line from a position: {line: [uci], moves: [{uci, san, fen}]}. A mate drill or the KPK attack: core
+ * bestLine (white's fastest mate against the longest defence, empty for a draw); the KPK defence: holdLine. */
+export function lineFrom(tables, { ending, fen }) {
+  const line = modeOf(ending) === 'hold' ? holdLine(tables, fen) : bestLine(tables, fen);
+  const board = boardFromFen(fen), moves = [];
+  for (const u of line) {
+    const m = parseUci(board, u);
+    const s = san(board, m);
+    push(board, m);
+    moves.push({ uci: u, san: s, fen: fenOf(board) });
+  }
+  return { line, moves };
 }

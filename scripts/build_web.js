@@ -18,6 +18,8 @@
 //   book_keys.txt         the opening book's positions, one fen_key a line (js/core/book.js), from data/book
 //                         (scripts/fetch_book.sh)
 //   puzzles.json          the Lichess puzzle pack, fetched alongside the app; packs.json, the puzzle packs
+//   endgames/             the endgame drills' tables (kqk.bin ...), from data/endgames (scripts/build_endgame_tables.js,
+//                         run here when they're missing or stale), fetched by the worker on a drill's first use
 //   _headers              what the Worker sends with the files: the security headers and the CSP on all, caching on
 //                         themes/ and v/
 //   legacy/               the one-time move from the Python build's data (js/web/legacy.js): app.zip (legacy/chess_review,
@@ -39,6 +41,7 @@ import { bookKeysFromDir } from '../js/desktop/book.js';
 import { ROOT } from '../js/desktop/paths.js';
 import { API, LICHESS_USER } from '../js/server/ingest.js';
 import { fillPieces } from '../js/server/router.js';
+import { NAMES as TABLE_NAMES, ensureTables, fileName as tableFile } from './build_endgame_tables.js';
 
 const { values: args } = parseArgs({ options: {
   serve: { type: 'boolean', default: false }, port: { type: 'string', default: '8200' }, 'engine-wasm': { type: 'string' },
@@ -239,6 +242,16 @@ function dataFiles(out) {
   const packs = join(ROOT, 'chess_review', 'puzzle_packs');
   writeFileSync(join(out, 'puzzles.json'), JSON.stringify(JSON.parse(readFileSync(join(packs, 'puzzles.json'), 'utf8'))));
   copyIfChanged(join(packs, 'packs.json'), join(out, 'packs.json'));
+  // the endgame drills' tables (about 350 KB, gzipped), built into data/endgames/ when they're missing or stale;
+  // the tabs' worker fetches each the first time a drill needs it
+  const tables = join(ROOT, 'data', 'endgames');
+  const t = ensureTables(tables, { log: s => console.log('endgame table', s) });
+  if (t.built) console.log(`endgame tables built in ${(t.ms / 1000).toFixed(1)} s`);
+  for (const name of TABLE_NAMES) {
+    const rel = `endgames/${tableFile(name)}`;
+    if (BLOCKED_NAME.test(basename(rel))) throw new Error(`${rel}: ad blockers block a file of that name. Rename it.`);
+    copyIfChanged(join(tables, tableFile(name)), join(out, rel));
+  }
 }
 
 /** The code as the browser imports it, as { 'js/core/fen.js': bytes, ..., 'web/shim.js': ..., 'web/config.js': ... }:
@@ -410,7 +423,8 @@ async function build(engineWasm) {
   // Every rule a path matches applies: /* to all of them.
   const rule = (path, headers) => `${path}\n${Object.entries(headers).map(([k, v]) => `  ${k}: ${v}\n`).join('')}`;
   writeFileSync(join(OUT, '_headers'), rule('/*', { ...SECURITY, 'Content-Security-Policy': csp(html, engineWasm) })
-    + rule('/themes/*', { 'Cache-Control': THEMES_CACHE }) + rule('/v/*', { 'Cache-Control': CODE_CACHE }));
+    + rule('/themes/*', { 'Cache-Control': THEMES_CACHE }) + rule('/endgames/*', { 'Cache-Control': THEMES_CACHE })
+    + rule('/v/*', { 'Cache-Control': CODE_CACHE }));
   console.log('built', OUT, 'version', ver);
 }
 

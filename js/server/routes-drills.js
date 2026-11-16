@@ -8,6 +8,12 @@
 //                                                level the ending was at, status the standing after it.
 //   GET  /api/drills/status[?ending=KQK]         one ending's status, or {endings: [...]} for all six; a status is
 //                                                {ending, level, top, star, played, solved, run, recent}.
+//   POST /api/drills/move                        {ending, level, fens}: every position from the dealt one to the
+//                                                user's last move -> the move judged, the defender's reply and the
+//                                                result once the drill is over, with its review (drills.js
+//                                                playMove). Stateless: the page sends the whole drill each time.
+//   POST /api/drills/line                        {ending, fen} -> {line: [uci], moves: [{uci, san, fen}]}, the
+//                                                table's line from there ("Best from here" in a review).
 //
 // 400 for a bad ending, level or body ({error}); 503 when the tables can't be loaded (they ship with the app; the web
 // worker fetches them on first use). What they read, from the router's env:
@@ -17,7 +23,7 @@
 // same attempt is then recorded once. Without one the server makes an id, and a retry would count twice.
 // The record lives in Store.progress(), its times come from the runner's clock (runner.now(), epoch seconds).
 
-import { json, jsonBody } from './http.js';
+import { BadRequest, json, jsonBody } from './http.js';
 import { ENDINGS } from '../core/drills.js';
 import * as D from './drills.js';
 
@@ -45,7 +51,62 @@ export async function handle(router, method, url, body) {
   if (method === 'GET' && what === 'next') return next(router, url.searchParams);
   if (method === 'GET' && what === 'status') return status(router, url.searchParams);
   if (method === 'POST' && what === 'attempt') return attempt(router, body);
+  if (method === 'POST' && what === 'move') return move(router, body);
+  if (method === 'POST' && what === 'line') return line(router, body);
   return json({ error: 'not found' }, 404);
+}
+
+// the ending's tables, or the 503 answer that says why there are none
+async function tablesOrError(router, ending) {
+  try {
+    return { tables: await tablesOf(router.env).get(ending) };
+  } catch (e) {
+    router.log?.error?.(`drill tables for ${ending}: ${e?.stack ?? e}`);
+    return { error: json({ error: `the ${ending} tables are not available: ${e?.message ?? e}` }, 503) };
+  }
+}
+
+// the body as an object with a known ending, or the 400 answer
+function drillBody(raw) {
+  let b;
+  try {
+    b = jsonBody(raw);
+  } catch {
+    return { error: bad('a JSON body expected') };
+  }
+  if (b === null || typeof b !== 'object' || Array.isArray(b)) return { error: bad('a request object expected') };
+  if (!D.isEnding(b.ending)) return { error: bad(`ending: one of ${ENDINGS.join(', ')}`) };
+  return { b };
+}
+
+async function move(router, raw) {
+  const { b, error } = drillBody(raw);
+  if (error) return error;
+  const t = await tablesOrError(router, b.ending);
+  if (t.error) return t.error;
+  let req;
+  try {
+    req = D.parseMove(t.tables, b);
+  } catch (e) {
+    if (e instanceof BadRequest) return bad(e.message);
+    throw e;
+  }
+  return json(D.playMove(t.tables, req, router.env.rng ?? Math.random));
+}
+
+async function line(router, raw) {
+  const { b, error } = drillBody(raw);
+  if (error) return error;
+  let req;
+  try {
+    req = D.parseLine(b);
+  } catch (e) {
+    if (e instanceof BadRequest) return bad(e.message);
+    throw e;
+  }
+  const t = await tablesOrError(router, b.ending);
+  if (t.error) return t.error;
+  return json(D.lineFrom(t.tables, req));
 }
 
 async function status({ env }, q) {

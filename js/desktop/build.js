@@ -6,7 +6,8 @@
 //   node js/desktop/build.js [--version v1.0.0]
 //
 // app.asar also holds the puzzle pack (puzzle_packs/puzzles.json and packs.json, from chess_review/puzzle_packs/)
-// and the opening book (book_keys.txt, made here from packaging/assets/book, data/book or lichess's TSVs).
+// and the opening book (book_keys.txt, made here from packaging/assets/book, data/book or lichess's TSVs), and the
+// endgame drills' tables (endgames/*.bin, from data/endgames, built there first when they're missing or stale).
 //
 // Stockfish comes from packaging/bin/stockfish.exe; if it isn't there the latest official release is fetched into it ($GH_TOKEN, if set, against the API's rate limit). The app is
 // staged and packaged under %LOCALAPPDATA%\chess-review-build\electron, not in the repo: packaging over the WSL share
@@ -18,6 +19,7 @@ import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { parseArgs } from 'node:util';
 
+import { NAMES as TABLE_NAMES, ensureTables, fileName as tableFile } from '../../scripts/build_endgame_tables.js';
 import { bookKeysFromDir } from './book.js';
 import { ROOT } from './paths.js';
 
@@ -87,6 +89,12 @@ async function stage(ver) {
   const keys = await bookKeys();
   if (keys.length < 1000) throw new Error(`the opening book has only ${keys.length} positions`);
   writeFileSync(join(STAGE, 'book_keys.txt'), keys.join('\n'));
+  // the endgame drills' tables (endgames/kqk.bin ...), built into data/endgames when missing or stale
+  const tables = join(ROOT, 'data', 'endgames');
+  const t = ensureTables(tables, { log: s => console.log('endgame table', s) });
+  if (t.built) console.log(`Endgame tables built in ${(t.ms / 1000).toFixed(1)} s`);
+  mkdirSync(join(STAGE, 'endgames'), { recursive: true });
+  for (const name of TABLE_NAMES) cpSync(join(tables, tableFile(name)), join(STAGE, 'endgames', tableFile(name)));
   const pkg = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8'));
   writeFileSync(join(STAGE, 'package.json'), JSON.stringify({
     name: 'blundr', productName: NAME, version: numeric(ver), description: 'Blundr: chess game review',
