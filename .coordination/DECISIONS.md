@@ -22,3 +22,5 @@ Product decisions are in docs/training-grounds.md ("Decided"). Coordination deci
 - 2026-11-16: KBNK L2 is mate in 19-24, +10, counter shown, king in or next to a wrong corner (user's choice): the
   planned 12-18 band holds no wrong-corner start. Rejected: keeping 12-18 with the king two squares off the corner.
 - 2026-11-16: the .bin tables stay uncommitted; CI caches data/endgames keyed on the generator's hash (+2 min cold).
+- 2026-11-16: phase 5 start positions are verified with the lichess tablebase API by a dev script and the verified list is
+  committed; builds and runtime never call the API (user's choice). Rejected: local Syzygy files (setup, new dependency).
