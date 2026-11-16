@@ -9,8 +9,9 @@
 //
 // A table holds white-to-move positions only, one byte each: N means white mates in N moves, 0 that white does not
 // win. Against the lone king 0 is a draw. With a black piece 0 is a draw or a win for black, and the table can't tell
-// which: "does black win" is asked of the position with colours and ranks swapped (core flipFen), probed in the same
-// table, which works only because KRKR is symmetric and KQKR flipped is still KQKR with the queen on white's side.
+// which: "does black win" is asked of the position with colours and ranks swapped (core flipFen), probed again, which
+// works because KRKR flipped is KRKR, and the queen on black's side (KRKQ) flipped is KQKR with it on white's. A
+// KQKR position black wins (a tactic) is just a 0.
 //
 // The index puts the white king in the a1-d1-d4 triangle by one of the board's 8 symmetries,
 // ((tri(wk)*64 + bk)*64 + p1)[*64 + p2], black's piece after white's (KQKR: queen, then rook); KPK only mirrors left

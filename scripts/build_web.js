@@ -242,7 +242,7 @@ function dataFiles(out) {
   const packs = join(ROOT, 'chess_review', 'puzzle_packs');
   writeFileSync(join(out, 'puzzles.json'), JSON.stringify(JSON.parse(readFileSync(join(packs, 'puzzles.json'), 'utf8'))));
   copyIfChanged(join(packs, 'packs.json'), join(out, 'packs.json'));
-  // the endgame drills' tables (about 1.3 MB gzipped, KBBK and KBNK most of it), built into data/endgames/ when
+  // the endgame drills' tables (about 2.3 MB gzipped, KQKR, KBNK and KBBK most of it), built into data/endgames/ when
   // they're missing or stale; the tabs' worker fetches each the first time a drill needs it
   const tables = join(ROOT, 'data', 'endgames');
   const t = ensureTables(tables, { log: s => console.log('endgame table', s) });
