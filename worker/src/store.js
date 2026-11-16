@@ -24,6 +24,10 @@ export function validFile(f) {
 // it would take the lines it doesn't keep for lines taken away, and send them back to be deleted.
 export const isOwnPuzzles = f => OWN_PUZZLES.test(f);
 
+// The same for the endgame drills' record (drills: true): an app from before them has no place for drill_attempts.jsonl
+// and would send its lines back as taken away.
+export const isDrills = f => f === 'drill_attempts.jsonl';
+
 // {file: [line, ...]} from the request, checked: only puzzle-progress files, only JSON objects.
 export function checkLines(obj, what) {
   if (obj == null) return [];
@@ -152,11 +156,11 @@ export async function takeAppCode(db, codeHash, now) {
 
 // ---------- puzzle progress ----------
 
-export async function progress(db, userId, ownPuzzles = true) {
+export async function progress(db, userId, ownPuzzles = true, drills = true) {
   const rows = await db.prepare('SELECT file, line FROM progress WHERE user_id = ? ORDER BY file, added_at, rowid')
     .bind(userId).all();
   const files = {};
-  for (const r of rows.results) if (ownPuzzles || !isOwnPuzzles(r.file)) (files[r.file] ||= []).push(r.line);
+  for (const r of rows.results) if ((ownPuzzles || !isOwnPuzzles(r.file)) && (drills || !isDrills(r.file))) (files[r.file] ||= []).push(r.line);
   return files;
 }
 

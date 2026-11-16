@@ -232,6 +232,26 @@ describe('puzzle progress', () => {
     expect((await b.json('/account/progress', { method: 'POST', body: { add: { 'own_puzzles.jsonl': [PUZZLE] }, own_puzzles: true } })).status).toBe(400);
   });
 
+  it('keeps the drill record only for an app that takes it, so an older one cannot delete it', async () => {
+    const b = new Browser();
+    await b.signIn('lichess', 'signup');
+    const file = 'drill_attempts.jsonl', D1 = '{"id": "d1", "ts": 5, "ending": "KQK", "level": 1, "result": "solved"}';
+    let r = await b.json('/account/progress', { method: 'POST', body: { add: { [file]: [D1] }, drills: true } });
+    expect(r.body.files).toEqual({ [file]: [D1] });
+    // an older app (it may take the personal puzzles, and still not the drills): doesn't see it, and its remove changes nothing
+    r = await b.json('/account/progress', { method: 'POST', body: { add: { 'puzzle_attempts.jsonl': [A1] }, remove: { [file]: [D1] }, own_puzzles: true } });
+    expect(r.body.files).toEqual({ 'puzzle_attempts.jsonl': [A1] });
+    r = await b.json('/account/progress', { method: 'POST', body: { add: { [file]: ['{"id": "d2"}'] } } });
+    expect(r.body.files).toEqual({ 'puzzle_attempts.jsonl': [A1] });
+    expect((await b.json('/account/progress?own_puzzles=1')).body.files).toEqual({ 'puzzle_attempts.jsonl': [A1] });
+    // a new app round-trips it
+    expect((await b.json('/account/progress?drills=1')).body.files).toEqual({ 'puzzle_attempts.jsonl': [A1], [file]: [D1] });
+    r = await b.json('/account/progress', { method: 'POST', body: { add: { [file]: ['{"id": "d3"}'] }, drills: true } });
+    expect(r.body.files[file]).toEqual([D1, '{"id": "d3"}']);
+    r = await b.json('/account/progress', { method: 'POST', body: { remove: { [file]: [D1] }, drills: true } });
+    expect(r.body.files[file]).toEqual(['{"id": "d3"}']);
+  });
+
   it('takes only puzzle-progress files of JSON objects', async () => {
     const b = new Browser();
     await b.signIn('lichess', 'signup');

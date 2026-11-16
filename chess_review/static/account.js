@@ -70,7 +70,7 @@
     let changed = [];
     for (let round = 0; round < 3; round++) {        // again while this browser still has something the account lacks
       const d = await (await post('api/sync/delta', { user: me.id })).json();
-      const r = await post('account/progress', { ...d, own_puzzles: true });     // the puzzles too (worker/src/store.js)
+      const r = await post('account/progress', { ...d, own_puzzles: true, drills: true });     // the puzzles and the drills too (worker/src/store.js)
       if (r.status === 401) {                          // the session ended elsewhere: back to the guest's data
         me = null;
         attached = false;

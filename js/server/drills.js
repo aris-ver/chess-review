@@ -3,7 +3,7 @@
 // start position dealt at that level (core/drills.js does the dealing; the tables it reads are loaded here).
 //
 // The record is progress.sqlite's drill_attempts table (db.js DRILL_ATTEMPTS_SCHEMA), one row an attempt, in the
-// order they were made (seq): {id, ts, ending, level, fen, dtm, budget, moves_used, result, ms, worst_loss}. The
+// order they were made (seq; the merged order after a sync): {id, ts, ending, level, fen, dtm, budget, moves_used, result, ms, worst_loss}. The
 // six endings (core/drills.js ENDINGS) each have a level of their own.
 //
 // Results. A mate drill (KQRK, KRRK, KQK, KRK) is 'solved', or failed by 'stalemate', 'piece_lost', 'repetition',
@@ -21,8 +21,11 @@
 //   - 3 solved in the run: up one level (never above the ending's top level, LEVELS[ending].length);
 //   - otherwise the last 2 of the run both failed: down one level (never below 1);
 //   - moving clears the run, so each level is earned afresh and a fall can't bounce straight back.
-// The star: an ending has it once an attempt at its top level was solved. It stays: a later fall doesn't take it
-// away, and reaching the top by solving the level below doesn't earn it.
+// The star: an ending has it once an attempt was solved at its top level while the ending was at the top level (a
+// practice solve there, from a lower level, doesn't count). It stays: a later fall doesn't take it away, and reaching
+// the top by solving the level below doesn't earn it.
+// After a sync merge the table is rewritten in the merged lines' order (by ts), so the devices replay the same record
+// and their levels converge.
 //
 // Tables: `tables` below is a DrillTables, which loads an ending's tables the first time they're asked for and keeps
 // them. What it loads from is injected (load(name) → {name, data}): tablesFromFiles() reads the .bin files, a test
@@ -69,8 +72,8 @@ export function progress(ending, rows) {
   let level = 1, run = [], star = false;
   for (const r of rows) {
     const ok = isSolved(ending, r.result);
-    if (ok && r.level === top) star = true;
     if (r.level !== level) continue;
+    if (ok && level === top) star = true;
     run.push(ok);
     if (run.length > RUN) run.shift();
     if (level < top && run.filter(Boolean).length >= UP) {
@@ -230,7 +233,7 @@ export function tablesFromFiles(read, dir = 'endgames') {
 export function nextDrill(db, tables, ending, { level = null, rng = Math.random } = {}) {
   const rows = attempts(db, ending), st = status(db, ending, rows), at = level ?? st.level;
   const row = levelOf(ending, at);
-  const recent = rows.slice(-RECENT).map(r => positionKey(r.fen)).filter(Boolean);
+  const recent = rows.slice(-RECENT).map(r => (typeof r.fen === 'string' ? positionKey(r.fen) : null)).filter(Boolean);
   const start = pickStart(tables, ending, at, { rng, recent, turn: rows.length });
   if (!start) return { drill: null, level: at, status: st };
   const mode = ending === 'KPK' ? 'attack' : ending === 'KPK-hold' ? 'hold' : 'mate';

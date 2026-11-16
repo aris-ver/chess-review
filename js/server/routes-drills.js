@@ -13,6 +13,8 @@
 // worker fetches them on first use). What they read, from the router's env:
 //   env.drillTables  a drills.js DrillTables; none given: one that always says the tables aren't installed
 //   env.rng          random() in [0, 1) for the deal (Math.random)
+// The page must send an id with each attempt (any unique string of up to 64 letters, digits, - and _): a retry of the
+// same attempt is then recorded once. Without one the server makes an id, and a retry would count twice.
 // The record lives in Store.progress(), its times come from the runner's clock (runner.now(), epoch seconds).
 
 import { json, jsonBody } from './http.js';
@@ -53,7 +55,6 @@ async function status({ env }, q) {
   if (!D.isEnding(ending)) return bad(`ending: one of ${ENDINGS.join(', ')}`);
   return json(D.status(db, ending));
 }
-
 
 async function next(router, q) {
   const { env } = router, ending = q.get('ending');

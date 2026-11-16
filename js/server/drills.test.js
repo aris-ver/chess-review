@@ -83,6 +83,9 @@ test('progress: the top level, and the star', () => {
   p = run('KQRK', [...climb, [3, S], [3, F], [3, F]]);
   assert.deepEqual([p.level, p.star], [2, true]);
   assert.equal(run('KQRK', [...climb, [3, F]]).star, false);
+  // a practice solve at the top level (chosen with ?level=) while the ending is at level 1 earns no star
+  assert.equal(run('KQRK', [[3, S], [3, S]]).star, false);
+  assert.equal(run('KQRK', [[3, S], ...climb, [3, S]]).star, true, 'a counted one later does');
   // one level on a one-level ending can't go up or down: KPK solves are 'promoted'
   assert.equal(run('KPK', [[1, 'promoted'], [1, 'promoted'], [1, 'promoted']]).level, 2);
   assert.equal(run('KPK-hold', [[1, 'held'], [1, 'pawn_taken'], [1, 'stalemate']]).level, 2);
@@ -353,4 +356,15 @@ test('sync: the record goes out as lines, comes in on another device, and the le
     await A.done();
     await B.done();
   }
+});
+
+test('nextDrill: a synced row without a usable fen is skipped when working out what was dealt', async () => {
+  await withStore(async store => {
+    const db = await store.progress();
+    db.run("INSERT INTO drill_attempts (id, ts, ending, level, result) VALUES ('x', 1, 'KQK', 1, 'solved')");
+    db.run("INSERT INTO drill_attempts (id, ts, ending, level, fen, result) VALUES ('y', 2, 'KQK', 1, 'junk', 'budget')");
+    const out = D.nextDrill(db, tables, 'KQK', { rng: rng(5) });
+    assert.ok(out.drill);
+    assert.equal(out.status.played, 2);
+  });
 });
