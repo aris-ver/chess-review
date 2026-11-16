@@ -36,6 +36,9 @@ const EXPECT = {
   KRRK: { maxMoves: 7, wins: 1299964, mates: 22644 },
   KBBK: { maxMoves: 19, wins: 783438, mates: 442, stalemates: 2848 },
   KBNK: { maxMoves: 33, wins: 1691479, mates: 65, stalemates: 1767 },
+  // lichess: the longest, 8/8/8/8/2r5/8/2k5/K6Q w and 8/8/8/8/8/1R6/6r1/K1k5 w, are dtm 69 and 37 plies
+  KQKR: { maxMoves: 35, wins: 1385461, mates: 1698, matedW: 402, stalemates: 0 },
+  KRKR: { maxMoves: 19, wins: 490657, mates: 743, matedW: 826, stalemates: 0 },
 };
 
 export const fileName = name => `${name.toLowerCase()}.bin`;
