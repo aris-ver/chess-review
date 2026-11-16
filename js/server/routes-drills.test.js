@@ -104,7 +104,7 @@ test('attempt, status and the level that follows', async () => {
     // all endings
     const all = await ask('GET', '/api/drills/status');
     assert.deepEqual(all.body.endings.map(e => [e.ending, e.level]),
-      [['KQRK', 1], ['KRRK', 1], ['KQK', 1], ['KRK', 2], ['KPK', 1], ['KPK-hold', 1]]);
+      [['KQRK', 1], ['KRRK', 1], ['KQK', 1], ['KRK', 2], ['KPK', 1], ['KPK-hold', 1], ['KBBK', 1], ['KBNK', 1]]);
     // a client id makes a retry harmless
     const { drill } = (await ask('GET', '/api/drills/next?ending=KPK')).body;
     const body = attemptOf(drill, 'threw', { id: 'try-1', worst_loss: null });
@@ -122,7 +122,7 @@ test('refusals: a bad ending, level or body is a 400 with a reason; no start pos
       assert.match(r.body.error, re);
     };
     await err('GET', '/api/drills/next', undefined, 400, /ending/);
-    await err('GET', '/api/drills/next?ending=KBNK', undefined, 400, /ending/);
+    await err('GET', '/api/drills/next?ending=KNNK', undefined, 400, /ending/);
     await err('GET', '/api/drills/next?ending=toString', undefined, 400, /ending/);
     await err('GET', '/api/drills/next?ending=KQK&level=0', undefined, 400, /levels 1 to 5/);
     await err('GET', '/api/drills/next?ending=KQK&level=6', undefined, 400, /levels 1 to 5/);
@@ -323,7 +323,7 @@ test('move and line: refusals', async () => {
     const mv = '/api/drills/move';
     await err(mv, '{nope', /JSON/);
     await err(mv, '[]', /object/);
-    await err(mv, { ending: 'KBNK' }, /ending/);
+    await err(mv, { ending: 'KNNK' }, /ending/);
     await err(mv, { ending: 'KQK', level: 0, fens: [drill.fen, f1] }, /level/);
     await err(mv, { ending: 'KQK', level: 1, fens: [drill.fen] }, /fens/);
     await err(mv, { ending: 'KQK', level: 1, fens: 'x' }, /fens/);
@@ -413,5 +413,29 @@ test('the real 4-piece tables: KQRK and KRRK dealt and played to mate', { skip: 
         assert.equal(last.worst_loss, -1);
       }
     }
+  });
+});
+
+const haveMinor = ['kbbk', 'kbnk'].every(n => existsSync(join(REAL, `${n}.bin`)));
+
+test('the real KBBK and KBNK tables: dealt, played to mate, recorded; a level 5 KBNK deal', { skip: !haveMinor && 'no data/endgames/kbbk.bin, kbnk.bin' }, async () => {
+  const load = tablesFromFiles(async p => readFileSync(join(REAL, '..', p)), 'endgames');
+  await withRouter(load, async ask => {
+    for (const ending of ['KBBK', 'KBNK']) {
+      const { drill } = (await ask('GET', `/api/drills/next?ending=${ending}`)).body;
+      assert.deepEqual([drill.level, drill.mode, drill.counter], [1, 'mate', true]);
+      const best = async f => (await ask('POST', '/api/drills/line', { ending, fen: f })).body.line[0];
+      const { answers } = await playDrill(ask, drill, best);
+      const last = answers[answers.length - 1];
+      assert.deepEqual([last.result, last.moves_used, last.worst_loss], ['solved', drill.dtm, -1]);
+      const r = await ask('POST', '/api/drills/attempt', { ...drill, moves_used: last.moves_used, result: last.result, ms: 9000,
+        worst_loss: last.worst_loss });
+      assert.equal(r.status, 200, JSON.stringify(r.body));
+      assert.deepEqual([r.body.status.ending, r.body.status.played, r.body.status.solved], [ending, 1, 1]);
+    }
+    const n = await ask('GET', '/api/drills/next?ending=KBNK&level=5');
+    assert.equal(n.status, 200, JSON.stringify(n.body));
+    const { drill } = n.body;
+    assert.ok(drill.dtm >= 28 && drill.dtm <= 33 && drill.budget === drill.dtm + 4 && drill.counter === false, JSON.stringify(drill));
   });
 });

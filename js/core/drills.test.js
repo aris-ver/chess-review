@@ -1,14 +1,19 @@
 // The drills on the 3-piece tables with a seeded RNG: start positions in their band and bucket, no repeats, the
-// defender, the kinds of move, every way an attempt ends, the review, and the KPK attack and defence helpers.
+// defender, the kinds of move, every way an attempt ends, the review, and the KPK attack and defence helpers. KBBK and
+// KBNK read the build script's files in data/endgames, and skip when they aren't there.
 import assert from 'node:assert/strict';
+import { existsSync, readFileSync } from 'node:fs';
 import { test } from 'node:test';
+import { fileURLToPath } from 'node:url';
+import { gunzipSync } from 'node:zlib';
 
 import { boardFromFen, fen as fenOf, parseUci, push } from './chess.js';
 import {
-  LEVELS, ENDINGS, HOLD_MOVES, ZONES, attackStatus, bestLine, budget, defenceStatus, defenderMove, flipFen, kindOfMove,
-  kpkAttackerMove, kpkGrade, onlyMoves, pickStart, positionKey, review, status, zone,
+  LEVELS, ENDINGS, HOLD_MOVES, KBNK_RIGHT, KBNK_WRONG, SIDES, ZONES, attackStatus, bestLine, budget, cornerDistances,
+  cornerSide, defenceStatus, defenderMove, flipFen, kindOfMove, kpkAttackerMove, kpkGrade, onlyMoves, pickStart,
+  positionKey, review, status, zone,
 } from './drills.js';
-import { fromFen, generate, probe } from './endgame-table.js';
+import { fromFen, generate, probe, unpack } from './endgame-table.js';
 
 const tables = {};
 for (const name of ['KQK', 'KRK', 'KPK']) tables[name] = generate(name, tables);
@@ -27,7 +32,7 @@ const after = (fen, uci) => { const b = boardFromFen(fen); push(b, parseUci(b, u
 const fastest = fen => bestLine(tables, fen, 1)[0];
 
 test('levels, endings and zones', () => {
-  assert.deepEqual(ENDINGS, ['KQRK', 'KRRK', 'KQK', 'KRK', 'KPK', 'KPK-hold']);
+  assert.deepEqual(ENDINGS, ['KQRK', 'KRRK', 'KQK', 'KRK', 'KPK', 'KPK-hold', 'KBBK', 'KBNK']);
   assert.equal(LEVELS['KPK-hold'].length, 4);
   assert.equal(LEVELS.KQRK.length, 3);
   assert.equal(LEVELS.KRK.length, 5);
@@ -255,4 +260,97 @@ test('KPK defence: flipped positions, the attacker, the end', () => {
   assert.equal(defenceStatus({ fens: moves(2 * HOLD_MOVES) }), 'held');
   const a = '8/8/8/8/1k6/8/1p6/1K6 w - - 0 1', b = '8/8/8/8/1k6/8/1p6/2K5 b - - 0 1';
   assert.equal(defenceStatus({ fens: [a, b, a, b, a] }), 'held');    // a threefold repetition
+});
+
+// ---------- KBBK and KBNK ----------
+
+test('KBBK and KBNK levels: five each, every budget under the 50-move rule', () => {
+  for (const e of ['KBBK', 'KBNK']) {
+    assert.equal(LEVELS[e].length, 5);
+    for (const { hi, slack } of LEVELS[e]) assert.ok(budget(hi, slack) < 50, `${e} ${hi}+${slack}`);
+  }
+  assert.deepEqual(LEVELS.KBBK.map(l => [l.lo, l.hi, l.slack, l.counter]),
+    [[6, 10, 12, true], [10, 13, 9, true], [12, 16, 6, false], [15, 18, 4, false], [17, 19, 3, false]]);
+  assert.deepEqual(LEVELS.KBNK.map(l => [l.lo, l.hi, l.slack, l.counter]),
+    [[8, 12, 15, true], [12, 18, 10, true], [18, 24, 8, false], [24, 30, 6, false], [28, 33, 4, false]]);
+  // the 50-move rule is a fail whatever the budget says
+  assert.equal(status({ fens: ['8/8/8/3k4/8/8/8/1N2KB2 w - - 100 51'], movesUsed: 20, budget: 37 }), 'fifty');
+});
+
+test('KBNK corners: right ones are the bishop\'s colour', () => {
+  // a dark bishop (c1): a1 and h8 are right, h1 and a8 wrong
+  assert.deepEqual(cornerDistances(0, 2), { right: 0, wrong: 7 });
+  assert.deepEqual(cornerDistances(9, 2), { right: 1, wrong: 6 });      // b2
+  assert.deepEqual(cornerDistances(58, 2), { right: 5, wrong: 2 });     // c8
+  assert.equal(cornerSide(63, 2), 'right');
+  assert.equal(cornerSide(7, 2), 'wrong');
+  // a light bishop (f1) turns them round
+  assert.deepEqual(cornerDistances(0, 5), { right: 7, wrong: 0 });
+  assert.equal(cornerSide(7, 5), 'right');
+  // d5 is 3 from a8 and 4 from a1 and h8; no square is as near a right corner as a wrong one
+  assert.equal(cornerSide(35, 2), 'wrong');
+  for (let s = 0; s < 64; s++) {
+    const d = cornerDistances(s, 2);
+    assert.notEqual(d.right, d.wrong, s);
+  }
+});
+
+const REAL = fileURLToPath(new URL('../../data/endgames/', import.meta.url));
+const haveMinor = ['kbbk', 'kbnk'].every(n => existsSync(`${REAL}${n}.bin`));
+const minor = {};
+if (haveMinor) for (const n of ['KBBK', 'KBNK']) minor[n] = unpack(gunzipSync(readFileSync(`${REAL}${n.toLowerCase()}.bin`)));
+const colour = sq => ((sq & 7) + (sq >> 3)) & 1;
+const skipMinor = { skip: !haveMinor && 'no data/endgames/kbbk.bin, kbnk.bin' };
+
+test('KBBK and KBNK starts: in the band, bishops on opposite colours, KBNK\'s king by the corners', skipMinor, () => {
+  const rand = rng(21);
+  for (const ending of ['KBBK', 'KBNK']) {
+    LEVELS[ending].forEach(({ lo, hi, slack }, k) => {
+      const level = k + 1, recent = [];
+      for (let turn = 0; turn < 16; turn++) {
+        const t0 = performance.now();
+        const s = pickStart(minor, ending, level, { rng: rand, recent, turn });
+        const ms = performance.now() - t0;
+        assert.ok(ms < 300, `${ending} ${level}: ${ms} ms`);
+        const pos = fromFen(s.fen), r = probe(minor, pos);
+        assert.equal(r.result, 'win', s.fen);
+        assert.ok(r.dtm >= lo && r.dtm <= hi, `${s.fen} ${r.dtm}`);
+        assert.equal(s.budget, r.dtm + slack);
+        assert.equal(s.key, positionKey(s.fen));
+        assert.ok(!recent.includes(s.key));
+        recent.push(s.key);
+        if (ending === 'KBBK') assert.notEqual(colour(pos.pieces[0]), colour(pos.pieces[1]), s.fen);
+        else {
+          const d = cornerDistances(pos.bk, pos.pieces[0]);
+          if (level === 1) assert.ok(d.right <= KBNK_RIGHT, s.fen);
+          if (level === 2) assert.ok(d.wrong <= KBNK_WRONG, s.fen);
+          // from level 3 the buckets go zone by zone, a right side then a wrong one; each of these has positions
+          if (level >= 3) {
+            assert.equal(cornerSide(pos.bk, pos.pieces[0]), SIDES[turn % 2], `${s.fen} turn ${turn}`);
+            assert.equal(zone(pos.bk), ZONES[Math.floor(turn / 2) % 4], `${s.fen} turn ${turn}`);
+          }
+        }
+      }
+    });
+  }
+});
+
+test('a perfect KBNK level 1 and KBBK level 1 game mates in exactly the start distance', skipMinor, () => {
+  for (const ending of ['KBNK', 'KBBK']) {
+    const rand = rng(31);
+    const s = pickStart(minor, ending, 1, { rng: rand });
+    let fen = s.fen, moves = 0;
+    const fens = [fen];
+    while (!status({ fens, movesUsed: moves, budget: s.budget })) {
+      fen = after(fen, bestLine(minor, fen, 1)[0]);
+      moves++;
+      fens.push(fen);
+      if (status({ fens, movesUsed: moves, budget: s.budget })) break;
+      fen = after(fen, defenderMove(minor, fen, rand));
+      fens.push(fen);
+    }
+    assert.equal(status({ fens, movesUsed: moves, budget: s.budget }), 'solved', ending);
+    assert.equal(moves, s.dtm, s.fen);
+    assert.equal(review(minor, fens).worst, -1);
+  }
 });

@@ -6,7 +6,7 @@
 //   POST /api/drills/attempt                     {ending, level, fen, dtm, budget, moves_used, result, ms,
 //                                                worst_loss, id?} -> {counted, id, before, status}; `before` is the
 //                                                level the ending was at, status the standing after it.
-//   GET  /api/drills/status[?ending=KQK]         one ending's status, or {endings: [...]} for all six; a status is
+//   GET  /api/drills/status[?ending=KQK]         one ending's status, or {endings: [...]} for all eight; a status is
 //                                                {ending, level, top, star, played, solved, run, recent}.
 //   POST /api/drills/move                        {ending, level, fens}: every position from the dealt one to the
 //                                                user's last move -> the move judged, the defender's reply and the

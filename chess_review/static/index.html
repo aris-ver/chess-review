@@ -931,7 +931,7 @@ svg.graph { width: 100%; height: 52px; display: block; cursor: pointer; backgrou
       </div>
       <h2>Develop your instinct</h2>
       <div class="cards pztiles">
-        <div class="card pztile covered" id="card-drills"><div class="cover" data-cover="drills"></div><div class="cbody"><span class="src">Endgames</span><span class="who">Basic endings, played out</span><span class="desc" id="card-drills-desc">Six basic endings against a defender that never gives up, from a new position every time.</span></div></div>
+        <div class="card pztile covered" id="card-drills"><div class="cover" data-cover="drills"></div><div class="cbody"><span class="src">Endgames</span><span class="who">Basic endings, played out</span><span class="desc" id="card-drills-desc">Eight basic endings against a defender that never gives up, from a new position every time.</span></div></div>
       </div>
       <h2>Review something else</h2>
       <div class="acts">
@@ -2560,7 +2560,7 @@ async function renderPuzzleCards() {
 }
 
 // ---------- endgame drills: "Develop your instinct" (docs/training-grounds.md) ----------
-// #/drills lists the six endings, each at its level, with its star; #/drills/<ending> deals a position at that level
+// #/drills lists the eight endings, each at its level, with its star; #/drills/<ending> deals a position at that level
 // (api/drills/next) and plays it on the review screen, in the puzzles' layout, you as White. The page holds no tables:
 // each of your moves goes to api/drills/move with every position so far, and the answer is the defender's reply and,
 // once the drill is over, the result and its review. The attempt is then recorded (api/drills/attempt) under an id of
@@ -2569,11 +2569,13 @@ const DRILL_ENDINGS = {
   KQRK: { name: 'Queen and rook', desc: 'The shortest mates. Box the king in with both pieces instead of chasing it with checks.' },
   KRRK: { name: 'Two rooks', desc: 'The rooks take turns cutting the king off, one rank at a time.' },
   KQK: { name: 'Queen', desc: 'Shrink the box, bring your king up, and watch out for stalemate on the edge.' },
-  KRK: { name: 'Rook', desc: 'The longest of the four. The rook cuts the king off; your own king does the pushing.' },
+  KRK: { name: 'Rook', desc: 'The longest of the rook and queen mates. The rook cuts the king off; your own king does the pushing.' },
   KPK: { name: 'King and pawn', desc: 'Take the pawn through to a new queen. Where your king stands decides it.' },
   'KPK-hold': { name: 'Stop the pawn', desc: 'You have the lone king. Hold the draw against king and pawn.' },
+  KBBK: { name: 'Two bishops', desc: 'Side by side, the bishops build a wall the king can\'t cross. Push it into any corner.' },
+  KBNK: { name: 'Bishop and knight', desc: 'The hardest basic mate. Only a corner of the bishop\'s colour will do, so drive the king there.' },
 };
-const DRILL_ORDER = ['KQRK', 'KRRK', 'KQK', 'KRK', 'KPK', 'KPK-hold'];
+const DRILL_ORDER = ['KQRK', 'KRRK', 'KQK', 'KRK', 'KPK', 'KPK-hold', 'KBBK', 'KBNK'];
 const DRILL_SOLVED = { mate: ['solved'], attack: ['promoted'], hold: ['held', 'pawn_taken', 'stalemate'] };
 // a move's kind (api/drills/move): its name in the review, and the badge it gets on the board there
 const DRILL_KIND = { best: ['Best', 'best'], slack: ['Slack', 'inaccuracy'], lost: ['Lost ground', 'mistake'], threw: ['Threw it', 'blunder'] };
@@ -2599,7 +2601,7 @@ async function renderDrillTile() {
   const played = (all || []).reduce((n, s) => n + s.played, 0);
   if (!played) return;
   const solved = all.reduce((n, s) => n + s.solved, 0), stars = all.filter(s => s.star).length;
-  $('card-drills-desc').textContent = `${played} played · ${solved} solved${stars ? ` · ${stars} ★` : ''}. Six basic endings, a new position every time.`;
+  $('card-drills-desc').textContent = `${played} played · ${solved} solved${stars ? ` · ${stars} ★` : ''}. Eight basic endings, a new position every time.`;
 }
 async function showDrills() {
   leavePuzzleScreen('drills'); $('crumb').textContent = 'Develop your instinct';
@@ -2959,6 +2961,7 @@ const COVERS = {
   // the endgame drills' cards (DRILL_ENDINGS)
   'd-KQRK': [['wq', 'wr', 'bk'], null, '#e8604c'], 'd-KRRK': [['wr', 'wr', 'bk'], null, '#5c9fd6'], 'd-KQK': [['wq', 'bk'], null, '#a879e0'],
   'd-KRK': [['wr', 'bk'], null, '#4cc2a8'], 'd-KPK': [['wp', 'wk'], null, '#e0a53a'], 'd-KPK-hold': [['wk', 'bp'], null, '#8fb4bf'],
+  'd-KBBK': [['wb', 'wb', 'bk'], null, '#d97ab5'], 'd-KBNK': [['wb', 'wn', 'bk'], null, '#7fb85c'],
 };
 function coverHtml(key, family, day) {
   const [pcs, mark, colour] = COVERS[key] || [['wn']];

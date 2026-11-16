@@ -1,11 +1,14 @@
 // The "Develop your instinct" drills (docs/training-grounds.md): basic endings played against a defender that reads
 // the endgame tables (endgame-table.js), within a move budget, from a fresh position each time.
 //
-// The user always has white. A mate drill (KQRK, KRRK, KQK, KRK) starts from a position whose mate distance is in its
-// level's band, white to move; the budget is that distance plus the level's slack, and the attempt fails on the budget,
-// a stalemate, a piece lost, a threefold repetition or the 50-move rule. Start positions come from buckets by the black
-// king's zone (corner, edge, ring, centre), taken in turn, and never one of the last 50 dealt, mirrors and rotations
-// included (positionKey). Each is shown turned by a random symmetry.
+// The user always has white. A mate drill (KQRK, KRRK, KQK, KRK, KBBK, KBNK) starts from a position whose mate distance
+// is in its level's band, white to move; the budget is that distance plus the level's slack, and the attempt fails on
+// the budget, a stalemate, a piece lost, a threefold repetition or the 50-move rule. Start positions come from buckets
+// by the black king's zone (corner, edge, ring, centre), taken in turn, and never one of the last 50 dealt, mirrors and
+// rotations included (positionKey). Each is shown turned by a random symmetry. KBBK deals only bishops on opposite
+// colours. KBNK also places the black king by the corners (cornerDistances): a right corner is one of the bishop's
+// colour, where the mate is; level 1 starts with the king in one (KBNK_RIGHT), level 2 in or by a wrong one
+// (KBNK_WRONG), and from level 3 the buckets are the zones on each side, nearer a right corner or not (SIDES).
 //
 // The king and pawn endings are two drills with levels of their own, both read from the KPK table. 'KPK' is the
 // attack: white's king and pawn, to promote and keep the win (attackStatus). 'KPK-hold' is the defence: the user has
@@ -29,17 +32,22 @@ export const LEVELS = {
   KRRK: [lvl(2, 4, 8, true), lvl(4, 5, 5, true), lvl(5, 7, 2, false)],
   KQK: [lvl(3, 5, 10, true), lvl(5, 7, 6, true), lvl(6, 8, 4, false), lvl(8, 10, 3, false), lvl(9, 10, 1, false)],
   KRK: [lvl(5, 8, 12, true), lvl(8, 11, 8, true), lvl(10, 13, 6, false), lvl(12, 15, 4, false), lvl(14, 16, 2, false)],
+  KBBK: [lvl(6, 10, 12, true), lvl(10, 13, 9, true), lvl(12, 16, 6, false), lvl(15, 18, 4, false), lvl(17, 19, 3, false)],
+  KBNK: [lvl(8, 12, 15, true), lvl(12, 18, 10, true), lvl(18, 24, 8, false), lvl(24, 30, 6, false), lvl(28, 33, 4, false)],
   // lo and hi count only-moves here; no budget, no counter
   KPK: [lvl(1, 1, null, false), lvl(2, 2, null, false), lvl(3, 3, null, false), lvl(4, Infinity, null, false)],
   'KPK-hold': [lvl(1, 1, null, false), lvl(2, 2, null, false), lvl(3, 3, null, false), lvl(4, Infinity, null, false)],
 };
-export const ENDINGS = ['KQRK', 'KRRK', 'KQK', 'KRK', 'KPK', 'KPK-hold'];
+export const ENDINGS = ['KQRK', 'KRRK', 'KQK', 'KRK', 'KPK', 'KPK-hold', 'KBBK', 'KBNK'];
 export const ZONES = ['corner', 'edge', 'ring', 'centre'];
+export const SIDES = ['right', 'wrong'];    // KBNK: the black king nearer a right corner, or not
+export const KBNK_RIGHT = 1;       // level 1: at most this far (king moves) from a right corner
+export const KBNK_WRONG = 2;       // level 2: at most this far from a wrong corner
 export const RECENT = 50;          // positions never dealt again
 export const HOLD_MOVES = 20;      // a KPK defence held this long is a success
 const ONLY_CAP = 4;
-const ZONE_TRIES = 20000;          // random draws in a zone before pickStart moves on to the next one
-const ANY_TRIES = 200000;          // then draws in any zone
+const ZONE_TRIES = 20000;          // random draws in a bucket before pickStart moves on to the next one
+const ANY_TRIES = 200000;          // then draws in any bucket
 
 /** The level's row in LEVELS; a RangeError for an ending or level that doesn't exist. */
 export function levelOf(ending, level) {
@@ -56,6 +64,27 @@ export function zone(sq) {
   const f = sq & 7, r = sq >> 3, d = Math.min(f, 7 - f, r, 7 - r);
   if (d === 0) return (f === 0 || f === 7) && (r === 0 || r === 7) ? 'corner' : 'edge';
   return d === 1 ? 'ring' : 'centre';
+}
+
+const CORNERS = [0, 7, 56, 63];
+const colourOf = sq => ((sq & 7) + (sq >> 3)) & 1;
+const kingDistance = (a, b) => Math.max(Math.abs((a & 7) - (b & 7)), Math.abs((a >> 3) - (b >> 3)));
+
+/** KBNK: the black king's distance in king moves to the nearest right corner (the bishop's colour, where the mate is)
+ * and to the nearest wrong one, {right, wrong}. */
+export function cornerDistances(bk, bishop) {
+  let right = 8, wrong = 8;
+  for (const c of CORNERS) {
+    const d = kingDistance(bk, c);
+    if (colourOf(c) === colourOf(bishop)) right = Math.min(right, d); else wrong = Math.min(wrong, d);
+  }
+  return { right, wrong };
+}
+
+/** KBNK: 'right' when the black king is nearer a right corner than a wrong one, else 'wrong' (no square ties). */
+export function cornerSide(bk, bishop) {
+  const { right, wrong } = cornerDistances(bk, bishop);
+  return right < wrong ? 'right' : 'wrong';
 }
 
 export const budget = (dtm, slack) => dtm + slack;
@@ -225,11 +254,25 @@ export function attackStatus(tables, { fens }) {
 // black in check: the same position with white to move is illegal
 const inCheck = (tables, pos) => probe(tables, { ...pos, turn: 'w' }).result === 'illegal';
 
+// what every start of the level keeps, on a decoded table position (pieces in the name's order, so the bishop first)
+function startRule(ending, level) {
+  if (ending === 'KBBK') return p => colourOf(p.pieces[0]) !== colourOf(p.pieces[1]);    // the same colour can't mate
+  if (ending === 'KBNK' && level === 1) return p => cornerDistances(p.bk, p.pieces[0]).right <= KBNK_RIGHT;
+  if (ending === 'KBNK' && level === 2) return p => cornerDistances(p.bk, p.pieces[0]).wrong <= KBNK_WRONG;
+  return null;
+}
+
+// the buckets a level's starts come from, taken in turn: the zones, or for KBNK from level 3 each zone on each side
+function bucketsOf(ending, level) {
+  if (ending !== 'KBNK' || level <= 2) return ZONES.map(z => p => zone(p.bk) === z);
+  return ZONES.flatMap(z => SIDES.map(side => p => zone(p.bk) === z && cornerSide(p.bk, p.pieces[0]) === side));
+}
+
 /** A start position for the level: {fen, dtm, budget, key}, or null when none turns up. Table indices are drawn at
  * random and kept when they're in the level's band, canonical (one index for a position and its mirrors), legal, in
- * the zone this attempt's `turn` picks (ZONES in turn, `turn` counting attempts) and not in `recent` (the keys dealt
- * before); a zone that yields nothing in ZONE_TRIES draws passes to the next. 'KPK-hold' deals black's king and
- * pawn, white to move. */
+ * the bucket this attempt's `turn` picks (ZONES in turn, `turn` counting attempts; KBNK's are at the top of the file),
+ * within the level's startRule and not in `recent` (the keys dealt before); a bucket that yields nothing in
+ * ZONE_TRIES draws passes to the next. 'KPK-hold' deals black's king and pawn, white to move. */
 export function pickStart(tables, ending, level, { rng = Math.random, recent = [], turn = 0 } = {}) {
   const { lo, hi, slack } = levelOf(ending, level);
   const hold = ending === 'KPK-hold', name = hold ? 'KPK' : ending;
@@ -237,11 +280,12 @@ export function pickStart(tables, ending, level, { rng = Math.random, recent = [
   if (!data) throw new RangeError(`no ${name} table for ${ending}`);
   const size = tableSize(name), skip = new Set(recent.slice(-RECENT));
   const keyOf = i => `${name}:${hold ? 'b' : 'w'}:${i}`;
+  const rule = startRule(ending, level), buckets = bucketsOf(ending, level);
   const fits = (i, want) => {
     const v = data[i];
     if (name !== 'KPK' ? v < lo || v > hi : !hold && !v) return false;
     const p = decode(name, i);
-    if (want && zone(p.bk) !== want) return false;
+    if ((want && !want(p)) || (rule && !rule(p))) return false;
     if (canonical(p) !== i || skip.has(keyOf(i))) return false;
     if (name !== 'KPK') return probe(tables, p).result === 'win';
     let n;
@@ -256,8 +300,8 @@ export function pickStart(tables, ending, level, { rng = Math.random, recent = [
     return n >= lo && n <= hi;
   };
   let chosen = -1;
-  for (let k = 0; k <= ZONES.length && chosen < 0; k++) {
-    const want = k < ZONES.length ? ZONES[(turn + k) % ZONES.length] : null;
+  for (let k = 0; k <= buckets.length && chosen < 0; k++) {
+    const want = k < buckets.length ? buckets[(turn + k) % buckets.length] : null;
     for (let tries = want ? ZONE_TRIES : ANY_TRIES; tries > 0; tries--) {
       const i = Math.floor(rng() * size);
       if (fits(i, want)) { chosen = i; break; }

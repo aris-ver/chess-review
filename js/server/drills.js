@@ -4,10 +4,10 @@
 //
 // The record is progress.sqlite's drill_attempts table (db.js DRILL_ATTEMPTS_SCHEMA), one row an attempt, in the
 // order they were made (seq; the merged order after a sync): {id, ts, ending, level, fen, dtm, budget, moves_used, result, ms, worst_loss}. The
-// six endings (core/drills.js ENDINGS) each have a level of their own.
+// eight endings (core/drills.js ENDINGS) each have a level of their own.
 //
-// Results. A mate drill (KQRK, KRRK, KQK, KRK) is 'solved', or failed by 'stalemate', 'piece_lost', 'repetition',
-// 'fifty' or 'budget'. The KPK attack is 'promoted', or failed by 'threw' (a move gave the win away), 'pawn_lost',
+// Results. A mate drill (KQRK, KRRK, KQK, KRK, KBBK, KBNK) is 'solved', or failed by 'stalemate', 'piece_lost',
+// 'repetition', 'fifty' or 'budget'. The KPK attack is 'promoted', or failed by 'threw' (a move gave the win away), 'pawn_lost',
 // 'stalemate', 'repetition' or 'fifty'. The KPK defence ('KPK-hold') is held by 'held', 'pawn_taken' or 'stalemate',
 // or failed by 'threw' (a move gave the draw away) or 'promoted'. 'abandoned' fails any of them (the drill left
 // unfinished). A KPK ending has no mate distance and no budget: dtm and budget are null. worst_loss is the moves the

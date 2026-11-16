@@ -111,7 +111,7 @@ test('parseAttempt: checks the body, and says what is wrong', () => {
   const no = (o, re) => assert.throws(() => D.parseAttempt(o), e => e instanceof BadRequest && re.test(e.message), JSON.stringify(o));
   no(null, /object/);
   no([], /object/);
-  no({ ...good, ending: 'KBNK' }, /ending/);
+  no({ ...good, ending: 'KNNK' }, /ending/);
   no({ ...good, ending: 'constructor' }, /ending/);
   no({ ...good, ending: undefined }, /ending/);
   no({ ...good, level: 0 }, /level/);
@@ -159,7 +159,7 @@ test('record: rows in order, a repeated id counted once, the level worked out fr
     assert.deepEqual([other.status.ending, other.status.level, other.status.played], ['KRK', 1, 1]);
     assert.equal(D.status(db, 'KQK').level, 2);
     assert.deepEqual(D.statuses(db).map(s => [s.ending, s.level, s.played]),
-      [['KQRK', 1, 0], ['KRRK', 1, 0], ['KQK', 2, 3], ['KRK', 1, 1], ['KPK', 1, 0], ['KPK-hold', 1, 0]]);
+      [['KQRK', 1, 0], ['KRRK', 1, 0], ['KQK', 2, 3], ['KRK', 1, 1], ['KPK', 1, 0], ['KPK-hold', 1, 0], ['KBBK', 1, 0], ['KBNK', 1, 0]]);
     const rows = D.attempts(db, 'KQK');
     assert.deepEqual(rows.map(r => r.ts), [1000, 1001, 1002]);
     assert.deepEqual(Object.keys(rows[0]), ['id', 'ts', 'ending', 'level', 'fen', 'dtm', 'budget', 'moves_used', 'result', 'ms', 'worst_loss']);
@@ -178,7 +178,9 @@ test('tables: loaded on first use, kept, retried after a failure; files plain or
   assert.deepEqual(D.tablesFor('KQRK'), ['KQK', 'KRK', 'KQRK']);
   assert.deepEqual(D.tablesFor('KPK-hold'), ['KQK', 'KRK', 'KPK']);
   assert.deepEqual(D.tablesFor('KRRK'), ['KRK', 'KRRK']);
-  assert.throws(() => D.tablesFor('KBNK'), RangeError);
+  assert.deepEqual(D.tablesFor('KBNK'), ['KBNK']);
+  assert.deepEqual(D.tablesFor('KBBK'), ['KBBK']);
+  assert.throws(() => D.tablesFor('KNNK'), RangeError);
   const asked = [];
   let broken = true;
   const t = new D.DrillTables(async name => {
