@@ -24,7 +24,7 @@ const SOURCE = join(ROOT, 'js', 'core', 'endgame-table.js');
 const FORMAT_VERSION = 1;
 const STAMP = 'endgames.stamp';
 
-export const NAMES = ['KQK', 'KRK', 'KPK', 'KQRK', 'KRRK'];
+export const NAMES = ['KQK', 'KRK', 'KPK', 'KQRK', 'KRRK', 'KBBK', 'KBNK'];
 export const DEFAULT_OUT = join(ROOT, 'data', 'endgames');
 
 // what a correct table has (white to move; mates and stalemates over both sides' positions); see the test
@@ -34,6 +34,8 @@ const EXPECT = {
   KPK: { maxMoves: 28, wins: 62480, lossesB: 48802, stalemates: 11 },
   KQRK: { maxMoves: 6, wins: 1080257, mates: 35617 },
   KRRK: { maxMoves: 7, wins: 1299964, mates: 22644 },
+  KBBK: { maxMoves: 19, wins: 783438, mates: 442, stalemates: 2848 },
+  KBNK: { maxMoves: 33, wins: 1691479, mates: 65, stalemates: 1767 },
 };
 
 export const fileName = name => `${name.toLowerCase()}.bin`;

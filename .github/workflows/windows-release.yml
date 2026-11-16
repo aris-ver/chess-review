@@ -50,6 +50,10 @@ jobs:
           node-version: "22"
           cache: npm
       - run: npm ci --no-audit --no-fund
+      - uses: actions/cache@v4
+        with:
+          path: data/endgames       # the drill tables: KBBK and KBNK take about a minute to build (ensureTables)
+          key: endgames-${{ hashFiles('js/core/endgame-table.js', 'scripts/build_endgame_tables.js') }}
       - run: npm test
       - name: Build the app
         env:

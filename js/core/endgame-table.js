@@ -3,8 +3,8 @@
 // Node.
 //
 // Squares are 0..63 with a1 = 0. An ending is named by its pieces, white's first ('KQK', 'KRK', 'KPK', 'KQRK',
-// 'KRRK'); the black side is always the lone king, and a position is {name, wk, bk, pieces: [sq], turn: 'w'|'b'},
-// the pieces in the name's order.
+// 'KRRK', 'KBBK', 'KBNK'); the black side is always the lone king, and a position is {name, wk, bk, pieces: [sq],
+// turn: 'w'|'b'}, the pieces in the name's order.
 //
 // A table holds white-to-move positions only, one byte each: 0 a draw, N a mate in N moves. The index puts the white
 // king in the a1-d1-d4 triangle by one of the board's 8 symmetries, ((tri(wk)*64 + bk)*64 + p1)[*64 + p2]; KPK only
@@ -17,17 +17,20 @@
 // generate() works it all out by retrograde analysis, both sides in scratch arrays: mates and stalemates first, then
 // level by level, white-to-move positions with a move to a black position lost in L-1 plies, then black-to-move ones
 // whose every move is lost within L-1. Captures and promotions (to a queen or rook) read the smaller tables, given as
-// `subs` (DEPENDS). A 3-piece table takes well under a second; the 4-piece ones about ten seconds, so those are built
-// offline (scripts/build_endgame_tables.js) and shipped as gzipped files, pack()'s 8-byte header ('EGT1', the name
-// padded to 4) followed by the bytes.
+// `subs` (DEPENDS). A 3-piece table takes well under a second; the 4-piece ones ten seconds to a minute, so those are
+// built offline (scripts/build_endgame_tables.js) and shipped as gzipped files, pack()'s 8-byte header ('EGT1', the
+// name padded to 4) followed by the bytes.
 
 const Q = 1, R = 2, B = 3, N = 4, P = 5;
 const TYPE = { Q, R, B, N, P };
 const LETTER = ['', 'Q', 'R', 'B', 'N', 'P'];
 const ILLEGAL = 255, STALE = 254;    // scratch markers; other scratch values are plies + 1, 0 not yet known
 
-export const ENDING_NAMES = ['KQK', 'KRK', 'KPK', 'KQRK', 'KRRK'];
-export const DEPENDS = { KQK: [], KRK: [], KPK: ['KQK', 'KRK'], KQRK: ['KQK', 'KRK'], KRRK: ['KRK'] };
+export const ENDING_NAMES = ['KQK', 'KRK', 'KPK', 'KQRK', 'KRRK', 'KBBK', 'KBNK'];
+// a bishop or knight taken leaves KBK or KNK, a draw, so KBBK and KBNK need no smaller table
+export const DEPENDS = {
+  KQK: [], KRK: [], KPK: ['KQK', 'KRK'], KQRK: ['KQK', 'KRK'], KRRK: ['KRK'], KBBK: [], KBNK: [],
+};
 // endings that can't be won: a capture or promotion into one of these is a draw, and they need no table
 const DRAWN = new Set(['KK', 'KBK', 'KNK']);
 

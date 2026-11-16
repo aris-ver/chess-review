@@ -15,6 +15,7 @@ on:
       - "worker/**"
       - "legacy/**"
       - "scripts/build_web.js"
+      - "scripts/build_endgame_tables.js"
       - "package.json"
       - ".github/workflows/deploy-web.yml"
   workflow_dispatch:
@@ -44,6 +45,10 @@ jobs:
           cache-dependency-path: |
             package-lock.json
             worker/package-lock.json
+      - uses: actions/cache@v4
+        with:
+          path: data/endgames       # the drill tables: KBBK and KBNK take about a minute to build (ensureTables)
+          key: endgames-${{ hashFiles('js/core/endgame-table.js', 'scripts/build_endgame_tables.js') }}
       - name: Tests
         run: npm test       # nothing to install: the tests need only Node (Electron is for the desktop build)
       - uses: actions/cache@v4

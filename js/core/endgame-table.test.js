@@ -7,10 +7,12 @@ import { test } from 'node:test';
 
 import { boardFromFen, isCheck, isCheckmate, legalMoves } from './chess.js';
 import {
-  blackMoves, canonical, decode, generate, gunzip, pack, probe, tableSize, toFen, transform, unpack, whiteMoves,
+  blackMoves, canonical, decode, generate, gunzip, index, pack, probe, tableSize, toFen, transform, unpack, whiteMoves,
   fromFen,
 } from './endgame-table.js';
-import { gzipSync } from 'node:zlib';
+import { existsSync, readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { gunzipSync, gzipSync } from 'node:zlib';
 
 const tables = {};
 for (const name of ['KQK', 'KRK', 'KPK']) tables[name] = generate(name, tables);
@@ -144,6 +146,69 @@ test('500 random positions agree with chess.js', () => {
       else assert.equal(won.length, 0, fen);
     }
   }
+});
+
+test('KBBK and KBNK: the index round trip, the moves against chess.js, a minor piece taken is a draw', () => {
+  // all-draw stand-ins: their moves and legality don't depend on what the table holds
+  const fake = { KBBK: { name: 'KBBK', data: new Uint8Array(tableSize('KBBK')) },
+    KBNK: { name: 'KBNK', data: new Uint8Array(tableSize('KBNK')) } };
+  const rand = rng(11);
+  for (const name of ['KBBK', 'KBNK']) {
+    assert.equal(tableSize(name), 10 * 64 ** 3);
+    let n = 0;
+    while (n < 150) {
+      const i = Math.floor(rand() * tableSize(name)), p = decode(name, i);
+      assert.equal(index(p), i);
+      const pos = { ...p, turn: rand() < 0.5 ? 'w' : 'b' }, r = probe(fake, pos);
+      if (r.result === 'illegal') continue;
+      n++;
+      for (const t of [1, 2, 5, 7]) assert.equal(canonical(moved(pos, t)), canonical(pos), name);
+      const fen = toFen(pos), board = boardFromFen(fen), moves = legalMoves(board);
+      if (pos.turn === 'w') {
+        const key = m => `${m.from}-${m.to}`;
+        assert.deepEqual(whiteMoves(fake, pos).map(key).sort(), moves.map(key).sort(), fen);
+      } else {
+        assert.deepEqual(blackMoves(fake, pos).map(m => m.to).sort(), moves.map(m => m.to).sort(), fen);
+        assert.equal(r.result === 'mate', isCheckmate(board), fen);
+      }
+    }
+  }
+  // two bishops swapped are one key; fromFen puts the bishop before the knight
+  const bb = fromFen('4k3/8/8/8/8/8/8/2B1KB2 w - - 0 1');
+  assert.equal(bb.name, 'KBBK');
+  assert.equal(canonical({ ...bb, pieces: [bb.pieces[1], bb.pieces[0]] }), canonical(bb));
+  const bn = fromFen('4k3/8/8/8/8/8/8/1N2KB2 w - - 0 1');
+  assert.deepEqual([bn.name, bn.pieces], ['KBNK', [5, 1]]);
+  // black takes the bishop next to its king: KBK, a draw with no table
+  const take = blackMoves(fake, fromFen('8/8/8/8/8/2kB4/8/4K1N1 b - - 0 1')).find(m => m.capture);
+  assert.deepEqual([take.to, take.result, take.dtm], [19, 'draw', null]);
+});
+
+// KBBK and KBNK take tens of seconds to generate, so these read the build script's files (data/endgames) when they're
+// there: the longest mates, the count of positions at the longest distances, a few positions lichess agrees on
+const REAL = fileURLToPath(new URL('../../data/endgames/', import.meta.url));
+const haveMinor = ['kbbk', 'kbnk'].every(n => existsSync(`${REAL}${n}.bin`));
+
+test('the KBBK and KBNK files', { skip: !haveMinor && 'no data/endgames/kbbk.bin, kbnk.bin' }, () => {
+  const real = {};
+  for (const n of ['KBBK', 'KBNK']) real[n] = unpack(gunzipSync(readFileSync(`${REAL}${n.toLowerCase()}.bin`)));
+  // white-to-move entries at the top distances, legal ones only (an illegal entry repeats the byte before it)
+  const top = (name, from) => {
+    const data = real[name].data, hist = {};
+    let max = 0;
+    for (let i = 0; i < data.length; i++) {
+      if (data[i] < from || probe(real, decode(name, i)).result === 'illegal') continue;
+      hist[data[i]] = (hist[data[i]] ?? 0) + 1;
+      max = Math.max(max, data[i]);
+    }
+    return { max, hist };
+  };
+  assert.deepEqual(top('KBBK', 17), { max: 19, hist: { 17: 34506, 18: 5300, 19: 60 } });
+  assert.deepEqual(top('KBNK', 31), { max: 33, hist: { 31: 46456, 32: 7392, 33: 265 } });
+  assert.deepEqual(probe(real, fromFen('7K/8/8/8/8/6B1/N7/k7 w - - 0 1')), { result: 'win', dtm: 31 });
+  assert.deepEqual(probe(real, fromFen('4k3/K3B3/8/8/8/8/8/7B w - - 0 1')), { result: 'win', dtm: 17 });
+  // bishops on one colour can't mate
+  assert.deepEqual(probe(real, fromFen('4k3/8/8/8/8/8/8/2B1K1B1 w - - 0 1')), { result: 'draw', dtm: null });
 });
 
 test('4-piece tables', { skip: !process.env.ENDGAME_FULL && 'set ENDGAME_FULL=1 (about ten seconds)' }, () => {
