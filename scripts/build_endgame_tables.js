@@ -24,7 +24,7 @@ const SOURCE = join(ROOT, 'js', 'core', 'endgame-table.js');
 const FORMAT_VERSION = 1;
 const STAMP = 'endgames.stamp';
 
-export const NAMES = ['KQK', 'KRK', 'KPK', 'KQRK', 'KRRK', 'KBBK', 'KBNK'];
+export const NAMES = ['KQK', 'KRK', 'KPK', 'KQRK', 'KRRK', 'KBBK', 'KBNK', 'KQKR', 'KRKR'];
 export const DEFAULT_OUT = join(ROOT, 'data', 'endgames');
 
 // what a correct table has (white to move; mates and stalemates over both sides' positions); see the test
@@ -79,7 +79,9 @@ export function ensureTables(dir = DEFAULT_OUT, { names = NAMES, force = false, 
     verify(tables[name]);
     const gz = gzipSync(pack(tables[name]), { level: 9 });
     writeFileSync(join(dir, fileName(name)), gz);
-    log(`${name}: mate in at most ${tables[name].stats.maxMoves}, ${Date.now() - t0} ms, ${gz.length} bytes`);
+    const s = tables[name].stats;
+    log(`${name}: mate in at most ${s.maxMoves} (${toFen(decode(name, s.maxIndex))}), ${Date.now() - t0} ms, `
+      + `${gz.length} bytes`);
   }
   writeFileSync(stampFile, want + '\n');
   return { built: true, ms: Date.now() - start, tables };
@@ -122,8 +124,12 @@ async function check(tables, names, count, log) {
       ours = probe(tables, pos);
     } while (ours.result === 'illegal');
     const fen = toFen(pos), theirs = await lichess(fen);
-    const category = { win: 'win', loss: 'loss', mate: 'loss', draw: 'draw', stalemate: 'draw' }[ours.result];
-    let ok = theirs.category === category;
+    // our 0 is "white doesn't win", which with a black rook may be black winning; a cursed win (or blessed loss) is a
+    // win past the fifty-move rule, which our tables ignore, so it's a mismatch to look at
+    const categories = pos.turn === 'w'
+      ? (ours.result === 'win' ? ['win'] : ['draw', 'loss', 'blessed-loss', 'maybe-loss'])
+      : (ours.result === 'loss' || ours.result === 'mate' ? ['loss'] : ['draw', 'win', 'cursed-win', 'maybe-win']);
+    let ok = categories.includes(theirs.category);
     if (ok && theirs.dtm != null && ours.dtm != null) {
       const plies = pos.turn === 'w' ? 2 * ours.dtm - 1 : 2 * ours.dtm;
       ok = Math.abs(theirs.dtm) === plies;
