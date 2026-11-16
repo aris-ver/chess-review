@@ -2721,6 +2721,8 @@ async function drillMove(uci) {
 // Give up (or leave): the review from the moves so far, the worst of them as the server would pick it
 function giveUpDrill(show = true) {
   if (!dr.drill || dr.over || (show && dr.busy) || !dr.answers.length) return false;     // leaving: a move on its way is left out
+  const last = dr.answers[dr.answers.length - 1];
+  if (last.result) { finishDrill(last, show); return true; }      // the reply, still to be shown, already ended it
   const moves = dr.answers.map(a => ({ dtm: a.dtm_after, kind: a.kind, loss: a.loss }));
   let worst = -1, cost = 0;
   moves.forEach((m, k) => { const c = m.loss ?? Infinity; if (c > cost) { cost = c; worst = k; } });
