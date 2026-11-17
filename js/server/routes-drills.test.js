@@ -133,11 +133,11 @@ test('refusals: a bad ending, level or body is a 400 with a reason; no start pos
     await err('GET', '/api/drills/next', undefined, 400, /ending/);
     await err('GET', '/api/drills/next?ending=KNNK', undefined, 400, /ending/);
     await err('GET', '/api/drills/next?ending=toString', undefined, 400, /ending/);
-    await err('GET', '/api/drills/next?ending=KQK&level=0', undefined, 400, /levels 1 to 5/);
-    await err('GET', '/api/drills/next?ending=KQK&level=6', undefined, 400, /levels 1 to 5/);
-    await err('GET', '/api/drills/next?ending=KQK&level=x', undefined, 400, /levels 1 to 5/);
-    await err('GET', '/api/drills/next?ending=KQK&level=', undefined, 400, /levels 1 to 5/);
-    await err('GET', '/api/drills/next?ending=KQK&level=1.5', undefined, 400, /levels 1 to 5/);
+    await err('GET', '/api/drills/next?ending=KQK&level=0', undefined, 400, /levels 1 to 8/);
+    await err('GET', '/api/drills/next?ending=KQK&level=9', undefined, 400, /levels 1 to 8/);
+    await err('GET', '/api/drills/next?ending=KQK&level=x', undefined, 400, /levels 1 to 8/);
+    await err('GET', '/api/drills/next?ending=KQK&level=', undefined, 400, /levels 1 to 8/);
+    await err('GET', '/api/drills/next?ending=KQK&level=1.5', undefined, 400, /levels 1 to 8/);
     await err('GET', '/api/drills/status?ending=nope', undefined, 400, /ending/);
     await err('POST', '/api/drills/attempt', '{not json', 400, /JSON/);
     await err('POST', '/api/drills/attempt', '[]', 400, /object/);
@@ -582,7 +582,7 @@ test('rook drills: the engine retried at fewer nodes after a crash, a 503 when i
     await bad({ ending: 'Lucena', level: 1, fens }, /fens\[0\]: not a Lucena start position/);
     const near = after(after(e.fen, first), movesFrom(after(e.fen, first))[0]);     // two plies on: not a start
     await bad({ ending: 'Philidor', level: 1, fens: [near, after(near, movesFrom(near)[0])] }, /not a Philidor start position/);
-    await bad({ ending: 'Philidor', level: 5, fens }, /level/);
+    await bad({ ending: 'Philidor', level: 7, fens }, /level/);
     // the mirror of a start is one
     const m = mirrorFen(e.fen);
     pool.search = async (fen, nodes, multipv, moves) => [`info depth 9 multipv 1 score cp 12 nodes ${nodes} pv ${firstLegal(fen, moves).move}`];
@@ -773,4 +773,51 @@ test('rook hint: a crash retried at fewer nodes; refusals and 503s', async () =>
     const r = await ask('POST', '/api/drills/hint', { ending: 'Philidor', level: 1, fens });
     assert.deepEqual([r.status, r.body.reason], [503, 'needs_computer']);
   }, { drillEngine: fakePool([]), drillEngineUnavailable: 'needs_computer' });
+});
+
+test('the clock: up to Clock 1 through the routes, a timed deal, a move there, a timed attempt and a \'time\'', async () => {
+  await withRouter(real, async (ask, router) => {
+    let t = 5000;
+    router.runner.now = () => t++;
+    for (let level = 1; level <= 5; level++) {
+      for (let k = 0; k < 3; k++) {
+        const { drill } = (await ask('GET', '/api/drills/next?ending=KQK')).body;
+        assert.deepEqual([drill.level, drill.clock], [level, null]);
+        assert.equal((await ask('POST', '/api/drills/attempt', attemptOf(drill, 'solved'))).status, 200);
+      }
+    }
+    let s = (await ask('GET', '/api/drills/status?ending=KQK')).body;
+    assert.deepEqual([s.level, s.top, s.tiers, s.tier, s.star, s.clock_star], [6, 5, 3, 1, true, false], 'qualified at the top: on Clock 1');
+    const { drill } = (await ask('GET', '/api/drills/next?ending=KQK')).body;
+    assert.deepEqual([drill.level, drill.counter, drill.budget], [6, false, drill.dtm + 1]);
+    assert.ok(drill.dtm >= 9 && drill.dtm <= 10, 'the top level band');
+    assert.deepEqual(drill.clock, { tier: 1, base_ms: drill.budget * 4000, inc_ms: 1000 });
+    // the move route plays a timed level as the top level: the table's first move
+    const line = (await ask('POST', '/api/drills/line', { ending: 'KQK', fen: drill.fen })).body;
+    const mv = await ask('POST', '/api/drills/move', { ending: 'KQK', level: 6, fens: [drill.fen, line.moves[0].fen] });
+    assert.deepEqual([mv.status, mv.body.kind, mv.body.budget], [200, 'best', drill.budget]);
+    // a solve with its times, then out of time on the second turn
+    const timed = attemptOf(drill, 'solved', { moves_used: 2, move_ms: [3000, 4000], paused: 0, ms: 9000 });
+    let r = await ask('POST', '/api/drills/attempt', timed);
+    assert.deepEqual([r.status, r.body.before, r.body.status.level, r.body.status.run], [200, 6, 6, [true]]);
+    const out = attemptOf(drill, 'time', { moves_used: 1, move_ms: [3000, drill.clock.base_ms - 3000 + 1000], paused: 1, ms: 60000, worst_loss: 0 });
+    r = await ask('POST', '/api/drills/attempt', out);
+    assert.deepEqual([r.status, r.body.status.run], [200, [true, false]]);
+    // refused: the clock of another start, no times, 'time' at an untimed level
+    const bad = async (body, re) => {
+      const x = await ask('POST', '/api/drills/attempt', body);
+      assert.equal(x.status, 400, JSON.stringify(body));
+      assert.match(x.body.error, re);
+    };
+    await bad({ ...timed, clock: { ...drill.clock, base_ms: drill.clock.base_ms + 4000 } }, /clock/);
+    await bad({ ...timed, move_ms: undefined }, /move_ms/);
+    await bad({ ...attemptOf(drill, 'time'), level: 5, clock: null }, /'time' only at a timed level/);
+    // a practice deal at Clock 3, and the levels above the last tier refused
+    const c3 = (await ask('GET', '/api/drills/next?ending=KQK&level=8')).body.drill;
+    assert.deepEqual(c3.clock, { tier: 3, base_ms: c3.budget * 2000, inc_ms: 1000 });
+    s = (await ask('GET', '/api/drills/status?ending=KQK')).body;
+    assert.deepEqual([s.level, s.tier, s.played], [6, 1, 17]);
+    const all = (await ask('GET', '/api/drills/status')).body.endings;
+    assert.deepEqual(all.map(e => e.tiers), [3, 3, 3, 3, 3, 3, 3, 3, 2, 2]);
+  });
 });

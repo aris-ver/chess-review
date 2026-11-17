@@ -252,6 +252,29 @@ describe('puzzle progress', () => {
     expect(r.body.files[file]).toEqual(['{"id": "d3"}']);
   });
 
+  it('keeps the timed drill attempts only for an app that takes them (drill_clock), apart from the drill record', async () => {
+    const b = new Browser();
+    await b.signIn('lichess', 'signup');
+    const file = 'drill_timed.jsonl', drills = 'drill_attempts.jsonl';
+    const T1 = '{"id": "t1", "ts": 6, "ending": "KQK", "level": 6, "result": "solved", "clock": {"tier": 1, "base_ms": 44000, "inc_ms": 1000}, "move_ms": [1000, 2000]}';
+    const D1 = '{"id": "d1", "ts": 5, "ending": "KQK", "level": 1, "result": "solved"}';
+    let r = await b.json('/account/progress', { method: 'POST', body: { add: { [file]: [T1], [drills]: [D1] }, drills: true, drill_clock: true } });
+    expect(r.body.files).toEqual({ [drills]: [D1], [file]: [T1] });
+    // an app with the drills but not the clock (v1.1.x): sees the drill record only; its remove and its add of the
+    // timed file change nothing
+    r = await b.json('/account/progress', { method: 'POST', body: { remove: { [file]: [T1] }, own_puzzles: true, drills: true } });
+    expect(r.body.files).toEqual({ [drills]: [D1] });
+    r = await b.json('/account/progress', { method: 'POST', body: { add: { [file]: ['{"id": "t2"}'] }, drills: true } });
+    expect(r.body.files).toEqual({ [drills]: [D1] });
+    expect((await b.json('/account/progress?drills=1')).body.files).toEqual({ [drills]: [D1] });
+    // an app from before the drills sees neither
+    expect((await b.json('/account/progress')).body.files).toEqual({});
+    // with the flag: all there, as it was, and its removes count
+    expect((await b.json('/account/progress?drills=1&drill_clock=1')).body.files).toEqual({ [drills]: [D1], [file]: [T1] });
+    r = await b.json('/account/progress', { method: 'POST', body: { remove: { [file]: [T1] }, drills: true, drill_clock: true } });
+    expect(r.body.files).toEqual({ [drills]: [D1] });
+  });
+
   it('takes only puzzle-progress files of JSON objects', async () => {
     const b = new Browser();
     await b.signIn('lichess', 'signup');

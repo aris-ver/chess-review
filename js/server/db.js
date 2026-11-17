@@ -33,11 +33,11 @@ export const profileDb = id => `profiles/${id}/games.sqlite`;
 
 // 2: puzzle_solved.clean (SOLVED_CLEAN). 3: a profile's own_puzzles (OWN_PUZZLES_SCHEMA). 4: evals_fast, the
 // positions of the engine cache searched by a fast review (EVALS_FAST_SCHEMA). 5: progress.sqlite's drill_attempts
-// (DRILL_ATTEMPTS_SCHEMA), the endgame drills' record. A database made at an
-// earlier version is brought up to this one as it is opened (UPGRADES), and a new one is made at 1 and brought up the
+// (DRILL_ATTEMPTS_SCHEMA), the endgame drills' record. 6: drill_attempts' clock columns (DRILL_CLOCK_COLUMNS), for
+// the timed levels. A database made at an earlier version is brought up to this one as it is opened (UPGRADES), and a new one is made at 1 and brought up the
 // same way, so the two have the same schema to the letter (sqlite_master's text of an altered table isn't what a
 // CREATE TABLE of it would say).
-export const SCHEMA_VERSION = 5;
+export const SCHEMA_VERSION = 6;
 
 /** (name, SQL type) in order, as normalise.GAMES_SCHEMA */
 export const GAMES_SCHEMA = [
@@ -147,6 +147,12 @@ export const DRILL_ATTEMPTS_SCHEMA = [
   ['ms', 'INTEGER'],
   ['worst_loss', 'INTEGER'],
 ];
+/** Since schema 6, a timed attempt's clock (core/drill-clock.js; all NULL for an untimed one, whose line is as it
+ * was): clock {tier, base_ms, inc_ms}, move_ms the think time of each of the user's turns, paused how many times the
+ * clock was paused. Timed rows sync in drill_timed.jsonl, untimed ones in drill_attempts.jsonl (sync.js). */
+export const DRILL_CLOCK_COLUMNS = [['clock', 'JSON'], ['move_ms', 'JSON'], ['paused', 'INTEGER']];
+/** the columns a drill_attempts row has now */
+export const DRILL_ROW = [...DRILL_ATTEMPTS_SCHEMA, ...DRILL_CLOCK_COLUMNS];
 
 /** puzzle_solved.jsonl: {id, ts}, as the Python app wrote it and schema 1 made it; and since schema 2 {id, ts,
  * clean: true} for a puzzle solved without a mistake or a hint on a later go (SOLVED_CLEAN, NULL otherwise). */
@@ -229,6 +235,10 @@ const UPGRADES = [
       db.exec('CREATE INDEX IF NOT EXISTS drill_attempts_ending ON drill_attempts (ending);');
       db.exec('CREATE INDEX IF NOT EXISTS drill_attempts_id ON drill_attempts (id);');
     }
+  }],
+  [6, db => {
+    if (!hasTable(db, 'drill_attempts')) return;
+    for (const [c, t] of DRILL_CLOCK_COLUMNS) if (!hasColumn(db, 'drill_attempts', c)) db.exec(`ALTER TABLE drill_attempts ADD COLUMN "${c}" ${t}`);
   }],
 ];
 

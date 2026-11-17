@@ -24,6 +24,9 @@
 // The rook endings, 'Lucena' and 'Philidor', are in rook-drills.js (Stockfish plays black); here they are only in
 // LEVELS, ENDINGS, positionKey and pickStart's dispatch.
 //
+// The timed levels above each ending's top level (Clock 1 to 3) are in drill-clock.js: LEVELS stays the untimed
+// ladder, and a timed level deals its top level's positions.
+//
 // FENs in and out are the board's as the user sees it; squares are 0..63 with a1 = 0. `tables` is {name: table}, the
 // endings' tables and their DEPENDS. Randomness comes from `rng` (Math.random unless given), so tests can seed it.
 

@@ -135,7 +135,8 @@ test('sync: personal puzzles merge one line per id, the same one on every device
   // one device settled the longer line (its short one goes, the long one comes), the other still has the short one
   assert.deepEqual(merge({ [OWN_FILE]: [short] }, { [OWN_FILE]: [long] }, { [OWN_FILE]: [short] }), { [OWN_FILE]: [long] });
   assert.deepEqual(merge({}, { [OWN_FILE]: [short] }, { [OWN_FILE]: [long] }), { [OWN_FILE]: [long] });
-  assert.deepEqual(locate(OWN_FILE), { db: profileDb('chesscom-alice'), table: 'own_puzzles', archive: null, dir: 'profiles/chesscom-alice' });
+  assert.deepEqual(locate(OWN_FILE), { db: profileDb('chesscom-alice'), table: 'own_puzzles', archive: null, dir: 'profiles/chesscom-alice',
+    keys: 'own_puzzles', where: null });
   assert.equal(locate('profiles/../own_puzzles.jsonl'), null);
 });
 

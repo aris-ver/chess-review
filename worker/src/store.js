@@ -6,10 +6,11 @@ export const MAX_LINES = 200000;          // per account: years of puzzles a day
 export const MAX_BATCH = 20000;           // per request
 export const MAX_LINE = 2000;             // bytes; a real line is ~100, a personal puzzle's ~350
 // puzzle progress, profiles.jsonl: the list of profiles added ({source, username, added, pinned}, no games), and
-// drill_attempts.jsonl: the endgame drills' record (one line per attempt, merged like the puzzle files), and
+// drill_attempts.jsonl: the endgame drills' record (one line per attempt, merged like the puzzle files),
+// drill_timed.jsonl: the drills' timed attempts (the same, with their clock and the time of each move), and
 // profiles/<id>/own_puzzles.jsonl: that profile's personal puzzles (a position from one of its games and the line
 // that solves it, one per line), so another device can play them without the games
-const FILE = /^((profiles\/[a-z0-9_.-]{1,80}\/)?puzzle_(attempts|solved|daily)(\.reset-[0-9-]{1,40})?|profiles\/[a-z0-9_.-]{1,80}\/own_puzzles|drill_attempts|profiles)\.jsonl$/;
+const FILE = /^((profiles\/[a-z0-9_.-]{1,80}\/)?puzzle_(attempts|solved|daily)(\.reset-[0-9-]{1,40})?|profiles\/[a-z0-9_.-]{1,80}\/own_puzzles|drill_attempts|drill_timed|profiles)\.jsonl$/;
 const OWN_PUZZLES = /\/own_puzzles\.jsonl$/;
 
 export class BadRequest extends Error {}
@@ -27,6 +28,9 @@ export const isOwnPuzzles = f => OWN_PUZZLES.test(f);
 // The same for the endgame drills' record (drills: true): an app from before them has no place for drill_attempts.jsonl
 // and would send its lines back as taken away.
 export const isDrills = f => f === 'drill_attempts.jsonl';
+
+// The same again for the timed attempts (drill_clock: true): an app from before the clock would strip their clock.
+export const isTimedDrills = f => f === 'drill_timed.jsonl';
 
 // {file: [line, ...]} from the request, checked: only puzzle-progress files, only JSON objects.
 export function checkLines(obj, what) {
@@ -156,11 +160,13 @@ export async function takeAppCode(db, codeHash, now) {
 
 // ---------- puzzle progress ----------
 
-export async function progress(db, userId, ownPuzzles = true, drills = true) {
+export async function progress(db, userId, ownPuzzles = true, drills = true, drillClock = true) {
   const rows = await db.prepare('SELECT file, line FROM progress WHERE user_id = ? ORDER BY file, added_at, rowid')
     .bind(userId).all();
   const files = {};
-  for (const r of rows.results) if ((ownPuzzles || !isOwnPuzzles(r.file)) && (drills || !isDrills(r.file))) (files[r.file] ||= []).push(r.line);
+  for (const r of rows.results) {
+    if ((ownPuzzles || !isOwnPuzzles(r.file)) && (drills || !isDrills(r.file)) && (drillClock || !isTimedDrills(r.file))) (files[r.file] ||= []).push(r.line);
+  }
   return files;
 }
 

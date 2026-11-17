@@ -10,9 +10,16 @@
 //
 //     puzzle_attempts[.<archive>].jsonl             progress.sqlite puzzle_attempts, archive NULL or <archive>
 //     puzzle_solved.jsonl, puzzle_daily.jsonl       progress.sqlite puzzle_solved, puzzle_daily
-//     drill_attempts.jsonl                          progress.sqlite drill_attempts (the endgame drills' record)
+//     drill_attempts.jsonl                          progress.sqlite drill_attempts, clock NULL (the endgame drills' record)
+//     drill_timed.jsonl                             progress.sqlite drill_attempts, clock not NULL (the timed attempts)
 //     profiles/<id>/puzzle_attempts[.<a>].jsonl     profiles/<id>/games.sqlite puzzle_attempts
 //     profiles/<id>/own_puzzles.jsonl               profiles/<id>/games.sqlite own_puzzles (a line per row as it is)
+//
+// The timed drill attempts (core/drill-clock.js) have a file of their own, behind a client flag of their own in the
+// Worker (drill_clock), so an app from before the clock never sees them: it can't strip their clock and send the
+// stripped line back, nor take them for lines removed. Untimed rows keep their exact line in drill_attempts.jsonl.
+// What an older app may still put there (a stripped copy of a timed row, after a downgrade on a device) is dropped
+// as it is written here (writeLines, the downgrade guard), so the next delta takes it off the account.
 //
 // own_puzzles.jsonl is the personal puzzles themselves (own-puzzles.js ownLine), for the synced profiles only: on
 // another device they are played without the games they came from. One line per puzzle id, the better one where two
@@ -27,7 +34,9 @@
 // `onSwitch` (called once the profiles changed hands, or their own puzzles changed: own puzzles' cache), and
 // `ownPuzzles` (profile id -> the own_puzzles table brought up to date with the puzzles its games give here).
 
-import { EVALS, PROFILE_DDL, PROGRESS, PROGRESS_DDL, ATTEMPTS_SCHEMA, DAILY_SCHEMA, DRILL_ATTEMPTS_SCHEMA, OWN_PUZZLES_SCHEMA, SOLVED_ROW, profileDb } from './db.js';
+import { EVALS, PROFILE_DDL, PROGRESS, PROGRESS_DDL, ATTEMPTS_SCHEMA, DAILY_SCHEMA, DRILL_ROW, OWN_PUZZLES_SCHEMA, SOLVED_ROW, profileDb } from './db.js';
+import { LEVELS } from '../core/drills.js';
+import { untimedTop } from '../core/drill-clock.js';
 import { BadRequest, pyRepr, truthy } from './http.js';
 import { bestOwn } from './own-puzzles.js';
 import { profileId, pyDumps, validId } from './profiles.js';
@@ -65,27 +74,44 @@ const KEYS = {
   puzzle_daily: ['date', 'n', 'id', 'solved', 'clean', 'ms', 'marks'],
   drill_attempts: ['id', 'ts', 'ending', 'level', 'fen', 'dtm', 'budget', 'moves_used', 'result', 'ms', 'worst_loss'],
 };
+KEYS.drill_timed = [...KEYS.drill_attempts, 'clock', 'move_ms', 'paused'];
 const ALWAYS = new Set(['ms']);
-const SCHEMAS = { puzzle_attempts: ATTEMPTS_SCHEMA, puzzle_solved: SOLVED_ROW, puzzle_daily: DAILY_SCHEMA, drill_attempts: DRILL_ATTEMPTS_SCHEMA,
+const SCHEMAS = { puzzle_attempts: ATTEMPTS_SCHEMA, puzzle_solved: SOLVED_ROW, puzzle_daily: DAILY_SCHEMA, drill_attempts: DRILL_ROW,
   own_puzzles: OWN_PUZZLES_SCHEMA };
 export const OWN = 'own_puzzles.jsonl';
+export const DRILLS = 'drill_attempts.jsonl', TIMED = 'drill_timed.jsonl';
 
-export function rowLine(table, row) {
+/** A row as its file's line. `keys` is the key list (KEYS) of the file: the table's name, or drill_timed. */
+export function rowLine(keys, row) {
   const o = {};
-  for (const k of KEYS[table]) if (row[k] !== null && row[k] !== undefined || ALWAYS.has(k)) o[k] = row[k] ?? null;
+  for (const k of KEYS[keys]) if (row[k] !== null && row[k] !== undefined || ALWAYS.has(k)) o[k] = row[k] ?? null;
   return pyDumps(o);
 }
 
-function lineRow(table, line, archive) {
+function lineRow(loc, line) {
   const v = JSON.parse(line);
-  if (table === 'own_puzzles') return { id: v.id, line };
-  const row = table === 'puzzle_attempts' ? { archive } : {};
-  for (const k of KEYS[table]) row[k] = v[k] ?? null;
+  if (loc.table === 'own_puzzles') return { id: v.id, line };
+  const row = loc.table === 'puzzle_attempts' ? { archive: loc.archive } : {};
+  for (const k of KEYS[loc.keys]) row[k] = v[k] ?? null;
   return row;
 }
 
-/** Where a file of the account lives here: {db, table, archive, dir}, or null for a name this app doesn't keep. */
+// the downgrade guard: a line of drill_attempts.jsonl that can only be an older app's copy of a timed row with its
+// clock stripped (a level above the ending's top, or 'time'); an ending this version doesn't know is kept as it is
+function strippedTimed(line) {
+  const v = JSON.parse(line);
+  if (v.result === 'time') return true;
+  return typeof v.ending === 'string' && Object.hasOwn(LEVELS, v.ending) && typeof v.level === 'number' && v.level > untimedTop(v.ending);
+}
+
+/** Where a file of the account lives here: {db, table, archive, dir, keys, where}, or null for a name this app doesn't
+ * keep. keys: its KEYS list; where: the rows of the table that are this file's, for the drill files (SQL). */
 export function locate(file) {
+  const loc = locateTable(file);
+  return loc && { keys: loc.table, where: null, ...loc };
+}
+
+function locateTable(file) {
   let m = /^profiles\/([^/]+)\/own_puzzles\.jsonl$/.exec(file);
   if (m) return validId(m[1]) ? { db: profileDb(m[1]), table: 'own_puzzles', archive: null, dir: `profiles/${m[1]}` } : null;
   m = /^profiles\/([^/]+)\/puzzle_attempts(?:\.(.+))?\.jsonl$/.exec(file);
@@ -94,8 +120,15 @@ export function locate(file) {
   if (m) return { db: PROGRESS, table: 'puzzle_attempts', archive: m[1] ?? null, dir: null };
   if (file === 'puzzle_solved.jsonl') return { db: PROGRESS, table: 'puzzle_solved', archive: null, dir: null };
   if (file === 'puzzle_daily.jsonl') return { db: PROGRESS, table: 'puzzle_daily', archive: null, dir: null };
-  if (file === 'drill_attempts.jsonl') return { db: PROGRESS, table: 'drill_attempts', archive: null, dir: null };
+  if (file === DRILLS) return { db: PROGRESS, table: 'drill_attempts', archive: null, dir: null, where: 'clock IS NULL' };
+  if (file === TIMED) return { db: PROGRESS, table: 'drill_attempts', archive: null, dir: null, keys: 'drill_timed', where: 'clock IS NOT NULL' };
   return null;
+}
+
+// the WHERE clause that picks a file's rows out of its table: {sql, params}
+function rowsOf(loc) {
+  if (loc.table === 'puzzle_attempts') return { sql: ' WHERE archive IS ?', params: [loc.archive] };
+  return { sql: loc.where ? ` WHERE ${loc.where}` : '', params: [] };
 }
 
 const attemptsFile = (archive, dir = null) => at(dir, `puzzle_attempts${archive === null ? '' : `.${archive}`}.jsonl`);
@@ -186,7 +219,7 @@ export function tidy(file, lines) {
   if (!file.includes('/') && name.startsWith('puzzle_attempts')) out = oncePer('id', out);
   else if (name === 'puzzle_solved.jsonl') out = bestSolved(out);
   else if (name === 'puzzle_daily.jsonl') out = oncePer('date', out);
-  else if (file === 'drill_attempts.jsonl') out = oncePer('id', out);
+  else if (file === DRILLS || file === TIMED) out = oncePer('id', out);
   else if (name === OWN) out = bestOwn(out);
   return out;
 }
@@ -239,9 +272,9 @@ export class Sync {
     const db = loc && await this.db(at(root, loc.db));
     if (!db) return [];
     if (loc.table === 'own_puzzles') return db.column('SELECT line FROM own_puzzles ORDER BY id');
-    const where = loc.table === 'puzzle_attempts' ? ' WHERE archive IS ?' : '';
-    const rows = db.all(`SELECT * FROM ${loc.table}${where} ORDER BY seq`, where ? [loc.archive] : []);
-    return rows.map(r => rowLine(loc.table, r));
+    const { sql, params } = rowsOf(loc);
+    const rows = db.all(`SELECT * FROM ${loc.table}${sql} ORDER BY seq`, params);
+    return rows.map(r => rowLine(loc.keys, r));
   }
 
   async writeLines(root, file, lines) {
@@ -250,13 +283,14 @@ export class Sync {
       this.log?.warn?.(`sync: not keeping ${file}`);
       return;
     }
-    const rows = lines.map(ln => lineRow(loc.table, ln, loc.archive));
+    if (file === DRILLS) lines = lines.filter(ln => !strippedTimed(ln));
+    const rows = lines.map(ln => lineRow(loc, ln));
     if (root) await this.files.mkdir(root);     // a workspace is there to be found again
     if (loc.dir) await this.files.mkdir(at(root, loc.dir));
     const db = await this.db(at(root, loc.db), true);
     db.tx(() => {
-      if (loc.table === 'puzzle_attempts') db.run('DELETE FROM puzzle_attempts WHERE archive IS ?', [loc.archive]);
-      else db.run(`DELETE FROM ${loc.table}`);
+      const { sql, params } = rowsOf(loc);
+      db.run(`DELETE FROM ${loc.table}${sql}`, params);
       db.insert(loc.table, SCHEMAS[loc.table], rows);
     });
   }
@@ -265,8 +299,8 @@ export class Sync {
     const loc = locate(file);
     const db = loc && await this.db(at(root, loc.db));
     if (!db) return;
-    if (loc.table === 'puzzle_attempts') db.run('DELETE FROM puzzle_attempts WHERE archive IS ?', [loc.archive]);
-    else db.run(`DELETE FROM ${loc.table}`);
+    const { sql, params } = rowsOf(loc);
+    db.run(`DELETE FROM ${loc.table}${sql}`, params);
   }
 
   /** The attempts files of one database (DATA's progress, or a profile's), sorted as Python's glob sorted. */
@@ -277,14 +311,18 @@ export class Sync {
     return sorted(archives.map(a => attemptsFile(a, dir)));
   }
 
-  /** The library's files under root: puzzle_attempts*.jsonl, then puzzle_solved, puzzle_daily and drill_attempts if
-   * they have lines. */
+  /** The library's files under root: puzzle_attempts*.jsonl, then puzzle_solved, puzzle_daily, drill_attempts and
+   * drill_timed if they have lines. */
   async libraryFiles(root) {
     const name = at(root, PROGRESS);
     const out = await this.attemptFiles(name);
     const db = await this.db(name);
     if (db) {
-      for (const t of ['puzzle_solved', 'puzzle_daily', 'drill_attempts']) if (db.value(`SELECT count(*) FROM ${t}`)) out.push(`${t}.jsonl`);
+      for (const t of ['puzzle_solved', 'puzzle_daily']) if (db.value(`SELECT count(*) FROM ${t}`)) out.push(`${t}.jsonl`);
+      for (const f of [DRILLS, TIMED]) {
+        const { sql, params } = rowsOf(locate(f));
+        if (db.value(`SELECT count(*) FROM drill_attempts${sql}`, params)) out.push(f);
+      }
     }
     return out;
   }

@@ -2,9 +2,9 @@
 // puzzles.js: a record of every attempt, the level of each ending worked out from it (never stored), and the next
 // start position dealt at that level (core/drills.js does the dealing; the tables it reads are loaded here).
 //
-// The record is progress.sqlite's drill_attempts table (db.js DRILL_ATTEMPTS_SCHEMA), one row an attempt, in the
-// order they were made (seq; the merged order after a sync): {id, ts, ending, level, fen, dtm, budget, moves_used, result, ms, worst_loss}. The
-// ten endings (core/drills.js ENDINGS) each have a level of their own.
+// The record is progress.sqlite's drill_attempts table (db.js DRILL_ROW), one row an attempt, in the order they were
+// made (ts, then seq; the merged order after a sync): {id, ts, ending, level, fen, dtm, budget, moves_used, result,
+// ms, worst_loss, clock, move_ms, paused}. The ten endings (core/drills.js ENDINGS) each have a level of their own.
 //
 // Results. A mate drill (KQRK, KRRK, KQK, KRK, KBBK, KBNK) is 'solved', or failed by 'stalemate', 'piece_lost',
 // 'repetition', 'fifty' or 'budget'. The KPK attack is 'promoted', or failed by 'threw' (a move gave the win away), 'pawn_lost',
@@ -15,18 +15,29 @@
 // The rook endings, Lucena and Philidor (core/rook-drills.js, Stockfish plays black), have their results in
 // ROOK_RESULTS; dtm and worst_loss are always null, budget is the start's promote + the level's slack for Lucena and
 // null for Philidor, and the fen is a ROOK_STARTS entry of the level (or its mirror).
+// The clock (core/drill-clock.js): above each ending's top level are its timed levels, Clock 1 to 3 (2 for the rook
+// endings), which deal the top level's positions (dealLevel) with a clock. An attempt there also has its clock
+// {tier, base_ms, inc_ms}, move_ms (the think time of each of the user's turns) and paused (how often the clock was
+// paused); clock, move_ms and paused are NULL on an untimed attempt. Running out of time fails any of them: 'time'.
 //
 // The level, from the record, per ending, in the order the attempts were made:
 //   - everyone starts at level 1;
 //   - only attempts made at the level the ending is at count towards moving; an attempt at another level (a chosen
 //     practice level) stays on the record and moves nothing;
 //   - the "run" is the attempts at the current level since arriving at it, the last 4 of them;
-//   - 3 solved in the run: up one level (never above the ending's top level, LEVELS[ending].length);
+//   - 3 solved in the run: up one level (never above the last clock tier, ladderTop);
+//   - except from the top untimed level (untimedTop) to Clock 1: 3 solved in the run there makes the ending "ready",
+//     and it moves up when the first row at Clock 1 comes (or at the end of the record). An attempt at the top while
+//     ready is counted as before: the run slides and ready is worked out again. So a record made before the clock
+//     replays to the level it had, and a player who qualified opens on Clock 1;
 //   - otherwise the last 2 of the run both failed: down one level (never below 1);
 //   - moving clears the run, so each level is earned afresh and a fall can't bounce straight back.
 // The star: an ending has it once an attempt was solved at its top level while the ending was at the top level (a
 // practice solve there, from a lower level, doesn't count). It stays: a later fall doesn't take it away, and reaching
-// the top by solving the level below doesn't earn it.
+// the top by solving the level below doesn't earn it. The clock star is the same for the last clock tier.
+// Rows skipped by the replay: a second row with an id already seen (the first by ts and seq is kept), and a row whose
+// clock doesn't fit its level (NULL above the top, or one at or below it): not a row this version writes, but an
+// older app's stripped copy of a timed row (sync.js, the downgrade guard).
 // After a sync merge the table is rewritten in the merged lines' order (by ts), so the devices replay the same record
 // and their levels converge.
 //
@@ -41,68 +52,102 @@ import { ENDINGS, HOLD_MOVES, LEVELS, RECENT, attackStatus, bestLine, defenceSta
 import { EngineFailed, HOLD_ROOK, POST_PROMO, ROOK_RESULTS, ROOK_TABLES, isRookEnding, rookBudget, rookStart, rookStatus,
   rookTurn, tableScore } from '../core/rook-drills.js';
 import { HINT_CLAMP, HINT_MOVES, HINT_PV, likelyMove, namedHint, whiteScore } from '../core/rook-hint.js';
-import { DRILL_ATTEMPTS_SCHEMA } from './db.js';
+import { clockFor, dealLevel, ladderTop, replayClock, tierOf, tiers as tiersOf, untimedTop } from '../core/drill-clock.js';
+import { DRILL_ROW } from './db.js';
 import { BadRequest } from './http.js';
 
 export const RUN = 4;           // the attempts at a level that count towards moving up
 export const UP = 3;            // solved in the run: up a level
 export const DOWN = 2;          // failed in a row: down a level
 export const RECENT_SHOWN = 10; // the status lists this many attempts
+export const CLOCK_SLACK = 250; // ms: what the clock checks of an attempt allow for rounding
+export const MAX_TURNS = 150;   // move_ms entries
 
+// 'time' (the clock ran out) is a fail of every kind, at a timed level only
+const timed = r => ({ solved: r.solved, failed: [...r.failed, 'time'] });
 export const RESULTS = {
-  mate: { solved: ['solved'], failed: ['stalemate', 'piece_lost', 'repetition', 'fifty', 'budget', 'abandoned'] },
-  KPK: { solved: ['promoted'], failed: ['threw', 'pawn_lost', 'stalemate', 'repetition', 'fifty', 'abandoned'] },
-  'KPK-hold': { solved: ['held', 'pawn_taken', 'stalemate'], failed: ['threw', 'promoted', 'abandoned'] },
-  Lucena: ROOK_RESULTS.Lucena,
-  Philidor: ROOK_RESULTS.Philidor,
+  mate: timed({ solved: ['solved'], failed: ['stalemate', 'piece_lost', 'repetition', 'fifty', 'budget', 'abandoned'] }),
+  KPK: timed({ solved: ['promoted'], failed: ['threw', 'pawn_lost', 'stalemate', 'repetition', 'fifty', 'abandoned'] }),
+  'KPK-hold': timed({ solved: ['held', 'pawn_taken', 'stalemate'], failed: ['threw', 'promoted', 'abandoned'] }),
+  Lucena: timed(ROOK_RESULTS.Lucena),
+  Philidor: timed(ROOK_RESULTS.Philidor),
 };
 const kindOf = ending => (ending === 'KPK' || ending === 'KPK-hold' || isRookEnding(ending) ? ending : 'mate');
 const isPawnEnding = ending => ending === 'KPK' || ending === 'KPK-hold';
 
 export const isEnding = e => typeof e === 'string' && Object.hasOwn(LEVELS, e);
-export const topLevel = ending => LEVELS[ending].length;
+/** The highest level an ending's record may hold: its untimed levels and its clock tiers (drill-clock.js ladderTop).
+ * The top level without a clock is untimedTop. */
+export const topLevel = ending => ladderTop(ending);
+export { untimedTop };
 export const isSolved = (ending, result) => RESULTS[kindOf(ending)].solved.includes(result);
 
-const COLUMNS = 'id, ts, ending, level, fen, dtm, budget, moves_used, result, ms, worst_loss';
+const COLUMNS = 'id, ts, ending, level, fen, dtm, budget, moves_used, result, ms, worst_loss, clock, move_ms, paused';
 
 // ---------- the record and the level ----------
 
 /** The record (every ending's, or one's) in the order the attempts were made. */
 export function attempts(db, ending = null) {
   return ending === null
-    ? db.all(`SELECT ${COLUMNS} FROM drill_attempts ORDER BY seq`)
-    : db.all(`SELECT ${COLUMNS} FROM drill_attempts WHERE ending = ? ORDER BY seq`, [ending]);
+    ? db.all(`SELECT ${COLUMNS} FROM drill_attempts ORDER BY ts, seq`)
+    : db.all(`SELECT ${COLUMNS} FROM drill_attempts WHERE ending = ? ORDER BY ts, seq`, [ending]);
 }
 
-/** Where an ending stands after `rows` (its attempts, in order): {level, top, star, run}, run being the results of
- * the run as booleans (solved or not), oldest first. See the top of this file for the rules. */
+/** The rows the replay counts, in order: the first of each id, and only rows whose clock fits their level. */
+export function counted(ending, rows) {
+  const top = untimedTop(ending), seen = new Set();
+  return rows.filter(r => {
+    if (r.id != null) {
+      if (seen.has(r.id)) return false;
+      seen.add(r.id);
+    }
+    return (r.level > top) === (r.clock != null);
+  });
+}
+
+/** Where an ending stands after `rows` (its attempts, in order): {level, top, tiers, star, clock_star, run}, top being
+ * the top level without a clock, tiers how many clock tiers there are above it, and run the results of the run as
+ * booleans (solved or not), oldest first. See the top of this file for the rules. */
 export function progress(ending, rows) {
-  const top = topLevel(ending);
-  let level = 1, run = [], star = false;
-  for (const r of rows) {
-    const ok = isSolved(ending, r.result);
+  const top = untimedTop(ending), last = ladderTop(ending);
+  let level = 1, run = [], star = false, clockStar = false, ready = false;
+  for (const r of counted(ending, rows)) {
+    if (ready && r.level === top + 1) {      // qualified at the top: on to Clock 1 with this row
+      level = top + 1;
+      run = [];
+      ready = false;
+    }
     if (r.level !== level) continue;
+    const ok = isSolved(ending, r.result);
     if (ok && level === top) star = true;
+    if (ok && level === last) clockStar = true;
     run.push(ok);
     if (run.length > RUN) run.shift();
-    if (level < top && run.filter(Boolean).length >= UP) {
+    const up = run.filter(Boolean).length >= UP;
+    ready = level === top && up;
+    if (level < last && level !== top && up) {
       level++;
       run = [];
-    } else if (level > 1 && run.length >= DOWN && run.slice(-DOWN).every(x => !x)) {
+    } else if (!ready && level > 1 && run.length >= DOWN && run.slice(-DOWN).every(x => !x)) {
       level--;
       run = [];
     }
   }
-  return { level, top, star, run };
+  if (ready) {
+    level = top + 1;
+    run = [];
+  }
+  return { level, top, tiers: tiersOf(ending), star, clock_star: clockStar, run };
 }
 
 /** One ending's standing and its last attempts. */
 export function status(db, ending, rows = attempts(db, ending)) {
-  const p = progress(ending, rows);
-  const recent = rows.slice(-RECENT_SHOWN).map(r => ({ id: r.id, ts: r.ts, level: r.level, result: r.result,
+  const p = progress(ending, rows), mine = counted(ending, rows);
+  const recent = mine.slice(-RECENT_SHOWN).map(r => ({ id: r.id, ts: r.ts, level: r.level, result: r.result,
     solved: isSolved(ending, r.result), moves_used: r.moves_used, ms: r.ms, worst_loss: r.worst_loss }));
-  return { ending, level: p.level, top: p.top, star: p.star, played: rows.length,
-    solved: rows.filter(r => isSolved(ending, r.result)).length, run: p.run, recent };
+  return { ending, level: p.level, top: p.top, tiers: p.tiers, tier: tierOf(ending, p.level), star: p.star,
+    clock_star: p.clock_star, played: mine.length, solved: mine.filter(r => isSolved(ending, r.result)).length, run: p.run,
+    recent };
 }
 
 /** The status of every ending, in ENDINGS' order. */
@@ -124,13 +169,15 @@ const int = (v, what, { min = 0, max = 1e9, nullable = false } = {}) => {
 };
 
 /** The attempt in a request body, checked and cleaned: {id|null, ending, level, fen, dtm, budget, moves_used,
- * result, ms, worst_loss}; a BadRequest says what's wrong. */
+ * result, ms, worst_loss, clock, move_ms, paused}; a BadRequest says what's wrong. At a timed level the clock must be
+ * the one drill-clock.js gives for the start, and the turn times must add up (checkClock). */
 export function parseAttempt(b) {
   if (b === null || typeof b !== 'object' || Array.isArray(b)) throw new BadRequest('an attempt object expected');
   if (!isEnding(b.ending)) throw new BadRequest(`ending: one of ${ENDINGS.join(', ')}`);
   const ending = b.ending, pawn = isPawnEnding(ending);
   const level = int(b.level, 'level', { min: 1, max: topLevel(ending) });
-  levelOf(ending, level);
+  const deal = dealLevel(ending, level), isTimed = level > deal;
+  levelOf(ending, deal);
   if (typeof b.fen !== 'string' || b.fen.length > 100) throw new BadRequest('fen: a position expected');
   try {
     boardFromFen(b.fen);
@@ -139,7 +186,7 @@ export function parseAttempt(b) {
   }
   const rook = isRookEnding(ending);
   const key = positionKey(b.fen);
-  const want = rook ? `${ending}:${level}:` : `${pawn ? 'KPK' : ending}:${ending === 'KPK-hold' ? 'b' : 'w'}:`;
+  const want = rook ? `${ending}:${deal}:` : `${pawn ? 'KPK' : ending}:${ending === 'KPK-hold' ? 'b' : 'w'}:`;
   if (!key?.startsWith(want)) throw new BadRequest(`fen: not a ${ending} start position: ${b.fen}`);
   if (ending === 'KBBK') {
     const colour = sq => ((sq & 7) + (sq >> 3)) & 1, [b1, b2] = fromFen(b.fen).pieces;
@@ -149,10 +196,11 @@ export function parseAttempt(b) {
   if (typeof b.result !== 'string' || ![...ok.solved, ...ok.failed].includes(b.result)) {
     throw new BadRequest(`result: one of ${[...ok.solved, ...ok.failed].join(', ')} for ${ending}`);
   }
+  if (b.result === 'time' && !isTimed) throw new BadRequest(`result: 'time' only at a timed level, not ${ending} level ${level}`);
   let dtm = null, budget = null;
   if (rook) {
     if (b.dtm != null) throw new BadRequest(`${ending} has no dtm`);
-    budget = rookBudget(ending, level, rookStart(b.fen).entry);
+    budget = rookBudget(ending, deal, rookStart(b.fen).entry);
     if (budget === null ? b.budget != null : b.budget !== budget) {
       throw new BadRequest(`budget: ${budget === null ? 'null' : budget} for this ${ending} start`);
     }
@@ -162,6 +210,8 @@ export function parseAttempt(b) {
   } else {
     dtm = int(b.dtm, 'dtm', { max: 100 });
     budget = int(b.budget, 'budget', { max: 1000 });
+    const topBudget = dtm + levelOf(ending, deal).slack;     // the clock is sized from it
+    if (isTimed && budget !== topBudget) throw new BadRequest(`budget: ${topBudget} for mate in ${dtm} at ${ending}'s top level`);
   }
   const worst = int(b.worst_loss, 'worst_loss', { min: -1, max: 1000, nullable: true });
   if (b.result === 'threw' && worst !== null) throw new BadRequest('worst_loss is null when a move threw the result');
@@ -170,8 +220,43 @@ export function parseAttempt(b) {
     if (typeof b.id !== 'string' || !/^[A-Za-z0-9_-]{1,64}$/.test(b.id)) throw new BadRequest('id: up to 64 letters, digits, - and _');
     id = b.id;
   }
-  return { id, ending, level, fen: b.fen, dtm, budget, moves_used: int(b.moves_used, 'moves_used', { max: 1000 }),
-    result: b.result, ms: int(b.ms, 'ms', { max: 1e10, nullable: true }), worst_loss: worst };
+  const movesUsed = int(b.moves_used, 'moves_used', { max: 1000 });
+  const ms = int(b.ms, 'ms', { max: 1e10, nullable: !isTimed });
+  let clock = null, moveMs = null, paused = null;
+  if (!isTimed) {
+    for (const k of ['clock', 'move_ms', 'paused']) if (b[k] != null) throw new BadRequest(`${k}: none at ${ending} level ${level}, which has no clock`);
+  } else {
+    ({ clock, moveMs, paused } = checkClock(b, { ending, level, budget, movesUsed, ms }));
+  }
+  return { id, ending, level, fen: b.fen, dtm, budget, moves_used: movesUsed, result: b.result, ms, worst_loss: worst,
+    clock, move_ms: moveMs, paused };
+}
+
+// a timed attempt's clock checked: the clock the table gives for the start, a think time for each turn (moves_used of
+// them; 'time' one more, the turn the clock ran out on; 'abandoned' may have one more, a turn under way when left),
+// no turn ending below zero, 'time' ending at zero, all of it within the attempt's wall time
+function checkClock(b, { ending, level, budget, movesUsed, ms }) {
+  const want = clockFor(ending, level, { budget });
+  const c = b.clock;
+  if (c === null || typeof c !== 'object' || Array.isArray(c) || Object.keys(c).length !== 3
+      || c.tier !== want.tier || c.base_ms !== want.base_ms || c.inc_ms !== want.inc_ms) {
+    throw new BadRequest(`clock: ${JSON.stringify(want)} for this start`);
+  }
+  const m = b.move_ms;
+  if (!Array.isArray(m) || m.length > MAX_TURNS || !m.every(x => Number.isInteger(x) && x >= 0 && x <= 3_600_000)) {
+    throw new BadRequest(`move_ms: up to ${MAX_TURNS} integers from 0 to 3600000 expected`);
+  }
+  const out = b.result === 'time';
+  const turns = out ? [movesUsed + 1] : b.result === 'abandoned' ? [movesUsed, movesUsed + 1] : [movesUsed];
+  if (!turns.includes(m.length)) throw new BadRequest(`move_ms: ${turns.join(' or ')} turns for ${movesUsed} moves and '${b.result}', not ${m.length}`);
+  const ends = replayClock(want, m);
+  for (let i = 0; i < ends.length - (out ? 1 : 0); i++) {
+    if (ends[i] < -CLOCK_SLACK) throw new BadRequest(`move_ms: the clock had run out by the end of turn ${i + 1}`);
+  }
+  if (out && Math.abs(ends.at(-1)) > CLOCK_SLACK) throw new BadRequest(`move_ms: 'time' with ${ends.at(-1)} ms still on the clock`);
+  if (m.reduce((s, x) => s + x, 0) > ms + CLOCK_SLACK) throw new BadRequest('move_ms: more think time than the attempt took (ms)');
+  const paused = int(b.paused, 'paused', { max: 1000 });
+  return { clock: want, moveMs: m, paused };
 }
 
 const nowSeconds = () => Date.now() / 1000;
@@ -187,8 +272,9 @@ export function record(db, a, now = nowSeconds(), makeId = newId) {
       return { counted: false, id, before: progress(a.ending, rows).level, status: status(db, a.ending, rows) };
     }
     const row = { id, ts: Math.floor(now), ending: a.ending, level: a.level, fen: a.fen, dtm: a.dtm, budget: a.budget,
-      moves_used: a.moves_used, result: a.result, ms: a.ms, worst_loss: a.worst_loss };
-    db.insert('drill_attempts', DRILL_ATTEMPTS_SCHEMA, [row]);
+      moves_used: a.moves_used, result: a.result, ms: a.ms, worst_loss: a.worst_loss, clock: a.clock ?? null,
+      move_ms: a.move_ms ?? null, paused: a.paused ?? null };
+    db.insert('drill_attempts', DRILL_ROW, [row]);
     return { counted: true, id, before: progress(a.ending, rows).level, status: status(db, a.ending, [...rows, row]) };
   });
 }
@@ -250,21 +336,22 @@ export function tablesFromFiles(read, dir = 'endgames') {
 // ---------- the next drill ----------
 
 /** The drill dealt at the level the record puts an ending at (or `level`, a practice level): {drill, level, status},
- * the drill {ending, level, mode, fen, dtm, budget, counter, hold_moves} or null when no start position turns up
+ * the drill {ending, level, mode, fen, dtm, budget, counter, hold_moves, post_promo, clock} or null when no start position turns up
  * (pickStart gives up; the caller says so). `tables` is what DrillTables.get(ending) gave. The positions of the last
- * RECENT attempts at the ending aren't dealt again, and the attempts so far turn the zones. */
+ * RECENT attempts at the ending aren't dealt again, and the attempts so far turn the zones. A timed level deals the
+ * top level's positions (dealLevel) and adds the clock for the start (drill-clock.js clockFor; null when untimed). */
 export function nextDrill(db, tables, ending, { level = null, rng = Math.random } = {}) {
   const rows = attempts(db, ending), st = status(db, ending, rows), at = level ?? st.level;
-  const row = levelOf(ending, at);
+  const deal = dealLevel(ending, at), row = levelOf(ending, deal);
   // a rook drill keeps its own count of what was dealt at each level (rook-drills.js), so it gets every row's key
   const dealt = isRookEnding(ending) ? rows : rows.slice(-RECENT);
   const recent = dealt.map(r => (typeof r.fen === 'string' ? positionKey(r.fen) : null)).filter(Boolean);
-  const start = pickStart(tables, ending, at, { rng, recent, turn: rows.length });
+  const start = pickStart(tables, ending, deal, { rng, recent, turn: rows.length });
   if (!start) return { drill: null, level: at, status: st };
   const mode = modeOf(ending);
-  const drill = { ending, level: at, mode, fen: start.fen, dtm: start.dtm, budget: start.budget, counter: row.counter,
-    hold_moves: mode === 'hold' ? HOLD_MOVES : mode === 'philidor' ? HOLD_ROOK : null,
-    post_promo: mode === 'lucena' ? POST_PROMO : null };
+  const drill = { ending, level: at, mode, fen: start.fen, dtm: start.dtm, budget: start.budget,
+    counter: at > deal ? false : row.counter, hold_moves: mode === 'hold' ? HOLD_MOVES : mode === 'philidor' ? HOLD_ROOK : null,
+    post_promo: mode === 'lucena' ? POST_PROMO : null, clock: clockFor(ending, at, { budget: start.budget }) };
   return { drill, level: at, status: st };
 }
 
@@ -319,14 +406,14 @@ export function parseMove(tables, b, { anyEnd = false } = {}) {
   if (!isEnding(b.ending)) throw new BadRequest(`ending: one of ${ENDINGS.join(', ')}`);
   const ending = b.ending, mode = modeOf(ending);
   const level = int(b.level, 'level', { min: 1, max: topLevel(ending) });
-  const row = levelOf(ending, level);
+  const deal = dealLevel(ending, level), row = levelOf(ending, deal);     // a timed level plays the top's starts
   if (!Array.isArray(b.fens) || b.fens.length < 2 || b.fens.length > MAX_FENS) {
     throw new BadRequest(`fens: 2 to ${MAX_FENS} positions expected`);
   }
   if (b.fens.length % 2 && !anyEnd) throw new BadRequest('fens: the last position must follow a move of yours');
   let board = fenField(b.fens[0], 'fens[0]');
   const rook = isRookEnding(ending);
-  const want = rook ? `${ending}:${level}:` : `${tableName(ending)}:${ending === 'KPK-hold' ? 'b' : 'w'}:`;
+  const want = rook ? `${ending}:${deal}:` : `${tableName(ending)}:${ending === 'KPK-hold' ? 'b' : 'w'}:`;
   if (board.turn !== 'white' || !positionKey(b.fens[0])?.startsWith(want)) {
     throw new BadRequest(`fens[0]: not a ${ending} start position: ${b.fens[0]}`);
   }
@@ -341,7 +428,7 @@ export function parseMove(tables, b, { anyEnd = false } = {}) {
     dtm = r.dtm;
     budget = dtm + row.slack;
   } else if (rook) {
-    budget = rookBudget(ending, level, rookStart(b.fens[0]).entry);
+    budget = rookBudget(ending, deal, rookStart(b.fens[0]).entry);
   }
   const fens = [fenOf(board)], sans = [], ucis = [];
   for (let k = 1; k < b.fens.length; k++) {

@@ -6,10 +6,12 @@
 //   GET  /account/login/<provider>?mode= login | signup (needs consent=<CONSENT_VERSION>) | link
 //   GET  /account/callback/<provider>    back from the provider: sets the session cookie, returns to /?account=...
 //   POST /account/logout
-//   GET  /account/progress               {files: {file: [line, ...]}}  (?own_puzzles=1: the personal puzzles too; ?drills=1: drill_attempts.jsonl too)
+//   GET  /account/progress               {files: {file: [line, ...]}}  (?own_puzzles=1: the personal puzzles too; ?drills=1: drill_attempts.jsonl too;
+//                                        ?drill_clock=1: drill_timed.jsonl too)
 //   POST /account/progress               {add: {file: [lines]}, remove: {file: [lines]}, own_puzzles: true} -> {files}
 //                                        (without own_puzzles, as an older app sends it: the personal puzzles are
-//                                        left out of all three; the same for drill_attempts.jsonl and drills: true)
+//                                        left out of all three; the same for drill_attempts.jsonl and drills: true,
+//                                        and for drill_timed.jsonl and drill_clock: true)
 //   POST /account/email/<step>           email and password: signup, verify, login, forgot, reset, link (email.js)
 //   POST /account/unlink/<provider>      drop a sign-in method (not the last one)
 //   GET  /account/export                 everything kept about you, as a JSON download
@@ -310,12 +312,14 @@ async function route(req, env, url) {
   if (path === '/account/progress' && (req.method === 'GET' || req.method === 'POST')) {
     const u = await requireUser(req, env);
     let own = url.searchParams.get('own_puzzles') === '1', drills = url.searchParams.get('drills') === '1';
+    let clock = url.searchParams.get('drill_clock') === '1';
     if (req.method === 'POST') {
       const b = await body(req);
       own ||= b.own_puzzles === true;
       drills ||= b.drills === true;
+      clock ||= b.drill_clock === true;
       const lines = what => store.checkLines(b[what], what)
-        .filter(([f]) => (own || !store.isOwnPuzzles(f)) && (drills || !store.isDrills(f)));
+        .filter(([f]) => (own || !store.isOwnPuzzles(f)) && (drills || !store.isDrills(f)) && (clock || !store.isTimedDrills(f)));
       try {
         await store.applyProgress(env.DB, u, lines('add'), lines('remove'), now());
       } catch (e) {
@@ -323,7 +327,7 @@ async function route(req, env, url) {
         throw e;
       }
     }
-    return json({ files: await store.progress(env.DB, u, own, drills) });
+    return json({ files: await store.progress(env.DB, u, own, drills, clock) });
   }
   if (req.method === 'POST' && m && m[1] === 'unlink') {
     const u = await requireUser(req, env);

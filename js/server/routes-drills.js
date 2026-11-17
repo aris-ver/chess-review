@@ -1,15 +1,22 @@
 // The endgame drills' routes ("Develop your instinct", docs/training-grounds.md), in the shape of routes-puzzles.js:
 //
 //   GET  /api/drills/next?ending=KQK[&level=N]   the next drill at the level the record puts the ending at (or the
-//                                                level asked for): {drill: {ending, level, mode, fen, dtm, budget,
-//                                                counter, hold_moves}, status}. 404 when no start position turns up.
+//                                                level asked for, up to the last clock tier): {drill: {ending, level,
+//                                                mode, fen, dtm, budget, counter, hold_moves, post_promo, clock},
+//                                                status}. clock is null, or at a timed level {tier, base_ms, inc_ms}
+//                                                (core/drill-clock.js), the page's to run. 404 when no start position
+//                                                turns up.
 //   POST /api/drills/attempt                     {ending, level, fen, dtm, budget, moves_used, result, ms,
-//                                                worst_loss, id?} -> {counted, id, before, status}; `before` is the
-//                                                level the ending was at, status the standing after it.
+//                                                worst_loss, id?, and at a timed level clock, move_ms, paused} ->
+//                                                {counted, id, before, status}; `before` is the level the ending
+//                                                was at, status the standing after it. A timed attempt's clock must
+//                                                be the deal's and its turn times must add up (drills.js parseAttempt).
 //   GET  /api/drills/status[?ending=KQK]         one ending's status, or {endings: [...]} for all ten; a status is
-//                                                {ending, level, top, star, played, solved, run, recent,
-//                                                unavailable}: unavailable is null, or for Lucena and Philidor why
-//                                                they can't be played here ('needs_computer' on phones, 'no_engine').
+//                                                {ending, level, top, tiers, tier, star, clock_star, played, solved,
+//                                                run, recent, unavailable}: top the top level without a clock, tiers
+//                                                the clock tiers above it, tier the level's (0: untimed); unavailable
+//                                                is null, or for Lucena and Philidor why they can't be played here
+//                                                ('needs_computer' on phones, 'no_engine').
 //   POST /api/drills/move                        {ending, level, fens}: every position from the dealt one to the
 //                                                user's last move -> the move judged, the defender's reply and the
 //                                                result once the drill is over, with its review (drills.js
