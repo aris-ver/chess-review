@@ -309,6 +309,11 @@ table.games tr.unseen td:first-child { box-shadow: inset 3px 0 0 var(--accent); 
 .card .rc .delta { font-size: 11px; font-weight: 600; }
 .card .rc .delta.up { color: var(--accent); } .card .rc .delta.down { color: var(--c-blunder); } .card .rc .delta.flat { color: var(--muted); }
 .card.profile .who .name { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+/* the player's picture (chess.com's), or their letter: left of the card, the rest of it beside */
+.card.profile { padding-left: 74px; }
+.card.profile .av { position: absolute; left: 16px; top: 14px; width: 44px; height: 44px; border-radius: 50%; object-fit: cover;
+  background: var(--panel2); color: var(--muted); display: flex; align-items: center; justify-content: center; font-size: 19px; font-weight: 700; }
+.acts .sm { display: none; }
 .card.profile .pin { position: absolute; top: 8px; right: 30px; color: var(--muted); padding: 2px 6px; border-radius: 4px; font-size: 14px; line-height: 1.4; }
 @media (hover: hover) { .card.profile .pin:hover { background: var(--panel2); color: var(--text); } } .card.profile.pinned .pin { color: var(--accent); }
 .cards .empty { padding: 10px 12px; color: var(--muted); font-size: 13px; grid-column: 1 / -1; text-align: left; }
@@ -453,6 +458,8 @@ body:not(.puzzle) .pzover { display: none; }
 .dcont .src { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
 .dcont .who { font-size: 15px; font-weight: 700; }
 .dcont button { padding: 7px 14px; font-size: 13px; }
+.dcont .cover.cal .mon { font-size: 9px; padding: 1px 0; } .dcont .cover.cal .day { font-size: 19px; margin-bottom: 4px; }
+#homecont { display: none; }     /* phones only: a wide screen shows every tile's state at once */
 body.drill .player .cap { display: none; }     /* an ending has no captures to count: the full set would read as all taken */
 body.drill .phead .ptlvl { display: none; }     /* the level is in the box under it (Level 2 of 5) */
 /* a drill's move budget: a block per move allowed */
@@ -574,6 +581,25 @@ table.games button.an { padding: 3px 9px; font-size: 12px; font-weight: 600; whi
   .card .x, .card.profile .pin { font-size: 18px; padding: 6px 10px; top: 2px; }
   .card .x { right: 2px; } .card.profile .pin { right: 38px; }
   .card.profile .who { padding-right: 84px; }
+  .card.profile { padding-left: 64px; } .card.profile .av { left: 12px; top: 12px; width: 40px; height: 40px; font-size: 17px; }
+  /* Train: one list of rows, not a stack of cards: a smaller icon, the title, and one line of how it's going */
+  #home .pztiles { grid-template-columns: minmax(0, 1fr); gap: 0; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+  #home .pztiles > .card { border: 0; border-top: 1px solid var(--line); border-radius: 0; background: none; padding: 9px 12px; gap: 12px; }
+  #home .pztiles > .card:first-child { border-top: 0; }
+  #home .pztiles > .card::after { content: "›"; color: var(--muted); font-size: 22px; line-height: 1; flex: none; }
+  #home .pztiles .cover { zoom: .625; }
+  #home .pztiles .src { display: none; }
+  #home .pztiles .cbody { gap: 1px; }
+  #home .pztiles .desc { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #home .pztiles .card.wide .go { display: none; }     /* the strip at the top picks the drill up instead */
+  /* the one next thing to do, above the profiles: the whole strip is the button */
+  #homecont { display: flex; flex-wrap: nowrap; cursor: pointer; margin: 4px 0 0; border-color: var(--accent); }
+  #homecont .cbody { min-width: 0; } #homecont .who { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #homecont .chev { color: var(--accent); font-size: 24px; line-height: 1; flex: none; }
+  /* analyse: the three on one line, by their short names */
+  .acts { flex-wrap: nowrap; }
+  .acts button { flex: 1 1 0; min-width: 0; padding: 10px 6px; }
+  .acts .lg { display: none; } .acts .sm { display: inline; }
   /* profile: filters live behind a hamburger; open = one group per line */
   .filters { flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
   .filters .fbtn { display: inline-flex; }
@@ -958,6 +984,7 @@ svg.graph { width: 100%; height: 52px; display: block; cursor: pointer; backgrou
   <section id="home" class="hidden">
     <div class="home">
       <div id="update" class="update hidden"></div>
+      <div id="homecont" class="dcont hidden" role="button" tabindex="0"></div>
       <div class="hhead"><h2>Profiles</h2><button id="b-addprofile" title="Add a chess.com or lichess username">+ Add profile</button></div>
       <div class="card add drawer hidden" id="addcard">
         <form id="addform">
@@ -975,11 +1002,11 @@ svg.graph { width: 100%; height: 52px; display: block; cursor: pointer; backgrou
         <div class="card pztile covered" id="card-mine"><div class="cover" data-cover="mine"></div><div class="cbody"><span class="src">Your games</span><span class="who">Personal puzzles</span><span class="desc" id="card-mine-desc">The moves you missed in a player's games, from a profile or any username, back until you find them.</span></div></div>
         <div class="card pztile covered wide" id="card-drills"><div class="cover" data-cover="drills"></div><div class="cbody"><span class="src">Develop your instinct</span><span class="who">Endgame drills</span><span class="desc" id="card-drills-desc">Play ten basic endings out against a defender that never gives up, from a new position every time.</span></div><button class="primary go hidden" id="b-drill-cont"></button></div>
       </div>
-      <h2>Review something else</h2>
+      <h2>Analyse a game or position</h2>
       <div class="acts">
-        <button id="b-pgn" title="Paste the PGN of one game or many">Paste a PGN</button>
-        <button id="card-setup" title="Place the pieces, or paste a FEN, then analyse">Set up a position</button>
-        <button id="card-image" title="Read the pieces off a picture of a board, then analyse">From a screenshot</button>
+        <button id="b-pgn" title="Paste the PGN of one game or many"><span class="lg">Paste a </span>PGN</button>
+        <button id="card-setup" title="Place the pieces, or paste a FEN, then analyse"><span class="lg">Set up a position</span><span class="sm">Position</span></button>
+        <button id="card-image" title="Read the pieces off a picture of a board, then analyse"><span class="lg">From a screenshot</span><span class="sm">Screenshot</span></button>
       </div>
       <div class="card fen pgn drawer hidden" id="pgncard">
         <form id="pgnform">
@@ -1979,6 +2006,8 @@ async function autoFetch(ps) {
   pollStatus();
 }
 let profilesScanT = null;
+// a profile's picture where the site has none (lichess, a PGN profile, a chess.com player without one): its letter
+const avatarLetter = name => `<span class="av" aria-hidden="true">${esc((name || '?').trim().charAt(0).toUpperCase())}</span>`;
 async function renderProfiles() {
   let d; try { d = await (await fetch('api/profiles')).json(); } catch (e) { d = { profiles: [] }; }
   // the launch-time scan for new games on chess.com and lichess may still be running: look again in a moment
@@ -1991,6 +2020,7 @@ async function renderProfiles() {
   });
   $('profiles').innerHTML = ps.map(p => `
     <div class="card profile ${p.pinned ? 'pinned' : ''}" data-id="${p.id}" data-name="${esc(p.username)}">
+      ${p.avatar ? `<img class="av" src="${esc(p.avatar)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : avatarLetter(p.username)}
       <span class="src">${SOURCE_LOGO[p.source] || ''}${SOURCE_NAME[p.source] || p.source}</span>
       <span class="who" title="${esc(p.username)}"><span class="name">${esc(p.username)}</span></span>
       ${ratingsHTML(p.ratings)}
@@ -2002,6 +2032,8 @@ async function renderProfiles() {
   if (!ps.length) openDrawer('addcard', true, false);     // nothing to show yet: the form is the first thing to use
   if ($('b-sample')) $('b-sample').onclick = openSample;
   $('profiles').querySelectorAll('.card.profile').forEach(c => {
+    // a picture that won't load (offline, taken down since the last fetch): the letter instead
+    c.querySelector('img.av')?.addEventListener('error', e => { e.target.outerHTML = avatarLetter(c.dataset.name); }, { once: true });
     c.onclick = () => {
       if (c.classList.contains('loading')) { toast(`Still fetching ${c.dataset.name}'s games: the profile opens by itself when they're in`, 5000); return; }
       location.hash = '#/p/' + c.dataset.id;
@@ -2589,13 +2621,32 @@ function nextPuzzle() {
   if (c) { goTo(c.n < c.size ? `#/packs/${c.pack}/${c.stage}/${c.n + 1}` : '#/packs/' + c.pack); return; }   // the end of a stage: back to the ladder
   pz.sources = null; goTo(dealHash(pz.source));
 }
+// The home's one next thing to do (shown on phones): a streak at stake today, then reviews due, then the drill played
+// last, then a daily not played yet. Each tile's render fills in its part and redraws it.
+const homeNext = { daily: null, due: 0, drill: null };
+function renderHomeNext() {
+  const el = $('homecont'), { daily: d, due, drill: c } = homeNext;
+  const daily = (src, who) => ({ go: '#/daily', cover: coverHtml('daily', null, new Date().getDate()), src, who });
+  const it = d && !d.played && d.streak ? daily(`Keep your ${d.streak}-day streak`, `Puzzle of the day #${d.n}`)
+    : due ? { go: '#/puzzles/mine', cover: coverHtml('mine'), src: 'Due for review', who: `${due} puzzle${due > 1 ? 's' : ''} from your games` }
+    : c && DRILL_ENDINGS[c.ending] ? { go: '#/drills/' + c.ending, cover: coverHtml('d-' + c.ending), src: 'Pick up where you left off',
+      who: `${DRILL_ENDINGS[c.ending].name} · level ${c.level} of ${c.top}` }
+    : d && !d.played ? daily('Today', `Puzzle of the day #${d.n} is waiting`) : null;
+  el.classList.toggle('hidden', !it);
+  if (!it) return;
+  el.innerHTML = `${it.cover}<div class="cbody"><span class="src">${esc(it.src)}</span><span class="who">${esc(it.who)}</span></div><span class="chev" aria-hidden="true">›</span>`;
+  el.dataset.go = it.go;
+}
+$('homecont').onclick = e => { location.hash = e.currentTarget.dataset.go; };
+$('homecont').onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); location.hash = e.currentTarget.dataset.go; } };
 // the home tiles: how the library is going once it's started; the puzzles from your games, and the reviews due
 async function renderPuzzleCards() {
   renderCovers($('home'));
   const packs = fetch('api/puzzles/packs').then(r => r.json()).then(d => {
     const dl = d.daily, r = dl.result;
+    homeNext.daily = { n: dl.n, streak: dl.streak, played: !!r }; renderHomeNext();
     $('card-daily-desc').textContent = r ? `#${dl.n} ${r.clean ? 'solved without a mistake' : r.solved ? 'solved' : 'played'}.${dl.streak ? ` 🔥 ${dl.streak}-day streak.` : ''} Open it to share your result.`
-      : `#${dl.n} is waiting: one tougher puzzle, the same for everyone today.${dl.streak ? ` 🔥 ${dl.streak}-day streak, keep it going.` : ''}`;
+      : `#${dl.n} is waiting.${dl.streak ? ` 🔥 ${dl.streak}-day streak, keep it going.` : ''} One tougher puzzle, the same for everyone today.`;
     // the packs done, and those perfect (no totals); none done yet: what the packs are
     const done = d.packs.filter(k => k.done).length, perfect = d.packs.filter(k => k.perfect).length;
     const packs = n => `${n} pack${n > 1 ? 's' : ''}`;     // every one done perfect: just that
@@ -2608,6 +2659,7 @@ async function renderPuzzleCards() {
   const mine = (srcs || []).filter(s => s.id !== 'lichess' && s.count);
   const sum = k => mine.reduce((n, s) => n + s.stats[k], 0);
   const total = mine.reduce((n, s) => n + s.count, 0), due = sum('due'), fresh = sum('new');
+  homeNext.due = due; renderHomeNext();
   const names = mine.map(s => s.name).join(', ');
   $('card-mine-desc').textContent = total ? `${due ? `${due} review${due > 1 ? 's' : ''} due · ` : ''}${fresh} new · ${total} puzzle${total > 1 ? 's' : ''} from ${names}'s games.`
     : 'The moves you missed in a player\'s games, from a profile or any username, back until you find them.';
@@ -2687,9 +2739,11 @@ async function renderDrillTile() {
   await drillRecorded();
   const all = await drillStatuses();
   const played = (all || []).reduce((n, s) => n + s.played, 0);
+  homeNext.drill = played ? drillContinue() : null; renderHomeNext();
   if (!played) return;
   const solved = all.reduce((n, s) => n + s.solved, 0), stars = all.filter(s => s.star).length;
-  $('card-drills-desc').textContent = `Play ten basic endings out against a defender that never gives up. ${solved} of ${played} solved${stars ? `, ${stars} ★` : ''}.`;
+  // what's been done first: a phone shows one line of it
+  $('card-drills-desc').textContent = `${solved} of ${played} solved${stars ? `, ${stars} ★` : ''}. Ten basic endings against a defender that never gives up.`;
   const c = drillContinue(), b = $('b-drill-cont');
   b.classList.toggle('hidden', !c);
   if (c) { b.textContent = `Continue: ${DRILL_ENDINGS[c.ending].name}, level ${c.level}`; b.onclick = ev => { ev.stopPropagation(); location.hash = '#/drills/' + c.ending; }; }

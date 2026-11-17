@@ -48,6 +48,7 @@ export function ingestCtx(env, { onWait = null } = {}) {
     sleep: env.sleep,
     setOlder: (pid, older) => env.profiles.setOlder(pid, older),
     setPlayed: (pid, played) => env.profiles.setPlayed(pid, played),
+    setAvatar: (pid, url) => env.profiles.setAvatar(pid, url),
     onWait,
     userAgent: env.userAgent,
     log: env.log,

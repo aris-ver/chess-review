@@ -8546,7 +8546,8 @@
      },
      "unseen": [],
      "older": false,
-     "played": null
+     "played": null,
+     "avatar": null
     },
     "games": [
      "1"
@@ -8582,7 +8583,8 @@
      },
      "unseen": [],
      "older": false,
-     "played": null
+     "played": null,
+     "avatar": null
     },
     "games": [
      "947990fe3f11"
@@ -8618,7 +8620,8 @@
      },
      "unseen": [],
      "older": false,
-     "played": null
+     "played": null,
+     "avatar": null
     },
     "games": [
      "d9ee7ad9cba7",

@@ -51,7 +51,7 @@ const BASE = 'https://api.chess.com/pub/player/me/games/';
 
 /** chess.com with `ms` {'2026-08': n games}; `statuses` are answered first (429s, say); `played` the games its stats
  * count (null: no stats, a 404). Returns the URLs asked. */
-function site(ctx, ms, { statuses = [], played = null } = {}) {
+function site(ctx, ms, { statuses = [], played = null, avatar } = {}) {
   const asked = [];
   statuses = [...statuses];
   ctx.fetch = async url => {
@@ -64,6 +64,10 @@ function site(ctx, ms, { statuses = [], played = null } = {}) {
       if (played === null) return json({}, 404);
       return json({ chess_blitz: { record: { win: played - 3, loss: 2, draw: 1 } },
         chess960_daily: { record: { win: 9 } } });      // not standard chess: not counted
+    }
+    if (url.endsWith('/player/me')) {
+      if (avatar === undefined) return json({}, 404);
+      return json({ username: 'me', ...(avatar === null ? {} : { avatar }) });
     }
     if (url.endsWith('/archives')) return json({ archives: Object.keys(ms).sort().map(k => BASE + k.replace('-', '/')) });
     const key = url.replace(/\/+$/, '').split('/').slice(-2).join('-');
@@ -80,7 +84,7 @@ test('chess.com: newest months first until a page', async () => {
   assert.equal(stats.games, 25);
   assert.equal(stats.older, true);
   assert.equal(summary.older, true);
-  assert.equal(asked.length, 5);                                         // the list, three months and the stats
+  assert.equal(asked.length, 6);                                         // the list, three months, stats, player
   assert.equal(summary.played, null);                                    // no stats there: just the games fetched
 
   stats = await fetchGames(ctx, profile, { older: true });
@@ -97,6 +101,22 @@ test('chess.com: counts every game played from its stats', async () => {
   site(ctx, { '2026-08': 5, '2026-09': 9 }, { played: 1235 });
   await fetchGames(ctx, profile, { refresh: true });
   assert.equal(summary.played, 1235);
+});
+
+test('chess.com: the player picture, dropped once they take it down, kept when the page fails', async () => {
+  const { profile, ctx } = setup('chesscom');
+  const set = [];
+  ctx.setAvatar = (id, url) => { set.push(url); };
+  const pic = 'https://images.chesscomfiles.com/uploads/v1/user/1.jpeg';
+  site(ctx, { '2026-09': 8 }, { avatar: pic });
+  await fetchGames(ctx, profile);
+  site(ctx, { '2026-09': 8 }, { avatar: null });
+  await fetchGames(ctx, profile, { refresh: true });
+  site(ctx, { '2026-09': 8 }, { avatar: 'http://not-https/x.png' });
+  await fetchGames(ctx, profile, { refresh: true });
+  site(ctx, { '2026-09': 8 });                                           // a 404: nothing is set
+  await fetchGames(ctx, profile, { refresh: true });
+  assert.deepEqual(set, [pic, null, null]);
 });
 
 test('chess.com: a first fetch cut short picks up where it stopped', async () => {
@@ -117,7 +137,7 @@ test('chess.com: a refresh asks only for the newest month and after', async () =
   assert.deepEqual(months(ctx), ['2026-07', '2026-08', '2026-09']);     // never June
   assert.equal(JSON.parse(ctx.files.read('p/raw/2026-08.json')).games.at(-1).url, '2026-08/8');
   assert.deepEqual(asked.map(u => u.slice(BASE.length - 'games/'.length)),
-    ['games/archives', 'games/2026/08', 'games/2026/09', 'stats']);
+    ['games/archives', 'games/2026/08', 'games/2026/09', 'stats', '']);     // '': the player's page
 });
 
 test('chess.com: says while it waits out a 429', async () => {

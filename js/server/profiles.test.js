@@ -30,6 +30,10 @@ async function exercise(files, store) {
   await ps.markSeen(a.id, 'g2');
   await ps.setOlder(a.id, true);
   await ps.setPlayed(a.id, 7);
+  await ps.setAvatar(a.id, 'https://x/a.png');
+  assert.equal((await ps.summary(a, NOW)).avatar, 'https://x/a.png');
+  await ps.setAvatar(a.id, null);
+  assert.equal((await ps.summary(a, NOW)).avatar, null);
   await ps.markShown(a.id, ['g3']);
   assert.equal(await files.readText(a.metaJson),
     '{"source": "chesscom", "username": "Some_User", "created": "2026-10-23T12:00:00+00:00", "unseen": ["g1", "g3"], '

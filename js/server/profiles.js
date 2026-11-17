@@ -130,6 +130,11 @@ export class Profiles {
     await this.updateMeta(pid, meta => { meta.played = played; });
   }
 
+  /** The player's picture on the site (chess.com's; lichess has none), or null to drop the one stored. */
+  async setAvatar(pid, url) {
+    await this.updateMeta(pid, meta => { if (url) meta.avatar = url; else delete meta.avatar; });
+  }
+
   async markSeen(pid, gameId) {
     await this.updateMeta(pid, meta => {
       if ((meta.unseen ?? []).includes(gameId)) meta.unseen = meta.unseen.filter(i => i !== gameId);
@@ -270,7 +275,7 @@ export class Profiles {
     const meta = await this.meta(p);
     return {
       id: p.id, source: p.source, username: p.username, games, analysed,
-      created: meta.created ?? null, pinned: meta.pinned ?? null,
+      created: meta.created ?? null, pinned: meta.pinned ?? null, avatar: meta.avatar ?? null,
       rating, rating_delta_7d: ratingDelta7d, ratings,
       unseen: meta.unseen ?? [], older: !!meta.older,
       played: meta.played ? Math.max(meta.played, games) : null,

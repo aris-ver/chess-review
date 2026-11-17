@@ -7,6 +7,7 @@
 //                   append(path, text), mkdir(dir)}, each possibly async; ingest-node.js has Node's
 //   ctx.sleep       (seconds) => Promise, setTimeout by default
 //   ctx.setOlder    (profileId, bool), ctx.setPlayed (profileId, n): profiles.set_older / set_played
+//   ctx.setAvatar   (profileId, url | null): the chess.com profile picture, for the home screen's card
 //   ctx.onWait      (note | null): a site asked to slow down, then the wait is over (fetch's on_wait)
 //   ctx.userAgent   sent when set (the desktop; the browser sends its own, and asking costs a CORS preflight)
 //   ctx.log         (level, message), optional
@@ -19,6 +20,7 @@ import { formatG } from '../core/py.js';
 
 export const API = 'https://api.chess.com/pub/player/{username}/games/archives';
 export const STATS = 'https://api.chess.com/pub/player/{username}/stats';
+export const PLAYER = 'https://api.chess.com/pub/player/{username}';
 export const CHESSCOM_KINDS = ['chess_bullet', 'chess_blitz', 'chess_rapid', 'chess_daily'];   // standard chess, as on its profile
 export const LICHESS_USER = 'https://lichess.org/api/user/{username}';
 export const LICHESS_GAMES = 'https://lichess.org/api/games/user/{username}';
@@ -287,6 +289,20 @@ async function chesscomPlayed(ctx, profile) {
   if (played) await ctx.setPlayed?.(profile.id, played);
 }
 
+/** The player's chess.com picture, into the profile's "avatar": null when they have none (or took it down). Only
+ * for the screen, like the count: if the player's page doesn't come, the one stored stays. */
+async function chesscomAvatar(ctx, profile) {
+  let avatar;
+  try {
+    const body = (await get(ctx, fill(PLAYER, profile.username), { maxRetries: 1 })).json();
+    avatar = typeof body.avatar === 'string' && body.avatar.startsWith('https://') ? body.avatar : null;
+  } catch (e) {
+    log(ctx, 'info', `no chess.com player page for ${profile.username}: ${e.message}`);
+    return;
+  }
+  await ctx.setAvatar?.(profile.id, avatar);
+}
+
 /** How many games chess.com has for this profile that aren't in its raw archives yet: the latest month's games
  * minus those already in the same month's file on disk, plus whole months newer than anything on disk. Read-only:
  * nothing is written, a refresh does that. Looks at most maxMonths back. */
@@ -445,6 +461,7 @@ export async function fetchGames(ctx, profile, { refresh = false, onProgress = n
       stats = await archivePage(ctx, profile, { older, onProgress });
     }
     await chesscomPlayed(ctx, profile);     // after the games: a player who isn't there is told by the archives
+    await chesscomAvatar(ctx, profile);
     return stats;
   }
   if (profile.source === 'lichess') {

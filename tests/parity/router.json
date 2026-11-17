@@ -775,7 +775,8 @@
      "ratings": {},
      "unseen": [],
      "older": false,
-     "played": null
+     "played": null,
+     "avatar": null
     },
     "games": [
      "31db7f20777f"
@@ -810,7 +811,8 @@
      },
      "unseen": [],
      "older": false,
-     "played": null
+     "played": null,
+     "avatar": null
     },
     "games": [
      "1"
@@ -846,7 +848,8 @@
      },
      "unseen": [],
      "older": false,
-     "played": null
+     "played": null,
+     "avatar": null
     },
     "games": [
      "947990fe3f11"
@@ -881,7 +884,8 @@
       "unseen": [],
       "older": false,
       "played": null,
-      "new_games": 0
+      "new_games": 0,
+      "avatar": null
      }
     ],
     "scan": "idle"
@@ -2634,7 +2638,8 @@
       "unseen": [],
       "older": false,
       "played": null,
-      "new_games": 0
+      "new_games": 0,
+      "avatar": null
      }
     ],
     "scan": "idle"
@@ -2807,7 +2812,8 @@
       "unseen": [],
       "older": false,
       "played": 73,
-      "new_games": 0
+      "new_games": 0,
+      "avatar": null
      },
      {
       "id": "pgn-pasted-games",
@@ -2829,7 +2835,8 @@
       "unseen": [],
       "older": false,
       "played": null,
-      "new_games": 0
+      "new_games": 0,
+      "avatar": null
      }
     ],
     "scan": "idle"
@@ -3030,7 +3037,8 @@
      },
      "unseen": [],
      "older": false,
-     "played": 73
+     "played": 73,
+     "avatar": null
     },
     "job": null
    }
@@ -3501,7 +3509,8 @@
       "unseen": [],
       "older": false,
       "played": 73,
-      "new_games": 0
+      "new_games": 0,
+      "avatar": null
      },
      {
       "id": "pgn-pasted-games",
@@ -3523,7 +3532,8 @@
       "unseen": [],
       "older": false,
       "played": null,
-      "new_games": 0
+      "new_games": 0,
+      "avatar": null
      }
     ],
     "scan": "idle"
@@ -3587,7 +3597,8 @@
      },
      "unseen": [],
      "older": false,
-     "played": 73
+     "played": 73,
+     "avatar": null
     }
    }
   },
@@ -3619,7 +3630,8 @@
      },
      "unseen": [],
      "older": false,
-     "played": 73
+     "played": 73,
+     "avatar": null
     }
    }
   },
@@ -3964,7 +3976,8 @@
       "unseen": [],
       "older": false,
       "played": 73,
-      "new_games": 0
+      "new_games": 0,
+      "avatar": null
      }
     ],
     "scan": "idle"
