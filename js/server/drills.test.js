@@ -8,6 +8,8 @@ import { test } from 'node:test';
 import { gzipSync } from 'node:zlib';
 
 import { LEVELS, positionKey } from '../core/drills.js';
+import { mirrorFen, rookStart } from '../core/rook-drills.js';
+import { ROOK_STARTS } from '../core/rook-starts.js';
 import { generate, pack, tableSize } from '../core/endgame-table.js';
 import { webSqlite } from '../web/db.js';
 import { nodeSqlite } from './db-node.js';
@@ -163,7 +165,8 @@ test('record: rows in order, a repeated id counted once, the level worked out fr
     assert.deepEqual([other.status.ending, other.status.level, other.status.played], ['KRK', 1, 1]);
     assert.equal(D.status(db, 'KQK').level, 2);
     assert.deepEqual(D.statuses(db).map(s => [s.ending, s.level, s.played]),
-      [['KQRK', 1, 0], ['KRRK', 1, 0], ['KQK', 2, 3], ['KRK', 1, 1], ['KPK', 1, 0], ['KPK-hold', 1, 0], ['KBBK', 1, 0], ['KBNK', 1, 0]]);
+      [['KQRK', 1, 0], ['KRRK', 1, 0], ['KQK', 2, 3], ['KRK', 1, 1], ['KPK', 1, 0], ['KPK-hold', 1, 0], ['KBBK', 1, 0], ['KBNK', 1, 0],
+        ['Lucena', 1, 0], ['Philidor', 1, 0]]);
     const rows = D.attempts(db, 'KQK');
     assert.deepEqual(rows.map(r => r.ts), [1000, 1001, 1002]);
     assert.deepEqual(Object.keys(rows[0]), ['id', 'ts', 'ending', 'level', 'fen', 'dtm', 'budget', 'moves_used', 'result', 'ms', 'worst_loss']);
@@ -373,4 +376,89 @@ test('nextDrill: a synced row without a usable fen is skipped when working out w
     assert.ok(out.drill);
     assert.equal(out.status.played, 2);
   });
+});
+
+// ---------- the rook drills ----------
+
+const LUC = ROOK_STARTS.Lucena[0][3], PHI = ROOK_STARTS.Philidor[3][7];
+const rookAttempt = (extra = {}) => ({ ending: 'Lucena', level: 1, fen: LUC.fen, dtm: null, budget: LUC.promote + 8,
+  moves_used: 7, result: 'promoted', ms: 42000, worst_loss: null, ...extra });
+
+test('rook drills: their results, tables, and the checks on an attempt', () => {
+  assert.deepEqual(D.RESULTS.Lucena.solved, ['promoted', 'won']);
+  assert.deepEqual(D.RESULTS.Philidor.solved, ['held', 'pawn_taken', 'rook_won', 'stalemate']);
+  assert.ok(D.isSolved('Philidor', 'rook_won') && !D.isSolved('Philidor', 'promoted') && D.isSolved('Lucena', 'promoted'));
+  assert.deepEqual([D.topLevel('Lucena'), D.topLevel('Philidor')], [4, 4]);
+  assert.deepEqual(D.tablesFor('Lucena'), ['KQK', 'KRK', 'KPK', 'KQRK', 'KRRK', 'KQKR', 'KRKR']);
+  assert.deepEqual(D.tablesFor('Philidor'), D.tablesFor('Lucena'));
+  const a = D.parseAttempt(rookAttempt());
+  assert.deepEqual([a.ending, a.level, a.dtm, a.budget, a.worst_loss, a.result], ['Lucena', 1, null, LUC.promote + 8, null, 'promoted']);
+  assert.equal(D.parseAttempt(rookAttempt({ fen: mirrorFen(LUC.fen) })).fen, mirrorFen(LUC.fen));
+  const p = D.parseAttempt({ ending: 'Philidor', level: 4, fen: PHI.fen, moves_used: 30, result: 'held', ms: 1 });
+  assert.deepEqual([p.budget, p.dtm, p.worst_loss], [null, null, null]);
+  const refused = (b, re) => assert.throws(() => D.parseAttempt(b), e => e instanceof BadRequest && re.test(e.message), re);
+  refused(rookAttempt({ level: 2 }), /not a Lucena start position/);                 // a level 1 start sent as level 2
+  refused(rookAttempt({ fen: PHI.fen }), /not a Lucena start position/);
+  refused(rookAttempt({ fen: '8/8/8/8/8/2k5/8/K6Q w - - 0 1' }), /not a Lucena start position/);
+  refused(rookAttempt({ result: 'solved' }), /result: one of promoted, won, pawn_lost/);
+  refused(rookAttempt({ result: 'rook_won' }), /result/);
+  refused(rookAttempt({ dtm: 5 }), /no dtm/);
+  refused(rookAttempt({ budget: LUC.promote + 9 }), /budget: \d+ for this Lucena start/);
+  refused(rookAttempt({ budget: null }), /budget/);
+  refused(rookAttempt({ worst_loss: -1 }), /worst_loss is null for Lucena/);
+  refused({ ending: 'Philidor', level: 4, fen: PHI.fen, budget: 3, moves_used: 1, result: 'held' }, /budget: null/);
+  refused({ ending: 'Philidor', level: 4, fen: PHI.fen, moves_used: 1, result: 'won' }, /result/);
+});
+
+test('rook drills: dealt from ROOK_STARTS at the level, never one of the last 30 there, the drill shaped for them', async () => {
+  await withStore(async store => {
+    const db = await store.progress();
+    const out = D.nextDrill(db, {}, 'Lucena', { rng: rng(9) });
+    const { drill } = out;
+    assert.deepEqual([drill.ending, drill.level, drill.mode, drill.dtm, drill.counter, drill.hold_moves, drill.post_promo],
+      ['Lucena', 1, 'lucena', null, false, null, 10]);
+    const at = rookStart(drill.fen);
+    assert.equal(at.level, 1);
+    assert.equal(drill.budget, at.entry.promote + 8);
+    const ph = D.nextDrill(db, {}, 'Philidor', { level: 4, rng: rng(9) }).drill;
+    assert.deepEqual([ph.mode, ph.level, ph.budget, ph.hold_moves, ph.post_promo], ['philidor', 4, null, 30, null]);
+    // 45 attempts at Philidor level 4 (of its 49), recorded: the next is none of the last 30
+    let n = 0;
+    for (let k = 0; k < 45; k++) {
+      const d = D.nextDrill(db, {}, 'Philidor', { level: 4, rng: rng(100 + k) }).drill;
+      D.record(db, D.parseAttempt({ ending: 'Philidor', level: 4, fen: d.fen, moves_used: 30, result: 'held', ms: 1 }), 10 + k, () => `p${++n}`);
+    }
+    const keys = D.attempts(db, 'Philidor').map(r => positionKey(r.fen));
+    for (let k = 30; k < keys.length; k++) assert.ok(!keys.slice(k - 30, k).includes(keys[k]), `deal ${k} repeats`);
+    const next = positionKey(D.nextDrill(db, {}, 'Philidor', { level: 4, rng: rng(7) }).drill.fen);
+    assert.ok(!keys.slice(-30).includes(next));
+  });
+});
+
+test('sync: a row of an ending this version does not know survives an import and an export unchanged', async () => {
+  const mk = async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'blundr-drills-unknown-'));
+    const store = new Store(nodeSqlite(dir)), files = memoryFiles();
+    return { store, sync: new Sync({ files, store }), done: async () => { await store.close(); rmSync(dir, { recursive: true, force: true }); } };
+  };
+  const A = await mk(), B = await mk();
+  try {
+    // what a v1.1.0 client meets: a Lucena row, and one of an ending nobody has made yet
+    const lines = [
+      '{"id": "r1", "ts": 7, "ending": "Lucena", "level": 2, "fen": "1K6/1P6/4k3/3r4/8/8/8/2R5 w - - 0 1", "budget": 8, "moves_used": 5, "result": "promoted", "ms": 30000}',
+      '{"id": "r2", "ts": 8, "ending": "KQKR", "level": 1, "fen": "8/8/8/8/2r5/8/2k5/K6Q w - - 0 1", "dtm": 35, "moves_used": 40, "result": "mated_in_time", "ms": 1}',
+    ];
+    await A.sync.writeLines('', FILE, lines);
+    const db = await A.store.progress();
+    assert.equal(db.value('SELECT count(*) FROM drill_attempts'), 2);
+    assert.deepEqual(await A.sync.readLines('', FILE), lines);
+    // the standing skips the unknown ending, the next export still carries it, and a second device gets the same
+    assert.deepEqual(D.statuses(db).map(s => s.ending).includes('KQKR'), false);
+    await B.sync.writeLines('', FILE, await A.sync.readLines('', FILE));
+    assert.deepEqual(await B.sync.readLines('', FILE), await A.sync.readLines('', FILE));
+    assert.equal(D.status(await B.store.progress(), 'Lucena').played, 1);
+  } finally {
+    await A.done();
+    await B.done();
+  }
 });

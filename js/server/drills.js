@@ -4,7 +4,7 @@
 //
 // The record is progress.sqlite's drill_attempts table (db.js DRILL_ATTEMPTS_SCHEMA), one row an attempt, in the
 // order they were made (seq; the merged order after a sync): {id, ts, ending, level, fen, dtm, budget, moves_used, result, ms, worst_loss}. The
-// eight endings (core/drills.js ENDINGS) each have a level of their own.
+// ten endings (core/drills.js ENDINGS) each have a level of their own.
 //
 // Results. A mate drill (KQRK, KRRK, KQK, KRK, KBBK, KBNK) is 'solved', or failed by 'stalemate', 'piece_lost',
 // 'repetition', 'fifty' or 'budget'. The KPK attack is 'promoted', or failed by 'threw' (a move gave the win away), 'pawn_lost',
@@ -12,6 +12,9 @@
 // or failed by 'threw' (a move gave the draw away) or 'promoted'. 'abandoned' fails any of them (the drill left
 // unfinished). A KPK ending has no mate distance and no budget: dtm and budget are null. worst_loss is the moves the
 // costliest move cost, -1 when no move lost ground, null when a move threw the result (so always null for 'threw').
+// The rook endings, Lucena and Philidor (core/rook-drills.js, Stockfish plays black), have their results in
+// ROOK_RESULTS; dtm and worst_loss are always null, budget is the start's promote + the level's slack for Lucena and
+// null for Philidor, and the fen is a ROOK_STARTS entry of the level (or its mirror).
 //
 // The level, from the record, per ending, in the order the attempts were made:
 //   - everyone starts at level 1;
@@ -35,6 +38,8 @@ import { DEPENDS, blackMoves, fromFen, gunzip, probe, unpack } from '../core/end
 import { boardFromFen, copy, fen as fenOf, legalMoves, makeSquare, parseUci, push, san, uci as uciOf } from '../core/chess.js';
 import { ENDINGS, HOLD_MOVES, LEVELS, RECENT, attackStatus, bestLine, defenceStatus, defenderMove, flipFen, kindOfMove,
   kpkAttackerMove, kpkGrade, levelOf, pickStart, positionKey, review, status as mateStatus } from '../core/drills.js';
+import { HOLD_ROOK, POST_PROMO, ROOK_RESULTS, ROOK_TABLES, isRookEnding, rookBudget, rookStart, rookStatus, rookTurn }
+  from '../core/rook-drills.js';
 import { DRILL_ATTEMPTS_SCHEMA } from './db.js';
 import { BadRequest } from './http.js';
 
@@ -47,8 +52,10 @@ export const RESULTS = {
   mate: { solved: ['solved'], failed: ['stalemate', 'piece_lost', 'repetition', 'fifty', 'budget', 'abandoned'] },
   KPK: { solved: ['promoted'], failed: ['threw', 'pawn_lost', 'stalemate', 'repetition', 'fifty', 'abandoned'] },
   'KPK-hold': { solved: ['held', 'pawn_taken', 'stalemate'], failed: ['threw', 'promoted', 'abandoned'] },
+  Lucena: ROOK_RESULTS.Lucena,
+  Philidor: ROOK_RESULTS.Philidor,
 };
-const kindOf = ending => (ending === 'KPK' || ending === 'KPK-hold' ? ending : 'mate');
+const kindOf = ending => (ending === 'KPK' || ending === 'KPK-hold' || isRookEnding(ending) ? ending : 'mate');
 const isPawnEnding = ending => ending === 'KPK' || ending === 'KPK-hold';
 
 export const isEnding = e => typeof e === 'string' && Object.hasOwn(LEVELS, e);
@@ -129,7 +136,9 @@ export function parseAttempt(b) {
   } catch {
     throw new BadRequest(`fen: not a position: ${b.fen}`);
   }
-  const key = positionKey(b.fen), want = `${pawn ? 'KPK' : ending}:${ending === 'KPK-hold' ? 'b' : 'w'}:`;
+  const rook = isRookEnding(ending);
+  const key = positionKey(b.fen);
+  const want = rook ? `${ending}:${level}:` : `${pawn ? 'KPK' : ending}:${ending === 'KPK-hold' ? 'b' : 'w'}:`;
   if (!key?.startsWith(want)) throw new BadRequest(`fen: not a ${ending} start position: ${b.fen}`);
   if (ending === 'KBBK') {
     const colour = sq => ((sq & 7) + (sq >> 3)) & 1, [b1, b2] = fromFen(b.fen).pieces;
@@ -140,7 +149,14 @@ export function parseAttempt(b) {
     throw new BadRequest(`result: one of ${[...ok.solved, ...ok.failed].join(', ')} for ${ending}`);
   }
   let dtm = null, budget = null;
-  if (pawn) {
+  if (rook) {
+    if (b.dtm != null) throw new BadRequest(`${ending} has no dtm`);
+    budget = rookBudget(ending, level, rookStart(b.fen).entry);
+    if (budget === null ? b.budget != null : b.budget !== budget) {
+      throw new BadRequest(`budget: ${budget === null ? 'null' : budget} for this ${ending} start`);
+    }
+    if (b.worst_loss != null) throw new BadRequest(`worst_loss is null for ${ending}`);
+  } else if (pawn) {
     if (b.dtm != null || b.budget != null) throw new BadRequest(`${ending} has no dtm or budget`);
   } else {
     dtm = int(b.dtm, 'dtm', { max: 100 });
@@ -186,7 +202,8 @@ export function tablesFor(ending) {
     DEPENDS[n].forEach(add);
     out.push(n);
   };
-  add(ending === 'KPK-hold' ? 'KPK' : ending);
+  if (isRookEnding(ending)) ROOK_TABLES.forEach(add);
+  else add(ending === 'KPK-hold' ? 'KPK' : ending);
   return out;
 }
 
@@ -238,12 +255,15 @@ export function tablesFromFiles(read, dir = 'endgames') {
 export function nextDrill(db, tables, ending, { level = null, rng = Math.random } = {}) {
   const rows = attempts(db, ending), st = status(db, ending, rows), at = level ?? st.level;
   const row = levelOf(ending, at);
-  const recent = rows.slice(-RECENT).map(r => (typeof r.fen === 'string' ? positionKey(r.fen) : null)).filter(Boolean);
+  // a rook drill keeps its own count of what was dealt at each level (rook-drills.js), so it gets every row's key
+  const dealt = isRookEnding(ending) ? rows : rows.slice(-RECENT);
+  const recent = dealt.map(r => (typeof r.fen === 'string' ? positionKey(r.fen) : null)).filter(Boolean);
   const start = pickStart(tables, ending, at, { rng, recent, turn: rows.length });
   if (!start) return { drill: null, level: at, status: st };
-  const mode = ending === 'KPK' ? 'attack' : ending === 'KPK-hold' ? 'hold' : 'mate';
+  const mode = modeOf(ending);
   const drill = { ending, level: at, mode, fen: start.fen, dtm: start.dtm, budget: start.budget, counter: row.counter,
-    hold_moves: mode === 'hold' ? HOLD_MOVES : null };
+    hold_moves: mode === 'hold' ? HOLD_MOVES : mode === 'philidor' ? HOLD_ROOK : null,
+    post_promo: mode === 'lucena' ? POST_PROMO : null };
   return { drill, level: at, status: st };
 }
 
@@ -256,7 +276,8 @@ export function nextDrill(db, tables, ending, { level = null, rng = Math.random 
 export const MAX_FENS = 300;     // positions in one move request: 150 of the user's moves, more than any budget
 const isWon = r => r.result === 'win' || r.result === 'loss' || r.result === 'mate';
 const placementOf = f => f.trim().split(/\s+/).slice(0, 2).join(' ');
-export const modeOf = ending => (ending === 'KPK' ? 'attack' : ending === 'KPK-hold' ? 'hold' : 'mate');
+export const modeOf = ending => (ending === 'KPK' ? 'attack' : ending === 'KPK-hold' ? 'hold'
+  : isRookEnding(ending) ? ending.toLowerCase() : 'mate');
 const tableName = ending => (ending === 'KPK-hold' ? 'KPK' : ending);
 const blackHasMen = f => /[pqrbn]/.test(f.split(' ')[0]);
 
@@ -274,6 +295,7 @@ const flipped = (tables, f) => probe(tables, fromFen(flipFen(f)));
 
 // where a drill stands after `fens` (the start first), movesUsed being the user's moves so far
 function standing(tables, mode, fens, movesUsed, budget) {
+  if (mode === 'lucena' || mode === 'philidor') return rookStatus(tables, mode === 'lucena' ? 'Lucena' : 'Philidor', { fens, budget });
   if (mode === 'mate') return mateStatus({ fens, movesUsed, budget });
   if (mode === 'attack') return attackStatus(tables, { fens });
   const last = fens[fens.length - 1];
@@ -283,11 +305,12 @@ function standing(tables, mode, fens, movesUsed, budget) {
   return defenceStatus({ fens });
 }
 
-/** A move request checked and replayed: {ending, level, mode, dtm, budget, fens, sans}. `b` is {ending, level, fens}:
+/** A move request checked and replayed: {ending, level, mode, dtm, budget, fens, sans, ucis}. `b` is {ending, level, fens}:
  * fens every position from the dealt one (white to move, a start position of the ending, in the level's band for a
  * mate drill) up to and including the user's last move, one legal move apart, with no earlier position where the
  * drill was already over. The budget is worked out from the start position and the level, as the deal did. The fens
- * returned are the replay's (the counters counted), sans the moves'. A BadRequest says what's wrong. */
+ * returned are the replay's (the counters counted), sans and ucis the moves'. A rook drill's fens[0] is a ROOK_STARTS
+ * entry of the level (or its mirror), and its Lucena budget the entry's promote + the level's slack. A BadRequest says what's wrong. */
 export function parseMove(tables, b) {
   if (b === null || typeof b !== 'object' || Array.isArray(b)) throw new BadRequest('a move request object expected');
   if (!isEnding(b.ending)) throw new BadRequest(`ending: one of ${ENDINGS.join(', ')}`);
@@ -299,7 +322,8 @@ export function parseMove(tables, b) {
   }
   if (b.fens.length % 2) throw new BadRequest('fens: the last position must follow a move of yours');
   const board = fenField(b.fens[0], 'fens[0]');
-  const want = `${tableName(ending)}:${ending === 'KPK-hold' ? 'b' : 'w'}:`;
+  const rook = isRookEnding(ending);
+  const want = rook ? `${ending}:${level}:` : `${tableName(ending)}:${ending === 'KPK-hold' ? 'b' : 'w'}:`;
   if (board.turn !== 'white' || !positionKey(b.fens[0])?.startsWith(want)) {
     throw new BadRequest(`fens[0]: not a ${ending} start position: ${b.fens[0]}`);
   }
@@ -309,8 +333,10 @@ export function parseMove(tables, b) {
     if (r.result !== 'win' || r.dtm < row.lo || r.dtm > row.hi) throw new BadRequest(`fens[0]: not a ${ending} level ${level} start`);
     dtm = r.dtm;
     budget = dtm + row.slack;
+  } else if (rook) {
+    budget = rookBudget(ending, level, rookStart(b.fens[0]).entry);
   }
-  const fens = [fenOf(board)], sans = [];
+  const fens = [fenOf(board)], sans = [], ucis = [];
   for (let k = 1; k < b.fens.length; k++) {
     const what = `fens[${k}]`;
     if (typeof b.fens[k] !== 'string' || b.fens[k].length > 100) throw new BadRequest(`${what}: a position expected`);
@@ -322,13 +348,14 @@ export function parseMove(tables, b) {
     });
     if (!m) throw new BadRequest(`${what}: not one legal move on from ${fens[k - 1]}`);
     sans.push(san(board, m));
+    ucis.push(uciOf(m));
     push(board, m);
     fens.push(fenOf(board));
     if (k < b.fens.length - 1 && standing(tables, mode, fens, Math.floor(fens.length / 2), budget)) {
       throw new BadRequest(`${what}: the drill was over there`);
     }
   }
-  return { ending, level, mode, dtm, budget, fens, sans };
+  return { ending, level, mode, dtm, budget, fens, sans, ucis };
 }
 
 // the review of a KPK defence: each of the user's moves kept the draw ('best') or gave it away ('threw')
@@ -393,6 +420,28 @@ export function playMove(tables, req, rng = Math.random) {
   return out;
 }
 
+/** A rook drill's move (req from parseMove) answered with the opponent's reply: playMove's shape, with kind, loss,
+ * dtm_after and dtm null (no table grades a rook ending move by move), and two more: promoted (Lucena: the user has
+ * promoted; Philidor: black has) and engine_ms (the reply's search, null when the drill ended on the user's move).
+ * Once there's a result, review is {moves: [{dtm, kind, loss}: all null, one per user move], worst: -1} and worst_loss
+ * null: the hint (round 4) is the rook drills' review. engine({fen, moves}) is rook-drills.js rookTurn's; it throws
+ * when the engine fails, and so does this. */
+export async function playRookMove(tables, req, engine) {
+  const { ending, fens, ucis, budget } = req, movesUsed = fens.length / 2;
+  const t = await rookTurn(tables, ending, { fens, ucis, budget }, engine);
+  const out = { san: req.sans[req.sans.length - 1], fen_move: fens[fens.length - 1], kind: null, loss: null, dtm_after: null,
+    reply: t.reply, reply_san: null, fen: t.fen, dtm: null, moves_used: movesUsed, budget, result: t.result, review: null,
+    worst_loss: null, promoted: t.promoted, engine_ms: t.engine_ms };
+  if (t.reply) {
+    const board = boardFromFen(fens[fens.length - 1]);
+    out.reply_san = san(board, parseUci(board, t.reply));
+  }
+  if (out.result) {
+    out.review = { moves: Array.from({ length: movesUsed }, () => ({ dtm: null, kind: null, loss: null })), worst: -1 };
+  }
+  return out;
+}
+
 // the drawing line of a KPK defence from fen (as shown, either side to move): the user's king keeps the draw (takes
 // the pawn when it can, else the first holding move) and the attacker squeezes, until the drill would end
 function holdLine(tables, fen, max = 2 * HOLD_MOVES) {
@@ -424,6 +473,7 @@ export function parseLine(b) {
   if (b === null || typeof b !== 'object' || Array.isArray(b)) throw new BadRequest('a line request object expected');
   if (!isEnding(b.ending)) throw new BadRequest(`ending: one of ${ENDINGS.join(', ')}`);
   fenField(b.fen, 'fen');
+  if (isRookEnding(b.ending)) throw new BadRequest(`${b.ending} has no table line (no 5-piece tables)`);
   const hold = b.ending === 'KPK-hold';
   const ok = positionKey(b.fen)?.startsWith(`${tableName(b.ending)}:`) && (!b.ending.startsWith('KPK') || !fromFen(b.fen) === hold);
   if (!ok) throw new BadRequest(`fen: not a ${b.ending} position: ${b.fen}`);
