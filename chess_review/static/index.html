@@ -57,8 +57,8 @@ header h1 a.away:active { background: #38424f; }
 /* Back: one level up (a puzzle -> its pack, a game -> its list), never a replay of the history */
 header button.back { color: var(--text); white-space: nowrap; font-size: 15px; font-weight: 600; padding: 4px 10px; }
 @media (hover: hover) { header button.back:hover { border-color: var(--accent); } }
-/* Back: on an iPhone or iPad the swipe right is the main way back (Safari's from the edge, the page's own from
-   anywhere: swipeBack), so the button is a quiet arrow there; Android has the button as well as its back gesture and
+/* Back: on an iPhone or iPad the swipe right is the main way back (the browser's own from the edge; a home-screen
+   app, which has none, the page's own from anywhere: swipeBack), so the button is a quiet arrow there; Android has the button as well as its back gesture and
    the swipe; a desktop, the button. The history is kept one level up at each step (goTo), so every one of them goes
    where this one would */
 html.pf-ios header button.back { background: none; border-color: transparent; color: var(--muted); padding: 4px 8px; }
@@ -1517,15 +1517,18 @@ $('b-back').onclick = goBack;
 // Swipe right to go back, from anywhere on a phone or tablet (the main way back on an iPhone: its button is quiet).
 // Not from what a finger drags sideways itself (the stages, a board, anything that scrolls sideways, a slider), not
 // once it turns out a scroll (it never blocks one) or a pinch, and only where there is somewhere to go back to (on
-// Home there isn't). It needs 70 px to the right, within 30 degrees of level. In Safari the strip along the left edge
-// is left to Safari's own swipe back (so the two don't both go back); a home-screen app has none, and gets it all.
+// Home there isn't). It needs 70 px to the right, within 30 degrees of level. Not in an iPhone's browser at all: it has
+// its own swipe back from the edge, which goes where this would, and the two can't be kept apart (it takes a thumb
+// starting well in from the edge, and the page still gets the touch, so both moved). A home-screen app has none.
 // As on an iPhone the screen follows the finger and the one it goes back to peeks in under it; let go past the 70 px
 // and the one slides off, else back. With reduced motion nothing slides: the one gone back to fades in over it.
 // The screens share their sections and draw them anew, so the one gone back to isn't there until it's back: what
 // peeks in is a copy of it as it was left (keepScreen), or the bare page for one not seen yet (a link to a puzzle).
+const SWIPE = PLATFORM === 'android'
+  || PLATFORM === 'ios' && (navigator.standalone === true || matchMedia('(display-mode: standalone)').matches);
 const shots = new Map();      // hash -> the screen as it was left: { el (a body, unseen), scrolls }; the last 8
 function keepScreen(h) {
-  if (PLATFORM === 'desktop' || !h) return;
+  if (!SWIPE || !h) return;
   const live = [...document.body.querySelectorAll(':scope > main > section:not(.hidden)')];
   if (!live.length) return;
   const el = document.createElement('body'), main = document.createElement('main'), scrolls = [];
@@ -1541,11 +1544,8 @@ function keepScreen(h) {
   if (shots.size > 8) shots.delete(shots.keys().next().value);
 }
 (function swipeBack() {
-  if (PLATFORM === 'desktop') return;
-  const standalone = navigator.standalone === true || matchMedia('(display-mode: standalone)').matches;
-  // Safari's own swipe takes a thumb starting a fair way in from the edge, not just the first few px: 24 was too
-  // little, and both went (the page's copy sliding under Safari's snapshot)
-  const EDGE = PLATFORM === 'ios' && !standalone ? 48 : 0, TAN = Math.tan(30 * Math.PI / 180), FAR = 70;
+  if (!SWIPE) return;
+  const TAN = Math.tan(30 * Math.PI / 180), FAR = 70;
   const root = document.documentElement, rs = root.style;
   const OWN = '.sttrack, svg.board, .boardbox, .setup-board, .palette, input, select, textarea, dialog, .vol';
   const draggable = el => {
@@ -1610,7 +1610,7 @@ function keepScreen(h) {
     if (sw) cancel();
     if (busy || e.touches.length !== 1 || !upTo() || !$('home').classList.contains('hidden')) return;   // (Home, whatever the address says)
     const t = e.touches[0];
-    if (t.clientX < EDGE || draggable(e.target)) return;
+    if (draggable(e.target)) return;
     sw = { x: t.clientX, y: t.clientY, dx: 0, dy: 0, on: false };
   }, { passive: true });
   document.addEventListener('touchmove', e => {

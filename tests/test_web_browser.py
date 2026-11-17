@@ -687,6 +687,8 @@ def test_swiping_right_goes_back_and_android_keeps_the_button(site, browser, pho
     is a quiet arrow, Android's has its word; the header is the same height either way, and so the board sits in the same place."""
     ctx = browser.new_context(viewport={"width": 390, "height": 844}, device_scale_factor=3, is_mobile=True, has_touch=True,
                               user_agent=IPHONE if phone == "iphone" else PIXEL)
+    if phone == "iphone":
+        ctx.add_init_script(STANDALONE)     # its browser has its own swipe back, a home-screen app the page's
     page = ctx.new_page()
     try:
         page.goto(site)
@@ -728,8 +730,6 @@ def test_swiping_right_goes_back_and_android_keeps_the_button(site, browser, pho
         b = page.locator("#boardbox").bounding_box()
         assert swipe(b["x"] + 40, b["y"] + b["height"] / 2, 200, 0) == here     # on the board: a move, not a way back
         assert peek["main"] == 0 and not peek["prev"], peek
-        if phone == "iphone":
-            assert swipe(8, y, 200, 0) == here                     # Safari's own edge swipe: left to Safari
         assert swipe(60, y, 180, 20) == "#/packs/forks"            # back to the ladder
         assert peek["main"] > 100 and peek["prev"]["ladder"] and -390 * .3 < peek["prev"]["x"] < 0 and .5 < peek["prev"]["opacity"] < 1, peek
         page.wait_for_selector(".scard.sel", timeout=30_000)
@@ -742,6 +742,10 @@ def test_swiping_right_goes_back_and_android_keeps_the_button(site, browser, pho
         assert swipe(60, 400, 200, 0) in ("", "#/")                 # nowhere further: it stays
     finally:
         ctx.close()
+
+
+# an iPhone's home-screen app (Safari's navigator.standalone): the page's own swipe back is only there
+STANDALONE = "Object.defineProperty(Navigator.prototype, 'standalone', { get: () => true })"
 
 
 # mid-swipe: how far the screen has gone with the finger, and the screen gone back to peeking in under it (where,
@@ -785,10 +789,23 @@ SWIPE_JS = """([x0, y0, dx, dy, steps]) => new Promise(done => {
 
 
 def test_on_an_iphone_a_swipe_right_goes_back_in_webkit(site, pwr, webkit):
-    """The swipe right in WebKit, as on an iPhone: from anywhere but Safari's own strip along the left edge, the
-    board and the stages; not short, not mostly down; never blocking a scroll; the screen follows the finger, the
-    ladder it goes back to peeking in under it. No Back button there."""
+    """The swipe right in WebKit, as on an iPhone: from anywhere but the board and the stages; not short, not mostly down; never blocking a scroll; the screen follows the finger, the
+    ladder it goes back to peeking in under it. No Back button there. As a home-screen app: in Safari itself none of
+    it, Safari's own swipe back is the one (the two together both moved)."""
     ctx = webkit.new_context(**phone_of(pwr, "webkit"))
+    page = ctx.new_page()
+    try:
+        page.goto(site)
+        ready(page)
+        page.evaluate("location.hash = '#/packs/forks'")
+        page.wait_for_selector(".scard.sel", timeout=30_000)
+        legend = page.locator(".legend").bounding_box()
+        r = page.evaluate(SWIPE_JS, [60, legend["y"] + 5, 200, 0, 8])
+        assert r["hash"] == "#/packs/forks" and not r["prev"] and all(s["main"] == 0 and not s["prev"] for s in r["seen"]), r
+    finally:
+        ctx.close()
+    ctx = webkit.new_context(**phone_of(pwr, "webkit"))
+    ctx.add_init_script(STANDALONE)
     page = ctx.new_page()
     try:
         page.goto(site)
@@ -803,7 +820,7 @@ def test_on_an_iphone_a_swipe_right_goes_back_in_webkit(site, pwr, webkit):
         swipe =lambda x, y, dx, dy, steps=8: page.evaluate(SWIPE_JS, [x, y, dx, dy, steps])
         y = page.locator("#now").bounding_box()["y"] + 20
         here = "#/packs/forks/1/1"
-        for args in [(60, y, 50, 0), (60, y, 150, 120), (8, y, 200, 0)]:     # short, mostly down, Safari's edge strip
+        for args in [(60, y, 50, 0), (60, y, 150, 120)]:     # short, mostly down
             r = swipe(*args)
             assert r["hash"] == here and not r["blocked"] and not r["prev"], (args, r)
         b = page.locator("#boardbox").bounding_box()
