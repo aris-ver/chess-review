@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url';
 import { boardFromFen, fen as fenOf, legalMoves, parseUci, push, uci as uciOf } from './chess.js';
 import { generate, unpack } from './endgame-table.js';
 import { ENDINGS, LEVELS, levelOf, pickStart, positionKey } from './drills.js';
-import { HOLD_ROOK, POST_PROMO, RECENT_ROOK, ROOK_RESULTS, ROOK_TABLES, chooseStart, mirrorFen, pickRookStart, promotionIndex,
+import { EngineFailed, HOLD_ROOK, POST_PROMO, RECENT_ROOK, ROOK_RESULTS, ROOK_TABLES, chooseStart, mirrorFen, pickRookStart, promotionIndex,
   rookBudget, rookStart, rookStatus, rookTurn, uciBetween } from './rook-drills.js';
 import { ROOK_STARTS } from './rook-starts.js';
 
@@ -153,9 +153,11 @@ test('rookTurn: the reply played and graded; the history goes to the engine', as
   const done = await rookTurn(tables, 'Lucena', { fens: line('7k/8/6K1/8/8/8/3P4/R6r w - - 0 1', ['a1a8']), ucis: ['a1a8'] },
     scripted([]).engine);
   assert.deepEqual([done.result, done.reply, done.engine_ms], ['won', null, null]);
-  // an illegal engine move is an error, not a position
-  await assert.rejects(rookTurn(tables, 'Lucena', { fens, ucis: ['h1a1'], budget: 9 }, scripted([{ move: 'a1a8' }]).engine),
-    /not legal/);
+  // an illegal engine move is an EngineFailed (the routes answer it with a 503), not a position
+  for (const move of ['a1a8', 'zz99', null]) {
+    await assert.rejects(rookTurn(tables, 'Lucena', { fens, ucis: ['h1a1'], budget: 9 }, scripted([{ move }]).engine),
+      e => e instanceof EngineFailed && /not legal/.test(e.message));
+  }
 });
 
 test('rookTurn: after the promotion, the engine seeing mate ends it unplayed; otherwise play goes on', async () => {

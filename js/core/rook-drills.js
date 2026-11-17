@@ -51,6 +51,9 @@ export const ROOK_RESULTS = {
 
 export const isRookEnding = e => e === 'Lucena' || e === 'Philidor';
 
+/** The engine gave no usable reply: every search failed, or its move isn't legal. The routes answer it with a 503. */
+export class EngineFailed extends Error {}
+
 // ---------- starts ----------
 
 /** The FEN mirrored left and right (files a-h swapped), the rest unchanged. */
@@ -156,6 +159,15 @@ function flip(fen) {
   return `${placement.split('/').reverse().map(r => [...r].map(swap).join('')).join('/')} ${turn === 'w' ? 'b' : 'w'} - - 0 1`;
 }
 const blackWins = (tables, fen) => (count(fen, BLACK) ? whiteWins(tables, flip(fen)) : false);
+
+/** A position of 4 pieces or fewer scored by the tables, white's view: 1000 white wins, -1000 black wins, 0 neither;
+ * undefined when no table covers it (more pieces, or material we have no table for). */
+export function tableScore(tables, fen) {
+  if (count(fen, 'KQRBNPkqrbnp') > 4) return undefined;
+  const w = whiteWins(tables, fen), b = blackWins(tables, fen);
+  if (w === undefined || b === undefined) return undefined;
+  return w ? 1000 : b ? -1000 : 0;
+}
 
 // the side to move can take a piece on a square of `letters` (FEN letters: white's upper case, black's lower)
 function canTake(board, fen, letters) {
@@ -273,7 +285,7 @@ export async function rookTurn(tables, ending, { fens, ucis, budget = null }, en
   } catch {
     m = null;
   }
-  if (!m || !legalMoves(board).some(x => uciOf(x) === uciOf(m))) throw new Error(`the engine's move ${s.move} is not legal in ${last}`);
+  if (!m || !legalMoves(board).some(x => uciOf(x) === uciOf(m))) throw new EngineFailed(`the engine's move ${s.move} is not legal in ${last}`);
   push(board, m);
   out.reply = uciOf(m);
   out.fen = fenOf(board);

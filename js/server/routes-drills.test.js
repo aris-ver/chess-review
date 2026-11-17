@@ -11,7 +11,7 @@ import { setBook } from '../core/book.js';
 import { boardFromFen, fen as fenOf, legalMoves, parseUci, push, san, uci as uciOf } from '../core/chess.js';
 import { LEVELS } from '../core/drills.js';
 import { generate, tableSize } from '../core/endgame-table.js';
-import { ROOK_TABLES, mirrorFen, rookStart } from '../core/rook-drills.js';
+import { ROOK_TABLES, mirrorFen, rookStart, rookStatus } from '../core/rook-drills.js';
 import { ROOK_STARTS } from '../core/rook-starts.js';
 import { EnginePool } from '../desktop/engines.js';
 import { bestOf } from './drill-opponent.js';
@@ -45,9 +45,10 @@ async function withRouter(load, fn, extra = {}) {
   const store = new Store(nodeSqlite(dir)), files = memoryFiles();
   const env = { store, files, profiles: new Profiles(files, store), rng: rng(3) };
   if (load) env.drillTables = new DrillTables(load);
-  Object.assign(env, extra);
+  const { analysisPool = pool, ...more } = extra;     // analysisPool: the router's own (the hint searches on it)
+  Object.assign(env, more);
   try {
-    const router = await serve({ env, pool, nodes: 1, scan: false });
+    const router = await serve({ env, pool: analysisPool, nodes: 1, scan: false });
     router.runner.now = () => 5000.5;
     const ask = async (method, path, body) => {
       const out = await router.handle(method, path, body === undefined ? '' : typeof body === 'string' ? body : JSON.stringify(body),
@@ -618,3 +619,156 @@ test('rook drills: Stockfish at 1M nodes as the user wins three Lucena level 1 s
       await drill.close();
     }
   });
+
+// ---------- round 4: the start's counters, the review hint ----------
+
+test('rook drills: the move route takes the stored start\'s halfmove clock and move number, not the client\'s', async () => {
+  const e = ROOK_STARTS.Philidor[0][0], first = movesFrom(e.fen)[0];
+  const crafted = e.fen.replace(/ \d+ \d+$/, ' 99 60');
+  assert.notEqual(crafted, e.fen);
+  const ts = await new DrillTables(rookLoad).get('Philidor');
+  for (const start of [crafted, mirrorFen(crafted)]) {
+    const req = D.parseMove(ts, { ending: 'Philidor', level: 1, fens: [start, after(start, movesFrom(start)[0])] });
+    assert.equal(req.fens[0], start === crafted ? e.fen : mirrorFen(e.fen));
+    assert.doesNotMatch(req.fens[1], / 99 /);
+  }
+  const pool = fakePool([firstLegal]);
+  await withRouter(rookLoad, async ask => {
+    const r = await ask('POST', '/api/drills/move', { ending: 'Philidor', level: 1, fens: [crafted, after(crafted, first)] });
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    assert.equal(r.body.result, null);      // a clock of 99 would have made it 'held' (the fifty-move rule) at once
+    assert.ok(r.body.reply);
+  }, { drillEngine: pool });
+});
+
+test('rook drills: an illegal engine move is a 503, not a 500', async () => {
+  const e = ROOK_STARTS.Lucena[0][0];
+  await withRouter(rookLoad, async ask => {
+    const r = await ask('POST', '/api/drills/move', { ending: 'Lucena', level: 1, fens: [e.fen, after(e.fen, movesFrom(e.fen)[0])] });
+    assert.deepEqual([r.status, r.body.reason], [503, 'engine_failed']);
+    assert.match(r.body.error, /not legal/);
+  }, { drillEngine: fakePool([{ move: 'a1a1', cp: 0 }]) });
+});
+
+// a Philidor attempt from a start, every ply the first legal move that doesn't end the drill: `n` user moves, with the
+// reply after each unless `lastReply` is false
+async function philidorAttempt(n, lastReply = true) {
+  const ts = await new DrillTables(rookLoad).get('Philidor');
+  const e = ROOK_STARTS.Philidor[0][0], fens = [e.fen], ucis = [];
+  const step = () => {
+    const f = fens[fens.length - 1];
+    const u = movesFrom(f).find(x => !rookStatus(ts, 'Philidor', { fens: [...fens, after(f, x)] }));
+    assert.ok(u, `no move that goes on from ${f}`);
+    ucis.push(u);
+    fens.push(after(f, u));
+  };
+  for (let k = 0; k < n; k++) {
+    step();
+    if (k < n - 1 || lastReply) step();
+  }
+  return { e, fens, ucis };
+}
+
+// the first-legal-move line of `plies` from fen after moves (an engine's pv)
+function firstLine(fen, moves, plies) {
+  const b = boardFromFen(fen);
+  for (const u of moves) push(b, parseUci(b, u));
+  const out = [];
+  for (let i = 0; i < plies; i++) {
+    const m = legalMoves(b)[0];
+    if (!m) break;
+    out.push(uciOf(m));
+    push(b, m);
+  }
+  return out;
+}
+
+/** An analysis pool that scores by the number of moves played (`scores`, side to move's view; an Error is thrown)
+ * and answers a legal 10-ply pv; the calls kept, and the most searches it had running at once. */
+function hintPool(scores) {
+  const p = { calls: [], running: 0, most: 0, size: 4, name: 'fake', async load() {} };
+  p.search = async (fen, nodes, multipv, moves) => {
+    p.calls.push([fen, nodes, multipv, moves]);
+    p.running++;
+    p.most = Math.max(p.most, p.running);
+    await new Promise(res => setTimeout(res, 5));
+    p.running--;
+    const s = scores[moves.length];
+    if (s instanceof Error) throw s;
+    return [`info depth 20 seldepth 30 multipv 1 score cp ${s} nodes ${nodes} nps 1 pv ${firstLine(fen, moves, 10).join(' ')}`];
+  };
+  return p;
+}
+
+test('rook hint: every position of the attempt searched at once on the analysis pool, the biggest fall marked', async () => {
+  const { e, fens, ucis } = await philidorAttempt(3);
+  const pool = hintPool({ 0: 10, 2: 0, 4: -600, 6: -650 });
+  await withRouter(rookLoad, async ask => {
+    const r = await ask('POST', '/api/drills/hint', { ending: 'Philidor', level: 1, fens });
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    assert.deepEqual(Object.keys(r.body), ['moves', 'likely', 'pv', 'hint', 'approximate', 'ms']);
+    assert.deepEqual(r.body.moves.map(m => [m.ply, m.score_before, m.score_after]), [[0, 10, 0], [2, 0, -600], [4, -600, -650]]);
+    assert.equal(r.body.likely, 1);
+    assert.equal(r.body.approximate, true);
+    assert.deepEqual(r.body.pv, firstLine(e.fen, ucis.slice(0, 2), 8));
+    assert.deepEqual(r.body.moves[1].pv, r.body.pv);
+    assert.ok(r.body.hint === null || ['king_path', 'rook_third', 'rook_behind'].includes(r.body.hint), r.body.hint);
+    assert.ok(Number.isInteger(r.body.ms));
+    // the start and each position after a reply, with the history, at 400,000 nodes, MultiPV 1, all at once
+    assert.deepEqual(pool.calls.map(c => c[3].length).sort(), [0, 2, 4, 6]);
+    assert.ok(pool.calls.every(c => c[0] === e.fen && c[1] === 400_000 && c[2] === 1));
+    assert.deepEqual(pool.calls.find(c => c[3].length === 4)[3], ucis.slice(0, 4));
+    assert.equal(pool.most, 4);
+  }, { drillEngine: fakePool([]), analysisPool: pool });
+});
+
+test('rook hint: an attempt that ended on the user\'s move scores the position after it; nothing fell, no likely move', async () => {
+  const { fens } = await philidorAttempt(2, false);     // [start, w, b, w]: black to move at the end
+  assert.equal(fens.length, 4);
+  const pool = hintPool({ 0: 20, 2: 0, 3: 30 });     // 3: black to move, so -30 for white
+  await withRouter(rookLoad, async ask => {
+    const r = await ask('POST', '/api/drills/hint', { ending: 'Philidor', level: 1, fens });
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    assert.deepEqual(r.body.moves.map(m => [m.ply, m.score_before, m.score_after]), [[0, 20, 0], [2, 0, -30]]);
+    assert.deepEqual([r.body.likely, r.body.pv, r.body.hint], [null, [], null]);
+  }, { drillEngine: fakePool([]), analysisPool: pool });
+});
+
+test('rook hint: a crash retried at fewer nodes; refusals and 503s', async () => {
+  const { fens } = await philidorAttempt(1);
+  const crash = new Error('engine crashed');
+  // the first search of the start crashes once: retried at 100k
+  let crashed = false;
+  const pool = hintPool({ 0: 10, 2: 5 });
+  const inner = pool.search;
+  pool.search = async (fen, nodes, multipv, moves) => {
+    if (!moves.length && !crashed) {
+      crashed = true;
+      throw crash;
+    }
+    return inner(fen, nodes, multipv, moves);
+  };
+  await withRouter(rookLoad, async ask => {
+    const r = await ask('POST', '/api/drills/hint', { ending: 'Philidor', level: 1, fens });
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    assert.deepEqual(r.body.moves.map(m => [m.score_before, m.score_after]), [[10, 5]]);
+    assert.deepEqual(pool.calls.filter(c => !c[3].length).map(c => c[1]), [100_000]);
+    // not a rook ending, not a start of the level, too few positions
+    for (const [body, re] of [[{ ending: 'KQK', level: 1, fens }, /no hint/], [{ ending: 'Philidor', level: 2, fens }, /not a Philidor start/],
+      [{ ending: 'Philidor', level: 1, fens: [fens[0]] }, /fens: 2 to/]]) {
+      const b = await ask('POST', '/api/drills/hint', body);
+      assert.equal(b.status, 400, JSON.stringify(b.body));
+      assert.match(b.body.error, re);
+    }
+  }, { drillEngine: fakePool([]), analysisPool: pool });
+  // every search failing: 503
+  await withRouter(rookLoad, async ask => {
+    const r = await ask('POST', '/api/drills/hint', { ending: 'Philidor', level: 1, fens });
+    assert.deepEqual([r.status, r.body.reason], [503, 'engine_failed']);
+  }, { drillEngine: fakePool([]), analysisPool: hintPool({ 0: crash, 2: crash }) });
+  // phones: the rook drills need a computer, the hint too
+  await withRouter(rookLoad, async ask => {
+    const r = await ask('POST', '/api/drills/hint', { ending: 'Philidor', level: 1, fens });
+    assert.deepEqual([r.status, r.body.reason], [503, 'needs_computer']);
+  }, { drillEngine: fakePool([]), drillEngineUnavailable: 'needs_computer' });
+});

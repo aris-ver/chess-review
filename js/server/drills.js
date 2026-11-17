@@ -35,11 +35,12 @@
 // gives it small generated tables or a fake.
 
 import { DEPENDS, blackMoves, fromFen, gunzip, probe, unpack } from '../core/endgame-table.js';
-import { boardFromFen, copy, fen as fenOf, legalMoves, makeSquare, parseUci, push, san, uci as uciOf } from '../core/chess.js';
+import { boardFromFen, copy, fen as fenOf, isCheckmate, legalMoves, makeSquare, parseUci, push, san, uci as uciOf } from '../core/chess.js';
 import { ENDINGS, HOLD_MOVES, LEVELS, RECENT, attackStatus, bestLine, defenceStatus, defenderMove, flipFen, kindOfMove,
   kpkAttackerMove, kpkGrade, levelOf, pickStart, positionKey, review, status as mateStatus } from '../core/drills.js';
-import { HOLD_ROOK, POST_PROMO, ROOK_RESULTS, ROOK_TABLES, isRookEnding, rookBudget, rookStart, rookStatus, rookTurn }
-  from '../core/rook-drills.js';
+import { EngineFailed, HOLD_ROOK, POST_PROMO, ROOK_RESULTS, ROOK_TABLES, isRookEnding, rookBudget, rookStart, rookStatus,
+  rookTurn, tableScore } from '../core/rook-drills.js';
+import { HINT_CLAMP, HINT_MOVES, HINT_PV, likelyMove, namedHint, whiteScore } from '../core/rook-hint.js';
 import { DRILL_ATTEMPTS_SCHEMA } from './db.js';
 import { BadRequest } from './http.js';
 
@@ -310,8 +311,10 @@ function standing(tables, mode, fens, movesUsed, budget) {
  * mate drill) up to and including the user's last move, one legal move apart, with no earlier position where the
  * drill was already over. The budget is worked out from the start position and the level, as the deal did. The fens
  * returned are the replay's (the counters counted), sans and ucis the moves'. A rook drill's fens[0] is a ROOK_STARTS
- * entry of the level (or its mirror), and its Lucena budget the entry's promote + the level's slack. A BadRequest says what's wrong. */
-export function parseMove(tables, b) {
+ * entry of the level (or its mirror), and its Lucena budget the entry's promote + the level's slack; the returned
+ * fens[0] has the stored start's counters (halfmove clock, move number), whatever the client sent. anyEnd: the fens
+ * may also end after a reply (the hint's whole attempt). A BadRequest says what's wrong. */
+export function parseMove(tables, b, { anyEnd = false } = {}) {
   if (b === null || typeof b !== 'object' || Array.isArray(b)) throw new BadRequest('a move request object expected');
   if (!isEnding(b.ending)) throw new BadRequest(`ending: one of ${ENDINGS.join(', ')}`);
   const ending = b.ending, mode = modeOf(ending);
@@ -320,12 +323,16 @@ export function parseMove(tables, b) {
   if (!Array.isArray(b.fens) || b.fens.length < 2 || b.fens.length > MAX_FENS) {
     throw new BadRequest(`fens: 2 to ${MAX_FENS} positions expected`);
   }
-  if (b.fens.length % 2) throw new BadRequest('fens: the last position must follow a move of yours');
-  const board = fenField(b.fens[0], 'fens[0]');
+  if (b.fens.length % 2 && !anyEnd) throw new BadRequest('fens: the last position must follow a move of yours');
+  let board = fenField(b.fens[0], 'fens[0]');
   const rook = isRookEnding(ending);
   const want = rook ? `${ending}:${level}:` : `${tableName(ending)}:${ending === 'KPK-hold' ? 'b' : 'w'}:`;
   if (board.turn !== 'white' || !positionKey(b.fens[0])?.startsWith(want)) {
     throw new BadRequest(`fens[0]: not a ${ending} start position: ${b.fens[0]}`);
+  }
+  if (rook) {     // the stored start's fields after the placement, not the client's (a halfmove clock of 99 would end it)
+    const [, ...rest] = rookStart(b.fens[0]).entry.fen.trim().split(/\s+/);
+    board = boardFromFen([b.fens[0].trim().split(/\s+/)[0], ...rest].join(' '));
   }
   let dtm = null, budget = null;
   if (mode === 'mate') {
@@ -438,6 +445,62 @@ export async function playRookMove(tables, req, engine) {
   }
   if (out.result) {
     out.review = { moves: Array.from({ length: movesUsed }, () => ({ dtm: null, kind: null, loss: null })), worst: -1 };
+  }
+  return out;
+}
+
+/** The rook drills' review hint (core/rook-hint.js) for an attempt (req from parseMove with anyEnd: the fens may end
+ * after a reply): every position where the user was to move in the last HINT_MOVES moves scored by `search` (async
+ * ({fen, moves}) → {cp, mate, pv} from the side to move's view, or null when it failed: drill-opponent.js scorer),
+ * all at once (the pool runs as many as it has engines), the position after a last move with no reply too; a
+ * finished position (mate, stalemate, a table's 4 pieces) is scored without a search. Returns {moves: [{ply,
+ * score_before, score_after, pv}], likely, pv, hint, approximate: true}: ply is the move's index in the attempt's
+ * moves (2k for the user's k-th, from 0), scores white's view clamped to +-1000 (null: not scored), pv the engine's
+ * line (UCI, up to 8 plies) from the position before the move, likely the user move (k) the score fell most after
+ * (null: none fell 100 or more), pv at the top level likely's, hint the named hint for it (or null). Throws
+ * EngineFailed when no search answered. */
+export async function rookHint(tables, req, search) {
+  const { ending, fens, ucis } = req;
+  const users = Math.ceil((fens.length - 1) / 2), first = Math.max(0, users - HINT_MOVES);
+  const after = k => (2 * k + 2 < fens.length ? 2 * k + 2 : 2 * k + 1);
+  const wanted = new Set();
+  for (let k = first; k < users; k++) wanted.add(2 * k).add(after(k));
+  let asked = 0, answered = 0;
+  const scoreAt = async i => {
+    const fen = fens[i], board = boardFromFen(fen), turn = fen.split(' ')[1];
+    if (isCheckmate(board)) return { score: turn === 'w' ? -HINT_CLAMP : HINT_CLAMP, pv: [] };
+    if (!legalMoves(board).length) return { score: 0, pv: [] };
+    const t = tableScore(tables, fen);
+    if (t !== undefined) return { score: t, pv: [] };
+    asked++;
+    const s = await search({ fen: fens[0], moves: ucis.slice(0, i) });
+    if (!s) return { score: null, pv: [] };
+    answered++;
+    return { score: whiteScore(turn, s), pv: legalPrefix(fen, s.pv ?? [s.move]).slice(0, HINT_PV) };
+  };
+  const scored = new Map(await Promise.all([...wanted].map(async i => [i, await scoreAt(i)])));
+  if (asked && !answered) throw new EngineFailed('the engine failed on every position of the attempt');
+  const moves = Array.from({ length: users }, (_, k) => ({ ply: 2 * k, score_before: scored.get(2 * k)?.score ?? null,
+    score_after: k >= first ? scored.get(after(k))?.score ?? null : null, pv: scored.get(2 * k)?.pv ?? [] }));
+  const likely = likelyMove(moves);
+  const hint = likely === null ? null
+    : namedHint(ending, { before: fens[2 * likely], uci: ucis[2 * likely], after: fens[2 * likely + 1], reply: ucis[2 * likely + 1] ?? null });
+  return { moves, likely, pv: likely === null ? [] : moves[likely].pv, hint, approximate: true };
+}
+
+// the start of `line` (UCI) that is legal from fen
+function legalPrefix(fen, line) {
+  const board = boardFromFen(fen), out = [];
+  for (const u of line) {
+    let m;
+    try {
+      m = parseUci(board, u);
+    } catch {
+      break;
+    }
+    if (!legalMoves(board).some(x => uciOf(x) === uciOf(m))) break;
+    push(board, m);
+    out.push(u);
   }
   return out;
 }

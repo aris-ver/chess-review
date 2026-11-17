@@ -18,6 +18,13 @@
 //                                                dtm_after and dtm null, plus promoted and engine_ms.
 //   POST /api/drills/line                        {ending, fen} -> {line: [uci], moves: [{uci, san, fen}]}, the
 //                                                table's line from there ("Best from here" in a review).
+//   POST /api/drills/hint                        {ending, level, fens}: a finished (or given up) Lucena or Philidor
+//                                                attempt, fens from the start to its last position (after a reply
+//                                                or not) -> {moves: [{ply, score_before, score_after, pv}], likely,
+//                                                pv, hint, approximate: true, ms}: each position where the user was
+//                                                to move searched at REVIEW_NODES on the analysis pool (router.pool,
+//                                                in parallel), white's view; likely the move the score fell most
+//                                                after (drills.js rookHint). 400 for the other endings.
 //
 // 400 for a bad ending, level or body ({error}); 503 when the tables can't be loaded (they ship with the app; the web
 // worker fetches them on first use), and for the rook drills when there is no engine to play them or it failed
@@ -34,7 +41,8 @@
 import { BadRequest, json, jsonBody } from './http.js';
 import { ENDINGS } from '../core/drills.js';
 import { isRookEnding } from '../core/rook-drills.js';
-import { EngineFailed, opponent } from './drill-opponent.js';
+import { REVIEW_NODES } from '../core/rook-hint.js';
+import { EngineFailed, opponent, scorer } from './drill-opponent.js';
 import * as D from './drills.js';
 
 const PREFIX = '/api/drills/';
@@ -84,6 +92,7 @@ export async function handle(router, method, url, body) {
   if (method === 'POST' && what === 'attempt') return attempt(router, body);
   if (method === 'POST' && what === 'move') return move(router, body);
   if (method === 'POST' && what === 'line') return line(router, body);
+  if (method === 'POST' && what === 'hint') return hint(router, body);
   return json({ error: 'not found' }, 404);
 }
 
@@ -130,6 +139,33 @@ async function move(router, raw) {
   } catch (e) {
     if (!(e instanceof EngineFailed)) throw e;
     router.log?.error?.(`drill engine: ${e.message}`);
+    return json({ error: e.message, reason: 'engine_failed' }, 503);
+  }
+}
+
+// the review hint of a rook drill: every position of the attempt searched deeper on the analysis pool
+async function hint(router, raw) {
+  const { b, error } = drillBody(raw);
+  if (error) return error;
+  if (!isRookEnding(b.ending)) return bad(`${b.ending} has no hint: its review comes from the tables`);
+  const why = rookUnavailable(router.env);
+  if (why) return unavailable(why);
+  const t = await tablesOrError(router, b.ending);
+  if (t.error) return t.error;
+  let req;
+  try {
+    req = D.parseMove(t.tables, b, { anyEnd: true });
+  } catch (e) {
+    if (e instanceof BadRequest) return bad(e.message);
+    throw e;
+  }
+  const t0 = performance.now();
+  try {
+    const out = await D.rookHint(t.tables, req, scorer(router.pool, { nodes: REVIEW_NODES, log: router.log }));
+    return json({ ...out, ms: Math.round(performance.now() - t0) });
+  } catch (e) {
+    if (!(e instanceof EngineFailed)) throw e;
+    router.log?.error?.(`hint engine: ${e.message}`);
     return json({ error: e.message, reason: 'engine_failed' }, 503);
   }
 }

@@ -7,22 +7,22 @@
 // A crash on a position (Stockfish has a few) is retried at fewer nodes, as explore.js does; a pool that fails every
 // time (no Stockfish file, the WASM failed) is an EngineFailed, which the routes answer with a 503.
 
-import { OPPONENT_NODES } from '../core/rook-drills.js';
+import { EngineFailed, OPPONENT_NODES } from '../core/rook-drills.js';
 import { CRASH_RETRY_NODES } from './explore.js';
 
-export class EngineFailed extends Error {}
+export { EngineFailed };     // core/rook-drills.js has it, so an illegal engine move there is one too
 
 /** The best move and its score in a search's `info` lines (the last exact line with a pv, multipv 1): {move, cp,
- * mate}, the score from the side to move's view, or null when there is none. */
+ * mate, pv}, the score from the side to move's view and pv the line (UCI), or null when there is none. */
 export function bestOf(lines) {
   for (let i = lines.length - 1; i >= 0; i--) {
     const l = lines[i];
     if (!/ pv /.test(l) || / (lower|upper)bound/.test(l)) continue;
     const mpv = l.match(/ multipv (\d+)/);
     if (mpv && mpv[1] !== '1') continue;
-    const move = l.match(/ pv (\S+)/)[1];
+    const pv = l.match(/ pv (.+)$/)[1].trim().split(/\s+/);
     const cp = l.match(/ score cp (-?\d+)/), mate = l.match(/ score mate (-?\d+)/);
-    return { move, cp: cp ? +cp[1] : null, mate: mate ? +mate[1] : null };
+    return { move: pv[0], cp: cp ? +cp[1] : null, mate: mate ? +mate[1] : null, pv };
   }
   return null;
 }
@@ -44,5 +44,21 @@ export function opponent(pool, { nodes = OPPONENT_NODES, now = () => performance
       }
     }
     throw new EngineFailed(`the engine failed: ${last?.message ?? last}`);
+  };
+}
+
+/** A search for the rook drills' review hint over a pool (the analysis pool: a review can use every engine): async
+ * ({fen, moves}) → {move, cp, mate, pv} or null when every try failed (retried at fewer nodes as above). */
+export function scorer(pool, { nodes, log = null } = {}) {
+  return async ({ fen, moves }) => {
+    for (const n of [nodes, ...CRASH_RETRY_NODES.filter(x => x < nodes)]) {
+      try {
+        const best = bestOf(await pool.search(fen, n, 1, moves));
+        if (best) return best;
+      } catch (e) {
+        log?.warn?.(`hint search at ${n} nodes: ${e?.message ?? e}`);
+      }
+    }
+    return null;
   };
 }
