@@ -27,15 +27,16 @@ export function stockfishPath({ packaged, resources = process.resourcesPath, env
 /** The page: chess_review/static (index.html, account.js, themes/), inside app.asar when packaged. */
 export const STATIC_DIR = join(ROOT, 'chess_review', 'static');
 
-/** What app.asar carries beside the code (build.js): the puzzle pack, the packs, the opening book's keys and the
- * endgame drills' tables (a folder of kqk.bin ...). From a checkout: both from chess_review/puzzle_packs, no book keys
- * (main.js reads DATA/book's TSVs instead), the tables from data/endgames (scripts/build_endgame_tables.js). */
+/** What app.asar carries beside the code (build.js): the puzzle pack, the packs, the opening book's keys and tree,
+ * and the endgame drills' tables (a folder of kqk.bin ...). From a checkout: both from chess_review/puzzle_packs, no
+ * book keys or tree (main.js makes them from DATA/book's TSVs instead), the tables from data/endgames
+ * (scripts/build_endgame_tables.js). */
 export function bundled({ packaged }) {
   if (packaged) {
     return { puzzles: join(ROOT, 'puzzle_packs', 'puzzles.json'), packs: join(ROOT, 'puzzle_packs', 'packs.json'),
-             book: join(ROOT, 'book_keys.txt'), endgames: join(ROOT, 'endgames') };
+             book: join(ROOT, 'book_keys.txt'), tree: join(ROOT, 'book_tree.json'), endgames: join(ROOT, 'endgames') };
   }
   return { puzzles: join(ROOT, 'chess_review', 'puzzle_packs', 'puzzles.json'),
-           packs: join(ROOT, 'chess_review', 'puzzle_packs', 'packs.json'), book: null,
+           packs: join(ROOT, 'chess_review', 'puzzle_packs', 'packs.json'), book: null, tree: null,
            endgames: join(ROOT, 'data', 'endgames') };
 }

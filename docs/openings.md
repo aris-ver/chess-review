@@ -1,6 +1,7 @@
 # Openings: your own lines
 
-Drafted 2026-11-17. Phase 1 is built (the book tree and `js/core/opening-tree.js`); phases 2 to 4 are still a plan.
+Drafted 2026-11-17. Phases 1 and 2 are built (the book tree, `js/core/opening-tree.js`, the explorer); phases 3 and 4
+are still a plan.
 
 ## Goal
 
@@ -60,14 +61,42 @@ Book moves are therefore shown without percentages, ordered by engine eval where
 
 `js/core/opening-tree.js` (+ test): `loadTree`, `nameOf(key)`, `bookMoves(key)`, `deviation(rows)`,
 `deviationCost`, `lines(games)`, `target(key, multipv)`. Not `explore`: that name is taken by the "what if" sandbox
-(`js/server/explore.js`). Nothing loads the tree at runtime yet; that's phase 2 (the desktop's `main.js` and
-`paths.js`, the web worker's `site` files).
+(`js/server/explore.js`).
+
+At runtime the tree comes from `env.openingTree()`, loaded the first time an openings route asks and kept for good
+(`js/server/openings.js` `ensureTree`): the desktop reads `book_tree.json` from app.asar (`paths.js` `BUNDLED.tree`),
+or builds it from `DATA/book`'s TSVs in a checkout (`main.js` `loadOpeningTree`); the web worker fetches
+`book_tree.json` (`site.tree` in `js/web/worker.js`, `env.openingTree` in `js/web/app.js`). Without a tree the routes
+answer 503 `{reason: 'no_tree'}` and the page says so. On the web the service worker still downloads the file with
+the rest of the offline list at install; the app's worker only reads and parses it when the tab first asks.
 
 Checked on the main profile (448 games): `deviation()` agrees with `moves.in_book` in 445 of 446 analysed games. The
 one that differs was reviewed against an older lichess book; the packaged book and `data/book` are the same.
 `lines()` takes about 10 ms; reading the positions about 650 ms.
 
 ## Explorer
+
+Built in phase 2 as specified below, with these specifics:
+
+- **Page routes**: `#/p/<profile>/openings[?m=e2e4,e7e5]` is the explorer at the position after those moves (UCI,
+  from the start). The Train tile "Openings" opens it for the profile used last (else the first on Home, never the
+  pasted games'). Coming back without `?m=` (Back from a game, the tile again) restores the line, the move it was at
+  and the colour filter (`op.resume`, kept in memory for the visit). Back from the explorer goes where it was opened
+  from; Back from a game opened from it says "Openings" and returns to it.
+- **Deep link into a review**: `#/p/<profile>/game/<id>?ply=N` opens the review at ply N. The explorer's games list
+  uses it to land on the position after the move clicked. A saved review position (`state.resume`) wins over it.
+- **Server routes** (`js/server/routes-openings.js`, the counts in `js/server/openings.js`):
+  - `GET /api/openings/position?profile=<id>&moves=<uci,...>[&colour=all|white|black]`:
+    `{path, fen, key, turn, in_book, left_at, name, eval, games, score, next}`, `next` being one row per move (book
+    moves and every move the profile's games played), with games, W/D/L, accuracy and eval.
+  - `GET /api/openings/games?profile=<id>&moves=<uci,...>[&move=<uci>][&colour=...]`: the games that reached the
+    position (and played `move` there), newest first, at most 200, each with the ply to open the review at.
+  - 400 for a bad profile id, move or colour; 404 for a missing profile; 503 with no tree.
+- **Page**: the review board and move list in an `openings` body mode; the coach bubble names the position; `#opbox`
+  in the review panel holds the colour filter, the profile picker (with more than one profile) and the move table.
+  Each position's numbers are cached for the visit and asked again on the next visit.
+- **From a review**: the overview's "left the book with ..." line has an "Explore" link to the position the game
+  left the book from (games from the standard start only).
 
 - **Board and move list**, starting from the start position. Play a move or click one in the list.
 - **Header**: ECO and name of the current position, or "Out of book" with the last book position's name.
@@ -166,7 +195,8 @@ No Python version, so no parity tests.
 
 1. Done 2026-11-17. Book tree and `opening-tree.js`: the build, names, next moves, the deviation finder, cost,
    target, tests.
-2. Explorer: routes, the counts query, the page, "Open in explorer". Web and desktop, phone layout.
+2. Done 2026-11-18. Explorer: routes, the counts query, the page, the review's "Explore" link, the `?ply=` deep
+   link. Web and desktop, phone layout.
 3. Trainer storage and logic: schema 6, sync, lines, target, schedule, real-game hits, routes.
 4. Trainer page: the line list, the drill board, the "done" screen, the Train row's due count. Phone layout.
 5. v2, if phase 4 gets used: opponents' deviations, a repertoire you choose by hand.

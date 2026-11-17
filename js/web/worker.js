@@ -98,7 +98,8 @@ function lead() {
       driver, files, pool: engines, log, build: BUILD, ...(CR_CONFIG.nodes ? { nodes: CR_CONFIG.nodes } : {}),   // nodes: tests only
       // a fast analysis: half the nodes, on the full engine only (the phones' lite one offers no choice)
       fastNodes: LITE ? null : (CR_CONFIG.nodes ? Math.max(1, CR_CONFIG.nodes >> 1) : undefined),
-      site: { book: () => text('book_keys.txt'), puzzles: () => text('puzzles.json'), packs: () => text('packs.json') },
+      site: { book: () => text('book_keys.txt'), puzzles: () => text('puzzles.json'), packs: () => text('packs.json'),
+              tree: () => text('book_tree.json') },
       drillTables: drillTables(),
       drillEngine: drillPool(engines), drillEngineUnavailable: LITE ? 'needs_computer' : null,
       before: moved && moved.status === 'done' ? async env => {

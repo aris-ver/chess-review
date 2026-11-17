@@ -49,8 +49,9 @@ export async function reclassifyAll(env, log = consoleLog) {
 }
 
 /** The router over driver (js/web/db.js's webSqlite) and files (an opfsFiles adapter), with the engine pool.
- * site: the static files the server reads, as fetch-able texts: { book, puzzles, packs } → Promise<string>
- * (puzzles may come late: puzzle requests wait for `packReady`). before(env): runs once the env is built and before
+ * site: the static files the server reads, as fetch-able texts: { book, puzzles, packs, tree } → Promise<string>
+ * (puzzles may come late: puzzle requests wait for `packReady`; tree, the opening tree, is fetched only when the
+ * Openings tab first asks, and may be missing: the tab then says so). before(env): runs once the env is built and before
  * serve() starts anything (the migration's reclassification). build: the code's version (the worker's v/<version>/),
  * which with the book is part of every game's fingerprint. fastNodes: per position of a fast analysis, null for none
  * (the phones' lite engine). drillTables: the endgame drills' tables (a server/drills.js DrillTables), none: the drill
@@ -76,7 +77,8 @@ export async function startApp({ driver, files, pool, fetch = globalThis.fetch?.
     return JSON.parse(packsText);
   });
   const store = new Store(driver);
-  const env = { store, files, profiles: new Profiles(files, store), fetch, log, pack, packs, ...(drillTables ? { drillTables } : {}),
+  const env = { store, files, profiles: new Profiles(files, store), fetch, log, pack, packs,
+    ...(site.tree ? { openingTree: () => site.tree() } : {}), ...(drillTables ? { drillTables } : {}),
     ...(drillEngine ? { drillEngine } : {}), ...(drillEngineUnavailable ? { drillEngineUnavailable } : {}) };
   if (before) await before(env);
   const router = await serve({ env, pool, nodes, fastNodes, log, scan });

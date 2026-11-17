@@ -20,7 +20,7 @@ import { DrillTables, tablesFromFiles } from '../server/drills.js';
 import { Pack } from '../server/puzzles.js';
 import { Packs } from '../server/packs.js';
 import { ELECTRON_ASSETS, GITHUB_REPO, Updater } from '../server/updater.js';
-import { bookKeysFromDir } from './book.js';
+import { bookKeysFromDir, bookTreeFromDir } from './book.js';
 import { EnginePool } from './engines.js';
 import { checkData, restoreClean } from './handover.js';
 import { retireOldExes, unblock } from './launcher.js';
@@ -87,6 +87,15 @@ function loadOpeningBook() {
   return '';
 }
 
+/** The opening tree (the Openings tab's), read the first time the tab asks: app.asar's book_tree.json (build.js),
+ * else made from DATA/book's TSVs (a checkout: about 4 s). null when there is neither. */
+async function loadOpeningTree() {
+  if (BUNDLED.tree && existsSync(BUNDLED.tree)) return readFile(BUNDLED.tree, 'utf8');
+  const tree = bookTreeFromDir(join(DATA, 'book'));
+  if (!tree) log.warn(`no opening tree (${BUNDLED.tree ?? join(DATA, 'book')}): the Openings tab has nothing to show`);
+  return tree;
+}
+
 /** What this build calls itself: build.json's version in a packaged app (build.js: the release tag, or git
  * describe's), package.json's in a checkout. Part of every game's fingerprint (setCodeFingerprint). */
 const appVersion = () => (packaged && readInstalled(process.resourcesPath).version) || app.getVersion();
@@ -126,6 +135,7 @@ function startServer({ quit }) {
     store, files, profiles: new Profiles(files, store), fetch: globalThis.fetch, log, account,
     pack: new Pack(() => readJson(BUNDLED.puzzles)), packs: new Packs(() => readJson(BUNDLED.packs)),
     updater: makeUpdater(quit),
+    openingTree: loadOpeningTree,
     // the endgame drills' tables, read the first time a drill needs one (a file that isn't there: the routes say so)
     drillTables: new DrillTables(tablesFromFiles(path => readFile(path).catch(err => {
       if (err.code === 'ENOENT') return null;

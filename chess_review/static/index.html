@@ -397,6 +397,40 @@ body.sandbox .lines { display: block; }
 /* sandbox review: hide the game-specific chrome that doesn't apply to a free position */
 body.sandbox .ptabs, body.sandbox .overview, body.sandbox .stepchip, body.sandbox svg.graph, body.sandbox #a-insights2, body.sandbox #b-explain, body.sandbox #b-nextm { display: none !important; }
 body.sandbox .actions { padding-bottom: 10px; }
+/* the openings explorer: the review board with the moves table in place of the game's panels */
+.opbox { display: none; padding: 2px 12px 10px; }
+body.openings .opbox { display: block; }
+body.openings .ptabs, body.openings .overview, body.openings .stepchip, body.openings svg.graph, body.openings #a-insights2, body.openings .actions, body.openings .lines, body.openings #aprog, body.openings .pzbox { display: none !important; }
+body.openings .evalbar { visibility: hidden; }
+.ophead { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 4px 0 8px; }
+.ophead select { font: inherit; font-size: 13px; color: var(--text); background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; padding: 4px 6px; min-width: 0; max-width: 45%; }
+.opseg { display: inline-flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; margin-left: auto; }
+.opseg button { background: none; border: 0; border-radius: 0; padding: 4px 9px; font-size: 12px; color: var(--muted); }
+.opseg button + button { border-left: 1px solid var(--line); }
+.opseg button.on { background: var(--panel2); color: var(--text); font-weight: 600; }
+.opmoves { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
+.opmoves th { text-align: left; color: var(--muted); font-size: 11px; font-weight: 600; padding: 2px 4px 4px; }
+.opmoves td { padding: 5px 4px; border-top: 1px solid var(--line); white-space: nowrap; }
+.opmoves tbody tr { cursor: pointer; }
+@media (hover: hover) { .opmoves tbody tr:hover { background: var(--panel2); } }
+.opmoves .mv { display: flex; align-items: center; gap: 6px; }
+.opmoves .mv .ico, .opmoves .mv .nobook { width: 14px; height: 14px; flex-shrink: 0; }
+.opmoves .n, .opmoves .acc, .opmoves .ev { text-align: right; }
+.opmoves td.opr { width: 42%; }
+.opmoves a { color: var(--accent); text-decoration: none; }
+.opnone { color: var(--muted); }
+.wdl { display: flex; width: 100%; min-width: 72px; height: 16px; border-radius: 3px; overflow: hidden; font-size: 10px; font-weight: 700; line-height: 16px; }
+.wdl i { font-style: normal; text-align: center; overflow: hidden; }
+.wdl .w { background: var(--win); color: #1b1b1b; } .wdl .d { background: var(--draw); } .wdl .l { background: var(--loss); color: #fff; }
+.opnote { color: var(--muted); font-size: 13px; padding: 8px 2px; }
+.opgames { margin-top: 6px; border-top: 1px solid var(--line); max-height: 260px; overflow-y: auto; }
+.opgames .og { display: flex; gap: 8px; align-items: baseline; padding: 6px 4px; font-size: 13px; color: var(--text); text-decoration: none; border-bottom: 1px solid var(--line); }
+@media (hover: hover) { .opgames .og:hover { background: var(--panel2); } }
+.opgames .og .r { width: 44px; flex-shrink: 0; font-weight: 600; }
+.opgames .og .r.win { color: var(--win); } .opgames .og .r.loss { color: var(--loss); } .opgames .og .r.draw { color: var(--muted); }
+.opgames .og .vs { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.opgames .og .dt { color: var(--muted); font-size: 12px; }
+.ovopen .opx { color: var(--accent); text-decoration: none; }
 /* puzzles: the review board with the puzzle box in place of the game's panels */
 .pzbox { display: none; padding: 4px 12px 12px; }
 body.puzzle .pzbox { display: block; }
@@ -837,7 +871,7 @@ svg.board.playable use.piece.own { cursor: grab; }
 .ptabs button.on { color: var(--text); border-bottom-color: var(--accent); }
 .ptabs .tprog { margin-left: 6px; color: var(--accent); font-size: 12px; font-weight: 400; font-variant-numeric: tabular-nums; }
 .panel[data-tab="overview"] #movelist, .panel[data-tab="overview"] .stepchip, .panel:not([data-tab="overview"]) .overview { display: none; }
-body.sandbox #movelist, body.puzzle #movelist { display: grid !important; }
+body.sandbox #movelist, body.puzzle #movelist, body.openings #movelist { display: grid !important; }
 .overview { padding-bottom: 10px; }
 .ovh { display: flex; align-items: center; padding: 12px 14px 4px; color: var(--muted); font-size: 12px; font-weight: 600; }
 .ovh .more { margin-left: auto; font-weight: 400; cursor: pointer; } @media (hover: hover) { .ovh .more:hover { color: var(--text); } }
@@ -1020,6 +1054,7 @@ svg.graph { width: 100%; height: 52px; display: block; cursor: pointer; backgrou
         <div class="card pztile covered" id="card-packs"><div class="cover" data-cover="packs"></div><div class="cbody"><span class="src">Lichess</span><span class="who">Puzzle packs</span><span class="desc" id="card-packs-desc">Themes laid out as stages that climb from easy to the very top.</span></div></div>
         <div class="card pztile covered" id="card-library"><div class="cover" data-cover="library"></div><div class="cbody"><span class="src">Lichess</span><span class="who">Puzzle library</span><span class="desc" id="card-library-desc">Tactics from Lichess, picked near your level, by theme if you like.</span></div></div>
         <div class="card pztile covered" id="card-mine"><div class="cover" data-cover="mine"></div><div class="cbody"><span class="src">Your games</span><span class="who">Personal puzzles</span><span class="desc" id="card-mine-desc">The moves you missed in a player's games, from a profile or any username, back until you find them.</span></div></div>
+        <div class="card pztile covered" id="card-openings"><div class="cover" data-cover="op-home"></div><div class="cbody"><span class="src">Your games</span><span class="who">Openings</span><span class="desc" id="card-openings-desc">Walk the opening book and see how your own games went from every position.</span></div></div>
         <div class="card pztile covered wide" id="card-drills"><div class="cover" data-cover="drills"></div><div class="cbody"><span class="src">Develop your instinct</span><span class="who">Endgame drills</span><span class="desc" id="card-drills-desc">Play ten basic endings out against a defender that never gives up, from a new position every time.</span></div><button class="primary go hidden" id="b-drill-cont"></button></div>
       </div>
       <h2>Analyse a game or position</h2>
@@ -1169,6 +1204,7 @@ svg.graph { width: 100%; height: 52px; display: block; cursor: pointer; backgrou
         <div class="ginfo" id="ginfo"></div>
         <div class="coach"><div class="avatar">♞</div><div class="bubble" id="now"></div></div>
         <div class="pzbox" id="pzbox"></div>
+        <div class="opbox" id="opbox"></div>
         <div class="actions">
           <button id="b-explain" title="Show the full explanation">💡 Explain</button>
           <button id="b-best" title="Show the best move here; press again to play it"><svg class="ico sm"><use href="#ic-best"/></svg> Best</button>
@@ -1503,7 +1539,12 @@ function upTo(h = location.hash || '#/') {
   if (h.startsWith('#/drills/')) return '#/drills';
   if (h.startsWith('#/puzzles/mine/')) return '#/puzzles/mine';
   if (/^#\/puzzles\/[A-Za-z0-9]+$/.test(h) && h !== '#/puzzles/mine' && ownPuzzle()) return '#/puzzles/mine';
-  if ((m = h.match(/^#\/p\/([A-Za-z0-9_.-]+)\/game\//))) return '#/p/' + m[1];
+  // the explorer: back where it was opened from (Home, a review); a game opened from it: back to it
+  if (/^#\/p\/[A-Za-z0-9_.-]+\/openings/.test(h)) return last(v => !/^#\/p\/[^/]+\/openings/.test(v)) || '#/';
+  if ((m = h.match(/^#\/p\/([A-Za-z0-9_.-]+)\/game\//))) {
+    const before = visited[visited.length - 2];
+    return before && before.startsWith(`#/p/${m[1]}/openings`) ? before : '#/p/' + m[1];
+  }
   return '#/';
 }
 function upLabel(to) {
@@ -1513,6 +1554,7 @@ function upLabel(to) {
   if ((m = to.match(/^#\/packs\/([a-z0-9-]+)$/))) return (packCache[m[1]] || {}).name || 'Pack';
   if (to === '#/puzzles/mine') return 'Personal puzzles';
   if (/^#\/p\/[^/]+$/.test(to)) return 'Games';
+  if (/^#\/p\/[^/]+\/openings/.test(to)) return 'Openings';
   if (to.startsWith('#/p/')) return 'Game';
   if (to.startsWith('#/sandbox/')) return 'Sandbox';
   if (to === '#/daily') return 'Puzzle of the day';
@@ -1680,6 +1722,8 @@ async function route() {
   if (state.game && state.game.puzzle) state.exploring = false;   // a puzzle's pending timer would leave the next board locked
   // leaving a review: remember the move and which way up the board was, so coming back lands there
   if (state.game && !h.includes(`/game/${state.game.id}`)) state.resume = { id: state.game.id, ply: state.ply, flipped: state.flipped };
+  // leaving the explorer: its line, the move it was at and the colour, for coming back (showOpenings)
+  if (state.game && state.game.openings) op.resume = { pid: op.pid, moves: line().map(m => m.uci), ply: state.ply, colour: op.colour };
   if (h === '#/settings') return showSettings();
   const sm = h.match(/^#\/sandbox\/(.+)$/);
   if (sm) return showSandbox(decodeURIComponent(sm[1]));
@@ -1694,6 +1738,9 @@ async function route() {
   const dm = h.match(/^#\/drills\/([A-Za-z-]+)$/);
   if (dm) return openDrill(dm[1]);
   pz.ctx = null;
+  const om = h.match(/^#\/p\/([A-Za-z0-9_.-]+)\/openings(?:\?m=([a-h1-8qrbn,]*))?$/);
+  if (!om) document.body.classList.remove('openings');
+  if (om) return showOpenings(om[1], om[2] ? om[2].split(',').filter(Boolean) : []);
   if (h === '#/puzzles/mine') return showPersonal();
   const mm = h.match(/^#\/puzzles\/mine\/([A-Za-z0-9_.-]+)$/);
   if (mm) return showPuzzle(null, 'mine:' + mm[1]);
@@ -1861,6 +1908,7 @@ $('card-packs').onclick = () => location.hash = '#/packs';
 $('card-library').onclick = () => location.hash = '#/puzzles';
 $('card-mine').onclick = () => location.hash = '#/puzzles/mine';
 $('card-drills').onclick = () => location.hash = '#/drills';
+$('card-openings').onclick = openOpenings;
 
 // ---------- settings: pick pieces, board and sounds; the preview shows the pick, Apply makes it the app's ----------
 const settings = { tab: 'pieces', pend: null };
@@ -2227,6 +2275,162 @@ async function showSandbox(fen) {
   $('ginfo').textContent = ''; $('ptitle-t').textContent = 'Sandbox';
   renderMoveList();
   update(false);
+}
+
+// ---------- openings: the explorer (docs/openings.md) ----------
+// #/p/<id>/openings[?m=e2e4,e7e5] walks the opening tree on the review board: the moves so far are the move list,
+// the coach bubble names the position, and the panel lists the moves from it -- the book's, and every move the
+// profile's games played -- with how those games went. Moves come from the board, a row, or the move list; each
+// position's numbers come from api/openings/position (kept per position and colour for the visit, asked again on
+// the next).
+const op = { pid: null, colour: 'all', cache: {}, data: null, token: 0, list: null, profiles: null, resume: null };
+const OP_COLOURS = [['all', 'All'], ['white', 'As White'], ['black', 'As Black']];
+const OP_PROFILE_KEY = 'blundr-openings-profile';
+function openingsGame(path, leftAt) {
+  const side = name => ({ name, rating: null, accuracy: null, counts: {} });
+  const moves = path.map((m, i) => Object.assign(puzzlePly(m, i, leftAt == null || i < leftAt ? 'book' : null), { is_mine: null }));
+  return { id: 'openings', url: null, openings: true, played_at: null, time_control: null, time_class: null, termination: null,
+           my_colour: 'white', result: null, eco: null, opening_name: null, left_book_ply: leftAt ?? path.length,
+           white: side('White'), black: side('Black'), start_fen: START_FEN, start_wp_white: null, start_eval_text: null,
+           analysed: 1, moves, key_moments: [] };
+}
+const opMoves = () => line().slice(0, state.ply).map(m => m.uci);
+// one position's numbers, once a visit: null when the request failed (said in a toast), {error, status} when refused
+async function opFetch(moves) {
+  const k = `${op.pid}|${op.colour}|${moves.join(',')}`;
+  if (op.cache[k]) return op.cache[k];
+  let r, d;
+  try {
+    r = await fetch(`api/openings/position?profile=${encodeURIComponent(op.pid)}&colour=${op.colour}&moves=${moves.join(',')}`);
+    d = await r.json();
+  } catch (e) { toast(`Couldn't load the position: ${e.message || e}`); return null; }
+  if (!r.ok) return { error: d.error || `HTTP ${r.status}`, status: r.status, reason: d.reason };
+  return (op.cache[k] = d);
+}
+// the profile the tile opens: the one used last, else the first on Home (pinned first), never the pasted games'
+async function opProfiles() {
+  if (!op.profiles) {
+    let d; try { d = await (await fetch('api/profiles')).json(); } catch (e) { d = { profiles: [] }; }
+    op.profiles = (d.profiles || []).filter(p => p.source !== 'pgn').sort((a, b) => !!b.pinned - !!a.pinned
+      || (a.pinned && b.pinned ? (a.pinned < b.pinned ? -1 : 1) : (b.created || '') < (a.created || '') ? -1 : 1));
+  }
+  return op.profiles;
+}
+async function openOpenings() {
+  const ps = await opProfiles();
+  if (!ps.length) { toast('Add a chess.com or lichess profile first: the explorer shows how your own games went.', 5000); return; }
+  let last = null; try { last = localStorage.getItem(OP_PROFILE_KEY); } catch (e) {}
+  const p = ps.find(x => x.id === last) || ps[0];
+  location.hash = `#/p/${p.id}/openings`;
+}
+async function showOpenings(pid, moves) {
+  // a new visit asks again: games may have come in (a refresh, a build) since the last
+  op.pid = pid; op.cache = {}; op.list = null;
+  // back to it without a line (Back from a game, the tile): the line and the move it was left at
+  const back = !moves.length && op.resume && op.resume.pid === pid ? op.resume : null;
+  if (back) { moves = back.moves; op.colour = back.colour; }
+  op.resume = null;
+  try { localStorage.setItem(OP_PROFILE_KEY, pid); } catch (e) {}
+  const h = location.hash, d = await opFetch(moves);
+  if (location.hash !== h) return;
+  if (!d || d.error) {
+    if (d && d.status === 400 && moves.length) { toast(d.error); location.replace(`#/p/${pid}/openings`); return; }
+    toast(d ? (d.reason === 'no_tree' ? "The opening tree isn't available here." : d.error) : "Couldn't open the explorer.", 5000);
+    location.hash = '#/'; return;
+  }
+  stopSandboxStream(); stopPolling(); stopPlay();
+  state.profile = pid; state.games = null; state.game = openingsGame(d.path, d.left_at);
+  state.ply = back ? Math.min(back.ply, d.path.length) : d.path.length; state.flipped = op.colour === 'black'; dropVariation(); state.sel = null; state.step = null; state.exploring = false;
+  $('pieces').innerHTML = '';
+  showSection('review');
+  document.body.classList.remove('sandbox', 'puzzle', 'drill', 'drillrev'); document.body.classList.add('openings');
+  setContext(false); $('crumb').textContent = 'Openings'; $('ginfo').textContent = ''; $('ptitle-t').textContent = 'Openings';
+  op.data = d;
+  renderMoveList(); update(false); renderOpBox();
+  opProfiles().then(() => { if (state.game && state.game.openings) renderOpBox(); });
+}
+// a move on the board, or a row: the line so far, then it (what came after the board's move is dropped)
+async function openingsMove(uci) {
+  const fen = currentFen(), prov = applyMove(fen, uci);
+  if (!prov) return;
+  const g = state.game;
+  g.moves = g.moves.slice(0, state.ply).concat([Object.assign(puzzlePly({ san: prov.san, uci, fen: prov.fen }, state.ply), { is_mine: null })]);
+  renderMoveList();
+  go(state.ply + 1);
+}
+// the numbers for the position on the board, then the panel: called on every move (update())
+async function renderOpenings() {
+  const moves = opMoves(), t = ++op.token;
+  const cached = op.cache[`${op.pid}|${op.colour}|${moves.join(',')}`];
+  if (!cached) { op.data = null; renderOpBox(); }
+  const d = cached || await opFetch(moves);
+  if (t !== op.token || !state.game || !state.game.openings) return;
+  if (!d || d.error) { if (d) toast(d.error); return; }
+  op.data = d; op.list = null;
+  // the move list's book marks and SANs, now the server has the line (the board's own moves came in provisionally)
+  const g = state.game, n = d.path.length;
+  d.path.forEach((m, i) => Object.assign(g.moves[i], { san: m.san, fen: m.fen, label: d.left_at == null || i < d.left_at ? 'book' : null }));
+  if (g.moves.length >= n) { g.left_book_ply = d.left_at ?? n; renderMoveList(); highlightCurrent(); }
+  renderNow(); renderOpBox();
+}
+function renderOpeningsNow() {
+  const d = op.data, el = $('now');
+  if (!d) { el.innerHTML = '<div class="top"><span class="verdict">Openings</span><span class="evbox"></span></div><p>Loading…</p>'; return; }
+  const nm = d.name ? `${esc(d.name.eco)} ${esc(d.name.name)}` : 'Start position';
+  const left = d.left_at != null ? state.game.moves[d.left_at] : null;
+  const where = !d.in_book && left ? `Out of the book since ${moveLabel(d.left_at, left.san)}.` : d.next.some(m => m.book) ? 'In the book.' : 'The book ends here.';
+  const mine = d.games ? `${d.games} of your games reached this position${op.colour === 'all' ? '' : ` as ${op.colour}`}.`
+    : `None of your games${op.colour === 'all' ? '' : ` as ${op.colour}`} reached this position.`;
+  el.innerHTML = `<div class="top"><span class="verdict">${nm}</span><span class="evbox">${d.eval ? esc(d.eval) : ''}</span></div><p>${where} ${mine}</p>`;
+}
+const opPct = (n, of) => of ? Math.round(100 * n / of) : 0;
+function opBar(s, n) {
+  if (!n) return '<span class="opnone">–</span>';
+  const w = opPct(s.win, n), dr_ = opPct(s.draw, n), l = 100 - w - dr_;
+  return `<span class="wdl" title="${s.win} won, ${s.draw} drawn, ${s.loss} lost"><i class="w" style="width:${w}%">${w >= 18 ? w + '%' : ''}</i>` +
+    `<i class="d" style="width:${dr_}%"></i><i class="l" style="width:${l}%">${l >= 18 ? l + '%' : ''}</i></span>`;
+}
+function renderOpBox() {
+  const box = $('opbox'); if (!box || !state.game || !state.game.openings) return;
+  const d = op.data, ps = op.profiles || [];
+  const who = ps.length > 1 ? `<select id="op-pid" title="Whose games">${ps.map(p => `<option value="${esc(p.id)}"${p.id === op.pid ? ' selected' : ''}>${esc(p.username)}</option>`).join('')}</select>` : '';
+  const seg = `<span class="opseg">${OP_COLOURS.map(([v, t]) => `<button data-col="${v}"${v === op.colour ? ' class="on"' : ''}>${t}</button>`).join('')}</span>`;
+  let body;
+  if (!d) body = '<div class="opnote">Loading…</div>';
+  else if (!d.next.length) body = `<div class="opnote">${d.games ? 'Your games ended here.' : 'No book moves from here, and none of your games came this way.'}</div>`;
+  else {
+    const rows = d.next.map(m => `<tr data-uci="${m.uci}" title="Play ${esc(m.san)}"><td class="mv">${m.book ? `<svg class="ico sm" aria-label="book"><use href="#ic-book"/></svg>` : '<span class="nobook"></span>'}<b>${esc(m.san)}</b></td>` +
+      `<td class="n">${m.games ? `<a href="#" data-games="${m.uci}" title="Your ${m.games} game${m.games > 1 ? 's' : ''} with ${esc(m.san)} here">${m.games}</a>` : '<span class="opnone">0</span>'}</td>` +
+      `<td class="opr">${opBar(m.score, m.games)}</td><td class="acc">${m.accuracy == null ? '<span class="opnone">–</span>' : Math.round(m.accuracy)}</td>` +
+      `<td class="ev">${m.eval ? esc(m.eval) : ''}</td></tr>`).join('');
+    body = `<table class="opmoves"><thead><tr><th>Move</th><th class="n">Games</th><th>Your result</th><th class="acc" title="Your accuracy over your next 10 moves, in analysed games">Acc.</th><th class="ev">Eval</th></tr></thead><tbody>${rows}</tbody></table>`;
+  }
+  const list = op.list ? `<div class="opgames">${op.list.loading ? '<div class="opnote">Loading…</div>' : op.list.games.map(x =>
+    `<a href="#/p/${esc(op.pid)}/game/${esc(x.id)}?ply=${x.ply + 1}" class="og"><span class="r ${x.result}">${{ win: 'Won', loss: 'Lost', draw: 'Drawn' }[x.result] || ''}</span>` +
+    `<span class="vs">${x.my_colour === 'white' ? '♔' : '♚'} vs ${esc(x.opponent || 'opponent')}${x.opponent_rating ? ` (${x.opponent_rating})` : ''}</span><span class="dt">${fmtDate(x.played_at)}</span></a>`).join('')}</div>` : '';
+  box.innerHTML = `<div class="ophead">${who}${seg}</div>${body}${list}`;
+  box.querySelectorAll('[data-col]').forEach(b => b.onclick = () => {
+    if (op.colour === b.dataset.col) return;
+    op.colour = b.dataset.col; op.list = null;
+    if ((op.colour === 'black') !== state.flipped) { state.flipped = op.colour === 'black'; $('pieces').innerHTML = ''; renderBoard(); renderPlayers(); }
+    renderOpenings();
+  });
+  const sel = $('op-pid');
+  if (sel) sel.onchange = () => { location.hash = `#/p/${sel.value}/openings${opMoves().length ? '?m=' + opMoves().join(',') : ''}`; };
+  box.querySelectorAll('tr[data-uci]').forEach(tr => tr.onclick = e => { if (!e.target.closest('a')) openingsMove(tr.dataset.uci); });
+  box.querySelectorAll('[data-games]').forEach(a => a.onclick = async e => {
+    e.preventDefault(); e.stopPropagation();
+    const uci = a.dataset.games, t = op.token;
+    if (op.list && op.list.uci === uci) { op.list = null; renderOpBox(); return; }
+    op.list = { uci, loading: true, games: [] }; renderOpBox();
+    let g;
+    try {
+      g = await (await fetch(`api/openings/games?profile=${encodeURIComponent(op.pid)}&colour=${op.colour}&moves=${opMoves().join(',')}&move=${uci}`)).json();
+    } catch (err) { g = { error: String(err) }; }
+    if (t !== op.token || !op.list || op.list.uci !== uci) return;
+    if (g.error) { toast(g.error); op.list = null; } else op.list = { uci, games: g.games };
+    renderOpBox();
+  });
 }
 
 // ---------- puzzles: the review board plays a puzzle the server picks -- a Lichess one, or one from your own games ----------
@@ -3312,7 +3516,7 @@ const COVERS = {
   'openings': [['wn', 'wp', 'bp']], 'mixed': [['wk', 'bq', 'wn']],
   // the home tiles
   'daily': [['wk'], null, '#e8b83a'], 'packs': [['wn', 'wb', 'wr'], null, '#5c9fd6'], 'library': [['wq', 'bk'], null, '#4cc2a8'], 'mine': [['wp', 'bp'], null, '#a879e0'],
-  'drills': [['wk', 'wr', 'bk'], null, '#e0a53a'],
+  'drills': [['wk', 'wr', 'bk'], null, '#e0a53a'], 'op-home': [['wn', 'wp', 'bp'], null, '#7fb85c'],
   // the endgame drills' cards (DRILL_ENDINGS)
   'd-KQRK': [['wq', 'wr', 'bk'], null, '#e8604c'], 'd-KRRK': [['wr', 'wr', 'bk'], null, '#5c9fd6'], 'd-KQK': [['wq', 'bk'], null, '#a879e0'],
   'd-KRK': [['wr', 'bk'], null, '#4cc2a8'], 'd-KPK': [['wp', 'wk'], null, '#e0a53a'], 'd-KPK-hold': [['wk', 'bp'], null, '#8fb4bf'],
@@ -4208,6 +4412,9 @@ async function showGame(id) {
   if (!same) { stopPlay(); state.ply = 0; state.flipped = g.my_colour === 'black'; dropVariation(); state.sel = null; state.step = null; state.ovUsed = null; $('pieces').innerHTML = ''; }
   const back = state.resume && state.resume.id === id ? state.resume : null;   // coming back to this review
   if (back) { state.ply = back.ply; state.flipped = back.flipped; }
+  // opened at a move (the explorer's games: the position it came from, after the move played there)
+  const at = /[?&]ply=(\d+)/.exec(location.hash);
+  if (at && !back) state.ply = Math.min(+at[1], g.moves.length);
   state.resume = null;
   showSection('review');
   $('crumb').textContent = `${g.white.name} vs ${g.black.name}`;
@@ -4237,6 +4444,7 @@ async function reloadGame() {
 function update(sound = true) {
   renderBoard(); renderPlayers(); renderEvalBar(); renderNow(); highlightCurrent(); renderNav();
   if (state.game && state.game.sandbox) { renderLines(); if (!(currentMove() && currentMove().pending)) streamSandboxEval(currentFen()); }
+  if (state.game && state.game.openings) renderOpenings();
   if (!sound) return;
   const ln = line();
   if (state.ply > 0) playMoveSound(ln[state.ply - 1], state.ply === ln.length);
@@ -4954,6 +5162,7 @@ async function commitMove(uci, instant) {
   state.sel = null; state.legal = null;
   if (instant) skipAnim = true;
   if (state.game.drill) return drillMove(uci);     // a drill's board is the drill's alone, played or reviewed
+  if (state.game.openings) return openingsMove(uci);   // the explorer's: no engine, the tree and your games
   if (state.game.puzzle && !pz.done && !inVariation()) return puzzleMove(uci);   // solved: the board is free to explore
   await explore(currentFen(), uci);
 }
@@ -5154,6 +5363,7 @@ function renderNow() {
   el.classList.remove('loading');
   renderExplainBtn();
   if (g.drill) return renderDrillNow();
+  if (g.openings) return renderOpeningsNow();
   if (g.puzzle && !inVariation()) return renderPuzzleNow();
   if (state.ply === 0 && g.sandbox) {
     const top = sandboxTop(currentFen());
@@ -5483,7 +5693,10 @@ function renderOverview() {
       `<div class="bar"><div style="width:${total ? Math.round(100 * done / total) : 0}%"></div></div></div>`;
   }
   const left = g.left_book_ply, who = left % 2 === 0 ? g.white.name : g.black.name;
-  const book = left != null && left < n ? `left the book with <a href="#" data-ply="${left}">${moveLabel(left, g.moves[left].san)}</a> (${esc(who)})` : 'all of it in the book';
+  // the explorer at the position the game left the book from: its book moves beside the one played
+  const opLink = state.profile && left != null && left < n && g.start_fen === START_FEN
+    ? ` · <a class="opx" href="#/p/${esc(state.profile)}/openings${left ? '?m=' + g.moves.slice(0, left).map(m => m.uci).join(',') : ''}" title="The book's moves here, and how your games went from this position">Explore</a>` : '';
+  const book = left != null && left < n ? `left the book with <a href="#" data-ply="${left}">${moveLabel(left, g.moves[left].san)}</a> (${esc(who)})${opLink}` : 'all of it in the book';
   html += `<div class="ovopen">${g.opening_name ? `<b>${g.eco || ''} ${esc(g.opening_name)}</b> · ${book}` : book[0].toUpperCase() + book.slice(1)}</div>`;
 
   // players and accuracy: Python's figure once analysed; until then, greyed, the moves analysed so far

@@ -14,6 +14,7 @@ import { BadRequest, ID, badInput, json, jsonBody, notFound, pyInt, pyRepr, trut
 import { Runner } from './jobs.js';
 import { profileId } from './profiles.js';
 import * as drillRoutes from './routes-drills.js';
+import * as openingRoutes from './routes-openings.js';
 import * as puzzleRoutes from './routes-puzzles.js';
 import * as restRoutes from './routes-rest.js';
 import { slug as gameSlug } from './site.js';
@@ -21,7 +22,7 @@ import { slug as gameSlug } from './site.js';
 export const PGN_PROFILE_NAME = 'Pasted games';   // every pasted PGN lands in profile pgn-pasted-games
 
 /** The route modules: handle() answers their paths; work holds the job kinds they add to the Runner. */
-const ROUTES = [puzzleRoutes, drillRoutes, restRoutes];
+const ROUTES = [puzzleRoutes, drillRoutes, openingRoutes, restRoutes];
 
 const PROFILE_PATH = new RegExp(`^/p/(${ID})/(.*)$`);
 
