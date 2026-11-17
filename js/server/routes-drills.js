@@ -12,9 +12,10 @@
 //                                                was at, status the standing after it. A timed attempt's clock must
 //                                                be the deal's and its turn times must add up (drills.js parseAttempt).
 //   GET  /api/drills/status[?ending=KQK]         one ending's status, or {endings: [...]} for all ten; a status is
-//                                                {ending, level, top, tiers, tier, star, clock_star, played, solved,
-//                                                run, recent, unavailable}: top the top level without a clock, tiers
-//                                                the clock tiers above it, tier the level's (0: untimed); unavailable
+//                                                {ending, level, top, tiers, tier, per_move, star, clock_star, played,
+//                                                solved, run, recent, unavailable}: top the top level without a clock,
+//                                                tiers the clock tiers above it, tier the level's (0: untimed) and
+//                                                per_move its seconds a move (null untimed); unavailable
 //                                                is null, or for Lucena and Philidor why they can't be played here
 //                                                ('needs_computer' on phones, 'no_engine').
 //   POST /api/drills/move                        {ending, level, fens}: every position from the dealt one to the

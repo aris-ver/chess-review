@@ -787,7 +787,7 @@ test('the clock: up to Clock 1 through the routes, a timed deal, a move there, a
       }
     }
     let s = (await ask('GET', '/api/drills/status?ending=KQK')).body;
-    assert.deepEqual([s.level, s.top, s.tiers, s.tier, s.star, s.clock_star], [6, 5, 3, 1, true, false], 'qualified at the top: on Clock 1');
+    assert.deepEqual([s.level, s.top, s.tiers, s.tier, s.per_move, s.star, s.clock_star], [6, 5, 3, 1, 4, true, false], 'qualified at the top: on Clock 1');
     const { drill } = (await ask('GET', '/api/drills/next?ending=KQK')).body;
     assert.deepEqual([drill.level, drill.counter, drill.budget], [6, false, drill.dtm + 1]);
     assert.ok(drill.dtm >= 9 && drill.dtm <= 10, 'the top level band');

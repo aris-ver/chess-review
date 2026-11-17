@@ -36,6 +36,9 @@ export const tiers = ending => (levelsOf(ending), tierRow(ending).perMove.length
 /** The highest level the record may hold: the untimed levels and the tiers. */
 export const ladderTop = ending => untimedTop(ending) + tiers(ending);
 
+/** The seconds a move of a tier (1 = Clock 1), for the page's words; null for tier 0. */
+export const perMove = (ending, tier) => (tier ? tierRow(ending).perMove[tier - 1] ?? null : null);
+
 /** 0 for an untimed level, else its tier (1 = Clock 1); a RangeError outside 1..ladderTop. */
 export function tierOf(ending, level) {
   const top = untimedTop(ending), last = ladderTop(ending);

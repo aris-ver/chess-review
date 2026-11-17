@@ -440,6 +440,10 @@ body.puzzle .evalbar { visibility: hidden; }
 .pzhead .r { font-size: 26px; font-weight: 800; font-variant-numeric: tabular-nums; }
 .pzhead .cnt { font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; }
 .pzhead .meta { margin-left: auto; color: var(--muted); font-size: 12px; text-align: right; }
+/* a timed drill's clock: a fixed width, so the row never changes size as it counts down or turns colour */
+.pzhead .dclock { font-size: 22px; font-weight: 800; font-variant-numeric: tabular-nums; min-width: 3.2em; letter-spacing: -.01em; }
+.pzhead .dclock.low { color: #e0a53a; } .pzhead .dclock.crit { color: var(--c-miss); }
+.pzhead .dclock.idle { opacity: .55; }     /* stopped: the reply, Stockfish thinking, the end */
 .pzbtns { display: flex; gap: 8px; }
 .pzbtns button { flex: 1; padding: 9px 6px; font-weight: 600; }
 .pzinfo { color: var(--muted); font-size: 12px; padding: 10px 2px 0; display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; }
@@ -453,6 +457,7 @@ body.puzzle .evalbar { visibility: hidden; }
 .pzover { position: absolute; inset: 0; z-index: 6; display: grid; place-items: center; border-radius: 4px; background: transparent;
   transition: background .2s ease-out; animation: pzfade .2s ease-out; }
 .pzover.dim { background: rgba(0, 0, 0, .22); }
+.pzover.pause { background: var(--panel2); }     /* a timed drill paused: the board covered, so the clock is all that stops */
 body:not(.puzzle) .pzover { display: none; }
 @keyframes pzfade { from { opacity: 0; } }
 .pzcard { position: relative; width: min(300px, 84%); background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 18px 18px 16px; text-align: center; box-shadow: 0 10px 30px rgba(0,0,0,.5); }
@@ -480,6 +485,9 @@ body:not(.puzzle) .pzover { display: none; }
 .dpips { display: flex; align-items: center; gap: 3px; }
 .dpips i { width: 14px; height: 5px; border-radius: 3px; background: var(--line); }
 .dpips i.on { background: var(--win); }
+.dpips i.t { background: none; box-shadow: inset 0 0 0 1px #e0a53a; } .dpips i.t.on { background: #e0a53a; }     /* the clock tiers */
+.dfoot .dstars { margin-left: auto; font-size: 13px; }
+svg.dclk { width: 1em; height: 1em; vertical-align: -.14em; color: #e8b83a; }     /* the clock star */
 .dpips .lv { margin-left: 5px; color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
 .dfoot .dstar { margin-left: auto; font-size: 13px; }
 .dhow { color: var(--muted); font-size: 13px; margin: -6px 0 14px; max-width: 760px; }
@@ -531,6 +539,12 @@ body.drill .phead .ptlvl { display: none; }     /* the level is in the box under
 .drow { display: grid; grid-template-columns: 24px minmax(0, 1fr) auto auto; gap: 8px; align-items: center; padding: 3px 6px; border-radius: 5px; cursor: pointer; font-variant-numeric: tabular-nums; }
 .drow .n { color: #777; } .drow .san { font-weight: 700; } .drow .dist { color: #555; font-size: 12px; }
 .drow.rook { grid-template-columns: 24px minmax(0, 1fr) auto; }     /* a rook drill: no distance column, the hint's mark only */
+.drow.timed { grid-template-columns: 24px minmax(0, 1fr) auto auto auto; } .drow.rook.timed { grid-template-columns: 24px minmax(0, 1fr) auto auto; }
+.drow .dt { color: #777; font-size: 12px; text-align: right; min-width: 3.2em; }     /* a timed drill: each move's think time */
+.drow .dt.long { color: #b26a00; font-weight: 700; }
+.drow .sw { display: none; }     /* the distance's short form ("#7"), for a narrow phone */
+@media (max-width: 380px) { .drow.timed .lw { display: none; } .drow.timed .sw { display: inline; } }
+.bubble .dtime { color: #555; font-size: 12px; margin-top: -4px; }
 .drow .kind { font-size: 11px; font-weight: 700; padding: 0 6px; border-radius: 4px; color: #10141a; background: var(--kc); white-space: nowrap; }
 .drow .k-best { --kc: #36bcd8; } .drow .k-slack { --kc: #eacb5a; } .drow .k-lost { --kc: #f2944e; } .drow .k-threw { --kc: #e0355e; color: #fff; }
 .drow.worst { box-shadow: inset 3px 0 0 #e0355e; background: #fdecef; }
@@ -736,6 +750,7 @@ table.games button.an { padding: 3px 9px; font-size: 12px; font-weight: 600; whi
   .pzhead { grid-area: stats; align-self: center; padding: 0 2px; margin-left: 8px; }
   .pzhead .r { display: none; }     /* "Your games": the title says it */
   .pzhead .cnt { font-size: 13px; } .pzhead .meta { font-size: 11px; line-height: 1.3; }
+  .pzhead .dclock { font-size: 15px; min-width: 3em; }
   /* nothing in the rows around the board may change height as a puzzle goes on (Skip turning into "Next puzzle →",
      the themes and the game link coming in once it's solved, the daily's result card): the board's row would give
      or take it, and the board would move under the finger that just played */
@@ -1080,7 +1095,7 @@ svg.graph { width: 100%; height: 52px; display: block; cursor: pointer; backgrou
     <div class="home">
       <h2>Endgame drills</h2>
       <p class="lead">A new position every time, against a defender that always picks the most stubborn move.</p>
-      <details class="dhow"><summary>How levels work</summary><p>Mate within the moves you're given, or hold the draw. Three solved out of your last four take you up a level; two misses in a row take you down one. After every attempt you can go through your moves and see where the mate got further away. In the two rook endings Stockfish plays the other side, and the review shows where a deeper search thinks it went wrong.</p></details>
+      <details class="dhow"><summary>How levels work</summary><p>Mate within the moves you're given, or hold the draw. Three solved out of your last four take you up a level; two misses in a row take you down one. After every attempt you can go through your moves and see where the mate got further away. In the two rook endings Stockfish plays the other side, and the review shows where a deeper search thinks it went wrong.</p><p>Above the top level comes the clock: the same positions with a clock for the whole attempt and a little more after each move, faster at each step (three steps, two for the rook endings). Only your own thinking time counts, and hiding the app pauses it. Solve one on the fastest clock for the clock star.</p></details>
       <div class="dnote hidden" id="drillnote"></div>
       <div class="dcont hidden" id="drillcont"></div>
       <div id="drillcards"></div>
@@ -2675,6 +2690,7 @@ function showPzOver(kind) {
   pz.over = kind || null;
   el.classList.toggle('hidden', !kind);
   el.classList.toggle('dim', kind === 'miss' || !!pz.shown);
+  el.classList.remove('pause');
   if (!kind) { el.innerHTML = ''; return; }
   const card = (h, p, btns) => `<div class="pzcard"><button class="x" data-act="close" title="Close (Esc)" aria-label="Close">✕</button>` +
     `<h3>${h}</h3><p>${p}</p><div class="btns">${btns}</div></div>`;
@@ -2692,6 +2708,7 @@ $('pzover').addEventListener('pointerdown', e => e.stopPropagation());     // no
 $('pzover').addEventListener('click', e => {
   const act = e.target === $('pzover') ? 'close' : (e.target.closest('[data-act]') || {}).dataset?.act;
   if (!act) return;
+  if (pz.over === 'dpause') { drillResume(); return; }      // paused: any way off the cover goes on
   if (act === 'share') return copyShare();
   showPzOver(null);
   if (act === 'retry') takeBackMiss();
@@ -2891,7 +2908,7 @@ function renderHomeNext() {
   const it = d && !d.played && d.streak ? daily(`Keep your ${d.streak}-day streak`, `Puzzle of the day #${d.n}`)
     : due ? { go: '#/puzzles/mine', cover: coverHtml('mine'), src: 'Due for review', who: `${due} puzzle${due > 1 ? 's' : ''} from your games` }
     : c && DRILL_ENDINGS[c.ending] ? { go: '#/drills/' + c.ending, cover: coverHtml('d-' + c.ending), src: 'Pick up where you left off',
-      who: `${DRILL_ENDINGS[c.ending].name} · level ${c.level} of ${c.top}` }
+      who: `${DRILL_ENDINGS[c.ending].name} · ${drillLevelName(c.level, c, 'mid')}` }
     : d && !d.played ? daily('Today', `Puzzle of the day #${d.n} is waiting`) : null;
   el.classList.toggle('hidden', !it);
   if (!it) return;
@@ -2972,9 +2989,150 @@ const DR_ESTIMATE = 'This is an estimate from a deeper engine search, not a tabl
 const DR_REPLY_MS = 350;      // the defender's reply comes this long after your move (less the time the answer took)
 const DR_THINK_MS = 300;      // a reply out this long: "Stockfish is thinking"
 const DR_LINE_MS = 700;       // each move of "Best from here"
+const DR_ANIM_MS = 180;       // a reply's piece slides this long (the .pc transition): your clock starts after it
+// clock: a timed level's {tier, base_ms, inc_ms} (api/drills/next), null untimed; left: ms on it; turnAt: when the
+// running turn (or its part since a pause) began, null while it isn't running; turnMs: that turn's time so far;
+// moveMs: each finished turn's time; paused: how often it was paused; coverPaused: the board covered until "Go on"
 const dr = { statuses: null, notice: null, drill: null, status: null, hash: null, fens: [], answers: [], token: 0, over: false,
              busy: false, result: null, review: null, worst: null, ms: null, id: null, recorded: false, recording: null,
-             levelMsg: '', reviewOpen: false, chosen: null, line: 0, t0: 0, thinking: false, hint: null };
+             levelMsg: '', reviewOpen: false, chosen: null, line: 0, t0: 0, thinking: false, hint: null,
+             clock: null, left: null, turnAt: null, turnMs: 0, moveMs: [], paused: 0, coverPaused: false, lastEnd: null,
+             flagT: null, tickT: null, turnSeq: 0, trace: [], times: null };
+// A level's name wherever one is shown: "Level 3 of 5" without a clock, "Clock 2 of 3" on a timed level (above the
+// top: the status's top and tiers). form: 'long' (Level 3 of 5), 'mid' (level 3 of 5), 'brief' (level 3)
+function drillLevelName(level, s, form = 'long') {
+  const top = s ? s.top : null;
+  if (top && level > top) return form === 'brief' ? `Clock ${level - top}` : `Clock ${level - top} of ${s.tiers}`;
+  const word = form === 'long' ? 'Level' : 'level';
+  return form === 'brief' || !top ? `${word} ${level}` : `${word} ${level} of ${top}`;
+}
+// the level as pips: the untimed levels filled up to it, then the clock tiers outlined, filled once reached
+function drillPips(level, s, played = true) {
+  const plain = Array.from({ length: s.top }, (_, i) => `<i${played && i < level ? ' class="on"' : ''}></i>`);
+  const timed = Array.from({ length: s.tiers || 0 }, (_, i) => `<i class="t${played && level > s.top + i ? ' on' : ''}"></i>`);
+  return plain.join('') + timed.join('');
+}
+const CLOCK_ICON = `<svg class="dclk" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="13" r="8" fill="none" stroke="currentColor" stroke-width="2.4"/><path d="M12 8.5V13l3 2M9.5 2.5h5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>`;
+// the star and the clock star, once earned (with a space before them, or nothing)
+function drillStars(s) {
+  const out = (s && s.star ? '<span class="dstar" title="Solved at the top level">★</span>' : '') +
+    (s && s.clock_star ? `<span class="dstar" title="Solved on the fastest clock">${CLOCK_ICON}</span>` : '');
+  return out ? ' ' + out : '';
+}
+
+// ---------- the drill's clock (a timed level: js/core/drill-clock.js) ----------
+// The page keeps it: only here is it known when the board was ready. Your turn runs from when the board takes your
+// move (the reply drawn, its slide done) to when you make it; the reply, Stockfish's search and the requests never
+// count. Each turn's time goes with the attempt (move_ms), and api/drills/attempt checks they add up.
+function clockReset(drill) {
+  clearTimeout(dr.flagT); clearTimeout(dr.tickT); dr.turnSeq++;
+  Object.assign(dr, { clock: drill && drill.clock || null, left: drill && drill.clock ? drill.clock.base_ms : null, turnAt: null,
+                      turnMs: 0, moveMs: [], paused: 0, coverPaused: false, lastEnd: null, trace: [] });
+}
+// the ms on the clock now (the running turn taken off), null untimed
+function clockLeft() {
+  if (!dr.clock) return null;
+  return dr.turnAt == null ? dr.left : dr.left - (performance.now() - dr.turnAt);
+}
+// your turn begins (or goes on after a pause or a move the server refused): the flag timer and the display run
+function clockStart() {
+  if (!dr.clock || dr.over || dr.busy || dr.turnAt != null || dr.coverPaused) return;
+  if (document.hidden) { dr.coverPaused = true; return; }      // out of sight: it starts when you go on
+  dr.turnAt = performance.now();
+  dr.trace.push({ start: dr.turnAt, reply: dr.replyAt });     // when each turn ran (for a check of the timing, not shown)
+  dr.replyAt = null;
+  clearTimeout(dr.flagT);
+  dr.flagT = setTimeout(clockCheck, Math.max(0, dr.left));
+  clockTick();
+}
+// the turn stopped: its time so far taken off the clock (whole ms, so the record adds up as the server replays it)
+function clockStop() {
+  if (!dr.clock || dr.turnAt == null) return;
+  const now = performance.now(), ms = Math.min(Math.round(now - dr.turnAt), Math.max(0, dr.left));
+  dr.turnAt = null; clearTimeout(dr.flagT);
+  dr.turnMs += ms; dr.left -= ms;
+  const t = dr.trace[dr.trace.length - 1]; if (t) t.end = now;
+  clockTick();
+}
+// a move made: the turn's time on the record, and the increment
+function clockCommit() {
+  if (!dr.clock) return;
+  dr.moveMs.push(dr.turnMs); dr.lastEnd = dr.left;
+  dr.turnMs = 0; dr.left += dr.clock.inc_ms;
+  clockTick();
+}
+// the turns' times for the record: a turn under way (given up, or a move on its way when you left) counts too
+function clockTimes(result) {
+  if (!dr.clock) return null;
+  return dr.turnMs > 0 && result === 'abandoned' ? [...dr.moveMs, dr.turnMs] : dr.moveMs.slice();
+}
+// the flag timer fired: out of time, unless the timer came early
+function clockCheck() {
+  if (!dr.clock || dr.turnAt == null || dr.over) return;
+  const left = clockLeft();
+  if (left > 0) { dr.flagT = setTimeout(clockCheck, left); return; }
+  clockFlag();
+}
+// out of time: the turn takes what was left, input off (a drag in progress put back), and the attempt ends 'time'
+function clockFlag() {
+  if (!dr.clock || dr.over) return;
+  if (dr.turnAt != null) { dr.turnMs += Math.max(0, dr.left); dr.left = 0; dr.turnAt = null; }
+  clearTimeout(dr.flagT);
+  dr.moveMs.push(dr.turnMs); dr.turnMs = 0; dr.lastEnd = 0;
+  if (drag && !drag.swipe && drag.piece) {
+    const d = drag; drag = null;
+    d.piece.classList.remove('dragging'); d.piece.style.transform = pieceTf(d.sq);
+    $('boardbox').classList.remove('dragging'); setHover(null);
+  }
+  state.sel = null; state.legal = null;
+  play('illegal');
+  endDrillHere('time', true);
+}
+// after the reply: the turn starts once its piece has slid into place (its transitionend, or the slide's time)
+function clockAfterReply(to) {
+  if (!dr.clock) return;
+  const seq = ++dr.turnSeq, tok = dr.token;
+  dr.replyAt = performance.now();
+  const go = () => { if (seq === dr.turnSeq && tok === dr.token) { dr.turnSeq++; clockStart(); } };
+  const el = to && $('pieces').querySelector(`.pc[data-sq="${to}"]`);
+  if (el) el.addEventListener('transitionend', go, { once: true });
+  setTimeout(go, DR_ANIM_MS);
+}
+const fmtDrillClock = ms => {
+  if (ms > 10000) { const s = Math.ceil(ms / 1000); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; }
+  return (Math.max(0, Math.ceil(ms / 100)) / 10).toFixed(1);
+};
+const clockClass = ms => 'dclock' + (ms < 5000 ? ' crit' : ms < 10000 ? ' low' : '') + (dr.turnAt == null ? ' idle' : '');
+const clockHtml = () => { const ms = clockLeft(); return dr.clock ? `<span class="${clockClass(ms)}" title="Your clock">${fmtDrillClock(ms)}</span>` : ''; };
+// the display, from performance.now() each time (never by counting ticks): every 250 ms, every 100 ms under 10 s
+function clockTick() {
+  clearTimeout(dr.tickT);
+  if (!dr.clock) return;
+  const ms = clockLeft(), el = document.querySelector('#pzbox .dclock');
+  if (el) { const t = fmtDrillClock(ms), c = clockClass(ms); if (el.textContent !== t) el.textContent = t; if (el.className !== c) el.className = c; }
+  if (dr.turnAt != null) dr.tickT = setTimeout(clockTick, ms <= 10000 ? 100 : 250);
+}
+// out of sight (another tab, the app in the background, a call): the turn stops and the board is covered until you
+// come back and go on
+document.addEventListener('visibilitychange', () => {
+  if (!dr.drill || !dr.clock || dr.over || !state.game || !state.game.drill) return;
+  if (document.hidden) {
+    if (dr.turnAt != null) { clockStop(); dr.paused++; dr.coverPaused = true; }
+  } else if (dr.coverPaused) showDrillPause();
+});
+function showDrillPause() {
+  const el = $('pzover');
+  pz.over = 'dpause';
+  el.classList.remove('hidden', 'dim'); el.classList.add('pause');
+  el.innerHTML = `<div class="pzcard"><h3>${CLOCK_ICON}<span>Paused</span></h3><p>Your clock stopped while the drill was out of sight. ` +
+    `The board comes back when you go on.</p><div class="btns"><button class="primary" data-act="dgo">Go on</button></div></div>`;
+}
+function drillResume() {
+  $('pzover').classList.remove('pause');
+  showPzOver(null);
+  dr.coverPaused = false;
+  clockStart();
+}
 const drillSolved = (mode, result) => DRILL_SOLVED[mode].includes(result);
 const isRookDrill = d => !!d && (d.mode === 'lucena' || d.mode === 'philidor');
 // a rook drill's count: what's left before the drill ends, and whether the pawn has promoted (Lucena: the user's)
@@ -3002,12 +3160,12 @@ async function renderDrillTile() {
   const played = (all || []).reduce((n, s) => n + s.played, 0);
   homeNext.drill = played ? drillContinue() : null; renderHomeNext();
   if (!played) return;
-  const solved = all.reduce((n, s) => n + s.solved, 0), stars = all.filter(s => s.star).length;
+  const solved = all.reduce((n, s) => n + s.solved, 0), stars = all.filter(s => s.star).length, clocks = all.filter(s => s.clock_star).length;
   // what's been done first: a phone shows one line of it
-  $('card-drills-desc').textContent = `${solved} of ${played} solved${stars ? `, ${stars} ★` : ''}. Ten basic endings against a defender that never gives up.`;
+  $('card-drills-desc').textContent = `${solved} of ${played} solved${stars ? `, ${stars} ★` : ''}${clocks ? `, ${clocks} on the fastest clock` : ''}. Ten basic endings against a defender that never gives up.`;
   const c = drillContinue(), b = $('b-drill-cont');
   b.classList.toggle('hidden', !c);
-  if (c) { b.textContent = `Continue: ${DRILL_ENDINGS[c.ending].name}, level ${c.level}`; b.onclick = ev => { ev.stopPropagation(); location.hash = '#/drills/' + c.ending; }; }
+  if (c) { b.textContent = `Continue: ${DRILL_ENDINGS[c.ending].name}, ${drillLevelName(c.level, c, 'brief')}`; b.onclick = ev => { ev.stopPropagation(); location.hash = '#/drills/' + c.ending; }; }
 }
 // where to pick up: the ending played last (one that can be played here), and one not tried yet to suggest
 const drillTs = t => typeof t === 'number' ? t : Date.parse(t) || 0;
@@ -3032,12 +3190,12 @@ function renderDrillCards() {
   const card = e => {
     const s = drillStatus(e), info = DRILL_ENDINGS[e], off = s && s.unavailable ? DRILL_OFF[s.unavailable] || [s.unavailable, ''] : null;
     const level = s ? s.level : 1, top = s ? s.top : null;
-    // the level as pips, the star once the top level is solved; the counts in the hover title
-    const pips = top ? Array.from({ length: top }, (_, i) => `<i${s.played && i < level ? ' class="on"' : ''}></i>`).join('') : '';
-    const lv = !s || !s.played ? 'new' : `${level}/${top}`;
-    const title = s && s.played ? `Level ${level} of ${top}: ${s.played} played, ${s.solved} ${e === 'KPK-hold' || e === 'Philidor' ? 'held' : 'solved'}` : 'Not played yet';
+    // the level as pips (the clock tiers outlined after them), the stars once earned; the counts in the hover title
+    const pips = top ? drillPips(level, s, !!s.played) : '';
+    const lv = !s || !s.played ? 'new' : level > top ? `Clock ${level - top}/${s.tiers}` : `${level}/${top}`;
+    const title = s && s.played ? `${drillLevelName(level, s)}: ${s.played} played, ${s.solved} ${e === 'KPK-hold' || e === 'Philidor' ? 'held' : 'solved'}` : 'Not played yet';
     const foot = off ? `<span class="doff">${esc(off[0])}</span>`
-      : `<span class="dpips">${pips}<span class="lv">${lv}</span></span>${s && s.star ? '<span class="dstar" title="Solved at the top level">★</span>' : ''}`;
+      : `<span class="dpips">${pips}<span class="lv">${lv}</span></span>${s && (s.star || s.clock_star) ? `<span class="dstars">${drillStars(s)}</span>` : ''}`;
     return `<div class="card pztile covered dcard${off ? ' off' : ''}" ${off ? `data-off="${esc(e)}"` : `data-go="#/drills/${e}" title="${esc(title)}"`}>${coverHtml('d-' + e)}<div class="cbody">` +
       `<span class="who">${esc(info.name)}</span><span class="desc">${esc(info.short)}</span><span class="dfoot">${foot}</span></div></div>`;
   };
@@ -3049,7 +3207,7 @@ function renderDrillCards() {
   const c = drillContinue(), u = drillUntried(), cb = $('drillcont');
   cb.classList.toggle('hidden', !c && !u);
   cb.innerHTML = c
-    ? `${coverHtml('d-' + c.ending)}<div class="cbody"><span class="src">Pick up where you left off</span><span class="who">${esc(DRILL_ENDINGS[c.ending].name)} · level ${c.level} of ${c.top}</span><span class="desc">${esc(DRILL_ENDINGS[c.ending].desc)}</span></div>` +
+    ? `${coverHtml('d-' + c.ending)}<div class="cbody"><span class="src">Pick up where you left off</span><span class="who">${esc(DRILL_ENDINGS[c.ending].name)} · ${drillLevelName(c.level, c, 'mid')}</span><span class="desc">${esc(DRILL_ENDINGS[c.ending].desc)}</span></div>` +
       `<button class="primary" data-go="#/drills/${c.ending}">Continue</button>` + (u ? `<button data-go="#/drills/${u.ending}">Try ${esc(DRILL_ENDINGS[u.ending].name)}</button>` : '')
     : u ? `${coverHtml('d-' + u.ending)}<div class="cbody"><span class="src">Start here</span><span class="who">${esc(DRILL_ENDINGS[u.ending].name)}</span><span class="desc">${esc(DRILL_ENDINGS[u.ending].desc)}</span></div><button class="primary" data-go="#/drills/${u.ending}">Play</button>` : '';
   box.querySelectorAll('[data-go]').forEach(el => el.onclick = () => { location.hash = el.dataset.go; });
@@ -3096,10 +3254,13 @@ function startDrill(drill, status, hash) {
   Object.assign(dr, { drill, status, hash, fens: [drill.fen], answers: [], over: false, busy: false, result: null, review: null,
                       worst: null, ms: null, id: newDrillId(), recorded: false, levelMsg: '', reviewOpen: false, chosen: null, t0: Date.now(),
                       thinking: false, hint: null });
-  showPzOver(null);
+  showPzOver(null); clockReset(drill);
   state.profile = null; state.games = null; state.game = drillGame(drill);
   state.ply = 0; state.flipped = false; dropVariation(); state.sel = null; state.step = null; state.exploring = false; $('pieces').innerHTML = '';
   enterDrillView(); renderMoveList(); update(false);
+  // a timed level: the clock starts once the board is on the screen
+  const tok = dr.token;
+  if (dr.clock) requestAnimationFrame(() => requestAnimationFrame(() => { if (tok === dr.token) clockStart(); }));
 }
 function enterDrillView() {
   stopSandboxStream(); stopPolling(); stopPlay();
@@ -3108,13 +3269,13 @@ function enterDrillView() {
   document.body.classList.toggle('drillrev', dr.over && dr.reviewOpen);
   const name = DRILL_ENDINGS[dr.drill.ending].name;
   setContext(false); $('crumb').textContent = `Endgame drills · ${name}`;
-  $('ginfo').textContent = ''; $('ptitle-t').innerHTML = `${esc(name)}<span class="ptlvl"> · level ${dr.drill.level}</span>`;
+  $('ginfo').textContent = ''; $('ptitle-t').innerHTML = `${esc(name)}<span class="ptlvl"> · ${drillLevelName(dr.drill.level, dr.status, 'brief')}</span>`;
   renderDrillBox(); updateBack();
 }
 // on the way to another screen (route): a drill left half played is given up, and the next visit deals a new one
 function leaveDrill(h) {
   if (!h.startsWith('#/drills/')) document.body.classList.remove('drill', 'drillrev');
-  if (dr.drill && h !== dr.hash) { giveUpDrill(false); dr.drill = null; dr.token++; }
+  if (dr.drill && h !== dr.hash) { giveUpDrill(false); clockReset(null); dr.drill = null; dr.token++; }
 }
 addEventListener('pagehide', () => { if (dr.drill && state.game && state.game.drill) giveUpDrill(false); });
 // your move: shown at once, sent with every position so far, the defender's reply played a moment later
@@ -3123,7 +3284,13 @@ async function drillMove(uci) {
   if (dr.over || dr.busy || inVariation()) { renderBoard(); return; }
   const i = g.moves.length;
   if (state.ply !== i) { go(i); return; }       // stepped back through the moves: the drill carries on from its end
-  const prov = applyMove(currentFen(), uci); if (!prov) return;
+  if (dr.clock) {
+    if (dr.coverPaused) { renderBoard(); return; }
+    if (clockLeft() <= 0) { clockFlag(); return; }      // the time ran out first
+    if (dr.turnAt == null) { dr.turnSeq++; clockStart(); }      // a move as the reply slid in: a turn of no time
+    clockStop();          // your turn ends here: the request, the reply and its slide are not yours
+  }
+  const prov = applyMove(currentFen(), uci); if (!prov) { clockStart(); return; }
   const tok = dr.token, d0 = dr.drill;
   const mv = drillPly({ uci, san: prov.san, fen: prov.fen }, i, true);
   g.moves.push(mv);
@@ -3140,10 +3307,10 @@ async function drillMove(uci) {
   clearTimeout(think);
   if (tok !== dr.token || state.game !== g) return;
   const wasThinking = dr.thinking; dr.thinking = false;
-  if (!r.ok) {       // taken back: the board as it was
+  if (!r.ok) {       // taken back: the board as it was, and your turn goes on with the time it had
     g.moves.pop(); dr.busy = false; state.exploring = false;
     state.ply = Math.min(state.ply, g.moves.length);
-    renderMoveList(); update(false); renderDrillBox();
+    renderMoveList(); update(false); renderDrillBox(); clockStart();
     const off = DRILL_OFF[d && d.reason];
     toast(off ? off[1] : d && d.reason === 'engine_failed' ? "Stockfish didn't answer. Try the move again."
       : r.status === 503 ? "The endgame tables aren't available right now." : `That move couldn't be checked: ${d.error || 'no answer'}`);
@@ -3151,6 +3318,7 @@ async function drillMove(uci) {
     return;
   }
   if (wasThinking) renderNow();
+  clockCommit();
   Object.assign(mv, { san: d.san, fen: d.fen_move });
   dr.fens.push(d.fen_move); dr.answers.push(d);
   renderMoveList(); highlightCurrent();
@@ -3163,7 +3331,7 @@ async function drillMove(uci) {
     dr.busy = false; state.exploring = false;
     renderMoveList();
     if (atEnd) go(g.moves.length); else highlightCurrent();
-    if (d.result) finishDrill(d); else { renderDrillBox(); renderNow(); }
+    if (d.result) finishDrill(d); else { renderDrillBox(); renderNow(); clockAfterReply(atEnd ? d.reply.slice(2, 4) : null); }
   }, Math.max(0, DR_REPLY_MS - (Date.now() - t0)));     // a search that took the time already: the reply at once
 }
 // Give up (or leave): the review from the moves so far, the worst of them as the server would pick it
@@ -3171,16 +3339,26 @@ function giveUpDrill(show = true) {
   if (!dr.drill || dr.over || (show && dr.busy) || !dr.answers.length) return false;     // leaving: a move on its way is left out
   const last = dr.answers[dr.answers.length - 1];
   if (last.result) { finishDrill(last, show); return true; }      // the reply, still to be shown, already ended it
+  endDrillHere('abandoned', show);
+  return true;
+}
+// the drill ended by you (given up, left) or the clock: the review from the moves so far, the worst as the server
+// would pick it
+function endDrillHere(result, show) {
   const moves = dr.answers.map(a => ({ dtm: a.dtm_after, kind: a.kind, loss: a.loss }));
   let worst = -1, cost = 0;
   moves.forEach((m, k) => { const c = m.loss ?? Infinity; if (c > cost) { cost = c; worst = k; } });
   const worstLoss = isRookDrill(dr.drill) ? null : worst < 0 ? -1 : moves[worst].loss;     // no table grades a rook move
-  finishDrill({ result: 'abandoned', review: { moves, worst }, worst_loss: worstLoss }, show);
-  return true;
+  finishDrill({ result, review: { moves, worst }, worst_loss: worstLoss }, show);
 }
 function finishDrill(d, show = true) {
   const g = state.game, mode = dr.drill.mode;
+  if (dr.clock && d.result !== 'time') clockStop();
   Object.assign(dr, { over: true, busy: false, result: d.result, review: d.review, worst: d.worst_loss, ms: Date.now() - dr.t0 });
+  dr.times = clockTimes(d.result);
+  clearTimeout(dr.flagT); dr.turnSeq++;
+  if (pz.over === 'dpause') showPzOver(null);
+  dr.coverPaused = false;
   dr.recording = recordDrill();
   if (!show || !g || !g.drill) return;
   state.exploring = false;
@@ -3202,15 +3380,17 @@ function finishDrill(d, show = true) {
 async function recordDrill() {
   if (dr.recorded) return;
   dr.recorded = true;
-  const d = dr.drill, tok = dr.token, starBefore = !!(dr.status && dr.status.star);
+  const d = dr.drill, tok = dr.token, starBefore = !!(dr.status && dr.status.star), clockBefore = !!(dr.status && dr.status.clock_star);
+  // a timed level also sends its clock and each turn's time; an untimed one exactly what it sent before
+  const clock = d.clock ? { clock: d.clock, move_ms: dr.times, paused: dr.paused } : {};
   const body = JSON.stringify({ id: dr.id, ending: d.ending, level: d.level, fen: d.fen, dtm: d.dtm, budget: d.budget,
-    moves_used: dr.answers.length, result: dr.result, ms: dr.ms, worst_loss: dr.result === 'threw' || isRookDrill(d) ? null : dr.worst });
+    moves_used: dr.answers.length, result: dr.result, ms: dr.ms, worst_loss: dr.result === 'threw' || isRookDrill(d) ? null : dr.worst, ...clock });
   for (let i = 0; i < 5; i++) {
     let r = null;
     try { r = await fetch('api/drills/attempt', { method: 'POST', body, keepalive: true }); } catch (e) {}
     if (r && r.ok) {
       let a = null; try { a = await r.json(); } catch (e) {}
-      if (a && a.status) drillLevelNews(a, tok, starBefore);
+      if (a && a.status) drillLevelNews(a, tok, starBefore, clockBefore);
       return;
     }
     if (r && r.status === 400) { console.warn('the drill attempt was refused', await r.text().catch(() => '')); return; }
@@ -3218,14 +3398,15 @@ async function recordDrill() {
   }
   toast("This attempt couldn't be saved.");
 }
-function drillLevelNews(a, tok, starBefore) {
+function drillLevelNews(a, tok, starBefore, clockBefore) {
   const s = a.status;
   if (dr.statuses) { const i = dr.statuses.findIndex(x => x.ending === s.ending); if (i >= 0) dr.statuses[i] = s; }
   if (tok !== dr.token) return;
-  const msgs = [];
-  if (s.level > a.before) msgs.push(`Level ${s.level} reached.`);
-  else if (s.level < a.before) msgs.push(`Back to level ${s.level} for now.`);
+  const msgs = [], secs = `${s.per_move} s a move`;
+  if (s.level > a.before) msgs.push(s.tier === 1 ? `On the clock: ${secs}.` : s.tier ? `A faster clock: ${secs}.` : `Level ${s.level} reached.`);
+  else if (s.level < a.before) msgs.push(s.tier ? `Back to a slower clock: ${secs}.` : a.before > s.top ? 'Off the clock for now.' : `Back to level ${s.level} for now.`);
   if (s.star && !starBefore) msgs.push('Star earned: solved at the top level.');
+  if (s.clock_star && !clockBefore) msgs.push('Clock star earned: solved on the fastest clock.');
   dr.levelMsg = msgs.join(' '); dr.status = s;
   if (state.game && state.game.drill) { renderNow(); renderDrillBox(); if (pz.over === 'drill') showDrillCard(); }
 }
@@ -3313,6 +3494,7 @@ function showDrillCard() {
 }
 function drillHeadline() {
   const r = dr.result, mode = dr.drill.mode;
+  if (r === 'time') return 'Out of time';
   if (mode === 'lucena') {
     return { promoted: 'Promoted!', won: 'Won!', pawn_lost: 'Pawn lost', piece_lost: 'Rook lost', threw: 'The win slipped away', mated: 'Mated',
              stalemate: 'Stalemate', repetition: 'Repetition', fifty: 'Fifty-move rule', budget: 'Out of moves', abandoned: 'Given up' }[r] || 'Over';
@@ -3326,8 +3508,15 @@ function drillHeadline() {
            threw: mode === 'hold' ? 'The pawn gets through' : 'The win slipped away', promoted: 'The pawn promoted', pawn_lost: 'Pawn lost',
            abandoned: 'Given up' }[r] || 'Over';
 }
+// the end's summary; a timed drill solved says the time it had left, as its clock shows it
 function drillSummary() {
+  const s = drillSummaryText();
+  if (!dr.clock || !drillSolved(dr.drill.mode, dr.result) || dr.lastEnd == null) return s;
+  return `${s} ${fmtDrillClock(dr.left)}${dr.left > 10000 ? '' : ' s'} left.`;
+}
+function drillSummaryText() {
   const d = dr.drill, n = dr.answers.length, r = dr.result;
+  if (r === 'time') return n ? `The clock ran out on move ${n + 1}.` : 'The clock ran out before your first move.';
   if (d.mode === 'lucena') {
     const { promoted, piece } = rookLeft(d);
     return {
@@ -3377,33 +3566,54 @@ function drillSummary() {
 }
 // a rook drill's review: your moves (no distance column: no table grades them), the move the hint picked marked,
 // the hint above them once it lands, and always the note that it is an estimate
+// a timed drill's review: each turn's time, the long ones marked (at least twice the median and 2 s over it, with 3
+// turns or more), and a line on how the clock went
+function drillTimes() {
+  const t = dr.times;
+  if (!dr.clock || !t || !t.length) return null;
+  const sorted = [...t].sort((a, b) => a - b), mid = sorted.length >> 1;
+  const median = sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+  const long = t.map(ms => t.length >= 3 && ms >= 2 * median && ms >= median + 2000);
+  const used = t.reduce((a, b) => a + b, 0), total = dr.clock.base_ms + dr.clock.inc_ms * dr.answers.length;
+  let at = 0; t.forEach((ms, k) => { if (ms > t[at]) at = k; });
+  const sec = ms => `${(ms / 1000).toFixed(1)} s`;
+  const line = `${Math.round(used / 1000)} s of ${Math.round(total / 1000)} used, ${sec(used / t.length)} a move; the longest was move ${at + 1}, ${sec(t[at])}.`;
+  return { t, long, line };
+}
+const timeCell = (tm, k) => {
+  if (!tm) return '';
+  const ms = tm.t[k];
+  return ms == null ? '<span class="dt"></span>' : `<span class="dt${tm.long[k] ? ' long' : ''}"${tm.long[k] ? ' title="Long think"' : ''}>${(ms / 1000).toFixed(1)}s</span>`;
+};
 function rookReviewHtml() {
-  const g = state.game, h = dr.hint, n = dr.answers.length;
+  const g = state.game, h = dr.hint, n = dr.answers.length, tm = drillTimes();
   const likely = h && h.moves ? h.likely : null;
   const rows = Array.from({ length: n }, (_, k) => {
     const mv = g.moves[2 * k]; if (!mv) return '';
-    return `<div class="drow rook${k === likely ? ' worst' : ''}${k === dr.chosen ? ' sel' : ''}" data-k="${k}"><span class="n">${k + 1}.</span>` +
-      `<span class="san">${esc(mv.san)}</span>${k === likely ? '<span class="kind k-threw">Probably here</span>' : '<span></span>'}</div>`;
+    return `<div class="drow rook${tm ? ' timed' : ''}${k === likely ? ' worst' : ''}${k === dr.chosen ? ' sel' : ''}" data-k="${k}"><span class="n">${k + 1}.</span>` +
+      `<span class="san">${esc(mv.san)}</span>${timeCell(tm, k)}${k === likely ? '<span class="kind k-threw">Probably here</span>' : '<span></span>'}</div>`;
   }).join('');
   let hint;
   if (!h || h.loading) hint = 'Stockfish is looking over your moves, deeper this time.';
   else if (h.error) hint = `The hint couldn't be worked out: ${h.error}.`;
   else if (likely == null) hint = 'No single move stands out.';
   else hint = `Probably here: move ${likely + 1}, ${g.moves[2 * likely].san}. ${DRILL_HINTS[h.hint] || "After it the engine's score fell the most"}.`;
-  return `<p class="dworst">${esc(hint)}</p><p class="dnote2">${esc(DR_ESTIMATE)}</p><div class="dlist">${rows}</div>` +
+  return `<p class="dworst">${esc(hint)}</p><p class="dnote2">${esc(DR_ESTIMATE)}</p>${tm ? `<p class="dtime">${esc(tm.line)}</p>` : ''}<div class="dlist">${rows}</div>` +
     `<p>Pick a move to see it on the board; The engine's line from here plays Stockfish's line from there instead.</p>`;
 }
 function drillReviewHtml() {
   const rv = dr.review, g = state.game, d = dr.drill;
-  if (!rv || !rv.moves.length) return '<p>No moves to go through.</p>';
+  if (!rv || !rv.moves.length) return dr.result === 'time' ? '<p>No moves to go through: the clock ran out before the first.</p>' : '<p>No moves to go through.</p>';
   if (isRookDrill(d)) return rookReviewHtml();
+  const tm = drillTimes();
   const rows = rv.moves.map((m, k) => {
     const mv = g.moves[2 * k]; if (!mv) return '';
+    // the distance; on a narrow phone with the time column, "mate in 7" goes short ("#7")
     const dist = d.mode === 'hold' ? (m.kind === 'threw' ? 'lost' : 'holds') : m.dtm === 0 ? 'mate' : m.dtm == null ? 'draw'
-      : d.mode === 'mate' ? `mate in ${m.dtm}` : 'wins';
+      : d.mode === 'mate' ? `<span class="lw">mate in </span><span class="sw">#</span>${m.dtm}` : 'wins';
     const [name] = DRILL_KIND[m.kind] || [m.kind];
-    return `<div class="drow${k === rv.worst ? ' worst' : ''}${k === dr.chosen ? ' sel' : ''}" data-k="${k}"><span class="n">${k + 1}.</span>` +
-      `<span class="san">${esc(mv.san)}</span><span class="dist">${dist}</span><span class="kind k-${m.kind}">${name}${m.loss > 0 ? ` +${m.loss}` : ''}</span></div>`;
+    return `<div class="drow${tm ? ' timed' : ''}${k === rv.worst ? ' worst' : ''}${k === dr.chosen ? ' sel' : ''}" data-k="${k}"><span class="n">${k + 1}.</span>` +
+      `<span class="san">${esc(mv.san)}</span><span class="dist">${dist}</span>${timeCell(tm, k)}<span class="kind k-${m.kind}">${name}${m.loss > 0 ? ` +${m.loss}` : ''}</span></div>`;
   }).join('');
   let worst;
   if (rv.worst < 0) worst = d.mode === 'hold' ? 'Every move kept the draw.' : 'Every move was the fastest one.';
@@ -3412,7 +3622,7 @@ function drillReviewHtml() {
     worst = m.kind === 'threw' ? `${at} ${d.mode === 'hold' ? 'let the pawn through' : 'gave the win away'}.`
       : `${at} lost ${drillMoves(m.loss)} here.`;
   }
-  return `<p class="dworst">${esc(worst)}</p><div class="dlist">${rows}</div>` +
+  return `<p class="dworst">${esc(worst)}</p>${tm ? `<p class="dtime">${esc(tm.line)}</p>` : ''}<div class="dlist">${rows}</div>` +
     `<p>Pick a move to see it on the board; Best from here plays the table's line from there instead.</p>`;
 }
 // a rook drill under way: the count that replaces the mate counter (long for the coach, short for the box)
@@ -3435,7 +3645,7 @@ function renderDrillNow() {
   } else if (!dr.over) {
     const n = dr.answers.length;
     // the coaching only: the counts are in the box under it (and the box is all a short phone shows)
-    const coach = esc(DRILL_ENDINGS[d.ending].desc);
+    const coach = esc(DRILL_ENDINGS[d.ending].desc) + (d.clock && !n ? ` <b>On the clock: ${fmtDrillClock(d.clock.base_ms)} and ${d.clock.inc_ms / 1000} s a move.</b>` : '');
     if (isRookDrill(d)) {
       el.innerHTML = top(null, dr.thinking ? 'Stockfish is thinking' : n ? 'Your move' : d.mode === 'lucena' ? 'Win it' : 'Hold it') + `<p>${coach}</p>`;
     } else if (d.mode === 'mate') {
@@ -3459,6 +3669,7 @@ function renderDrillNow() {
 function renderDrillBox() {
   const d = dr.drill; if (!d || !state.game || !state.game.drill) return;
   const s = dr.status, n = dr.answers.length, rook = isRookDrill(d);
+  clockTick();
   let cnt, extra = '';
   if (rook) {
     cnt = dr.over ? drillMoves(n) : rookCount(d).short;
@@ -3469,7 +3680,7 @@ function renderDrillBox() {
     if (d.counter && !dr.over && dist != null) extra = `<br>Mate in ${dist}`;
   } else if (d.mode === 'hold') cnt = `Held ${n} of ${d.hold_moves}`;
   else cnt = drillMoves(n);
-  const head = `<div class="pzhead"><span class="cnt">${cnt}</span><span class="meta"><span class="mlv">Level ${d.level} of ${s ? s.top : '?'}${s && s.star ? ' ★' : ''}</span>${extra}</span></div>`;
+  const head = `<div class="pzhead">${clockHtml()}<span class="cnt">${cnt}</span><span class="meta"><span class="mlv">${drillLevelName(d.level, s)}${drillStars(s)}</span>${extra}</span></div>`;
   let btns;
   if (!dr.over) btns = `<button id="dr-a"${dr.busy ? ' disabled' : ''} title="${n ? 'End this one here: it counts as a miss' : 'Another position: this one is not counted'}">${n ? 'Give up' : 'Skip'}</button>`;
   else btns = (dr.reviewOpen ? (rook ? `<button id="dr-a" title="Play Stockfish's line from the chosen move">The engine's line from here</button>`
@@ -3521,14 +3732,15 @@ function drillBar(d, n) {
 // totals. After an attempt that changed the level the run is the new level's, so it starts empty
 function drillSide(d, s) {
   if (!s) return '';
-  const top = s.top, lv = d.level;
-  const pips = Array.from({ length: top }, (_, i) => `<i${i < lv ? ' class="on"' : ''}></i>`).join('');
+  const top = s.top, lv = d.level, last = top + (s.tiers || 0);
+  const pips = drillPips(lv, s);
   const run = s.level === lv ? (s.run || []).slice(-4) : [];
   const slots = Array.from({ length: 4 }, (_, i) => i < run.length ? `<i class="${run[i] ? 'ok' : 'no'}">${run[i] ? '✓' : '✗'}</i>` : '<i></i>').join('');
-  const goal = lv >= top ? (s.star ? 'The top level, and its star' : 'The top level: solve one for the star')
-    : 'Three of four solved: up a level';
+  const goal = lv < top ? 'Three of four solved: up a level' : lv === top ? 'Three of four solved: on to the clock'
+    : lv < last ? 'Three of four solved: a faster clock'
+    : s.clock_star ? 'The fastest clock, and its clock star' : 'The fastest clock: solve one for the clock star';
   const word = d.ending === 'KPK-hold' || d.ending === 'Philidor' ? 'held' : 'solved';
-  return `<div class="dside"><div class="dsrow"><span class="dpips">${pips}</span><span>Level ${lv} of ${top}${s.star ? ' <span class="dstar">★</span>' : ''}</span></div>` +
+  return `<div class="dside"><div class="dsrow"><span class="dpips">${pips}</span><span>${drillLevelName(lv, s)}${drillStars(s)}</span></div>` +
     `<div class="dsrow"><span class="drun" title="Your last attempts at this level">${slots}</span><span>${goal}</span></div>` +
     (s.played ? `<div class="dstot">${s.played} played · ${s.solved} ${word}</div>` : '') + `</div>`;
 }
@@ -5942,7 +6154,7 @@ function go(ply, auto = false) {
   const target = Math.max(0, Math.min(line().length, ply));
   if (target === state.ply) { renderNav(); return; }        // nothing to do: no re-render, no sound
   state.ply = target;
-  if (pz.over) showPzOver(null);
+  if (pz.over && pz.over !== 'dpause') showPzOver(null);     // stepping through the moves leaves the pause cover on
   state.sel = null; state.legal = null; state.showBest = false; $('b-best').classList.remove('active'); drag = null; clearMarks();
   // <= not <: landing back on the move it branched from ends the variation. A variation off the very first
   // move has no ply behind it to step back to, so < would leave no way out of it at all.
@@ -5964,6 +6176,7 @@ $('b-flip').onclick = () => { state.flipped = !state.flipped; $('pieces').innerH
 $('b-play').onclick = togglePlay;
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape' && location.hash === '#/settings') { goBack(); return; }
+  if (e.key === 'Escape' && pz.over === 'dpause') { drillResume(); return; }
   if (e.key === 'Escape' && pz.over) { showPzOver(null); return; }
   if (!state.game|| state.exploring || e.target.type === 'range') return;   // the volume slider has the arrows
   if (e.key === 'ArrowLeft') { go(state.ply - 1); e.preventDefault(); }

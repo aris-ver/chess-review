@@ -1,7 +1,7 @@
 # Develop your instinct: endgame drills
 
-Drafted 2026-11-16. v1 and v1.1 are built (phases 1 to 4); v2 is still a plan. The numbers in the level tables are
-starting points, to be tuned from real attempts.
+Drafted 2026-11-16. v1, v1.1, v2 and the clock are built (phases 1 to 6). The numbers in the level and clock tables
+are starting points, to be tuned from real attempts.
 
 ## Goal
 
@@ -159,6 +159,8 @@ Same tables, a different goal:
 | `scripts/build_endgame_tables.js` | 4-piece `.bin` files, the lichess spot check |
 | `js/server/drills.js`, `routes-drills.js` (+ tests) | record, progression, next drill; modelled on puzzles.js |
 | `js/server/db.js`, `sync.js` | drill_attempts schema and sync |
+| `js/core/drill-clock.js` (+ test) | the clock tiers table, the clock for a start, the timed levels (phase 6) |
+| `worker/src/store.js`, `index.js` | the account's files: `drill_timed.jsonl` behind the `drill_clock` flag (phase 6) |
 | `chess_review/static/index.html` | "Develop your instinct" tab: a card for each ending with level and star, the drill board, review |
 | packaging and web deploy | ship the `.bin` files (names safe from ad blockers, no "analyse" and the like) |
 
@@ -173,6 +175,8 @@ bar may need a shorter label there.
 3. Page: the tab, drill board, mate counter, review, ending cards. Web and desktop. Phone layout.
 4. KBBK and KBNK: their tables, shipping, levels.
 5. v2: rook endings (KQKR table, position script with Syzygy checks, outcome grading, Stockfish review).
+6. The clock: timed levels above each ending's top level, the clock on the page, time per move in the record and the
+   review, a second sync file for timed attempts. Spec: `.coordination/p6-spec.md`.
 
 ## Rook endings (v2)
 
@@ -215,9 +219,84 @@ a plain line under it ("win rook and pawn against rook", "hold rook against rook
 - **Levels**: four per ending, by family (Lucena: bridge, cut first, pawn on the 6th, pawn on the 5th; Philidor:
   third rank, go behind, get there in time, king off the path).
 
+## The clock (phase 6)
+
+Once an ending is mastered without a clock, time is the next difficulty. Real games give a total clock, not a limit
+per move, and a cap per move punishes the one move worth thinking about. So a timed drill has a total clock with an
+increment, like a game.
+
+**Levels.** Each ending gets timed levels above its top level: Clock 1, 2 and 3 for the eight table endings, Clock 1
+and 2 for Lucena and Philidor. They deal the top level's positions with its budget; only the clock changes. The
+rules are the same (3 solves in the last 4 up, 2 fails in a row down), so two fails on Clock 1 go back to the top
+level without a clock. In the record a timed level is a level number above the top (KQK's Clock 1 is level 6).
+Three of the last four solved at the top level move the ending on to Clock 1; this is worked out when the first
+Clock 1 attempt comes (or at the end of the record), so a record made before the clock replays to the level it had,
+and a player who had already qualified at a top level opens on Clock 1.
+
+**Size of the clock.** `base = clock moves x seconds a move` for the tier (at least 10 s), plus an increment after
+each of your moves. Clock moves are the start's move budget for the mate drills and Lucena, and a fixed count where
+there is no budget: KPK 20, KPK-hold 20 (the moves to hold), Philidor 30. KPK's 20 is the 90th percentile of the
+moves to promotion along the table's line at its top level, over 200 deals (median 15, longest 26).
+
+| Endings | Tier | Seconds a move | Increment |
+|---------|------|----------------|-----------|
+| Mate drills, KPK, KPK-hold | Clock 1 | 4 | 1 s |
+|                            | Clock 2 | 3 | 1 s |
+|                            | Clock 3 | 2 | 1 s |
+| Lucena, Philidor           | Clock 1 | 6 | 2 s |
+|                            | Clock 2 | 4 | 2 s |
+
+For example KQK's top level has a budget of 10 or 11 moves, so Clock 1 is 40 to 44 s plus 1 s a move, and Clock 3 is
+20 to 22 s plus 1 s a move. KBNK's Clock 3 is 64 to 74 s for up to 37 moves. All in one table in
+`js/core/drill-clock.js`, to be tuned.
+
+**Only your turns count.** Your clock runs from the moment the board takes your move (the reply drawn and its
+animation done) to the moment you make it. The defender's reply, Stockfish's thinking, the route's time and the
+animations never count. The page keeps the clock: on the web and on desktop the "server" is on the same device and
+holds no state between moves, and only the page knows when the board was ready. The record route checks that the
+clock settings match the table and that the times add up.
+
+**Running out** ends the attempt with a new fail, 'time'. Hiding the tab or the window pauses the clock and covers
+the board with a "Paused" card until you come back and tap "Go on". Leaving, reloading or giving up is 'abandoned',
+as now, with the times so far.
+
+**On the screen.** The clock sits before the move count above the board (m:ss, then tenths under 10 s, amber under
+10 s, red under 5 s), at a fixed width so nothing around the board moves. Wherever a level is named, a timed one is
+"Clock 2 of 3"; the level pips go on with the tiers as outlined pips, filled once reached; the clock star is a small
+clock beside the star. The level news says "On the clock: 4 s a move.", "A faster clock: 3 s a move.", "Off the
+clock for now." and "Clock star earned: solved on the fastest clock."
+
+**Marks.** The star keeps its meaning: solved at the top level without a clock. A second mark, the clock star, is
+for a solve on the last clock tier while the ending is there.
+
+**Record.** A timed attempt also stores its clock (tier, base and increment in ms), the time of each of your moves,
+and how often the clock was paused. Untimed attempts are stored and synced exactly as before. Timed attempts sync in
+a file of their own, `drill_timed.jsonl`, behind a client flag of its own, so an older app never sees them and
+can't strip or delete them.
+
+**Review.** After a timed attempt the move list shows the seconds each move took, and marks the long ones: at least
+twice the attempt's median and 2 s over it (3 moves or more). A line under the result says how the clock went
+("42 s of 52 used, 2.1 s a move; the longest was move 7, 9.4 s."). A solve says the time left, a 'time' fail the
+move it ran out on.
+
+**Sync and release.** `drill_timed.jsonl` is a new account file, and the Worker only takes it from a client that
+says `drill_clock: true`. So the Worker goes out first: a new app against the old Worker gets a 400 for the file
+once it has a timed attempt, and its sync stalls (nothing is lost) until the Worker is deployed. An older app on a
+device that later ran the new one (a downgrade) never sees the timed file; if it ever writes a timed row's stripped
+copy into `drill_attempts.jsonl`, the new app drops that line as it reads the account and takes it off on its next
+sync. Local databases go to schema 6 (three columns on drill_attempts); D1 needs no migration.
+
+**Tuning.** Today's `ms` is the whole attempt from the deal, replies and animations included (about 0.5 s a move).
+From the untimed top level's solved attempts, `ms / moves_used` less that overhead gives a first idea of how fast
+players move: Clock 1 near the 75th percentile, Clock 3 near the 25th. After two weeks of timed play, read each tier's
+solve rate, its share of 'time' fails and the clock left on solves, and adjust the table. Each row keeps the clock it
+was played with, so a change touches no old data.
+
 ## Open decisions
 
-None at the moment.
+None at the moment. Decided for phase 6 (2026-11-17): the tier numbers as in the table, tuned after two weeks; a
+player already qualified at a top level opens on Clock 1; a hidden tab pauses the clock and covers the board; the
+rook endings get two tiers, the others three.
 
 ## Risks
 

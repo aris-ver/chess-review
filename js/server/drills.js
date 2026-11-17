@@ -52,7 +52,7 @@ import { ENDINGS, HOLD_MOVES, LEVELS, RECENT, attackStatus, bestLine, defenceSta
 import { EngineFailed, HOLD_ROOK, POST_PROMO, ROOK_RESULTS, ROOK_TABLES, isRookEnding, rookBudget, rookStart, rookStatus,
   rookTurn, tableScore } from '../core/rook-drills.js';
 import { HINT_CLAMP, HINT_MOVES, HINT_PV, likelyMove, namedHint, whiteScore } from '../core/rook-hint.js';
-import { clockFor, dealLevel, ladderTop, replayClock, tierOf, tiers as tiersOf, untimedTop } from '../core/drill-clock.js';
+import { clockFor, dealLevel, ladderTop, perMove, replayClock, tierOf, tiers as tiersOf, untimedTop } from '../core/drill-clock.js';
 import { DRILL_ROW } from './db.js';
 import { BadRequest } from './http.js';
 
@@ -145,7 +145,8 @@ export function status(db, ending, rows = attempts(db, ending)) {
   const p = progress(ending, rows), mine = counted(ending, rows);
   const recent = mine.slice(-RECENT_SHOWN).map(r => ({ id: r.id, ts: r.ts, level: r.level, result: r.result,
     solved: isSolved(ending, r.result), moves_used: r.moves_used, ms: r.ms, worst_loss: r.worst_loss }));
-  return { ending, level: p.level, top: p.top, tiers: p.tiers, tier: tierOf(ending, p.level), star: p.star,
+  const tier = tierOf(ending, p.level);
+  return { ending, level: p.level, top: p.top, tiers: p.tiers, tier, per_move: perMove(ending, tier), star: p.star,
     clock_star: p.clock_star, played: mine.length, solved: mine.filter(r => isSolved(ending, r.result)).length, run: p.run,
     recent };
 }
