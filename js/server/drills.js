@@ -454,11 +454,12 @@ export async function playRookMove(tables, req, engine) {
  * ({fen, moves}) → {cp, mate, pv} from the side to move's view, or null when it failed: drill-opponent.js scorer),
  * all at once (the pool runs as many as it has engines), the position after a last move with no reply too; a
  * finished position (mate, stalemate, a table's 4 pieces) is scored without a search. Returns {moves: [{ply,
- * score_before, score_after, pv}], likely, pv, hint, approximate: true}: ply is the move's index in the attempt's
- * moves (2k for the user's k-th, from 0), scores white's view clamped to +-1000 (null: not scored), pv the engine's
- * line (UCI, up to 8 plies) from the position before the move, likely the user move (k) the score fell most after
- * (null: none fell 100 or more), pv at the top level likely's, hint the named hint for it (or null). Throws
- * EngineFailed when no search answered. */
+ * score_before, score_after, pv, line}], likely, pv, line, hint, approximate: true}: ply is the move's index in the
+ * attempt's moves (2k for the user's k-th, from 0), scores white's view clamped to +-1000 (null: not scored), pv the
+ * engine's line (UCI, up to 8 plies) from the position before the move and line the same as [{uci, san, fen}] (for
+ * the page, as the line route gives it), likely the user move (k) the score fell most after (null: none fell 100 or
+ * more), pv and line at the top level likely's, hint the named hint for it (core/rook-hint.js namedHint, or null).
+ * Throws EngineFailed when no search answered. */
 export async function rookHint(tables, req, search) {
   const { ending, fens, ucis } = req;
   const users = Math.ceil((fens.length - 1) / 2), first = Math.max(0, users - HINT_MOVES);
@@ -468,30 +469,34 @@ export async function rookHint(tables, req, search) {
   let asked = 0, answered = 0;
   const scoreAt = async i => {
     const fen = fens[i], board = boardFromFen(fen), turn = fen.split(' ')[1];
-    if (isCheckmate(board)) return { score: turn === 'w' ? -HINT_CLAMP : HINT_CLAMP, pv: [] };
-    if (!legalMoves(board).length) return { score: 0, pv: [] };
+    if (isCheckmate(board)) return { score: turn === 'w' ? -HINT_CLAMP : HINT_CLAMP, line: [] };
+    if (!legalMoves(board).length) return { score: 0, line: [] };
     const t = tableScore(tables, fen);
-    if (t !== undefined) return { score: t, pv: [] };
+    if (t !== undefined) return { score: t, line: [] };
     asked++;
     const s = await search({ fen: fens[0], moves: ucis.slice(0, i) });
-    if (!s) return { score: null, pv: [] };
+    if (!s) return { score: null, line: [] };
     answered++;
-    return { score: whiteScore(turn, s), pv: legalPrefix(fen, s.pv ?? [s.move]).slice(0, HINT_PV) };
+    return { score: whiteScore(turn, s), line: legalLine(fen, s.pv ?? [s.move], HINT_PV) };
   };
   const scored = new Map(await Promise.all([...wanted].map(async i => [i, await scoreAt(i)])));
   if (asked && !answered) throw new EngineFailed('the engine failed on every position of the attempt');
-  const moves = Array.from({ length: users }, (_, k) => ({ ply: 2 * k, score_before: scored.get(2 * k)?.score ?? null,
-    score_after: k >= first ? scored.get(after(k))?.score ?? null : null, pv: scored.get(2 * k)?.pv ?? [] }));
+  const moves = Array.from({ length: users }, (_, k) => {
+    const line = scored.get(2 * k)?.line ?? [];
+    return { ply: 2 * k, score_before: scored.get(2 * k)?.score ?? null,
+      score_after: k >= first ? scored.get(after(k))?.score ?? null : null, pv: line.map(m => m.uci), line };
+  });
   const likely = likelyMove(moves);
   const hint = likely === null ? null
     : namedHint(ending, { before: fens[2 * likely], uci: ucis[2 * likely], after: fens[2 * likely + 1], reply: ucis[2 * likely + 1] ?? null });
-  return { moves, likely, pv: likely === null ? [] : moves[likely].pv, hint, approximate: true };
+  return { moves, likely, pv: likely === null ? [] : moves[likely].pv, line: likely === null ? [] : moves[likely].line, hint,
+    approximate: true };
 }
 
-// the start of `line` (UCI) that is legal from fen
-function legalPrefix(fen, line) {
+// the start of `line` (UCI) that is legal from fen, up to max plies: [{uci, san, fen}] as lineFrom gives them
+function legalLine(fen, line, max) {
   const board = boardFromFen(fen), out = [];
-  for (const u of line) {
+  for (const u of line.slice(0, max)) {
     let m;
     try {
       m = parseUci(board, u);
@@ -499,8 +504,9 @@ function legalPrefix(fen, line) {
       break;
     }
     if (!legalMoves(board).some(x => uciOf(x) === uciOf(m))) break;
+    const s = san(board, m);
     push(board, m);
-    out.push(u);
+    out.push({ uci: uciOf(m), san: s, fen: fenOf(board) });
   }
   return out;
 }

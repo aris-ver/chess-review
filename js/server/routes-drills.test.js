@@ -706,12 +706,14 @@ test('rook hint: every position of the attempt searched at once on the analysis 
   await withRouter(rookLoad, async ask => {
     const r = await ask('POST', '/api/drills/hint', { ending: 'Philidor', level: 1, fens });
     assert.equal(r.status, 200, JSON.stringify(r.body));
-    assert.deepEqual(Object.keys(r.body), ['moves', 'likely', 'pv', 'hint', 'approximate', 'ms']);
+    assert.deepEqual(Object.keys(r.body), ['moves', 'likely', 'pv', 'line', 'hint', 'approximate', 'ms']);
     assert.deepEqual(r.body.moves.map(m => [m.ply, m.score_before, m.score_after]), [[0, 10, 0], [2, 0, -600], [4, -600, -650]]);
     assert.equal(r.body.likely, 1);
     assert.equal(r.body.approximate, true);
     assert.deepEqual(r.body.pv, firstLine(e.fen, ucis.slice(0, 2), 8));
     assert.deepEqual(r.body.moves[1].pv, r.body.pv);
+    assert.deepEqual(r.body.line.map(m => m.uci), r.body.pv);
+    assert.ok(r.body.line.every(m => m.san && m.fen));
     assert.ok(r.body.hint === null || ['king_path', 'rook_third', 'rook_behind'].includes(r.body.hint), r.body.hint);
     assert.ok(Number.isInteger(r.body.ms));
     // the start and each position after a reply, with the history, at 400,000 nodes, MultiPV 1, all at once
