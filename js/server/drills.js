@@ -97,11 +97,13 @@ export function attempts(db, ending = null) {
 export function counted(ending, rows) {
   const top = untimedTop(ending), seen = new Set();
   return rows.filter(r => {
+    // the fit first: a stripped copy must not claim the id of the timed row it was copied from
+    if ((r.level > top) !== (r.clock != null)) return false;
     if (r.id != null) {
       if (seen.has(r.id)) return false;
       seen.add(r.id);
     }
-    return (r.level > top) === (r.clock != null);
+    return true;
   });
 }
 

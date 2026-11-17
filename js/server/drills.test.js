@@ -820,3 +820,40 @@ test('sync: the downgrade guard drops a stripped timed row from drill_attempts.j
     await A.done();
   }
 });
+
+test('sync: after a downgrade wrote every row back stripped, the timed rows count again and the copies go, here and on the account', async () => {
+  const A = await syncDevice();
+  try {
+    const db = await A.store.progress();
+    let ts = 100, n = 0;
+    const put = b => D.record(db, D.parseAttempt(b), ts++, () => `r${++n}`);
+    for (let level = 1; level <= 5; level++) {
+      const dtm = LEVELS.KQK[level - 1].lo;
+      for (let k = 0; k < 3; k++) put({ ...good, level, dtm, budget: dtm + LEVELS.KQK[level - 1].slack });
+    }
+    for (let k = 0; k < 3; k++) put(KQK10);
+    const want = D.status(db, 'KQK');
+    assert.deepEqual([want.level, want.played], [7, 18]);
+    const timed = (await A.sync.local())[TIMED];
+    // an older app syncs this folder: it reads every row with its own keys and writes the table back (DELETE, insert),
+    // and its base keeps the stripped lines
+    const stripped = tidy(FILE, D.attempts(db).map(r => rowLine('drill_attempts', r)));
+    db.run('DELETE FROM drill_attempts');
+    db.insert('drill_attempts', DRILL_ATTEMPTS_SCHEMA, stripped.map(l => JSON.parse(l)));
+    await A.files.writeText('account_sync.json', JSON.stringify({ user: 'u1', files: { [FILE]: stripped } }));
+    // back on this version: the account has the timed file as well
+    await A.sync.commit('u1', { [FILE]: stripped, [TIMED]: timed });
+    const st = D.status(db, 'KQK');
+    assert.deepEqual([st.level, st.tier, st.played], [want.level, want.tier, want.played], 'the timed rows count, once each');
+    assert.equal(db.value('SELECT count(*) FROM drill_attempts WHERE level > 5 AND clock IS NULL'), 0, 'no stripped row left here');
+    // the next delta takes the copies off the account, and once that is answered nothing is pending
+    const delta = await A.sync.delta('u1');
+    assert.deepEqual([Object.keys(delta.add), delta.remove[FILE]], [[], stripped.filter(l => JSON.parse(l).level > 5)]);
+    const after = { [FILE]: stripped.filter(l => JSON.parse(l).level <= 5), [TIMED]: timed };
+    const done = await A.sync.commit('u1', after);
+    assert.equal(done.pending, false);
+    assert.deepEqual(await A.sync.delta('u1'), { add: {}, remove: {} });
+  } finally {
+    await A.done();
+  }
+});

@@ -104,6 +104,15 @@ function strippedTimed(line) {
   return typeof v.ending === 'string' && Object.hasOwn(LEVELS, v.ending) && typeof v.level === 'number' && v.level > untimedTop(v.ending);
 }
 
+// the same guard on the table: an older app that wrote drill_attempts here (a downgrade on this device) left its
+// stripped copies as rows, with a base that has them, so no write of the file would ever come to drop them. They go
+// before the file is read, and the delta then takes them off the account too
+function dropStripped(db) {
+  const known = Object.keys(LEVELS).map(e => [e, untimedTop(e)]);
+  const sql = `DELETE FROM drill_attempts WHERE clock IS NULL AND (result = 'time'${known.map(() => ' OR (ending = ? AND level > ?)').join('')})`;
+  db.run(sql, known.flat());
+}
+
 /** Where a file of the account lives here: {db, table, archive, dir, keys, where}, or null for a name this app doesn't
  * keep. keys: its KEYS list; where: the rows of the table that are this file's, for the drill files (SQL). */
 export function locate(file) {
@@ -272,6 +281,7 @@ export class Sync {
     const db = loc && await this.db(at(root, loc.db));
     if (!db) return [];
     if (loc.table === 'own_puzzles') return db.column('SELECT line FROM own_puzzles ORDER BY id');
+    if (file === DRILLS) dropStripped(db);
     const { sql, params } = rowsOf(loc);
     const rows = db.all(`SELECT * FROM ${loc.table}${sql} ORDER BY seq`, params);
     return rows.map(r => rowLine(loc.keys, r));

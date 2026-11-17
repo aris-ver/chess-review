@@ -92,3 +92,16 @@ tab pauses and covers the board, 2 tiers for the rook endings and 3 for the rest
 - Not checked in a real desktop Chrome, only headless Chromium and Electron.
 - The coordinator's HANDOFF.md is not edited; the release order is above.
 - `packaging/build/puzzles.json` (copied for Electron) and data/ links are untracked in the worktree, not committed.
+
+## Fix round 1
+- MEDIUM (checker): after a downgrade an older app rewrote drill_attempts with every row stripped of its clock, and
+  its base held the stripped lines, so writeLines(drill_attempts.jsonl) never ran and the guard never fired; each
+  stripped twin (same id, lower seq) claimed the id in counted() and the genuine timed row was dropped as a
+  duplicate. Fixed: counted() checks the clock fit before claiming an id; readLines(drill_attempts.jsonl) first
+  deletes stripped rows from the table (dropStripped: clock NULL and 'time' or a level above a known ending's top),
+  so the delta removes them from the account. Test: "after a downgrade wrote every row back stripped ..." in
+  drills.test.js (the exact sequence); the checker's downgrade.mjs now ends at Clock 2, played 18, no stripped rows,
+  and the next delta removes the 3 stripped lines from the account.
+- Low: a solve's summary now says the time left when the last move was made, before its increment.
+- Low, left as is: attempts() orders by ts, seq (the spec's choice; with the fix a stripped twin no longer matters).
+- npm test 370 tests, 352 pass, 0 fail, 18 skipped; worker vitest 40/40; pytest tests/test_web_offline.py 7 passed.

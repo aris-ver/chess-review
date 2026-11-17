@@ -3508,11 +3508,11 @@ function drillHeadline() {
            threw: mode === 'hold' ? 'The pawn gets through' : 'The win slipped away', promoted: 'The pawn promoted', pawn_lost: 'Pawn lost',
            abandoned: 'Given up' }[r] || 'Over';
 }
-// the end's summary; a timed drill solved says the time it had left, as its clock shows it
+// the end's summary; a timed drill solved says the time it had left when the last move was made (before its increment)
 function drillSummary() {
   const s = drillSummaryText();
   if (!dr.clock || !drillSolved(dr.drill.mode, dr.result) || dr.lastEnd == null) return s;
-  return `${s} ${fmtDrillClock(dr.left)}${dr.left > 10000 ? '' : ' s'} left.`;
+  return `${s} ${fmtDrillClock(dr.lastEnd)}${dr.lastEnd > 10000 ? '' : ' s'} left.`;
 }
 function drillSummaryText() {
   const d = dr.drill, n = dr.answers.length, r = dr.result;
