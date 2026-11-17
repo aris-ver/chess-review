@@ -221,18 +221,25 @@ Fetching games from chess.com or lichess, and the account, still need the networ
 - **Updates:** `offline.js` is `no-cache` (`_headers`) and registered with `updateViaCache: 'none'`, so every
   launch online (and every return of the home-screen app from the background) asks whether it changed. A new build
   installs in the background and waits; the notice bar then says "A new version of Blundr is ready. Reload". Reload
-  makes it take over (`skipWaiting`), every open tab reloads on it, and the old caches are deleted. No page ever runs
-  on files of two builds. In the home-screen app, the first build kept says "Blundr now works offline too".
+  makes it take over (`skipWaiting`), every open tab reloads on it, and every other build's cache is deleted (a newer
+  build still installing too: its install then fails its last check, that its cache is still there, and is tried
+  again). No page ever runs on files of two builds. In the home-screen app, the first build kept says "Blundr now
+  works offline too".
+- **An update that can't be kept** (storage full, a file the host doesn't serve as listed): the failed install tells
+  the open pages and leaves a note (cache `blundr-offline-failed`) for the next ones. A page of an older build then
+  says "Couldn't update Blundr. Reload"; that Reload unregisters the service worker, deletes the `blundr-offline-*`
+  caches (not `chess-review-engines` or `blundr-kept`) and loads the site from the network, which keeps itself again.
 - **Web only:** web/shim.js registers it, only when it is loaded from a build's `v/<version>/` in a secure context.
   The desktop app's page has no shim and registers nothing.
 - **Known limit:** iOS may clear a site's storage under pressure (home-screen apps are spared the 7-day rule); the
   next launch online then keeps everything again. If a deploy's file never matches its hash (a host rewriting it),
-  phones stay on the build before it; the service worker's console names the file.
+  every install of it fails: the page keeps offering the fresh start above, and the console names the file.
 - **Tests:** `tests/test_web_offline.py` (Playwright, a phone in Chromium and WebKit): two builds of its own
   (`build_web.js --out DIR --nodes N`) on one origin; the network cut after the first visit, then the app, a
   puzzle, a drill and a lite-engine review of a pasted game, and a chess.com profile failing fast; a half-done deploy
   never installed, a real one installed beside the old build with only its changes downloaded, the reload moving
-  both open tabs to it, and a page that never comes from the network still shown within seconds.
+  both open tabs to it, a build that can't be kept offering the fresh start onto it, and a page that never comes
+  from the network still shown within seconds.
 
 ## Accounts (optional)
 
