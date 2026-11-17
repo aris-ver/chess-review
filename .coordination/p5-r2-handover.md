@@ -65,14 +65,14 @@ count where the cache holds that answer, else the walk estimate. No new /mainlin
 Files changed: scripts/build_rook_starts.js, js/core/rook-starts.js (same format, same exports), its test, the cache.
 
 ### What happened with /mainline
-A first run asked /mainline for every Lucena start (65 s apart, 10 s more after each 429; none was logged before it
-was stopped). It ran about 8 h, finished Lucena L1 (327 candidates) and was stopped; 448 mainline answers are in the
+A first run asked /mainline for every Lucena start (65 s apart, 10 s more after each 429; its 429 count is unknown, the log
+was lost). It ran about 8 h, finished Lucena L1 (327 candidates) and was stopped; 448 mainline answers are in the
 cache and are read (never fetched) by the build. Starts that have one use it: Lucena L1 36 of 60, nothing else.
 
 ### New family rules (Lucena L1 and L2)
 Measured on the 327 L1 candidates with exact mainline answers: c- or b-pawn starts 0 of 143 reached promote >= 5; a black
-king on the 6th rank 0 of 110; a black rook on rank 5 or higher 5 of 173; black rook on the king's side or the pawn's
-rank 0 of 52; the 55 candidates that kept to the rules below all reached it.
+king on the 6th rank 0 of 110; a black rook on rank 5 or higher 5 of 173; black rook level with or above the black king
+0 of 52; the 55 candidates that kept to the rules below all reached it.
 - L1: d-pawn only (stored on d, mirrored by the drill), pawn 7th, white king on the queening square, black king on rank
   7 or 8 exactly two files from the pawn, white rook on the cutting file (between them) on ranks 1-3, black rook on the
   far side from the black king, 2-4 files from the pawn, ranks 1-4. promote >= 5.
