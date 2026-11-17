@@ -149,7 +149,9 @@ npm `stockfish@19.0.1`, run by the leader as a pool of Web Workers (`web/engines
   each request).
 - **The code loads as it is, with no bundler** (about 45 modules), and fast: `<version>` is a hash of the code, so
   `_headers` lets browsers keep `/v/*` a year (`immutable`) and a returning visitor asks for none of it; only
-  `index.html` (and the other files outside `v/`) is asked again every visit, so a deploy shows at once. The build
+  `index.html` (and the other files outside `v/`) is asked again every visit, so a deploy shows at once. Since the
+  service worker ([Offline](#offline)) a returning visitor gets all of them from its cache, and a deploy shows after
+  the reload it offers. The build
   also lists every module the worker fetches as it starts (its static imports, SQLite's `import()` and WASM), and the
   page's head asks for them all at once: on a first visit they arrive together instead of one round trip per level of
   imports. On a phone (Slow 4G, 4× CPU) the worker's first word came after 5.4 s on a first visit and 4.4 s on a
@@ -193,6 +195,44 @@ Findings from the live site that still hold: blundr.gr sent HTML without an `ETa
 page came in full at every reload, likely a Cloudflare zone feature that rewrites HTML (Email Address Obfuscation,
 Automatic HTTPS Rewrites); with it off, the page is a 304. The stale-page check asks for `.` and takes `ETag` as well
 as `Last-Modified`.
+
+## Offline
+
+Opened once online, Blundr opens and works with no network: puzzles, the endgame drills, stored games and reviews,
+and a review of a pasted game with the browser's engine (a phone's lite one). Meant for the iPhone's home-screen app
+(Share > Add to Home Screen), whose storage is its own, apart from Safari's tabs: it needs its own first launch online.
+Fetching games from chess.com or lichess, and the account, still need the network; offline they fail at once
+("couldn't reach api.chess.com: no internet connection"; the account button stays hidden).
+
+- **The service worker** is `web/offline.js`, which the build writes to the site's root as `offline.js`, headed by
+  `self.OFFLINE = {version, files}`: every file the app needs (the page, account.js, the manifest, icons, themes/, all
+  of `v/<version>/`, book_keys.txt, puzzles.json, packs.json, endgames/, the engines' `.js`), each with its SHA-256,
+  about 625 files and 16 MB. `version` is a hash of the page, that list and the service worker's code; the page carries it too
+  (`<meta name="blundr-offline">`). Not in the list: the engines' `.wasm` (web/engines.js already keeps the one it runs
+  in `chess-review-engines`; a phone never fetches the 99 MB one), `legacy/`, privacy and terms.
+- **One build, one cache**, `blundr-offline-<version>`. Installing fetches every file past the HTTP cache, checks its
+  hash (the page: its meta), and fails as a whole if one is missing or wrong, so a deploy caught half-way is never
+  kept; the browser tries again at the next launch. A file whose hash an older build's cache already has is copied
+  from there (a deploy that changes only code downloads only code).
+- **Answers:** a file of the list from this build's cache; anything else (`/account/*`, chess.com, lichess, unpkg,
+  the `.wasm`) goes to the network as without it. The page is network-first with a 3 s limit, but only a page of the
+  same build is taken from the network; a newer one is not shown with this build's files: the kept page is, and the
+  service worker checks for its update.
+- **Updates:** `offline.js` is `no-cache` (`_headers`) and registered with `updateViaCache: 'none'`, so every
+  launch online (and every return of the home-screen app from the background) asks whether it changed. A new build
+  installs in the background and waits; the notice bar then says "A new version of Blundr is ready. Reload". Reload
+  makes it take over (`skipWaiting`), every open tab reloads on it, and the old caches are deleted. No page ever runs
+  on files of two builds. In the home-screen app, the first build kept says "Blundr now works offline too".
+- **Web only:** web/shim.js registers it, only when it is loaded from a build's `v/<version>/` in a secure context.
+  The desktop app's page has no shim and registers nothing.
+- **Known limit:** iOS may clear a site's storage under pressure (home-screen apps are spared the 7-day rule); the
+  next launch online then keeps everything again. If a deploy's file never matches its hash (a host rewriting it),
+  phones stay on the build before it; the service worker's console names the file.
+- **Tests:** `tests/test_web_offline.py` (Playwright, a phone in Chromium and WebKit): two builds of its own
+  (`build_web.js --out DIR --nodes N`) on one origin; the network cut after the first visit, then the app, a
+  puzzle, a drill and a lite-engine review of a pasted game, and a chess.com profile failing fast; a half-done deploy
+  never installed, a real one installed beside the old build with only its changes downloaded, the reload moving
+  both open tabs to it, and a page that never comes from the network still shown within seconds.
 
 ## Accounts (optional)
 
