@@ -33,3 +33,4 @@ Pipeline: Opus plans and checks (Fable until phase 2's first review), Sonnet or 
 - 2026-11-17: phase 5 round 1 (KQKR, KRKR tables) built by Opus, Opus VERDICT: OK, fast-forwarded to main (7e21cef).
 - 2026-11-17: phase 5 round 2 (rook starts) built by Sonnet, Opus VERDICT: OK with pre-ship fixes (round 2b);
   cherry-picked to main (228358f), npm test 321 pass 0 fail 3 skip.
+- 2026-11-17: phase 5 round 3 (logic, opponent, routes) built by Opus, Opus VERDICT: OK, fast-forwarded to main.

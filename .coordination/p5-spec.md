@@ -248,3 +248,15 @@ has 49 (accepted). Must be fixed before ship, in a fix round (2b) that runs alon
 For round 3: deal from 49 at Philidor L4; budget = promote + slack, where promote counts the promoting move; measure
 tablebase-best white against the real drill opponent on about 20 starts per level and report how many promote within
 budget (the opponent is Stockfish at 200k nodes, not the tablebase).
+
+## Round 3 result (2026-11-17, Opus VERDICT: OK, fast-forwarded to main)
+Grading, opponent pools, routes and record per p5-r3-handover.md; fairness: tablebase-best white within budget in
+80/80 Lucena games against the real opponent; native reply p90 ~0.18 s, WASM in Node ~0.34 s. Low items for round 4:
+- parseMove keeps the client's halfmove clock and move number from fens[0]; replace them with the stored start's
+  (a crafted "99" makes Philidor 'held' after one move). Cheap fix, do it in round 4.
+- An illegal engine move throws a plain Error (rook-drills.js:276), a 500 not a 503: wrap it as EngineFailed.
+- End card for Lucena 'budget' after a promotion: "the new piece didn't win in time", not "too slow". On the 10th
+  move after promotion the budget check runs before the engine is asked.
+- Philidor 'pawn_taken' can show a move early when the user can take the new queen next move (outcome right).
+- drill-opponent bestOf reads the last info line, not bestmove (deterministic, low).
+- Without Cache Storage the drill pool downloads the 99 MB again, one after the other (low).
