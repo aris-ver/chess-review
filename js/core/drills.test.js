@@ -32,7 +32,7 @@ const after = (fen, uci) => { const b = boardFromFen(fen); push(b, parseUci(b, u
 const fastest = fen => bestLine(tables, fen, 1)[0];
 
 test('levels, endings and zones', () => {
-  assert.deepEqual(ENDINGS, ['KQRK', 'KRRK', 'KQK', 'KRK', 'KPK', 'KPK-hold', 'KBBK', 'KBNK']);
+  assert.deepEqual(ENDINGS, ['KQRK', 'KRRK', 'KQK', 'KRK', 'KPK', 'KPK-hold', 'KBBK', 'KBNK', 'Lucena', 'Philidor']);
   assert.equal(LEVELS['KPK-hold'].length, 4);
   assert.equal(LEVELS.KQRK.length, 3);
   assert.equal(LEVELS.KRK.length, 5);

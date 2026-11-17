@@ -21,11 +21,15 @@
 // null. In a review (and so the record's worst_loss) a move's loss is null when it threw the result, and the worst
 // is -1 when nothing lost ground.
 //
+// The rook endings, 'Lucena' and 'Philidor', are in rook-drills.js (Stockfish plays black); here they are only in
+// LEVELS, ENDINGS, positionKey and pickStart's dispatch.
+//
 // FENs in and out are the board's as the user sees it; squares are 0..63 with a1 = 0. `tables` is {name: table}, the
 // endings' tables and their DEPENDS. Randomness comes from `rng` (Math.random unless given), so tests can seed it.
 
 import { boardFromFen, fen as fenOf, isCheck, isCheckmate, legalMoves, makeSquare, parseUci, push } from './chess.js';
 import { blackMoves, canonical, decode, fromFen, probe, tableSize, toFen, transform, whiteMoves } from './endgame-table.js';
+import { ROOK_SLACK, isRookEnding, pickRookStart, rookStart } from './rook-drills.js';
 
 const lvl = (lo, hi, slack, counter) => ({ lo, hi, slack, counter });
 export const LEVELS = {
@@ -38,8 +42,11 @@ export const LEVELS = {
   // lo and hi count only-moves here; no budget, no counter
   KPK: [lvl(1, 1, null, false), lvl(2, 2, null, false), lvl(3, 3, null, false), lvl(4, Infinity, null, false)],
   'KPK-hold': [lvl(1, 1, null, false), lvl(2, 2, null, false), lvl(3, 3, null, false), lvl(4, Infinity, null, false)],
+  // the rook endings (rook-drills.js): starts from ROOK_STARTS, the slack on top of the start's promote (Lucena)
+  Lucena: ROOK_SLACK.Lucena.map(s => lvl(null, null, s, false)),
+  Philidor: ROOK_SLACK.Philidor.map(s => lvl(null, null, s, false)),
 };
-export const ENDINGS = ['KQRK', 'KRRK', 'KQK', 'KRK', 'KPK', 'KPK-hold', 'KBBK', 'KBNK'];
+export const ENDINGS = ['KQRK', 'KRRK', 'KQK', 'KRK', 'KPK', 'KPK-hold', 'KBBK', 'KBNK', 'Lucena', 'Philidor'];
 export const ZONES = ['corner', 'edge', 'ring', 'centre'];
 export const SIDES = ['right', 'wrong'];    // KBNK: the black king nearer a right corner, or not
 export const KBNK_RIGHT = 1;       // level 1: at most this far (king moves) from a right corner
@@ -102,10 +109,12 @@ function tablePos(fen) {
   return fromFen(fen) ?? fromFen(flipFen(fen));
 }
 
-/** A key that's the same for a position and its mirrors and rotations, or null for a position no drill has. */
+/** A key that's the same for a position and its mirrors and rotations, or null for a position no drill has. A rook
+ * drill's start: its ROOK_STARTS key ('Lucena:2:17'), the same for its mirror. */
 export function positionKey(fen) {
   const pos = tablePos(fen);
-  return pos ? `${pos.name}:${pos.turn}:${canonical(pos)}` : null;
+  if (pos) return `${pos.name}:${pos.turn}:${canonical(pos)}`;
+  return rookStart(fen)?.key ?? null;
 }
 
 const won = r => ['win', 'loss', 'mate'].includes(typeof r === 'string' ? r : r.result);
@@ -276,6 +285,7 @@ function bucketsOf(ending, level) {
  * ZONE_TRIES draws passes to the next. 'KPK-hold' deals black's king and pawn, white to move. */
 export function pickStart(tables, ending, level, { rng = Math.random, recent = [], turn = 0 } = {}) {
   const { lo, hi, slack } = levelOf(ending, level);
+  if (isRookEnding(ending)) return pickRookStart(ending, level, { rng, recent });   // no table read; recent: all keys
   const hold = ending === 'KPK-hold', name = hold ? 'KPK' : ending;
   const data = tables[name]?.data;
   if (!data) throw new RangeError(`no ${name} table for ${ending}`);
