@@ -9,25 +9,26 @@
 // 600 candidates have been asked about (a family that falls short is reported, never loosened).
 //
 // A candidate is accepted when lichess says: Lucena 'win' (Philidor 'draw'), and at least one legal white move changes
-// that (so no start can be played carelessly). Lucena also gets the number of white moves to its first promotion on
-// the tablebase line, found by following lichess's first move for white and the longest defence for black, one /standard
-// request per ply (the spec's
-// /standard/mainline answers about one call a minute before it returns 429, which would take hours); a line with no
-// promotion drops the candidate, and level 4 also needs 10 or more.
+// that (so no start can be played carelessly); some Philidor levels also cap the number of drawing moves (CAPS).
+// Lucena also gets `promote`: the number of white moves, the promoting move included, on lichess's
+// /standard/mainline (the line the tablebase itself plays, one call per start). A mainline with no promotion drops the
+// candidate; levels 1 and 2 need 5 or more, level 4 needs 10 or more. No walk estimate is used anywhere.
 //
-// Manners: one request at a time, at least 1.1 s between their starts (600 ms drew a 429 within a dozen requests),
-// 429 waits 60 s, a 5xx or a network error retries after 5, 15 and 45 s and then skips the candidate (written to the
-// cache too, so --offline sees the same). Every answer is cached, trimmed to the fields used, in
-// data/tablebase-cache.jsonl, one line per URL, and read first. --offline uses only the cache and fails on a miss; with
-// a full cache the output is byte-identical (the date in the header is the cache's first line). Dev only: never from
-// builds, tests or CI.
+// Manners: one request at a time, at least 1.1 s between their starts. /standard/mainline allows about one call a
+// minute and then answers 429, so mainline calls start at least 65 s apart, and each 429 waits 60 s and adds 10 s to
+// that gap (up to 180 s); a start gives up after 8 consecutive 429s. A 5xx or a network error retries after 5, 15 and
+// 45 s; if it still fails the candidate is skipped for this run only and NOT cached (the run then ends without writing
+// the output, exit 3: run it again, the cache resumes it). Only a definite 4xx answer is cached as a skip. Every answer
+// is cached, trimmed to the fields used, in data/tablebase-cache.jsonl, one line per URL, and read first. --offline
+// uses only the cache and fails on a miss; with a full cache the output is byte-identical (the date in the header is
+// the cache's first line). Dev only: never from builds, tests or CI.
 
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { Chess, fen as fenIO } from '../js/vendor/chessops.js';
-import { boardFromFen, fen as fenOf, legalMoves, makeSquare, parseUci, push } from '../js/core/chess.js';
+import { legalMoves, makeSquare } from '../js/core/chess.js';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 export const DEFAULT_OUT = join(ROOT, 'js', 'core', 'rook-starts.js');
@@ -35,11 +36,16 @@ export const DEFAULT_CACHE = join(ROOT, 'data', 'tablebase-cache.jsonl');
 export const SEED = 20261116;
 export const PER_FAMILY = 60;
 export const MAX_CANDIDATES = 600;
-const USER_AGENT = 'chess-review-dev-script';
+const USER_AGENT = 'endgame-table-check';
 const API = 'https://tablebase.lichess.ovh/standard';
+const MAINLINE_API = `${API}/mainline`;
 const GAP_MS = 1100;   // 600 ms drew a 429 within a dozen requests
+const MAINLINE_GAP_MS = 65_000;   // /mainline allows about one call a minute
+const MAINLINE_GAP_STEP_MS = 10_000;
+const MAINLINE_GAP_MAX_MS = 180_000;
 const RETRY_MS = [5_000, 15_000, 45_000];
 const RATE_LIMIT_MS = 60_000;
+const MAX_429 = 8;   // consecutive 429s for one url before the call gives up (not cached)
 
 // --- seeded random and squares: [file, rank], both 0..7 ---
 
@@ -104,30 +110,30 @@ function cutOff(rand) {
 }
 
 const LUCENA = [
-  // L1 bridge: pawn on the 7th, king on the queening square, rook on the cutting file on ranks 1-3, black king cut
-  // off, black rook two or more files from the pawn (on the other side from the black king when there is room)
+  // L1 bridge: pawn on the 7th, king on the queening square, black king exactly two files from the pawn, white rook
+  // on the file between them (the cut) on ranks 1-3, black rook on the far side of the pawn from the black king, two
+  // or more files from it. Pawn on file c or d only: a b-pawn with the king on d leaves no room for the rook on that
+  // side, and the mirror (g-pawn, king on e) is the same. Promotion 5 or more moves away.
   rand => {
-    const c = cutOff(rand);
-    if (!c) return null;
-    const { p, side, bf, rf } = c;
+    const p = pick(rand, 2, 3), side = rand() < 0.5 ? -1 : 1, bf = p + 2 * side;
+    if (bf < 0 || bf > 7) return null;
     const files = [];
-    for (let f = 0; f < 8; f++) {
-      if (Math.abs(f - p) >= 2 && f !== rf && (sign(f - p) === -side || p - side * 2 < 0 || p - side * 2 > 7)) files.push(f);
-    }
-    const brf = files.length ? files[pick(rand, 0, files.length - 1)] : null;
-    if (brf === null) return null;
-    return { wp: [p, 6], wk: [p, 7], wr: [rf, pick(rand, 0, 2)], bk: [bf, pick(rand, 5, 7)], br: [brf, pick(rand, 0, 7)] };
+    for (let f = 0; f < 8; f++) if (sign(f - p) === -side && Math.abs(f - p) >= 2) files.push(f);
+    if (!files.length) return null;
+    return { wp: [p, 6], wk: [p, 7], wr: [p + side, pick(rand, 0, 2)], bk: [bf, pick(rand, 5, 7)],
+      br: [files[pick(rand, 0, files.length - 1)], pick(rand, 0, 7)] };
   },
-  // L2 cut first: pawn on the 7th, king on the queening square, black king two or more files away, rook anywhere
-  // not on a file between them
+  // L2 cut first: as L1 (pawn on c or d, black king exactly two files away, black rook on the far side, promotion 5
+  // or more moves away) but the white rook is anywhere except the cutting file: the user has to find the cut
   rand => {
-    const p = pick(rand, 1, 3), side = rand() < 0.5 ? -1 : 1;
-    const maxD = side > 0 ? 7 - p : p;
-    if (maxD < 2) return null;
-    const d = pick(rand, 2, maxD), bf = p + side * d;
+    const p = pick(rand, 2, 3), side = rand() < 0.5 ? -1 : 1, bf = p + 2 * side;
+    if (bf < 0 || bf > 7) return null;
+    const files = [];
+    for (let f = 0; f < 8; f++) if (sign(f - p) === -side) files.push(f);
     const wr = anySquare(rand);
-    if (sign(wr[0] - p) === side && Math.abs(wr[0] - p) < d) return null;
-    return { wp: [p, 6], wk: [p, 7], wr, bk: [bf, pick(rand, 4, 7)], br: anySquare(rand) };
+    if (wr[0] === p + side) return null;
+    return { wp: [p, 6], wk: [p, 7], wr, bk: [bf, pick(rand, 4, 7)],
+      br: [files[pick(rand, 0, files.length - 1)], pick(rand, 0, 7)] };
   },
   // L3 sixth: pawn on the 6th, king on the 7th or 8th within one file of it, black king cut off
   rand => {
@@ -161,11 +167,12 @@ const PHILIDOR = [
     return { bp: [p, 2], bk: [p + (rand() < 0.5 ? -1 : 1), 2], wk: [p, pick(rand, 0, 1)],
       wr: [pick(rand, 0, 7), pick(rand, 0, 2)], br: anySquare(rand) };
   },
-  // L3 in time: pawn on the 4th or 5th, white rook not on the 3rd, so it has to get there first
+  // L3 in time: pawn on the 4th or 5th, white rook not on the 3rd, so it has to get there first, and not already
+  // behind the pawn (no higher rank than the pawn's), so the lesson is "get to the 3rd rank in time"
   rand => {
     const p = pick(rand, 1, 3), r = pick(rand, 3, 4);
     const wr = [pick(rand, 0, 7), pick(rand, 0, 7)];
-    if (wr[1] === 2) return null;
+    if (wr[1] === 2 || wr[1] > r) return null;
     return { bp: [p, r], bk: [p + pick(rand, -1, 1), r + pick(rand, 0, 1)], wk: [p + pick(rand, -2, 2), pick(rand, 0, 1)],
       wr, br: anySquare(rand) };
   },
@@ -177,6 +184,11 @@ const PHILIDOR = [
       wr: anySquare(rand), br: anySquare(rand) };
   },
 ];
+
+// Fewest white moves to the promotion a Lucena level needs, and the most drawing first moves a Philidor level may have
+// (the cap is what lets a careless first move lose).
+export const MIN_PROMOTE = { L1: 5, L2: 5, L4: 10 };
+export const GOOD_CAP = { L1: 8, L3: 8, L4: 3 };
 
 export const ENDINGS = {
   Lucena: { families: LUCENA, want: 'win', moveWant: 'loss' },
@@ -193,7 +205,11 @@ class Tablebase {
     this.map = new Map();
     this.date = null;
     this.requests = 0;
+    this.mainlineRequests = 0;
+    this.unresolved = 0;   // answers that failed for now (not cached): the run must be repeated
     this.lastStart = 0;
+    this.lastMainlineStart = 0;
+    this.mainlineGap = MAINLINE_GAP_MS;
     if (existsSync(cache)) {
       for (const line of readFileSync(cache, 'utf8').split('\n')) {
         if (!line) continue;
@@ -210,7 +226,8 @@ class Tablebase {
     }
   }
 
-  /** The trimmed answer for a url, or null when the candidate is skipped (the cache remembers a skip). */
+  /** The trimmed answer for a url, or null when the candidate is skipped: a definite 4xx answer is cached as a skip;
+   *  a failure that may pass (network, 5xx, rate limit) is counted in `unresolved` and not cached. */
   async get(url, trim) {
     const hit = this.map.get(url);
     if (hit) return hit.skip ? null : hit.body;
@@ -220,6 +237,7 @@ class Tablebase {
       row = { url, body: trim(await this.fetchJson(url)) };
     } catch (e) {
       this.log(`SKIP ${url}: ${e.message}`);
+      if (!e.final) { this.unresolved++; return null; }
       row = { url, skip: e.message };
     }
     this.map.set(url, row);
@@ -228,20 +246,31 @@ class Tablebase {
   }
 
   async fetchJson(url) {
+    const mainline = url.startsWith(MAINLINE_API);
+    let limited = 0;
     for (let attempt = 0; ; attempt++) {
-      const wait = this.lastStart + GAP_MS - Date.now();
+      let wait = this.lastStart + GAP_MS - Date.now();
+      if (mainline) wait = Math.max(wait, this.lastMainlineStart + this.mainlineGap - Date.now());
       if (wait > 0) await sleep(wait);
       this.lastStart = Date.now();
+      if (mainline) { this.lastMainlineStart = this.lastStart; this.mainlineRequests++; }
       this.requests++;
       let failure;
       try {
         const res = await fetch(url, { headers: { 'User-Agent': USER_AGENT } });
-        if (res.status === 429) { this.log('429, waiting 60 s'); await sleep(RATE_LIMIT_MS); attempt--; continue; }
+        if (res.status === 429) {
+          if (++limited >= MAX_429) throw new Error(`429 ${MAX_429} times`);
+          if (mainline) this.mainlineGap = Math.min(this.mainlineGap + MAINLINE_GAP_STEP_MS, MAINLINE_GAP_MAX_MS);
+          this.log(`429, waiting ${RATE_LIMIT_MS / 1000} s${mainline ? `, mainline gap now ${this.mainlineGap / 1000} s` : ''}`);
+          await sleep(RATE_LIMIT_MS);
+          attempt--;
+          continue;
+        }
         if (res.ok) return await res.json();
         if (res.status < 500) throw Object.assign(new Error(`${res.status}`), { final: true });
         failure = new Error(`${res.status}`);
       } catch (e) {
-        if (e.final) throw e;
+        if (e.final || e.message.startsWith('429 ')) throw e;
         failure = e;
       }
       if (attempt >= RETRY_MS.length) throw failure;
@@ -261,40 +290,14 @@ const decode = b => ({
   moves: b.m ? b.m.split(' ').map(t => { const [u, c, z] = t.split(':'); return [u, CATEGORIES[c], Number(z)]; }) : [],
 });
 
-/** The position after a move, as the FEN the cache is keyed by (clocks fixed, so a position is one entry). */
-export function after(fen, uci) {
-  const pos = boardFromFen(fen);
-  push(pos, parseUci(pos, uci));
-  return fenOf(pos).split(' ').slice(0, 4).join(' ') + ' 0 1';
-}
+// a mainline is cached as {w: winner ('w', 'b' or null), m: 'uci uci ...'}
+const trimMainline = j => ({ w: j.winner ?? null, m: (j.mainline ?? []).map(m => m.uci).join(' ') });
 
-/** The reply the line takes: for the defender, the longest resistance among the moves in the best category lichess
- *  lists first (the longest DTZ); for the winner just the first listed move. Measured against /standard/mainline on
- *  seven starts: off by 0 to 2 moves, none biased. */
-function bestMove(p, winner) {
-  if (winner) return p.moves[0][0];
-  let best = p.moves[0];
-  for (const m of p.moves) if (m[1] === best[1] && Math.abs(m[2]) > Math.abs(best[2])) best = m;
-  return best[0];
-}
-
-/** White moves played up to and including the first promotion when white plays lichess's first move and black the
- *  longest defence (an estimate of what /standard/mainline plays); null when the line ends or 80 moves pass with no promotion;
- *  undefined when a position could not be fetched. position(fen) gives {moves: [[uci, category, dtz], ...]} or null. */
-export async function promoteByWalk(fen, position, maxMoves = 80) {
-  let cur = fen;
-  for (let n = 1; n <= maxMoves; n++) {
-    const p = await position(cur);
-    if (!p) return undefined;
-    if (!p.moves.length) return null;
-    const mv = bestMove(p, true);
-    if (mv.length === 5) return n;
-    cur = after(cur, mv);
-    const q = await position(cur);
-    if (!q) return undefined;
-    if (!q.moves.length) return null;
-    cur = after(cur, bestMove(q, false));
-  }
+/** White moves up to and including the first promotion on a cached mainline (white moves first, so the even plies);
+ *  null when the line has no promotion. */
+export function promoteOnMainline(body) {
+  const ucis = body.m ? body.m.split(' ') : [];
+  for (let i = 0; i < ucis.length; i += 2) if (ucis[i].length === 5) return i / 2 + 1;
   return null;
 }
 
@@ -329,13 +332,14 @@ async function buildEnding(ending, tb, log) {
       const good = pos.moves.filter(([, c]) => c === moveWant).length;
       if (pos.moves.length !== start.legal) { rejected.moves_mismatch++; continue; }
       if (good === pos.moves.length) { rejected.no_changing_move++; continue; }
-      if (ending === 'Philidor' && family === 'L4' && good > 3) { rejected.too_many_good++; continue; }
+      if (ending === 'Philidor' && good > (GOOD_CAP[family] ?? Infinity)) { rejected.too_many_good++; continue; }
       let promote = null;
       if (ending === 'Lucena') {
-        promote = await promoteByWalk(fen, position);
-        if (promote === undefined) { rejected.skipped++; continue; }
+        const line = await tb.get(`${MAINLINE_API}?fen=${fenParam(fen)}`, trimMainline);
+        if (!line) { rejected.skipped++; continue; }
+        promote = promoteOnMainline(line);
         if (promote === null) { rejected.no_promotion++; continue; }
-        if (family === 'L4' && promote < 10) { rejected.too_close++; continue; }
+        if (promote < (MIN_PROMOTE[family] ?? 1)) { rejected.too_close++; continue; }
       }
       entries.push({ fen, family, good, legal: start.legal, dtz: pos.dtz, promote });
     }
@@ -357,7 +361,8 @@ function render(built, tb) {
     lines.push(`//   ${s.ending} ${s.family}: ${s.accepted} (${s.tried}${why ? '; ' + why : ''})`);
   }
   lines.push('// Entry: fen (white to move), family, good (moves that keep the result), legal (all moves), dtz, promote (Lucena:',
-    '// white moves to the first promotion on the best-move line; null for Philidor). The pawn is on file b-d.',
+    '// white moves to the first promotion, the promoting move included, on the lichess mainline; null for Philidor).',
+    '// The pawn is on file b-d.',
     'export const ROOK_STARTS = {');
   built.forEach((b, i) => {
     lines.push(`  ${i ? 'Philidor' : 'Lucena'}: [`);
@@ -374,8 +379,11 @@ function render(built, tb) {
 
 export async function build({ cache = DEFAULT_CACHE, offline = false, log = console.log } = {}) {
   const tb = new Tablebase({ cache, offline, log });
-  const built = [await buildEnding('Lucena', tb, log), await buildEnding('Philidor', tb, log)];
-  return { text: render(built, tb), stats: built.flatMap(b => b.stats), requests: tb.requests };
+  // Philidor first: its levels need few requests, so a shortfall shows early; the output order is fixed below
+  const philidor = await buildEnding('Philidor', tb, log);
+  const built = [await buildEnding('Lucena', tb, log), philidor];
+  return { text: render(built, tb), stats: built.flatMap(b => b.stats), requests: tb.requests,
+    mainlineRequests: tb.mainlineRequests, unresolved: tb.unresolved };
 }
 
 export function parseArgs(argv) {
@@ -397,9 +405,13 @@ async function main() {
   const t0 = Date.now();
   const log = s => console.log(new Date().toISOString().slice(11, 19) + ' ' + s);
   const r = await build({ cache: opts.cache, offline: opts.offline, log });
+  if (r.unresolved) {
+    console.log(`${r.unresolved} answers failed and were not cached; output NOT written. Run again to resume from the cache.`);
+    process.exit(3);
+  }
   writeFileSync(opts.out, r.text);
   const short = r.stats.filter(s => s.accepted < PER_FAMILY);
-  console.log(`wrote ${opts.out}: ${r.requests} requests, ${((Date.now() - t0) / 1000).toFixed(0)} s`);
+  console.log(`wrote ${opts.out}: ${r.requests} requests (${r.mainlineRequests} mainline), ${((Date.now() - t0) / 1000).toFixed(0)} s`);
   for (const s of short) console.log(`SHORT ${s.ending} ${s.family}: ${s.accepted} of ${PER_FAMILY}`);
   if (short.length) process.exitCode = 2;
 }
