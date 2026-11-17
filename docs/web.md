@@ -225,10 +225,14 @@ Fetching games from chess.com or lichess, and the account, still need the networ
   build still installing too: its install then fails its last check, that its cache is still there, and is tried
   again). No page ever runs on files of two builds. In the home-screen app, the first build kept says "Blundr now
   works offline too".
-- **An update that can't be kept** (storage full, a file the host doesn't serve as listed): the failed install tells
-  the open pages and leaves a note (cache `blundr-offline-failed`) for the next ones. A page of an older build then
-  says "Couldn't update Blundr. Reload"; that Reload unregisters the service worker, deletes the `blundr-offline-*`
-  caches (not `chess-review-engines` or `blundr-kept`) and loads the site from the network, which keeps itself again.
+- **An update that can't be kept** (storage full, a file the host serves other than listed or with an HTTP error, its
+  cache deleted under it): the failed install tells the open pages and leaves a note (cache `blundr-offline-failed`)
+  for the next ones. A failure that may pass (the connection dropped, the page still the old build mid-deploy) leaves
+  none: the next launch tries again. A page of an older build then says "Couldn't update Blundr. Reload", but only
+  while the site answers (a `HEAD` of it: `navigator.onLine` alone can't tell); that Reload checks again, then
+  unregisters the service worker, deletes the `blundr-offline-*` caches (not `chess-review-engines` or
+  `blundr-kept`) and loads the site from the network, which keeps itself again. With no network it changes nothing
+  and says the update needs the internet: offline, the kept build is never given up.
 - **Web only:** web/shim.js registers it, only when it is loaded from a build's `v/<version>/` in a secure context.
   The desktop app's page has no shim and registers nothing.
 - **Known limit:** iOS may clear a site's storage under pressure (home-screen apps are spared the 7-day rule); the
@@ -238,7 +242,8 @@ Fetching games from chess.com or lichess, and the account, still need the networ
   (`build_web.js --out DIR --nodes N`) on one origin; the network cut after the first visit, then the app, a
   puzzle, a drill and a lite-engine review of a pasted game, and a chess.com profile failing fast; a half-done deploy
   never installed, a real one installed beside the old build with only its changes downloaded, the reload moving
-  both open tabs to it, a build that can't be kept offering the fresh start onto it, and a page that never comes
+  both open tabs to it, a build that can't be kept offering the fresh start onto it, a failure note never offered or acted on offline, a
+  dropped connection mid-install leaving no note, and a page that never comes
   from the network still shown within seconds.
 
 ## Accounts (optional)
