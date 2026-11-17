@@ -37,7 +37,9 @@ import { ROOK_STARTS } from './rook-starts.js';
 
 export const ROOK_ENDINGS = ['Lucena', 'Philidor'];
 export const ROOK_TABLES = ['KQK', 'KRK', 'KPK', 'KQRK', 'KRRK', 'KQKR', 'KRKR'];
-export const ROOK_SLACK = { Lucena: [8, 6, 5, 4], Philidor: [null, null, null, null] };
+// Lucena slack is the planned 8, 6, 5, 4 plus 4: `promote` is mostly a walk estimate over the lichess tablebase, off
+// by -3 to +4 against its mainline (rook-starts.js header, .coordination/DECISIONS.md 2026-11-17).
+export const ROOK_SLACK = { Lucena: [12, 10, 9, 8], Philidor: [null, null, null, null] };
 export const OPPONENT_NODES = 200_000;   // the opponent's search, the same every time (deterministic with the history)
 export const POST_PROMO = 10;            // Lucena: user moves after a promotion that hasn't ended the drill
 export const HOLD_ROOK = 30;             // Philidor: user moves held is a success

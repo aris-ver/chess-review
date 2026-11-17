@@ -179,7 +179,7 @@ test('rookTurn: after the promotion, the engine seeing mate ends it unplayed; ot
 
 test('starts: found as stored and mirrored, budget promote + slack, the deal never repeats the last 30', () => {
   assert.deepEqual(ENDINGS.slice(-2), ['Lucena', 'Philidor']);
-  assert.deepEqual(LEVELS.Lucena.map(l => [l.slack, l.counter]), [[8, false], [6, false], [5, false], [4, false]]);
+  assert.deepEqual(LEVELS.Lucena.map(l => [l.slack, l.counter]), [[12, false], [10, false], [9, false], [8, false]]);
   assert.equal(LEVELS.Philidor.length, 4);
   assert.equal(levelOf('Philidor', 4).slack, null);
   const e = ROOK_STARTS.Lucena[1][17];
@@ -188,7 +188,7 @@ test('starts: found as stored and mirrored, budget promote + slack, the deal nev
   assert.equal(positionKey(mirrorFen(e.fen)), 'Lucena:2:17');
   assert.equal(rookStart(e.fen.replace(' w ', ' b ')), null);
   assert.equal(rookStart('8/8/8/8/8/8/8/K6k w - - 0 1'), null);
-  assert.equal(rookBudget('Lucena', 2, e), e.promote + 6);
+  assert.equal(rookBudget('Lucena', 2, e), e.promote + 10);
   assert.equal(rookBudget('Philidor', 1, ROOK_STARTS.Philidor[0][0]), null);
   assert.equal(uciBetween(e.fen, line(e.fen, [uciOf(legalMoves(boardFromFen(e.fen))[0])])[1]), uciOf(legalMoves(boardFromFen(e.fen))[0]));
 
@@ -216,5 +216,5 @@ test('starts: found as stored and mirrored, budget promote + slack, the deal nev
   assert.equal(chooseStart(4, [0, 1, 2], rng), 3);
   assert.equal(chooseStart(4, [3, 1, 0, 2, 1, 0, 3], rng), 2);
   const l = pickRookStart('Lucena', 3, { rng });
-  assert.equal(l.budget, rookStart(l.fen).entry.promote + 5);
+  assert.equal(l.budget, rookStart(l.fen).entry.promote + 9);
 });

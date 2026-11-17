@@ -27,3 +27,6 @@ Product decisions are in docs/training-grounds.md ("Decided"). Coordination deci
 - 2026-11-16: phase 5 (user): Lucena graded solved once Stockfish sees mate after promotion, tables below 5 pieces
   (KQKR and KRKR); rook drills on computers only for now, phones show "needs a computer"; 4 levels; titles Lucena and
   Philidor. Rejected: playing Q+R vs R out to mate; the lite net or a 99 MB phone download this phase.
+- 2026-11-17: round 2b drops /standard/mainline (one call a minute made the run 8 h+): promote is the /standard walk
+  estimate (cached mainline answers used where present) and the Lucena slack gets +4 to cover its error (user's
+  choice). Round 3 showed the real opponent leaves 2-6 moves spare. Rejected: local Syzygy files (setup).

@@ -381,7 +381,7 @@ test('nextDrill: a synced row without a usable fen is skipped when working out w
 // ---------- the rook drills ----------
 
 const LUC = ROOK_STARTS.Lucena[0][3], PHI = ROOK_STARTS.Philidor[3][7];
-const rookAttempt = (extra = {}) => ({ ending: 'Lucena', level: 1, fen: LUC.fen, dtm: null, budget: LUC.promote + 8,
+const rookAttempt = (extra = {}) => ({ ending: 'Lucena', level: 1, fen: LUC.fen, dtm: null, budget: LUC.promote + 12,
   moves_used: 7, result: 'promoted', ms: 42000, worst_loss: null, ...extra });
 
 test('rook drills: their results, tables, and the checks on an attempt', () => {
@@ -392,7 +392,7 @@ test('rook drills: their results, tables, and the checks on an attempt', () => {
   assert.deepEqual(D.tablesFor('Lucena'), ['KQK', 'KRK', 'KPK', 'KQRK', 'KRRK', 'KQKR', 'KRKR']);
   assert.deepEqual(D.tablesFor('Philidor'), D.tablesFor('Lucena'));
   const a = D.parseAttempt(rookAttempt());
-  assert.deepEqual([a.ending, a.level, a.dtm, a.budget, a.worst_loss, a.result], ['Lucena', 1, null, LUC.promote + 8, null, 'promoted']);
+  assert.deepEqual([a.ending, a.level, a.dtm, a.budget, a.worst_loss, a.result], ['Lucena', 1, null, LUC.promote + 12, null, 'promoted']);
   assert.equal(D.parseAttempt(rookAttempt({ fen: mirrorFen(LUC.fen) })).fen, mirrorFen(LUC.fen));
   const p = D.parseAttempt({ ending: 'Philidor', level: 4, fen: PHI.fen, moves_used: 30, result: 'held', ms: 1 });
   assert.deepEqual([p.budget, p.dtm, p.worst_loss], [null, null, null]);
@@ -403,7 +403,7 @@ test('rook drills: their results, tables, and the checks on an attempt', () => {
   refused(rookAttempt({ result: 'solved' }), /result: one of promoted, won, pawn_lost/);
   refused(rookAttempt({ result: 'rook_won' }), /result/);
   refused(rookAttempt({ dtm: 5 }), /no dtm/);
-  refused(rookAttempt({ budget: LUC.promote + 9 }), /budget: \d+ for this Lucena start/);
+  refused(rookAttempt({ budget: LUC.promote + 13 }), /budget: \d+ for this Lucena start/);
   refused(rookAttempt({ budget: null }), /budget/);
   refused(rookAttempt({ worst_loss: -1 }), /worst_loss is null for Lucena/);
   refused({ ending: 'Philidor', level: 4, fen: PHI.fen, budget: 3, moves_used: 1, result: 'held' }, /budget: null/);
@@ -419,7 +419,7 @@ test('rook drills: dealt from ROOK_STARTS at the level, never one of the last 30
       ['Lucena', 1, 'lucena', null, false, null, 10]);
     const at = rookStart(drill.fen);
     assert.equal(at.level, 1);
-    assert.equal(drill.budget, at.entry.promote + 8);
+    assert.equal(drill.budget, at.entry.promote + 12);
     const ph = D.nextDrill(db, {}, 'Philidor', { level: 4, rng: rng(9) }).drill;
     assert.deepEqual([ph.mode, ph.level, ph.budget, ph.hold_moves, ph.post_promo], ['philidor', 4, null, 30, null]);
     // 45 attempts at Philidor level 4 (of its 49), recorded: the next is none of the last 30
