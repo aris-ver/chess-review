@@ -181,20 +181,39 @@ checks and promote), Philidor is how to draw (keep your rook on the right rank).
 table of our own, and Stockfish's eval is no good as a move-by-move judge here (drawn positions often show +0.5 to
 +1.5, won ones +2 to +5). So Stockfish only plays, and the attempt is graded by its outcome. All offline at runtime.
 
-- **Start positions** are made at build time: a script varies Lucena and Philidor setups and checks each one
-  against the Syzygy tablebases on the dev machine. Only positions verified as won (Lucena) or drawn (Philidor)
-  ship.
-- **The opponent** is Stockfish at full strength (the full net, never the lite one).
-- **Lucena** succeeds when the pawn promotes and the queen survives. That's queen against rook, a 4-piece ending, so
-  a KQKR table of our own finishes the grading exactly. It fails on a draw (pawn lost, repetition, 50-move rule).
-- **Philidor** succeeds when you take the pawn, reach rook against rook, or hold 30 moves. It fails if the pawn
-  promotes.
-- **The review** after a fail is approximate and says so: a deeper Stockfish pass over the game points at the likely
-  mistake ("probably here: the rook left the 6th rank").
-- Levels: how far the setup is from the textbook position (Lucena: the king still has to cross; Philidor: the
-  attacker's king is already near the 6th rank), and for Lucena a move budget.
+The user is always white: Lucena is white king, rook and pawn against king and rook (Stockfish defends), Philidor
+white king and rook against king, rook and pawn (Stockfish attacks). The cards say "Lucena" and "Philidor", each with
+a plain line under it ("win rook and pawn against rook", "hold rook against rook and pawn").
 
-Built after v1. At low ratings the basic mates and KPK cost more games.
+- **Start positions** are made at dev time by `scripts/build_rook_starts.js` into `js/core/rook-starts.js`: seeded
+  setups in four families per ending, each checked against the lichess tablebase (Lucena 'win', Philidor 'draw', and
+  at least one of the user's first moves changes the result). Dealt mirrored left and right at random, never one of
+  the last 30 dealt at that level.
+- **The opponent** is Stockfish on an engine of its own (Hash 16, `go nodes 200000`, the game's moves sent so it sees
+  repetitions), so a review never delays a reply. Desktop: one native engine; desktop browsers: one full-net WASM
+  engine. Phones get none this phase: the two cards say "Needs a computer" and nothing is downloaded.
+- **Grading** (`js/core/rook-drills.js`) is by outcome. Anything down to 4 pieces is read from our tables (KQK, KRK,
+  KPK, KQRK, KRRK, KQKR, KRKR). Lucena is solved when, after the promotion, Stockfish's own search sees itself mated
+  ('promoted'), or a table says white wins ('won'); it fails on a draw (pawn lost, rook lost, repetition, 50-move
+  rule, stalemate), on running out of moves (budget = the start's moves to promote + the level's slack, 8/6/5/4), or
+  when the new piece hasn't won 10 moves after the promotion. Philidor is held after 30 moves, by taking the pawn or
+  the rook, by stalemate, repetition or the 50-move rule; it fails when the pawn promotes and isn't taken at once,
+  or a table says black wins.
+- **The page** counts down instead of the mate counter: "Promote the pawn: N moves left", after the promotion "Keep
+  the new queen: N moves left", Philidor "Hold the draw: N more moves". A reply out for more than 300 ms shows
+  "Stockfish is thinking".
+- **The review** (POST /api/drills/hint) is approximate and always says so ("This is an estimate from a deeper
+  engine search, not a tablebase."). Every position where the user was to move (the last 20 moves) is searched again
+  at 400,000 nodes on the analysis pool, all at once; the move after which the score fell most (scores held to
+  +-500, so a win kept by a slower move is no mistake) is "Probably here", if it fell 100 or more; otherwise "No
+  single move stands out". A named hint when the move matches one: Lucena, the rook stopped cutting the black king
+  off, the king left its shelter before the rook was on the 4th rank, the pawn was left hanging; Philidor, the rook
+  left the 3rd rank before the pawn reached it, the pawn reached the 3rd rank and the rook didn't go to the far end,
+  the king left the pawn's path. "The engine's line from here" plays Stockfish's line (8 plies) from a chosen move.
+  The move list shows at once, without a distance column, and the hint fills in when it lands (about 1 s on a
+  desktop).
+- **Levels**: four per ending, by family (Lucena: bridge, cut first, pawn on the 6th, pawn on the 5th; Philidor:
+  third rank, go behind, get there in time, king off the path).
 
 ## Open decisions
 
