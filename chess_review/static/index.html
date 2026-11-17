@@ -1505,7 +1505,13 @@ paintSound();
 
 // ---------- routing ----------
 let routed = Promise.resolve();     // the route to the hash last changed to, drawn (swipeBack: the screen gone back to)
-window.addEventListener('hashchange', () => { keepScreen(atHash); routed = assetsReady.then(route); checkStale(); });
+window.addEventListener('hashchange', () => {
+  // the explorer writing its own line into the address (opSync), a move at a time: no snapshot, no update check
+  const own = op.live && (location.hash || '#/') === op.wrote;
+  if (!own) keepScreen(atHash);
+  routed = assetsReady.then(route);
+  if (!own) checkStale();
+});
 let pageStamp = null;
 async function checkStale() {
   // the page by its directory ('.'): blundr.gr redirects index.html there. A server that sends neither header isn't
@@ -1727,8 +1733,9 @@ async function route() {
   if (!om) document.body.classList.remove('openings');
   leaveDrill(h);       // a drill left half played counts as given up
   if (state.game && state.game.puzzle) state.exploring = false;   // a puzzle's pending timer would leave the next board locked
-  // leaving a review: remember the move and which way up the board was, so coming back lands there
-  if (state.game && !h.includes(`/game/${state.game.id}`)) state.resume = { id: state.game.id, ply: state.ply, flipped: state.flipped };
+  // leaving a review: remember the move and which way up the board was, so coming back lands there (not the
+  // explorer's board: that would forget the review it was opened from)
+  if (state.game && !state.game.openings && !h.includes(`/game/${state.game.id}`)) state.resume = { id: state.game.id, ply: state.ply, flipped: state.flipped };
   if (h === '#/settings') return showSettings();
   const sm = h.match(/^#\/sandbox\/(.+)$/);
   if (sm) return showSandbox(decodeURIComponent(sm[1]));
@@ -2291,7 +2298,7 @@ async function showSandbox(fen) {
 // profile's games played -- with how those games went. Moves come from the board, a row, or the move list; each
 // position's numbers come from api/openings/position (kept per position and colour for the visit, asked again on
 // the next).
-const op = { pid: null, colour: 'all', cache: {}, data: null, token: 0, list: null, profiles: null, live: false, left: null };
+const op = { pid: null, colour: 'all', cache: {}, data: null, token: 0, list: null, profiles: null, live: false, left: null, wrote: null };
 const OP_COLOURS = [['all', 'All'], ['white', 'As White'], ['black', 'As Black']];
 const OP_PROFILE_KEY = 'blundr-openings-profile';
 function openingsGame(path, leftAt) {
@@ -2317,7 +2324,7 @@ function opSync() {
   const h = opHash();
   if ((location.hash || '#/') === h) return;
   if (visited[visited.length - 1] === atHash) visited[visited.length - 1] = h;
-  atHash = h;
+  atHash = h; op.wrote = h;
   location.replace(h);
 }
 // one position's numbers, once a visit: null when the request failed (said in a toast), {error, status} when refused
