@@ -1479,7 +1479,9 @@ function keepScreen(h) {
 (function swipeBack() {
   if (PLATFORM === 'desktop') return;
   const standalone = navigator.standalone === true || matchMedia('(display-mode: standalone)').matches;
-  const EDGE = PLATFORM === 'ios' && !standalone ? 24 : 0, TAN = Math.tan(30 * Math.PI / 180), FAR = 70;
+  // Safari's own swipe takes a thumb starting a fair way in from the edge, not just the first few px: 24 was too
+  // little, and both went (the page's copy sliding under Safari's snapshot)
+  const EDGE = PLATFORM === 'ios' && !standalone ? 48 : 0, TAN = Math.tan(30 * Math.PI / 180), FAR = 70;
   const root = document.documentElement, rs = root.style;
   const OWN = '.sttrack, svg.board, .boardbox, .setup-board, .palette, input, select, textarea, dialog, .vol';
   const draggable = el => {
@@ -1563,7 +1565,16 @@ function keepScreen(h) {
     if (!sw || e.touches.length) return;
     if (sw.on && far(sw)) { sw = null; go(); } else cancel();
   }, { passive: true });
-  document.addEventListener('touchcancel', () => { if (sw) cancel(); }, { passive: true });
+  // The browser took the touch (Safari's own swipe back, mostly) or went back by itself: the page's swipe goes at once,
+  // not sliding back under the browser's own, nor left half across the screen gone back to
+  const abort = () => {
+    const on = sw && sw.on;
+    sw = null;
+    if (on && !busy) { clear(); drop(); }
+  };
+  document.addEventListener('touchcancel', abort, { passive: true });
+  addEventListener('hashchange', abort);
+  addEventListener('pagehide', abort);
 })();
 // Moving on from a screen (Next, the end of a stage, the daily's way to the packs): to the screen above it, back in
 // the history when that is the screen before, else in its place; to one beside it (the next puzzle), in its place.
