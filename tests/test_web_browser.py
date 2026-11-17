@@ -288,7 +288,10 @@ def test_a_reload_keeps_the_games_and_the_count_played(app):
     assert "1,334 games" in page.text_content("#profiles .card.profile[data-id=chesscom-kept] .meta")
     page.click("#profiles .card.profile[data-id=chesscom-kept]")
     page.wait_for_function("/22 of 22 games/.test(document.getElementById('liststat').textContent)", timeout=60_000)
-    assert sites.asked[asked:] == []                    # all from this browser: nothing asked of chess.com again
+    # all from this browser: chess.com is only asked what every opening asks (new games since? the month list and
+    # the latest month), never for the older months or the count again
+    check = (f"{CHESSCOM}kept/games/archives", f"{CHESSCOM}kept/games/2026/09")
+    assert [u for u in sites.asked[asked:] if u not in check] == []
 
 
 def test_new_games_are_fetched_on_opening_with_no_click(app):
