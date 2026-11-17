@@ -92,10 +92,11 @@ class Engine {
     });
   }
   // The search's `info` lines, the way python-chess would have read them off a native engine.
-  async search(fen, nodes, multipv) {
+  async search(fen, nodes, multipv, moves = null) {
     await this.ready;
     await this.until(/^readyok/, ['ucinewgame', `setoption name MultiPV value ${multipv}`, 'isready']);
-    const out = await this.until(/^bestmove/, [`position fen ${fen}`, `go nodes ${nodes}`]);
+    const position = `position fen ${fen}${moves?.length ? ` moves ${moves.join(' ')}` : ''}`;
+    const out = await this.until(/^bestmove/, [position, `go nodes ${nodes}`]);
     return out.filter(l => l.startsWith('info '));
   }
   // An infinite search (`go infinite`, like an analysis board) of `fen` with `multipv` lines: its `info` lines as they
@@ -161,9 +162,10 @@ export class EnginePool {
     const next = this.waiting.shift();
     if (next) next(engine); else this.free.push(engine);
   }
-  async search(fen, nodes, multipv = 3) {
+  // moves: UCI moves played from fen (the drills' history, so the engine sees repetitions); none: fen alone
+  async search(fen, nodes, multipv = 3, moves = null) {
     const engine = await this.acquire();
-    try { return await engine.search(fen, nodes, multipv); } finally { this.release(engine); }
+    try { return await engine.search(fen, nodes, multipv, moves); } finally { this.release(engine); }
   }
   // Engine.stream on a free engine, which goes back to the pool once the stream is closed.
   async *stream(fen, multipv = 3, signal) {

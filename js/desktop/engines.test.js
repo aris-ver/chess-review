@@ -10,6 +10,7 @@ import { evaluateMultipv } from '../core/evals.js';
 import { boardFromFen } from '../core/chess.js';
 import { EnginePool } from './engines.js';
 import { stockfishPath } from './paths.js';
+import { bestOf } from '../server/drill-opponent.js';
 
 const PATH = stockfishPath({ packaged: false });
 const skip = existsSync(PATH) ? false : `no engine at ${PATH}`;
@@ -104,4 +105,13 @@ test('engines: aborting a stream\'s signal stops the search and ends a read in h
   while (!(await it.next()).done) n++;       // the lines already printed, then the bestmove ends it
   assert.ok(n < 1000, `${n} lines after stop`);
   assert.ok((await pool.search(START, NODES)).length, 'the engine is free again');
+});
+
+test('engines: a search after moves sees the game from its start (the rook drills\' history), deterministically', { skip }, async () => {
+  // from the tactic's position a move earlier: the queen comes out, then the mate is there
+  const before = 'r1bqkb1r/pppp1ppp/2n2n2/4p3/2B1P3/5Q2/PPPP1PPP/RNB1K1NR w KQkq - 2 3';
+  const moves = ['f3h5', 'a7a6'];
+  const one = await pool.search(before, NODES, 1, moves), two = await pool.search(before, NODES, 1, moves);
+  assert.deepEqual(bestOf(one), bestOf(two));
+  assert.deepEqual([bestOf(one).move, bestOf(one).mate], ['h5f7', 1]);
 });

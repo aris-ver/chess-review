@@ -12,9 +12,10 @@
  * @property {string} name  the engine's `id name` once load() has resolved (a placeholder before)
  * @property {() => Promise<void>} load  start the engines (fetch the WASM, spawn the processes); idempotent. A
  *   search loads the pool itself, so calling this first only decides when the cost is paid.
- * @property {(fen: string, nodes: number, multipv?: number) => Promise<string[]>} search  one search of `fen`
- *   for `nodes` nodes with `multipv` lines (default 3): the `info …` lines the engine printed, in order, without
- *   the `bestmove`. Searches beyond `size` wait for a free engine. Rejects if the engine died during the search
+ * @property {(fen: string, nodes: number, multipv?: number, moves?: string[]) => Promise<string[]>} search  one
+ *   search of `fen` (after `moves`, UCI, when given: `position fen … moves …`, so the engine sees the game's
+ *   repetitions) for `nodes` nodes with `multipv` lines (default 3): the `info …` lines the engine printed, in
+ *   order, without the `bestmove`. Searches beyond `size` wait for a free engine. Rejects if the engine died during the search
  *   (it is restarted for the next one): retrying with fewer nodes is the caller's call, as in analyse.py.
  * @property {(fen: string, multipv?: number, signal?: AbortSignal) => AsyncIterable<string>} stream  an infinite
  *   search (`go infinite`) on a free engine: its `info …` lines as they come. Closing the iterator, or `signal`
