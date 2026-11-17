@@ -78,11 +78,15 @@ one that differs was reviewed against an older lichess book; the packaged book a
 
 Built in phase 2 as specified below, with these specifics:
 
-- **Page routes**: `#/p/<profile>/openings[?m=e2e4,e7e5]` is the explorer at the position after those moves (UCI,
-  from the start). The Train tile "Openings" opens it for the profile used last (else the first on Home, never the
-  pasted games'). Coming back without `?m=` (Back from a game, the tile again) restores the line, the move it was at
-  and the colour filter (`op.resume`, kept in memory for the visit). Back from the explorer goes where it was opened
-  from; Back from a game opened from it says "Openings" and returns to it.
+- **Page routes**: `#/p/<profile>/openings[?m=e2e4,e7e5[&ply=N]][&c=white|black]` is the explorer on that line (UCI,
+  from the start), at ply N when not the line's end, with the colour filter when not both. The address follows every
+  move and colour change in place (`location.replace`, no history entry; `route()` does nothing when the address
+  already matches the explorer on screen), so Back, Settings and back, and a reload land on the same line and move.
+  Back at the exact address it was left at also brings back the games list that was open. The Train tile "Openings"
+  opens the profile used last (else the first on Home, never the pasted games') where the explorer was last left, for
+  that profile. Back from the explorer goes where it was opened from; Back from a game opened from it says
+  "Openings" and returns to it. A pasted game's Explore link opens the pasted games' profile, which the profile
+  picker then lists.
 - **Deep link into a review**: `#/p/<profile>/game/<id>?ply=N` opens the review at ply N. The explorer's games list
   uses it to land on the position after the move clicked. A saved review position (`state.resume`) wins over it.
 - **Server routes** (`js/server/routes-openings.js`, the counts in `js/server/openings.js`):

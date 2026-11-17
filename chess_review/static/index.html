@@ -1718,12 +1718,17 @@ function goTo(h) {
 async function route() {
   const h = location.hash || '#/';
   noteVisit(h);
+  // the explorer putting its own line in the address (opSync): it's already on the screen
+  if (op.live && state.game && state.game.openings && h === opHash()) return;
+  // leaving the explorer: the address it was at and its games list, for coming back (showOpenings, the tile)
+  if (op.live && state.game && state.game.openings) op.left = { pid: op.pid, hash: opHash(), list: op.list && !op.list.loading ? op.list : null };
+  op.live = false;
+  const om = h.match(/^#\/p\/([A-Za-z0-9_.-]+)\/openings(?:\?(.*))?$/);
+  if (!om) document.body.classList.remove('openings');
   leaveDrill(h);       // a drill left half played counts as given up
   if (state.game && state.game.puzzle) state.exploring = false;   // a puzzle's pending timer would leave the next board locked
   // leaving a review: remember the move and which way up the board was, so coming back lands there
   if (state.game && !h.includes(`/game/${state.game.id}`)) state.resume = { id: state.game.id, ply: state.ply, flipped: state.flipped };
-  // leaving the explorer: its line, the move it was at and the colour, for coming back (showOpenings)
-  if (state.game && state.game.openings) op.resume = { pid: op.pid, moves: line().map(m => m.uci), ply: state.ply, colour: op.colour };
   if (h === '#/settings') return showSettings();
   const sm = h.match(/^#\/sandbox\/(.+)$/);
   if (sm) return showSandbox(decodeURIComponent(sm[1]));
@@ -1738,9 +1743,11 @@ async function route() {
   const dm = h.match(/^#\/drills\/([A-Za-z-]+)$/);
   if (dm) return openDrill(dm[1]);
   pz.ctx = null;
-  const om = h.match(/^#\/p\/([A-Za-z0-9_.-]+)\/openings(?:\?m=([a-h1-8qrbn,]*))?$/);
-  if (!om) document.body.classList.remove('openings');
-  if (om) return showOpenings(om[1], om[2] ? om[2].split(',').filter(Boolean) : []);
+  if (om) {
+    const q = new URLSearchParams(om[2] || ''), c = q.get('c'), ply = q.get('ply');
+    return showOpenings(om[1], (q.get('m') || '').split(',').filter(Boolean), ply != null && /^\d+$/.test(ply) ? +ply : null,
+                        c === 'white' || c === 'black' ? c : 'all');
+  }
   if (h === '#/puzzles/mine') return showPersonal();
   const mm = h.match(/^#\/puzzles\/mine\/([A-Za-z0-9_.-]+)$/);
   if (mm) return showPuzzle(null, 'mine:' + mm[1]);
@@ -2278,12 +2285,13 @@ async function showSandbox(fen) {
 }
 
 // ---------- openings: the explorer (docs/openings.md) ----------
-// #/p/<id>/openings[?m=e2e4,e7e5] walks the opening tree on the review board: the moves so far are the move list,
+// #/p/<id>/openings[?m=e2e4,e7e5[&ply=1]][&c=white|black] walks the opening tree on the review board (the address
+// follows the line, the move it's at and the colour, so Back, a reload and a link land there): the moves so far are the move list,
 // the coach bubble names the position, and the panel lists the moves from it -- the book's, and every move the
 // profile's games played -- with how those games went. Moves come from the board, a row, or the move list; each
 // position's numbers come from api/openings/position (kept per position and colour for the visit, asked again on
 // the next).
-const op = { pid: null, colour: 'all', cache: {}, data: null, token: 0, list: null, profiles: null, resume: null };
+const op = { pid: null, colour: 'all', cache: {}, data: null, token: 0, list: null, profiles: null, live: false, left: null };
 const OP_COLOURS = [['all', 'All'], ['white', 'As White'], ['black', 'As Black']];
 const OP_PROFILE_KEY = 'blundr-openings-profile';
 function openingsGame(path, leftAt) {
@@ -2295,6 +2303,23 @@ function openingsGame(path, leftAt) {
            analysed: 1, moves, key_moments: [] };
 }
 const opMoves = () => line().slice(0, state.ply).map(m => m.uci);
+// the explorer's address: the whole line, the move it's at when not the last, the colour when not both
+function opHash(pid = op.pid) {
+  const ms = state.game.moves.map(m => m.uci), q = [];
+  if (ms.length) q.push('m=' + ms.join(','));
+  if (ms.length && state.ply !== ms.length) q.push('ply=' + state.ply);
+  if (op.colour !== 'all') q.push('c=' + op.colour);
+  return `#/p/${pid}/openings${q.length ? '?' + q.join('&') : ''}`;
+}
+// the address after a move or the colour changed, in place (no history entry; route() then does nothing)
+function opSync() {
+  if (!op.live || !state.game || !state.game.openings) return;
+  const h = opHash();
+  if ((location.hash || '#/') === h) return;
+  if (visited[visited.length - 1] === atHash) visited[visited.length - 1] = h;
+  atHash = h;
+  location.replace(h);
+}
 // one position's numbers, once a visit: null when the request failed (said in a toast), {error, status} when refused
 async function opFetch(moves) {
   const k = `${op.pid}|${op.colour}|${moves.join(',')}`;
@@ -2307,29 +2332,31 @@ async function opFetch(moves) {
   if (!r.ok) return { error: d.error || `HTTP ${r.status}`, status: r.status, reason: d.reason };
   return (op.cache[k] = d);
 }
-// the profile the tile opens: the one used last, else the first on Home (pinned first), never the pasted games'
+// every profile, as Home orders them (pinned first); the tile and the picker offer all but the pasted games', which
+// the picker lists only while it's the one shown (the Explore link of a pasted game)
 async function opProfiles() {
   if (!op.profiles) {
     let d; try { d = await (await fetch('api/profiles')).json(); } catch (e) { d = { profiles: [] }; }
-    op.profiles = (d.profiles || []).filter(p => p.source !== 'pgn').sort((a, b) => !!b.pinned - !!a.pinned
+    op.profiles = (d.profiles || []).sort((a, b) => !!b.pinned - !!a.pinned
       || (a.pinned && b.pinned ? (a.pinned < b.pinned ? -1 : 1) : (b.created || '') < (a.created || '') ? -1 : 1));
   }
   return op.profiles;
 }
+const opPickable = () => (op.profiles || []).filter(p => p.source !== 'pgn' || p.id === op.pid);
+// the profile the tile opens: the one used last, else the first on Home, never the pasted games'
 async function openOpenings() {
-  const ps = await opProfiles();
+  const ps = (await opProfiles()).filter(p => p.source !== 'pgn');
   if (!ps.length) { toast('Add a chess.com or lichess profile first: the explorer shows how your own games went.', 5000); return; }
   let last = null; try { last = localStorage.getItem(OP_PROFILE_KEY); } catch (e) {}
   const p = ps.find(x => x.id === last) || ps[0];
-  location.hash = `#/p/${p.id}/openings`;
+  // the tile again: where the explorer was left, for that profile
+  location.hash = op.left && op.left.pid === p.id ? op.left.hash : `#/p/${p.id}/openings`;
 }
-async function showOpenings(pid, moves) {
-  // a new visit asks again: games may have come in (a refresh, a build) since the last
-  op.pid = pid; op.cache = {}; op.list = null;
-  // back to it without a line (Back from a game, the tile): the line and the move it was left at
-  const back = !moves.length && op.resume && op.resume.pid === pid ? op.resume : null;
-  if (back) { moves = back.moves; op.colour = back.colour; }
-  op.resume = null;
+async function showOpenings(pid, moves, ply, colour) {
+  // a new visit asks again: games may have come in (a refresh, a build) since the last; back at the very address it
+  // was left at (Back from a game, Settings and back), the games list it had open comes back too
+  const back = op.left && op.left.hash === location.hash ? op.left : null;
+  op.pid = pid; op.cache = {}; op.list = back ? back.list : null; op.colour = colour;
   try { localStorage.setItem(OP_PROFILE_KEY, pid); } catch (e) {}
   const h = location.hash, d = await opFetch(moves);
   if (location.hash !== h) return;
@@ -2340,12 +2367,12 @@ async function showOpenings(pid, moves) {
   }
   stopSandboxStream(); stopPolling(); stopPlay();
   state.profile = pid; state.games = null; state.game = openingsGame(d.path, d.left_at);
-  state.ply = back ? Math.min(back.ply, d.path.length) : d.path.length; state.flipped = op.colour === 'black'; dropVariation(); state.sel = null; state.step = null; state.exploring = false;
+  state.ply = ply == null ? d.path.length : Math.min(ply, d.path.length); state.flipped = op.colour === 'black'; dropVariation(); state.sel = null; state.step = null; state.exploring = false;
   $('pieces').innerHTML = '';
   showSection('review');
   document.body.classList.remove('sandbox', 'puzzle', 'drill', 'drillrev'); document.body.classList.add('openings');
   setContext(false); $('crumb').textContent = 'Openings'; $('ginfo').textContent = ''; $('ptitle-t').textContent = 'Openings';
-  op.data = d;
+  op.data = d; op.live = true;
   renderMoveList(); update(false); renderOpBox();
   opProfiles().then(() => { if (state.game && state.game.openings) renderOpBox(); });
 }
@@ -2361,12 +2388,14 @@ async function openingsMove(uci) {
 // the numbers for the position on the board, then the panel: called on every move (update())
 async function renderOpenings() {
   const moves = opMoves(), t = ++op.token;
+  opSync();
+  if (op.list && op.list.at !== moves.join(',')) op.list = null;    // a games list is the position's it was opened at
   const cached = op.cache[`${op.pid}|${op.colour}|${moves.join(',')}`];
   if (!cached) { op.data = null; renderOpBox(); }
   const d = cached || await opFetch(moves);
   if (t !== op.token || !state.game || !state.game.openings) return;
   if (!d || d.error) { if (d) toast(d.error); return; }
-  op.data = d; op.list = null;
+  op.data = d;
   // the move list's book marks and SANs, now the server has the line (the board's own moves came in provisionally)
   const g = state.game, n = d.path.length;
   d.path.forEach((m, i) => Object.assign(g.moves[i], { san: m.san, fen: m.fen, label: d.left_at == null || i < d.left_at ? 'book' : null }));
@@ -2376,7 +2405,7 @@ async function renderOpenings() {
 function renderOpeningsNow() {
   const d = op.data, el = $('now');
   if (!d) { el.innerHTML = '<div class="top"><span class="verdict">Openings</span><span class="evbox"></span></div><p>Loading…</p>'; return; }
-  const nm = d.name ? `${esc(d.name.eco)} ${esc(d.name.name)}` : 'Start position';
+  const nm = d.name ? `${esc(d.name.eco)} ${esc(d.name.name)}` : state.ply ? 'Out of the book' : 'Start position';
   const left = d.left_at != null ? state.game.moves[d.left_at] : null;
   const where = !d.in_book && left ? `Out of the book since ${moveLabel(d.left_at, left.san)}.` : d.next.some(m => m.book) ? 'In the book.' : 'The book ends here.';
   const mine = d.games ? `${d.games} of your games reached this position${op.colour === 'all' ? '' : ` as ${op.colour}`}.`
@@ -2392,7 +2421,7 @@ function opBar(s, n) {
 }
 function renderOpBox() {
   const box = $('opbox'); if (!box || !state.game || !state.game.openings) return;
-  const d = op.data, ps = op.profiles || [];
+  const d = op.data, ps = opPickable();
   const who = ps.length > 1 ? `<select id="op-pid" title="Whose games">${ps.map(p => `<option value="${esc(p.id)}"${p.id === op.pid ? ' selected' : ''}>${esc(p.username)}</option>`).join('')}</select>` : '';
   const seg = `<span class="opseg">${OP_COLOURS.map(([v, t]) => `<button data-col="${v}"${v === op.colour ? ' class="on"' : ''}>${t}</button>`).join('')}</span>`;
   let body;
@@ -2416,19 +2445,20 @@ function renderOpBox() {
     renderOpenings();
   });
   const sel = $('op-pid');
-  if (sel) sel.onchange = () => { location.hash = `#/p/${sel.value}/openings${opMoves().length ? '?m=' + opMoves().join(',') : ''}`; };
+  if (sel) sel.onchange = () => { location.hash = opHash(sel.value); };
   box.querySelectorAll('tr[data-uci]').forEach(tr => tr.onclick = e => { if (!e.target.closest('a')) openingsMove(tr.dataset.uci); });
   box.querySelectorAll('[data-games]').forEach(a => a.onclick = async e => {
     e.preventDefault(); e.stopPropagation();
-    const uci = a.dataset.games, t = op.token;
+    const uci = a.dataset.games, at = opMoves().join(','), colour = op.colour;
     if (op.list && op.list.uci === uci) { op.list = null; renderOpBox(); return; }
-    op.list = { uci, loading: true, games: [] }; renderOpBox();
+    op.list = { uci, at, loading: true, games: [] }; renderOpBox();
     let g;
     try {
-      g = await (await fetch(`api/openings/games?profile=${encodeURIComponent(op.pid)}&colour=${op.colour}&moves=${opMoves().join(',')}&move=${uci}`)).json();
+      g = await (await fetch(`api/openings/games?profile=${encodeURIComponent(op.pid)}&colour=${colour}&moves=${at}&move=${uci}`)).json();
     } catch (err) { g = { error: String(err) }; }
-    if (t !== op.token || !op.list || op.list.uci !== uci) return;
-    if (g.error) { toast(g.error); op.list = null; } else op.list = { uci, games: g.games };
+    // still the list asked for (not closed, not another position or colour since)
+    if (!state.game || !state.game.openings || !op.list || op.list.uci !== uci || op.list.at !== at || op.colour !== colour) return;
+    if (g.error) { toast(g.error); op.list = null; } else op.list = { uci, at, games: g.games };
     renderOpBox();
   });
 }
