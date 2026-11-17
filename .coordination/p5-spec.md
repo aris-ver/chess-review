@@ -260,3 +260,10 @@ Grading, opponent pools, routes and record per p5-r3-handover.md; fairness: tabl
 - Philidor 'pawn_taken' can show a move early when the user can take the new queen next move (outcome right).
 - drill-opponent bestOf reads the last info line, not bestmove (deterministic, low).
 - Without Cache Storage the drill pool downloads the 99 MB again, one after the other (low).
+
+## Round 4 result (2026-11-17, Opus VERDICT: OK, fast-forwarded to main)
+Page, cards, counters, end cards, hint route per p5-r4-handover.md; played in Electron and the web build (desktop and
+390x844). Low items: the hint has no timeout or retry and waits behind a review job; the +-500 clamp can hide a fall
+from +700 to a drawn +450 (fix: clamp only when both sides are >= 500); the reply delay change also makes the eight
+table drills' replies slightly quicker; a capital after a semicolon in the rook review text.
+Before ship: round 2b's starts merged, then scripts/check_rook_drills.js rerun on them.
