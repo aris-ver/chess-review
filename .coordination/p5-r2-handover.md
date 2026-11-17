@@ -54,3 +54,64 @@ skips are the table-data tests, because data/endgames is not built in this workt
 ## Open items
 - Philidor L4 at 49 (above).
 - Round 3 must treat Lucena `promote` as an estimate.
+
+Correction to item 3 above: lichess lists a position's moves best first by DTM (distance to mate), not by DTZ. The walk
+takes white's first listed move and black's longest DTZ within the best category; it is an estimate of the mainline.
+
+## Round 2b (fix round, branch claude/instinct-p5-starts2, commits f43ba62, 72b51e3, 02370ea)
+Plan change by the coordinator mid-round: /standard/mainline is no longer required. `promote` is the exact mainline
+count where the cache holds that answer, else the walk estimate. No new /mainline call is ever made.
+
+Files changed: scripts/build_rook_starts.js, js/core/rook-starts.js (same format, same exports), its test, the cache.
+
+### What happened with /mainline
+A first run asked /mainline for every Lucena start (65 s apart, 10 s more after each 429; none was logged before it
+was stopped). It ran about 8 h, finished Lucena L1 (327 candidates) and was stopped; 448 mainline answers are in the
+cache and are read (never fetched) by the build. Starts that have one use it: Lucena L1 36 of 60, nothing else.
+
+### New family rules (Lucena L1 and L2)
+Measured on the 327 L1 candidates with exact mainline answers: c- or b-pawn starts 0 of 143 reached promote >= 5; a black
+king on the 6th rank 0 of 110; a black rook on rank 5 or higher 5 of 173; black rook on the king's side or the pawn's
+rank 0 of 52; the 55 candidates that kept to the rules below all reached it.
+- L1: d-pawn only (stored on d, mirrored by the drill), pawn 7th, white king on the queening square, black king on rank
+  7 or 8 exactly two files from the pawn, white rook on the cutting file (between them) on ranks 1-3, black rook on the
+  far side from the black king, 2-4 files from the pawn, ranks 1-4. promote >= 5.
+- L2: same except the white rook is anywhere but the cutting file. promote >= 5.
+- Both skip the walk when |dtz| < 7 (mainline promote is about (dtz + 1) / 2; dtz 7 gives 4 or 5).
+- b- and c-pawn starts are gone from L1 and L2 (a b-pawn leaves no far side; c-pawn starts never reached 5). L3 and L4
+  keep pawns on b-d.
+- Philidor caps (good = drawing first moves): L1 <= 8, L3 <= 8 (from the old histograms: L1 median 12, L3 median 13),
+  L4 <= 3 as before. L3 also rejects a white rook above the pawn's rank (already behind it). L2 unchanged.
+
+### Counts (accepted of tried; rejections)
+| Level | Accepted | Tried | Rejected |
+|---|---|---|---|
+| Lucena L1 | 60 | 61 | 1 no promotion |
+| Lucena L2 | 60 | 107 | 1 not a win, 1 no promotion, 45 promote < 5 or dtz < 7 |
+| Lucena L3 | 60 | 71 | 2 not a win, 9 no promotion |
+| Lucena L4 | 60 | 161 | 26 not a win, 13 no promotion, 62 promote < 10 |
+| Philidor L1 | 60 | 269 | 3 not a draw, 206 more than 8 drawing moves |
+| Philidor L2 | 60 | 85 | 25 not a draw |
+| Philidor L3 | 60 | 280 | 14 not a draw, 206 more than 8 drawing moves |
+| Philidor L4 | 49 | 600 | unchanged (shortfall, as in round 2) |
+L1 reject rate fell from 72% (235 too close of 327) to 2%. Promote source: L1 36 mainline + 24 walk, L2-L4 all walk.
+promote ranges: L1 5-11, L2 5-11, L3 2-13, L4 10-21.
+
+### Runs
+Abandoned mainline run (02:47 to about 11:00): 1113 requests logged by L1, 448 of them /mainline. Final run: 698
+/standard requests, 774 s, no 429 logged, Philidor all from cache. `--offline` rerun: 0 requests, byte-identical (cmp).
+Observed mainline versus walk: not measurable on shipped starts (the 36 mainline ones have no walk value); the earlier
+check (-3 to +4) stands. On the 448 mainline answers promote is (dtz + 1) / 2 for dtz 3, 5, 7 (4-5), 9 (5-6) at most
+one above.
+
+### For round 3
+- The walk estimate has an error of -3 to +4: the Lucena budget slack table must add 4 (not done here, as asked).
+- The ROOK_STARTS format is unchanged. Philidor L4 has 49.
+- Lucena L1 and L2 are now the bridge-type positions only, so every promote is >= 5.
+
+### Script changes
+User-Agent endgame-table-check; a network error, 5xx or exhausted 429s is not cached (the run ends exit 3 without
+writing, resume by rerunning); only a definite 4xx is cached as a skip; the 429 loop is bounded to 8; comments fixed.
+Test file: removed the mirror check, added an offline rebuild comparison, L1/L2 geometry, Philidor L3 rook, promote
+parser and the walk test. npm test here: 328 tests, 306 pass, 0 fail, 22 skipped (the table-data tests skip because
+data/endgames is not built in this worktree).
