@@ -6,8 +6,13 @@
 // One build, one cache: blundr-offline-<version>. Installing fetches every file of the list (or copies it from the
 // cache of the build before, when its hash is the same), checks each against its hash, and fails as a whole if one
 // doesn't match or doesn't come: a half-updated mix of two builds is never kept. A new build waits until the page's
-// "Reload" (or until no tab is open) and then deletes the caches of the builds before it. A page is answered by one
-// build from start to end: its own files from its cache, and what isn't in the list from the network.
+// "Reload" (or until no tab is open) and then deletes every other build's cache (one still installing then fails its
+// last check and is tried again later). A page is answered by one build from start to end: its own files from its
+// cache, and what isn't in the list from the network.
+//
+// An install that fails says so to the open pages (a message) and to the next ones (FAILED, a cache of one entry): a
+// page of an older build then offers "Couldn't update Blundr. Reload", which drops the service worker and its caches
+// and loads the site from the network (web/shim.js), so a phone is never stuck on an old build in silence.
 //
 // Not here: the engines' .wasm files, which web/engines.js keeps in Cache Storage itself (chess-review-engines), the
 // answers web/shim.js keeps (blundr-kept), and anything of another site (chess.com, lichess, unpkg) or under
@@ -20,6 +25,7 @@ const SCOPE = new URL(self.registration.scope);
 const HASH = 'X-Blundr-Sha256';       // what each kept file was checked against, so the next build can reuse it
 const PAGE_WAIT_MS = 3000;            // the network's chance at the page before the kept one is shown
 const PARALLEL = 6;
+const FAILED = PREFIX + 'failed';     // {version, reason} of the last install that failed; gone with the next that works
 
 const urlOf = rel => new URL(rel, SCOPE).href;
 const relOf = url => {
@@ -71,7 +77,7 @@ async function reusable(rel, hash, older) {
 }
 
 async function install() {
-  const names = (await caches.keys()).filter(n => n.startsWith(PREFIX) && n !== CACHE);
+  const names = (await caches.keys()).filter(n => n.startsWith(PREFIX) && n !== CACHE && n !== FAILED);
   const older = await Promise.all(names.map(n => caches.open(n)));
   await caches.delete(CACHE);       // what an install that failed half-way left: start whole
   const cache = await caches.open(CACHE);
@@ -88,11 +94,24 @@ async function install() {
     }
   };
   await Promise.all(Array.from({ length: PARALLEL }, next));
+  // another build's activation deletes every cache but its own, this one's too while it fills
+  if (!failed && !(await caches.has(CACHE))) failed = new Error('its cache was deleted while it installed');
   if (failed) {
     await caches.delete(CACHE);
     console.error(`Blundr ${VERSION} not kept for offline use:`, failed.message || failed);
+    await told(failed);
     throw failed;
   }
+  await caches.delete(FAILED);
+}
+
+/** The pages told that this build couldn't be kept (web/shim.js offers a fresh start when theirs is older). */
+async function told(e) {
+  const note = { type: 'blundr-update-failed', version: VERSION, reason: String(e.message || e) };
+  try {
+    await (await caches.open(FAILED)).put(urlOf('update-failed'), new Response(JSON.stringify(note)));
+  } catch (err) { /* storage full: the open pages still hear of it */ }
+  for (const c of await self.clients.matchAll({ includeUncontrolled: true, type: 'window' })) c.postMessage(note);
 }
 
 self.addEventListener('install', e => e.waitUntil(install()));

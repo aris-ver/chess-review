@@ -53,6 +53,7 @@ const { values: args } = parseArgs({ options: {
 } });
 
 const OUT = args.out ? resolve(args.out) : join(ROOT, 'web-dist');
+if (args.nodes !== undefined && !/^[1-9]\d*$/.test(args.nodes)) throw new Error(`--nodes ${args.nodes}: a whole number of nodes, at least 1`);
 const CACHE = join(ROOT, 'data', 'web-cache');
 const STATIC = join(ROOT, 'chess_review', 'static');
 // Pyodide and python-chess only for the one-time move from the Python build's data (legacy/, js/web/legacy.js): the

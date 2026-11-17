@@ -137,7 +137,9 @@
   try { noteOff = noteOff || localStorage.getItem(NOTE_OFF) === '1'; } catch (e) {}
   const state = { app: 'Loading Blundr' };
   let appReady = false, engineReady = false;
-  let updateUp = false, reloadNow = () => location.reload();   // a new build kept and waiting (offline.js, below)
+  // offline.js, below: 'ready' (a new build kept and waiting) or 'failed' (a newer build couldn't be kept), and what
+  // the bar's Reload does then
+  let updateUp = '', reloadNow = () => location.reload();
   document.documentElement.classList.add('engine-loading');
   const render = () => {
     const loading = appReady ? '' : `<div>${state.app}</div>`;
@@ -146,8 +148,9 @@
         `<a class="a2hs" style="color:var(--accent)" href="#">add it to your home screen</a>.</div>`
       : `<div style="opacity:.75${loading ? ';margin-top:4px' : ''}">Analysis runs faster in the ` +
         `<a class="dl" style="color:var(--accent)" href="${DOWNLOAD}">Windows app</a>.</div>`;
-    const upd = !updateUp ? '' : `<div${loading || note ? ' style="margin-top:4px"' : ''}>A new version of Blundr is ready. ` +
-      '<a class="upd" style="color:var(--accent)" href="#">Reload</a></div>';
+    const upd = !updateUp ? '' : `<div${loading || note ? ' style="margin-top:4px"' : ''}>` +
+      (updateUp === 'ready' ? 'A new version of Blundr is ready. ' : "Couldn't update Blundr. ") +
+      `<a class="upd${updateUp === 'failed' ? ' fix' : ''}" style="color:var(--accent)" href="#">Reload</a></div>`;
     bar.innerHTML = '<button class="x" title="Dismiss" aria-label="Dismiss">×</button>' + loading + note + upd;
     const a2hs = bar.querySelector('.a2hs');
     if (a2hs) a2hs.onclick = addToHome;
@@ -399,10 +402,30 @@
     const offer = reg => {
       if (!reg.waiting || !sw.controller) return;     // the first build kept replaces nothing
       reloadNow = () => (reg.waiting ? reg.waiting.postMessage('skipWaiting') : location.reload());
-      updateUp = true;
+      updateUp = 'ready';
       closed = false;
       update();
     };
+    // A newer build couldn't be kept (storage full, a file the host doesn't serve as listed): this page's build would
+    // stay, deploy after deploy, with only the console saying so. Reload then starts afresh: no service worker, none
+    // of the builds' caches (the engines' and the kept answers stay), the site from the network, which keeps itself
+    // again as it loads.
+    const fresh = async () => {
+      try { for (const r of await sw.getRegistrations()) await r.unregister(); } catch (e) {}
+      try { for (const k of await caches.keys()) if (k.startsWith('blundr-offline-')) await caches.delete(k); } catch (e) {}
+      location.reload();
+    };
+    const failedOffer = note => {
+      const mine = (document.querySelector('meta[name=blundr-offline]') || {}).content;
+      if (!note || note.type !== 'blundr-update-failed' || !sw.controller || note.version === mine || updateUp) return;
+      console.warn(`Blundr ${note.version} couldn't be kept for offline use: ${note.reason}`);
+      reloadNow = fresh;
+      updateUp = 'failed';
+      closed = false;
+      update();
+    };
+    sw.addEventListener('message', e => failedOffer(e.data));
+    if (sw.startMessages) sw.startMessages();
     const tracked = new WeakSet();
     const track = (reg, w) => {
       if (!w || tracked.has(w)) return;
@@ -414,7 +437,12 @@
       });
     };
     addEventListener('load', () => {
-      sw.register(base + 'offline.js', { scope: base, updateViaCache: 'none' }).then(reg => {
+      sw.register(base + 'offline.js', { scope: base, updateViaCache: 'none' }).then(async reg => {
+        try {     // an install that failed before this page was there to hear it
+          const r = (await caches.has('blundr-offline-failed'))     // (open() would make an empty one)
+            && await (await caches.open('blundr-offline-failed')).match(new URL('update-failed', reg.scope).href);
+          if (r && !reg.waiting && !reg.installing) failedOffer(await r.json());
+        } catch (e) {}
         offer(reg);
         track(reg, reg.installing);
         reg.addEventListener('updatefound', () => track(reg, reg.installing));
