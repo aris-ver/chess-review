@@ -233,3 +233,18 @@ KQKR 43 s, 748 KB gzipped, longest mate 35 (lichess dtm 69); KRKR 37 s, 263 KB, 
   flip KRKQ to KQKR (and read the result for the other side) or check the name against ENDING_NAMES before probing.
 - whiteMoves throws for KQKR and KRKR, so bestLine and lineFrom do too; don't wire a line request for them.
 - The spec's "KQKR flipped is still KQKR" is wrong: flipped it is KRKQ.
+
+## Round 2 result (2026-11-17, Opus VERDICT: OK, cherry-picked to main, 228358f)
+240 Lucena + 229 Philidor starts in js/core/rook-starts.js, cache data/tablebase-cache.jsonl committed. Philidor L4
+has 49 (accepted). Must be fixed before ship, in a fix round (2b) that runs alongside round 3 (file format unchanged):
+- Lucena L1/L2 mostly don't teach the bridge or the cut (L1: 26/60 promote within 3; only 8/60 look like a bridge).
+  The b-pawn rule fell back to the rook on the king's side (build_rook_starts.js:115). Tighten: black king exactly 2
+  files from the pawn, black rook on the far side (drop b-pawns or give them an a-file rule), promote >= 5.
+- Philidor L1/L3: too many drawing first moves (median ~12 of 17), L3 often already has the rook behind. Cap `good`.
+- `promote` is a walk estimate (lichess lists by DTM, not DTZ), errors -3..+4 vs /mainline. Fix: run /mainline once
+  for every Lucena start, unattended (~1 call a minute), cached, and use that as `promote`. Fix the comments.
+- User-Agent back to the spec's generic "endgame-table-check". A network error must not be cached as a permanent skip.
+- Test: run build({offline: true}) and compare with the committed file; drop the mirror check that can't fail.
+For round 3: deal from 49 at Philidor L4; budget = promote + slack, where promote counts the promoting move; measure
+tablebase-best white against the real drill opponent on about 20 starts per level and report how many promote within
+budget (the opponent is Stockfish at 200k nodes, not the tablebase).
