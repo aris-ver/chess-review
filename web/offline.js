@@ -10,9 +10,11 @@
 // last check and is tried again later). A page is answered by one build from start to end: its own files from its
 // cache, and what isn't in the list from the network.
 //
-// An install that fails says so to the open pages (a message) and to the next ones (FAILED, a cache of one entry): a
-// page of an older build then offers "Couldn't update Blundr. Reload", which drops the service worker and its caches
-// and loads the site from the network (web/shim.js), so a phone is never stuck on an old build in silence.
+// An install that fails for good (lasting(): a file not as listed, an HTTP error, storage full, its cache deleted)
+// says so to the open pages (a message) and to the next ones (FAILED, a cache of one entry): a page of an older
+// build then offers "Couldn't update Blundr. Reload", which drops the service worker and its caches
+// and loads the site from the network (web/shim.js), so a phone is never stuck on an old build in silence. A failure
+// that may pass (the network dropped, a deploy still going out) is not noted: the next launch simply tries again.
 //
 // Not here: the engines' .wasm files, which web/engines.js keeps in Cache Storage itself (chess-review-engines), the
 // answers web/shim.js keeps (blundr-kept), and anything of another site (chess.com, lichess, unpkg) or under
@@ -35,6 +37,10 @@ const relOf = url => {
 // the build a page is (scripts/build_web.js puts it in the page's head)
 const pageVersion = html => (/<meta name="blundr-offline" content="([0-9a-f]+)">/.exec(html) || [])[1] || null;
 
+/** e, marked as a failure that trying again won't mend. */
+const lastingError = message => Object.assign(new Error(message), { lasting: true });
+const lasting = e => !!(e && (e.lasting || e.name === 'QuotaExceededError'));
+
 async function sha256(buf) {
   const d = new Uint8Array(await crypto.subtle.digest('SHA-256', buf));
   return [...d].map(b => b.toString(16).padStart(2, '0')).join('');
@@ -54,14 +60,14 @@ async function fetchChecked(rel, hash) {
   // asked again past the browser's HTTP cache, which may hold an older copy (themes/ is kept a day) or, from an
   // install that failed, a bad one
   const res = await fetch(urlOf(rel), { cache: 'no-cache', credentials: 'same-origin' });
-  if (!res.ok) throw new Error(`${rel || 'the page'}: HTTP ${res.status}`);
+  if (!res.ok) throw lastingError(`${rel || 'the page'}: HTTP ${res.status}`);
   const buf = await res.arrayBuffer();
   if (rel === '') {
     const v = pageVersion(new TextDecoder().decode(buf.slice(0, 64 * 1024)));
     if (v !== VERSION) throw new Error(`the page is build ${v}, not ${VERSION}: a deploy is under way`);
   } else {
     const got = await sha256(buf);
-    if (got !== hash) throw new Error(`${rel} is not this build's (SHA-256 ${got.slice(0, 12)}, not ${hash.slice(0, 12)})`);
+    if (got !== hash) throw lastingError(`${rel} is not this build's (SHA-256 ${got.slice(0, 12)}, not ${hash.slice(0, 12)})`);
   }
   return kept(res, buf, hash);
 }
@@ -95,11 +101,11 @@ async function install() {
   };
   await Promise.all(Array.from({ length: PARALLEL }, next));
   // another build's activation deletes every cache but its own, this one's too while it fills
-  if (!failed && !(await caches.has(CACHE))) failed = new Error('its cache was deleted while it installed');
+  if (!failed && !(await caches.has(CACHE))) failed = lastingError('its cache was deleted while it installed');
   if (failed) {
     await caches.delete(CACHE);
     console.error(`Blundr ${VERSION} not kept for offline use:`, failed.message || failed);
-    await told(failed);
+    if (lasting(failed)) await told(failed);
     throw failed;
   }
   await caches.delete(FAILED);

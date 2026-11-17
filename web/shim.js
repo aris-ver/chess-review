@@ -409,15 +409,27 @@
     // A newer build couldn't be kept (storage full, a file the host doesn't serve as listed): this page's build would
     // stay, deploy after deploy, with only the console saying so. Reload then starts afresh: no service worker, none
     // of the builds' caches (the engines' and the kept answers stay), the site from the network, which keeps itself
-    // again as it loads.
+    // again as it loads. Only with the site answering: offline, the kept build is all there is to open.
+    // the site answers (the service worker lets this through to the network): navigator.onLine alone can't tell, as a
+    // phone on a Wi-Fi with no internet is "online"
+    const siteUp = async () => {
+      if (nav.onLine === false) return false;
+      try { return (await realFetch(base, { method: 'HEAD', cache: 'no-store' })).ok; } catch (e) { return false; }
+    };
     const fresh = async () => {
+      if (!(await siteUp())) {
+        if (window.toast) toast("Updating Blundr needs the internet. It still works offline as it is.", 6000);
+        return;
+      }
       try { for (const r of await sw.getRegistrations()) await r.unregister(); } catch (e) {}
       try { for (const k of await caches.keys()) if (k.startsWith('blundr-offline-')) await caches.delete(k); } catch (e) {}
       location.reload();
     };
-    const failedOffer = note => {
+    const failedOffer = async note => {
       const mine = (document.querySelector('meta[name=blundr-offline]') || {}).content;
       if (!note || note.type !== 'blundr-update-failed' || !sw.controller || note.version === mine || updateUp) return;
+      if (!(await siteUp())) return;      // offline there's nothing to update to: the kept build opens as it is
+      if (updateUp) return;
       console.warn(`Blundr ${note.version} couldn't be kept for offline use: ${note.reason}`);
       reloadNow = fresh;
       updateUp = 'failed';
