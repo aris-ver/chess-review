@@ -37,6 +37,24 @@ const pool = () => new EnginePool({
   onProgress: (done, total) => progress('engine', done, total, engineName),
 });
 
+// The rook drills' opponent: one full-net engine of its own (Hash 16), so a review never delays a reply. Desktop
+// browsers only: on phones the rook drills say "needs a computer" this phase (no 99 MB download is offered). It
+// fetches nothing until the first rook drill's move, and then only after the analysis pool's load (which keeps the
+// wasm in Cache Storage), so the 99 MB never downloads twice at once.
+const drillPool = engines => {
+  if (LITE) return null;
+  const pool = new EnginePool({ size: 1, hash: 16, script: web('engine/stockfish-19-single.js'), wasmUrl: web(CR_CONFIG.engineWasm),
+    wasmBytes: CR_CONFIG.engineBytes, wasmSha256: CR_CONFIG.engineSha256, onProgress: () => {} });
+  return {
+    size: 1, get name() { return pool.name; },
+    load: () => engines.load().then(() => pool.load()),
+    async search(...args) {
+      await engines.load();
+      return pool.search(...args);
+    },
+  };
+};
+
 const text = async path => {
   const r = await fetch(site(path));
   if (!r.ok) throw new Error(`${path}: HTTP ${r.status}`);
@@ -80,6 +98,7 @@ function lead() {
       fastNodes: LITE ? null : (CR_CONFIG.nodes ? Math.max(1, CR_CONFIG.nodes >> 1) : undefined),
       site: { book: () => text('book_keys.txt'), puzzles: () => text('puzzles.json'), packs: () => text('packs.json') },
       drillTables: drillTables(),
+      drillEngine: drillPool(engines), drillEngineUnavailable: LITE ? 'needs_computer' : null,
       before: moved && moved.status === 'done' ? async env => {
         progress('app', 0, 1, 'Classifying your games again (once)');
         await reclassifyAll(env, log);

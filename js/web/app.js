@@ -54,10 +54,11 @@ export async function reclassifyAll(env, log = consoleLog) {
  * serve() starts anything (the migration's reclassification). build: the code's version (the worker's v/<version>/),
  * which with the book is part of every game's fingerprint. fastNodes: per position of a fast analysis, null for none
  * (the phones' lite engine). drillTables: the endgame drills' tables (a server/drills.js DrillTables), none: the drill
- * routes say they aren't installed. Returns { router, env, packReady }. */
+ * routes say they aren't installed. drillEngine: the rook drills' engine pool (one full-net engine), none: they are
+ * unavailable; drillEngineUnavailable: why they are even so ('needs_computer' on phones). Returns { router, env, packReady }. */
 export async function startApp({ driver, files, pool, fetch = globalThis.fetch?.bind(globalThis), site, log = consoleLog,
                                  nodes = DEFAULT_NODES, fastNodes = FAST_NODES, scan = true, before = null, build = '',
-                                 drillTables = null }) {
+                                 drillTables = null, drillEngine = null, drillEngineUnavailable = null }) {
   let packRows = null;
   const packReady = site.puzzles().then(text => { packRows = JSON.parse(text); });
   packReady.catch(e => log.error('the puzzle pack failed to load', e));
@@ -75,7 +76,8 @@ export async function startApp({ driver, files, pool, fetch = globalThis.fetch?.
     return JSON.parse(packsText);
   });
   const store = new Store(driver);
-  const env = { store, files, profiles: new Profiles(files, store), fetch, log, pack, packs, ...(drillTables ? { drillTables } : {}) };
+  const env = { store, files, profiles: new Profiles(files, store), fetch, log, pack, packs, ...(drillTables ? { drillTables } : {}),
+    ...(drillEngine ? { drillEngine } : {}), ...(drillEngineUnavailable ? { drillEngineUnavailable } : {}) };
   if (before) await before(env);
   const router = await serve({ env, pool, nodes, fastNodes, log, scan });
   return { router, env, packReady };

@@ -58,6 +58,9 @@ if (existsSync(oldStorage) && !existsSync(newStorage)) {
 const STOCKFISH = stockfishPath({ packaged });
 // Nothing starts until the first search.
 export const engines = new EnginePool({ path: STOCKFISH });
+// the rook drills' opponent (server/drill-opponent.js): one engine of its own, so a review job never delays a reply;
+// reaped and closed with the others
+export const drillEngine = new EnginePool({ size: 1, path: STOCKFISH, hash: 16 });
 let serverPort = null;
 const BUNDLED = bundled({ packaged });
 // the packaged app's folder (Blundr.exe), which an update replaces
@@ -128,6 +131,8 @@ function startServer({ quit }) {
       if (err.code === 'ENOENT') return null;
       throw err;
     }), BUNDLED.endgames)),
+    // no Stockfish file: the rook drills say so (503 'no_engine') instead of failing on every move
+    ...(existsSync(STOCKFISH) ? { drillEngine } : {}),
   };
   return serve({ env, pool: engines, nodes: DEFAULT_NODES, fastNodes: FAST_NODES, log });
 }
@@ -191,6 +196,7 @@ async function main() {
     try {
       const r = await router;
       if (!r.runner.busy() && (await engines.reapIdle(ENGINE_IDLE_SECONDS * 1000))) log.info('idle: engines shut down');
+      if (await drillEngine.reapIdle(ENGINE_IDLE_SECONDS * 1000)) log.info('idle: the drill engine shut down');
     } catch (err) {
       log.warn(`reaper: ${err.message}`);
     }
@@ -199,7 +205,7 @@ async function main() {
     log.info('window closed: shutting down');
     clearInterval(reaper);
     server.close();
-    await engines.close();
+    await Promise.all([engines.close(), drillEngine.close()]);
     app.quit();
   });
 
