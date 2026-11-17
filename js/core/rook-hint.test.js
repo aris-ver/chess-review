@@ -25,11 +25,15 @@ test('whiteScore: the side to move\'s score as white\'s, mates and big scores cl
   assert.equal(whiteScore('w', {}), null);
 });
 
-test('likelyMove: the biggest fall of 100 or more, the earliest on a tie, unscored moves skipped', () => {
+test('likelyMove: the biggest fall of 100 or more, the earliest on a tie, unscored moves skipped, wins held at 500', () => {
   const m = (b, a) => ({ score_before: b, score_after: a });
   assert.equal(likelyMove([m(600, 550), m(550, 0), m(0, -20)]), 1);
   assert.equal(likelyMove([m(600, 550), m(550, 480)]), null);       // nothing fell 100
-  assert.equal(likelyMove([m(600, 500), m(500, 400)]), 0);          // a tie: the first
+  assert.equal(likelyMove([m(400, 300), m(300, 200)]), 0);          // a tie: the first
+  // a win stays a win: falls are measured between scores held to +-500
+  assert.equal(likelyMove([m(670, 1000), m(1000, 841), m(841, 817)]), null);
+  assert.equal(likelyMove([m(1000, 650), m(650, 120)]), 1);
+  assert.equal(likelyMove([m(-20, -700), m(-1000, -1000)]), 0);
   assert.equal(likelyMove([m(null, null), m(300, 0), m(0, null)]), 1);
   assert.equal(likelyMove([m(0, 100), m(100, 300)]), null);         // rises are no mistake
   assert.equal(likelyMove([]), null);

@@ -14,6 +14,7 @@ export const REVIEW_NODES = 400_000;     // per position; the opponent plays at 
 export const HINT_MOVES = 20;            // the last 20 user moves are scored, earlier ones get null
 export const HINT_FALL = 100;            // a fall smaller than this marks no move ("no single move stands out")
 export const HINT_CLAMP = 1000;          // mates and big scores, white's view
+export const HINT_WON = 500;             // falls are measured between scores held to +-500 (likelyMove)
 export const HINT_PV = 8;                // plies of the engine's line from a position
 
 /** The search's score ({cp, mate}, the side to move's view) as white's, clamped; null when there is none. */
@@ -25,12 +26,15 @@ export function whiteScore(turn, { cp = null, mate = null } = {}) {
 }
 
 /** Which user move the score fell most after: k, or null when no fall reaches HINT_FALL (earliest on a tie). moves
- * is [{score_before, score_after}], either null when not scored. */
+ * is [{score_before, score_after}], either null when not scored. A fall is measured between scores held to
+ * +-HINT_WON: a won position is won whatever the margin, so going from a mate the search saw (1000) to a win it
+ * scores +840 is no mistake (a solved Lucena would otherwise be "probably" wrong at a slower winning move). */
 export function likelyMove(moves) {
   let best = null, fall = HINT_FALL - 1;
+  const held = v => Math.max(-HINT_WON, Math.min(HINT_WON, v));
   moves.forEach((m, k) => {
     if (m.score_before == null || m.score_after == null) return;
-    const f = m.score_before - m.score_after;
+    const f = held(m.score_before) - held(m.score_after);
     if (f > fall) { fall = f; best = k; }
   });
   return best;
