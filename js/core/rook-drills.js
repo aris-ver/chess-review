@@ -14,9 +14,11 @@
 //      flipping colours and ranks): Lucena, white wins is 'won', or 'promoted' once a promotion was played; otherwise
 //      'pawn_lost' when the pawn is gone and nothing was promoted, else 'threw'. Philidor, black wins is 'threw',
 //      otherwise 'pawn_taken' (or 'held' when black still has the pawn, as in a drawn king and pawn ending).
-//      Philidor, before the table: white's rook gone with black's still on is 'piece_lost'.
+//      Philidor, before the table: white's rook gone with black's still on is 'piece_lost', unless white is to move
+//      and can take black's rook back (a trade: play goes on one ply).
 //   3. 4 pieces with no table: Lucena K+R+P v K is 'won' unless black is to move and can take the rook (then play
-//      goes on one ply); K+P v K+R plays on only while the pawn is on the 7th, else 'piece_lost'. Philidor K+R v K+P
+//      goes on one ply); K+P v K+R plays on while the pawn is on the 7th or white can take the rook back, else
+//      'piece_lost'. Philidor K+R v K+P
 //      is 'rook_won', unless black is to move and can take the rook back (then play goes on one ply, as in Lucena).
 //   4. Lucena after a promotion (5 pieces, black to move): rookTurn asks the engine as usual, and a mate score for
 //      white ends the drill 'promoted' without playing the reply. Otherwise play goes on, with POST_PROMO more user
@@ -155,8 +157,8 @@ function flip(fen) {
 }
 const blackWins = (tables, fen) => (count(fen, BLACK) ? whiteWins(tables, flip(fen)) : false);
 
-// black to move can take the piece on a square of `letters` (white's)
-function blackCanTake(board, fen, letters) {
+// the side to move can take a piece on a square of `letters` (FEN letters: white's upper case, black's lower)
+function canTake(board, fen, letters) {
   const at = new Set();
   const rows = fen.split(' ')[0].split('/');
   rows.forEach((row, r) => {
@@ -175,19 +177,24 @@ function smallLucena(tables, fen, board, fens) {
   const w = whiteWins(tables, fen);
   if (w !== undefined) return w ? (promoted ? 'promoted' : 'won') : (!count(fen, 'P') && !promoted ? 'pawn_lost' : 'threw');
   const white = fen.split(' ')[0].replace(/[^QRBNP]/g, ''), black = count(fen, BLACK);
-  if (!black) return board.turn === 'black' && blackCanTake(board, fen, 'QRBN') ? null : 'won';   // K+R+P (or more) v K
-  if (white === 'P') return /P/.test(fen.split(' ')[0].split('/')[1]) ? null : 'piece_lost';   // K+P v K+R: the 7th
+  if (!black) return board.turn === 'black' && canTake(board, fen, 'QRBN') ? null : 'won';   // K+R+P (or more) v K
+  if (white === 'P') {     // K+P v K+R: on while the pawn is on the 7th, or white can take the rook back (a trade)
+    if (board.turn === 'white' && canTake(board, fen, 'r')) return null;
+    return /P/.test(fen.split(' ')[0].split('/')[1]) ? null : 'piece_lost';
+  }
   return 'threw';      // a minor piece against the rook, say: no win
 }
 
 function smallPhilidor(tables, fen, board) {
   const placement = fen.split(' ')[0];
-  if (!/R/.test(placement) && /r/.test(placement)) return 'piece_lost';
+  if (!/R/.test(placement) && /r/.test(placement)) {     // the user's rook gone: lost, unless it was a trade
+    return board.turn === 'white' && canTake(board, fen, 'r') ? null : 'piece_lost';
+  }
   const b = blackWins(tables, fen);
   if (b !== undefined) return b ? 'threw' : /p/.test(placement) ? 'held' : 'pawn_taken';
   if (/r/.test(placement)) return 'piece_lost';
   // K+R v K+P: won, unless black is to move and takes the rook back (as Lucena's K+R+P v K)
-  return board.turn === 'black' && blackCanTake(board, fen, 'R') ? null : 'rook_won';
+  return board.turn === 'black' && canTake(board, fen, 'R') ? null : 'rook_won';
 }
 
 /** Where a rook drill stands after `fens` (the start first, white to move; one legal move apart): a result from
