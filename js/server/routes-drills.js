@@ -6,18 +6,26 @@
 //   POST /api/drills/attempt                     {ending, level, fen, dtm, budget, moves_used, result, ms,
 //                                                worst_loss, id?} -> {counted, id, before, status}; `before` is the
 //                                                level the ending was at, status the standing after it.
-//   GET  /api/drills/status[?ending=KQK]         one ending's status, or {endings: [...]} for all eight; a status is
-//                                                {ending, level, top, star, played, solved, run, recent}.
+//   GET  /api/drills/status[?ending=KQK]         one ending's status, or {endings: [...]} for all ten; a status is
+//                                                {ending, level, top, star, played, solved, run, recent,
+//                                                unavailable}: unavailable is null, or for Lucena and Philidor why
+//                                                they can't be played here ('needs_computer' on phones, 'no_engine').
 //   POST /api/drills/move                        {ending, level, fens}: every position from the dealt one to the
 //                                                user's last move -> the move judged, the defender's reply and the
 //                                                result once the drill is over, with its review (drills.js
 //                                                playMove). Stateless: the page sends the whole drill each time.
+//                                                Lucena and Philidor: Stockfish's reply (playRookMove), kind, loss,
+//                                                dtm_after and dtm null, plus promoted and engine_ms.
 //   POST /api/drills/line                        {ending, fen} -> {line: [uci], moves: [{uci, san, fen}]}, the
 //                                                table's line from there ("Best from here" in a review).
 //
 // 400 for a bad ending, level or body ({error}); 503 when the tables can't be loaded (they ship with the app; the web
-// worker fetches them on first use). What they read, from the router's env:
+// worker fetches them on first use), and for the rook drills when there is no engine to play them or it failed
+// ({error, reason: 'needs_computer' | 'no_engine' | 'engine_failed'}). What they read, from the router's env:
 //   env.drillTables  a drills.js DrillTables; none given: one that always says the tables aren't installed
+//   env.drillEngine  the rook drills' engine pool (js/core/engine.js EnginePool: size 1, full net, Hash 16), apart
+//                    from the analysis pool; none: the rook drills are unavailable ('no_engine')
+//   env.drillEngineUnavailable  a reason the rook drills can't be played here even so ('needs_computer': phones)
 //   env.rng          random() in [0, 1) for the deal (Math.random)
 // The page must send an id with each attempt (any unique string of up to 64 letters, digits, - and _): a retry of the
 // same attempt is then recorded once. Without one the server makes an id, and a retry would count twice.
@@ -25,6 +33,8 @@
 
 import { BadRequest, json, jsonBody } from './http.js';
 import { ENDINGS } from '../core/drills.js';
+import { isRookEnding } from '../core/rook-drills.js';
+import { EngineFailed, opponent } from './drill-opponent.js';
 import * as D from './drills.js';
 
 const PREFIX = '/api/drills/';
@@ -43,6 +53,27 @@ function tablesOf(env) {
 }
 
 const bad = message => json({ error: message }, 400);
+
+const UNAVAILABLE = {
+  needs_computer: 'The rook drills need a computer for now: Stockfish plays them with its full engine.',
+  no_engine: 'The rook drills need Stockfish, and it is not installed here.',
+  engine_failed: 'Stockfish failed to answer.',
+};
+
+/** Why the rook drills can't be played here, or null when they can. */
+export function rookUnavailable(env) {
+  if (env.drillEngineUnavailable) return env.drillEngineUnavailable;
+  return env.drillEngine ? null : 'no_engine';
+}
+const unavailable = (reason, detail = null) => json({ error: UNAVAILABLE[reason] ?? String(reason) + (detail ? `: ${detail}` : ''),
+  reason }, 503);
+
+const opponents = new WeakMap();     // pool → its opponent()
+function opponentOf(router) {
+  const pool = router.env.drillEngine;
+  if (!opponents.has(pool)) opponents.set(pool, opponent(pool, { log: router.log }));
+  return opponents.get(pool);
+}
 
 /** The answer to a drill route, or null when the path isn't one. */
 export async function handle(router, method, url, body) {
@@ -82,6 +113,8 @@ function drillBody(raw) {
 async function move(router, raw) {
   const { b, error } = drillBody(raw);
   if (error) return error;
+  const rook = isRookEnding(b.ending), why = rook ? rookUnavailable(router.env) : null;
+  if (why) return unavailable(why);
   const t = await tablesOrError(router, b.ending);
   if (t.error) return t.error;
   let req;
@@ -91,7 +124,14 @@ async function move(router, raw) {
     if (e instanceof BadRequest) return bad(e.message);
     throw e;
   }
-  return json(D.playMove(t.tables, req, router.env.rng ?? Math.random));
+  if (!rook) return json(D.playMove(t.tables, req, router.env.rng ?? Math.random));
+  try {
+    return json(await D.playRookMove(t.tables, req, opponentOf(router)));
+  } catch (e) {
+    if (!(e instanceof EngineFailed)) throw e;
+    router.log?.error?.(`drill engine: ${e.message}`);
+    return json({ error: e.message, reason: 'engine_failed' }, 503);
+  }
 }
 
 async function line(router, raw) {
@@ -109,12 +149,15 @@ async function line(router, raw) {
   return json(D.lineFrom(t.tables, req));
 }
 
+// a status with whether the ending can be played here
+const withAvailability = (env, st) => ({ ...st, unavailable: isRookEnding(st.ending) ? rookUnavailable(env) : null });
+
 async function status({ env }, q) {
   const db = await env.store.progress();
   const ending = q.get('ending');
-  if (ending === null) return json({ endings: D.statuses(db) });
+  if (ending === null) return json({ endings: D.statuses(db).map(st => withAvailability(env, st)) });
   if (!D.isEnding(ending)) return bad(`ending: one of ${ENDINGS.join(', ')}`);
-  return json(D.status(db, ending));
+  return json(withAvailability(env, D.status(db, ending)));
 }
 
 async function next(router, q) {
@@ -126,6 +169,8 @@ async function next(router, q) {
     level = /^\d{1,3}$/.test(s) ? Number(s) : NaN;
     if (!(level >= 1 && level <= D.topLevel(ending))) return bad(`${ending} has levels 1 to ${D.topLevel(ending)}, not ${s}`);
   }
+  const why = isRookEnding(ending) ? rookUnavailable(env) : null;
+  if (why) return unavailable(why);
   let tables;
   try {
     tables = await tablesOf(env).get(ending);

@@ -8,8 +8,13 @@ import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 import { setBook } from '../core/book.js';
-import { boardFromFen, fen as fenOf, legalMoves, parseUci, push, uci as uciOf } from '../core/chess.js';
+import { boardFromFen, fen as fenOf, legalMoves, parseUci, push, san, uci as uciOf } from '../core/chess.js';
+import { LEVELS } from '../core/drills.js';
 import { generate, tableSize } from '../core/endgame-table.js';
+import { ROOK_TABLES, mirrorFen, rookStart } from '../core/rook-drills.js';
+import { ROOK_STARTS } from '../core/rook-starts.js';
+import { EnginePool } from '../desktop/engines.js';
+import { bestOf } from './drill-opponent.js';
 import { nodeSqlite } from './db-node.js';
 import { Store } from './db.js';
 import * as D from './drills.js';
@@ -32,13 +37,15 @@ function rng(seed) {
 
 const pool = { size: 1, name: 'none', async load() {}, async search() { throw new Error('no engine here'); } };
 
-/** A router over a data folder of its own; `load` is what the DrillTables reads (undefined: none given at all). */
-async function withRouter(load, fn) {
+/** A router over a data folder of its own; `load` is what the DrillTables reads (undefined: none given at all), `extra`
+ * more of the env (the rook drills' engine). */
+async function withRouter(load, fn, extra = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'blundr-routes-drills-'));
   setBook([]);
   const store = new Store(nodeSqlite(dir)), files = memoryFiles();
   const env = { store, files, profiles: new Profiles(files, store), rng: rng(3) };
   if (load) env.drillTables = new DrillTables(load);
+  Object.assign(env, extra);
   try {
     const router = await serve({ env, pool, nodes: 1, scan: false });
     router.runner.now = () => 5000.5;
@@ -104,7 +111,8 @@ test('attempt, status and the level that follows', async () => {
     // all endings
     const all = await ask('GET', '/api/drills/status');
     assert.deepEqual(all.body.endings.map(e => [e.ending, e.level]),
-      [['KQRK', 1], ['KRRK', 1], ['KQK', 1], ['KRK', 2], ['KPK', 1], ['KPK-hold', 1], ['KBBK', 1], ['KBNK', 1]]);
+      [['KQRK', 1], ['KRRK', 1], ['KQK', 1], ['KRK', 2], ['KPK', 1], ['KPK-hold', 1], ['KBBK', 1], ['KBNK', 1], ['Lucena', 1], ['Philidor', 1]]);
+    assert.deepEqual(all.body.endings.map(e => e.unavailable), [...Array(8).fill(null), 'no_engine', 'no_engine']);
     // a client id makes a retry harmless
     const { drill } = (await ask('GET', '/api/drills/next?ending=KPK')).body;
     const body = attemptOf(drill, 'threw', { id: 'try-1', worst_loss: null });
@@ -439,3 +447,174 @@ test('the real KBBK and KBNK tables: dealt, played to mate, recorded; a level 5 
     assert.ok(drill.dtm >= 28 && drill.dtm <= 33 && drill.budget === drill.dtm + 4 && drill.counter === false, JSON.stringify(drill));
   });
 });
+
+// ---------- the rook drills: Stockfish's reply ----------
+
+// the tables the rook drills load: the 3-piece ones made here, the 4-piece ones from data/endgames or, without them,
+// all draws (the 5-piece play below never reaches them)
+const haveRook = ROOK_TABLES.every(n => existsSync(join(REAL, `${n.toLowerCase()}.bin`)));
+const rookLoad = haveRook ? tablesFromFiles(async p => readFileSync(join(REAL, '..', p)), 'endgames')
+  : async name => tables[name] ?? { name, data: new Uint8Array(tableSize(name)) };
+const STOCKFISH = join(fileURLToPath(new URL('../..', import.meta.url)), 'bin', 'stockfish');
+
+/** A fake engine pool: each search answers the next of `script` ({move, cp | mate}, an Error to throw, or a function
+ * of (fen, moves) giving one); the calls are kept as [fen, nodes, multipv, moves]. */
+function fakePool(script) {
+  const calls = [];
+  return {
+    calls, size: 1, name: 'fake', async load() {},
+    async search(fen, nodes, multipv, moves) {
+      calls.push([fen, nodes, multipv, moves]);
+      let r = script.shift();
+      if (typeof r === 'function') r = r(fen, moves);
+      if (!r || r instanceof Error) throw r ?? new Error('no reply scripted');
+      const score = r.mate != null ? `mate ${r.mate}` : `cp ${r.cp}`;
+      return ['info depth 3 seldepth 3 multipv 1 score cp 1 nodes 100 pv a1a2',
+        `info depth 12 seldepth 20 multipv 1 score ${score} upperbound nodes ${nodes} pv h1h2`,
+        `info depth 12 seldepth 20 multipv 1 score ${score} nodes ${nodes} nps 1 pv ${r.move} a2a3`];
+    },
+  };
+}
+
+// the first legal move after `moves` from fen, as an engine reply
+const firstLegal = (fen, moves) => {
+  const b = boardFromFen(fen);
+  for (const u of moves) push(b, parseUci(b, u));
+  return { move: uciOf(legalMoves(b)[0]), cp: 0 };
+};
+
+test('rook drills: unavailable without an engine, or on a phone; the status says which', async () => {
+  for (const [extra, reason] of [[{}, 'no_engine'], [{ drillEngine: fakePool([]), drillEngineUnavailable: 'needs_computer' }, 'needs_computer']]) {
+    await withRouter(rookLoad, async ask => {
+      for (const ending of ['Lucena', 'Philidor']) {
+        const n = await ask('GET', `/api/drills/next?ending=${ending}`);
+        assert.deepEqual([n.status, n.body.reason], [503, reason]);
+        assert.match(n.body.error, reason === 'no_engine' ? /not installed/ : /need a computer/);
+        const e = ROOK_STARTS[ending][0][0];
+        const m = await ask('POST', '/api/drills/move', { ending, level: 1, fens: [e.fen, after(e.fen, movesFrom(e.fen)[0])] });
+        assert.deepEqual([m.status, m.body.reason], [503, reason]);
+        const s = await ask('GET', `/api/drills/status?ending=${ending}`);
+        assert.deepEqual([s.status, s.body.unavailable, s.body.top], [200, reason, 4]);
+      }
+      assert.equal((await ask('GET', '/api/drills/status?ending=KQK')).body.unavailable, null);
+      assert.equal((await ask('GET', '/api/drills/next?ending=KQK')).status, 200);    // the other drills don't need it
+    }, extra);
+  }
+});
+
+// the first start (as dealt, any level) with a quiet user move, a quiet black reply and then a promotion
+function promotingLine() {
+  const quiet = (f, u) => after(f, u).split(' ')[0].replace(/\d|\//g, '').length === f.split(' ')[0].replace(/\d|\//g, '').length;
+  for (const [l, list] of ROOK_STARTS.Lucena.entries()) {
+    for (const e of list) {
+      for (const w of movesFrom(e.fen).filter(u => quiet(e.fen, u))) {
+        const f1 = after(e.fen, w);
+        for (const b of movesFrom(f1).filter(u => quiet(f1, u))) {
+          const q = movesFrom(after(f1, b)).find(u => u.endsWith('q'));
+          if (q) return { e, level: l + 1, line: [w, b, q] };
+        }
+      }
+    }
+  }
+  throw new Error('no Lucena start promotes on the second move');
+}
+
+test('rook drills: a Lucena played to the promotion against scripted replies, then recorded', async () => {
+  const { e, level, line: [w, b, q] } = promotingLine();
+  const slack = LEVELS.Lucena[level - 1].slack;
+  const pool = fakePool([{ move: b, cp: -850 }, { move: 'a1a1', mate: -4 }]);
+  await withRouter(rookLoad, async ask => {
+    const n = await ask('GET', `/api/drills/next?ending=Lucena&level=${level}`);
+    assert.equal(n.status, 200);
+    assert.deepEqual([n.body.drill.mode, n.body.drill.dtm, n.body.drill.post_promo, n.body.status.unavailable], ['lucena', null, 10, undefined]);
+    assert.equal(rookStart(n.body.drill.fen).level, level);
+    // the user's first move: the reply comes from the engine, which gets the history
+    const fens = [e.fen, after(e.fen, w)];
+    const one = await ask('POST', '/api/drills/move', { ending: 'Lucena', level, fens });
+    assert.equal(one.status, 200, JSON.stringify(one.body));
+    assert.deepEqual(Object.keys(one.body), ['san', 'fen_move', 'kind', 'loss', 'dtm_after', 'reply', 'reply_san', 'fen', 'dtm',
+      'moves_used', 'budget', 'result', 'review', 'worst_loss', 'promoted', 'engine_ms']);
+    const sanOf = (f, u) => { const bd = boardFromFen(f); return san(bd, parseUci(bd, u)); };
+    assert.deepEqual([one.body.san, one.body.kind, one.body.loss, one.body.dtm_after, one.body.dtm], [sanOf(e.fen, w), null, null, null, null]);
+    assert.deepEqual([one.body.reply, one.body.reply_san, one.body.result, one.body.promoted], [b, sanOf(fens[1], b), null, false]);
+    assert.deepEqual([one.body.moves_used, one.body.budget], [1, e.promote + slack]);
+    assert.ok(Number.isInteger(one.body.engine_ms));
+    assert.deepEqual(pool.calls[0], [e.fen, 200_000, 1, [w]]);
+    // the promotion: the engine sees itself mated, so the drill ends there and the reply (here not even legal) isn't played
+    fens.push(one.body.fen, after(one.body.fen, q));
+    const two = await ask('POST', '/api/drills/move', { ending: 'Lucena', level, fens });
+    assert.equal(two.status, 200, JSON.stringify(two.body));
+    assert.deepEqual([two.body.result, two.body.reply, two.body.fen, two.body.promoted], ['promoted', null, null, true]);
+    assert.match(two.body.san, /=Q/);
+    assert.deepEqual(pool.calls[1][3], [w, b, q]);
+    assert.deepEqual(two.body.review, { moves: [{ dtm: null, kind: null, loss: null }, { dtm: null, kind: null, loss: null }], worst: -1 });
+    assert.equal(two.body.worst_loss, null);
+    // recorded as the page would
+    const r = await ask('POST', '/api/drills/attempt', { ending: 'Lucena', level, fen: e.fen, dtm: null, budget: e.promote + slack,
+      moves_used: 2, result: 'promoted', ms: 9000, worst_loss: null });
+    assert.deepEqual([r.status, r.body.counted, r.body.status.played, r.body.status.solved], [200, true, 1, 1]);
+    // no table line for a rook ending
+    assert.equal((await ask('POST', '/api/drills/line', { ending: 'Lucena', fen: e.fen })).status, 400);
+  }, { drillEngine: pool });
+});
+
+test('rook drills: the engine retried at fewer nodes after a crash, a 503 when it never answers; refusals', async () => {
+  const e = ROOK_STARTS.Philidor[0][0], first = movesFrom(e.fen)[0];
+  const pool = fakePool([new Error('engine crashed: SIGSEGV'), new Error('engine crashed: SIGSEGV'), firstLegal,
+    new Error('x'), new Error('x'), new Error('x')]);
+  await withRouter(rookLoad, async ask => {
+    const fens = [e.fen, after(e.fen, first)];
+    const ok = await ask('POST', '/api/drills/move', { ending: 'Philidor', level: 1, fens });
+    assert.equal(ok.status, 200, JSON.stringify(ok.body));
+    assert.deepEqual(pool.calls.map(c => c[1]), [200_000, 100_000, 20_000]);
+    assert.deepEqual([ok.body.budget, ok.body.result, ok.body.promoted], [null, null, false]);
+    const down = await ask('POST', '/api/drills/move', { ending: 'Philidor', level: 1, fens });
+    assert.deepEqual([down.status, down.body.reason], [503, 'engine_failed']);
+    assert.match(down.body.error, /the engine failed/);
+    // a start of another level, or of the other ending, or no start at all, is refused
+    const bad = async (body, re) => {
+      const r = await ask('POST', '/api/drills/move', body);
+      assert.equal(r.status, 400, JSON.stringify(r.body));
+      assert.match(r.body.error, re);
+    };
+    await bad({ ending: 'Philidor', level: 2, fens }, /fens\[0\]: not a Philidor start position/);
+    await bad({ ending: 'Lucena', level: 1, fens }, /fens\[0\]: not a Lucena start position/);
+    const near = after(after(e.fen, first), movesFrom(after(e.fen, first))[0]);     // two plies on: not a start
+    await bad({ ending: 'Philidor', level: 1, fens: [near, after(near, movesFrom(near)[0])] }, /not a Philidor start position/);
+    await bad({ ending: 'Philidor', level: 5, fens }, /level/);
+    // the mirror of a start is one
+    const m = mirrorFen(e.fen);
+    pool.search = async (fen, nodes, multipv, moves) => [`info depth 9 multipv 1 score cp 12 nodes ${nodes} pv ${firstLegal(fen, moves).move}`];
+    const mir = await ask('POST', '/api/drills/move', { ending: 'Philidor', level: 1, fens: [m, after(m, movesFrom(m)[0])] });
+    assert.equal(mir.status, 200, JSON.stringify(mir.body));
+  }, { drillEngine: pool });
+});
+
+test('rook drills: Stockfish at 1M nodes as the user wins three Lucena level 1 starts against the drill opponent',
+  { skip: (!haveRook && 'no data/endgames') || (!existsSync(STOCKFISH) && 'no bin/stockfish') }, async () => {
+    const user = new EnginePool({ size: 1, path: STOCKFISH, hash: 16 }), drill = new EnginePool({ size: 1, path: STOCKFISH, hash: 16 });
+    try {
+      await withRouter(rookLoad, async ask => {
+        for (const e of ROOK_STARTS.Lucena[0].slice(0, 3)) {
+          const fens = [e.fen], ucis = [];
+          let last = null;
+          for (let k = 0; k < 40 && !last?.result; k++) {
+            const best = bestOf(await user.search(e.fen, 1_000_000, 1, ucis));
+            ucis.push(best.move);
+            fens.push(after(fens[fens.length - 1], best.move));
+            const r = await ask('POST', '/api/drills/move', { ending: 'Lucena', level: 1, fens });
+            assert.equal(r.status, 200, JSON.stringify(r.body));
+            last = r.body;
+            if (!last.result) {
+              ucis.push(last.reply);
+              fens.push(last.fen);
+            }
+          }
+          assert.ok(['promoted', 'won'].includes(last.result), `${e.fen}: ${last.result} after ${last.moves_used} moves`);
+        }
+      }, { drillEngine: drill });
+    } finally {
+      await user.close();
+      await drill.close();
+    }
+  });
