@@ -70,6 +70,9 @@ class _Handler(SimpleHTTPRequestHandler):
         self.server.log.append(path)
         if path == "/" and self.server.hang:      # a connection that has gone bad: the page never comes
             time.sleep(self.server.hang)
+        if path in self.server.drop:              # the connection drops: no answer at all
+            self.close_connection = True
+            return
         # never a 304: the folders switched under it have files of one name and other bytes (by mtime it would answer
         # "not modified" for the older of two, which a real host's ETag doesn't)
         del self.headers["If-Modified-Since"]
@@ -86,7 +89,7 @@ class _Handler(SimpleHTTPRequestHandler):
 @pytest.fixture
 def server(builds):
     srv = ThreadingHTTPServer(("127.0.0.1", 0), _Handler)
-    srv.root, srv.log, srv.hang = builds["a"], [], 0
+    srv.root, srv.log, srv.hang, srv.drop = builds["a"], [], 0, set()
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     srv.url = f"http://127.0.0.1:{srv.server_port}/"
     yield srv
@@ -263,7 +266,8 @@ def test_a_deploy_installs_whole_and_no_page_mixes_two_builds(pwr, server, build
         first_visit(page, server.url, a["version"])
 
         # a deploy half there, as a host mid-deploy might serve it: b's list with a's page, or a file of b's code not
-        # what the list says. Never installed: a's stays, and nothing is offered.
+        # what the list says. Never installed: a's stays, and nothing is offered. Only the second is noted as a
+        # failure (a deploy still going out passes: the next launch tries again).
         b_code = next(k for k in b["files"] if k.startswith("v/")).split("/")[1]
         for n, spoil in enumerate([lambda d: shutil.copy(builds["a"] / "index.html", d / "index.html"),
                                    lambda d: (d / f"v/{b_code}/web/config.js").write_text("self.CR_CONFIG = {};\n")]):
@@ -275,8 +279,8 @@ def test_a_deploy_installs_whole_and_no_page_mixes_two_builds(pwr, server, build
             page.wait_for_function(READY, timeout=60_000)
             assert page.evaluate(SEEN)["page"] == a["version"]
             r = page.evaluate(INSTALLED)
-            # a's cache, and the failure noted (the page then offers a fresh start: the next test)
-            assert r == {"waiting": False, "caches": sorted(["blundr-offline-" + a["version"], "blundr-offline-failed"])}, (n, r)
+            # a's cache, and for the lasting failure a note (the page then offers a fresh start: the next tests)
+            assert r == {"waiting": False, "caches": sorted(["blundr-offline-" + a["version"]] + (["blundr-offline-failed"] if n else []))}, (n, r)
             assert page.locator(READY_TO_RELOAD).count() == 0
 
         # the real deploy: this load is still all a's, b installs alongside, and only what changed is downloaded
@@ -376,6 +380,66 @@ def test_a_build_that_cannot_be_kept_offers_a_fresh_start(pwr, server, builds, t
         names = page.evaluate("caches.keys()")
         assert "chess-review-engines" in names and [n for n in names if n.startswith("blundr-offline-")] == ["blundr-offline-" + b["version"]], names
         assert page.locator(COULD_NOT).count() == 0
+    finally:
+        ctx.close()
+        browser.close()
+
+
+NOTE = """version => caches.open('blundr-offline-failed').then(c => c.put(new URL('update-failed', location.href).href,
+    new Response(JSON.stringify({ type: 'blundr-update-failed', version, reason: 'a test' }))))"""
+
+
+def test_a_failure_note_never_costs_offline_use(pwr, server, builds):
+    """A failed update noted, then the network gone: no prompt offline, and a prompt taken with no network leaves the
+    kept build as it is (it says the update needs the internet) and Blundr still opens offline."""
+    a = offline_list(builds["a"])
+    browser, ctx = phone(pwr, "chromium")
+    try:
+        page = ctx.new_page()
+        first_visit(page, server.url, a["version"])
+        page.evaluate(NOTE, "0123456789ab")                       # a newer build that couldn't be kept
+        page.goto(server.url)
+        page.wait_for_function(READY, timeout=60_000)
+        page.wait_for_selector(COULD_NOT, timeout=30_000)       # online: offered
+
+        ctx.set_offline(True)                                   # the network goes with the prompt up: taken anyway
+        page.click(COULD_NOT)
+        toast(page, "Updating Blundr needs the internet", timeout=15_000)
+        assert page.evaluate(SEEN)["page"] == a["version"]
+        until(page, KEPT, a["version"], timeout_s=5)            # the service worker and the build still there
+
+        page.goto(server.url)                                   # an offline launch with the note kept: no prompt
+        page.wait_for_function(READY, timeout=60_000)
+        seen = page.evaluate(SEEN)
+        assert seen["controlled"] and seen["page"] == a["version"], seen
+        assert "blundr-offline-failed" in page.evaluate("caches.keys()")
+        page.wait_for_timeout(2000)
+        assert page.locator(COULD_NOT).count() == 0
+        status, d = api(page, "api/puzzles/daily")
+        assert status == 200 and d
+    finally:
+        ctx.close()
+        browser.close()
+
+
+def test_a_dropped_connection_while_installing_leaves_no_note(pwr, server, builds):
+    a, b = offline_list(builds["a"]), offline_list(builds["b"])
+    b_code = next(k for k in b["files"] if k.startswith("v/")).split("/")[1]
+    browser, ctx = phone(pwr, "chromium")
+    try:
+        page = ctx.new_page()
+        first_visit(page, server.url, a["version"])
+        server.root, server.drop = builds["b"], {f"/v/{b_code}/web/config.js"}
+        page.goto(server.url)
+        page.wait_for_function(READY, timeout=60_000)
+        r = page.evaluate(INSTALLED)
+        assert r == {"waiting": False, "caches": ["blundr-offline-" + a["version"]]}, r
+        assert f"/v/{b_code}/web/config.js" in server.log
+        assert page.locator(COULD_NOT).count() == 0
+        server.drop = set()                                      # the next launch tries again, and keeps it
+        page.goto(server.url)
+        page.wait_for_function(READY, timeout=60_000)
+        assert page.evaluate(INSTALLED)["waiting"]
     finally:
         ctx.close()
         browser.close()
