@@ -20,6 +20,7 @@
 //   web/engine/           Stockfish 19, outside v/: the same files every build
 //   book_keys.txt         the opening book's positions, one fen_key a line (js/core/book.js), from data/book
 //                         (scripts/fetch_book.sh)
+//   book_tree.json        the opening tree: each book position's name and book moves (js/core/opening-tree.js)
 //   puzzles.json          the Lichess puzzle pack, fetched alongside the app; packs.json, the puzzle packs
 //   endgames/             the endgame drills' tables (kqk.bin ...), from data/endgames (scripts/build_endgame_tables.js,
 //                         run here when they're missing or stale), fetched by the worker on a drill's first use
@@ -41,7 +42,7 @@ import { basename, dirname, extname, join, normalize, relative, resolve, sep } f
 import { parseArgs } from 'node:util';
 import { crc32, deflateRawSync, gunzipSync, gzipSync } from 'node:zlib';
 
-import { bookKeysFromDir } from '../js/desktop/book.js';
+import { bookKeysFromDir, bookTreeFromDir } from '../js/desktop/book.js';
 import { ROOT } from '../js/desktop/paths.js';
 import { API, LICHESS_USER } from '../js/server/ingest.js';
 import { fillPieces } from '../js/server/router.js';
@@ -242,12 +243,14 @@ function csp(html, engineWasm) {
   ].join('; ');
 }
 
-/** What the JS server reads besides its code: the opening book's keys, the Lichess puzzle pack and the packs. */
+/** What the JS server reads besides its code: the opening book's keys and tree, the Lichess puzzle pack and the
+ * packs. */
 function dataFiles(out) {
   const book = join(ROOT, 'data', 'book');
   const keys = bookKeysFromDir(book);
   if (!keys.length) throw new Error(`no opening book in ${book} (scripts/fetch_book.sh)`);
   writeFileSync(join(out, 'book_keys.txt'), keys.join('\n'));
+  writeFileSync(join(out, 'book_tree.json'), JSON.stringify(bookTreeFromDir(book)));
   // beside the code, fetched alongside it (the Worker sends it compressed: 9 MB of JSON, about 2 MB as sent)
   const packs = join(ROOT, 'chess_review', 'puzzle_packs');
   writeFileSync(join(out, 'puzzles.json'), JSON.stringify(JSON.parse(readFileSync(join(packs, 'puzzles.json'), 'utf8'))));
@@ -380,7 +383,7 @@ function legacy(out) {
  * keeps the one it runs itself (Cache Storage chess-review-engines), and a phone never fetches the full one. Not
  * legacy/ (a one-time move, online) or privacy.html and terms.html. The page itself ('') is added by build(). */
 function offlineFiles(out, code, ver) {
-  const rels = ['account.js', 'manifest.json', 'favicon.ico', 'book_keys.txt', 'puzzles.json', 'packs.json',
+  const rels = ['account.js', 'manifest.json', 'favicon.ico', 'book_keys.txt', 'book_tree.json', 'puzzles.json', 'packs.json',
     'web/engine/stockfish-19-lite-single.js', 'web/engine/stockfish-19-single.js',
     ...readdirSync(join(ROOT, 'web', 'icons')).map(f => `icons/${f}`),
     ...files(join(out, 'themes')).map(f => relative(out, f).split(sep).join('/')),

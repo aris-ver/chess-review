@@ -6,7 +6,8 @@
 //   node js/desktop/build.js [--version v1.0.0]
 //
 // app.asar also holds the puzzle pack (puzzle_packs/puzzles.json and packs.json, from chess_review/puzzle_packs/)
-// and the opening book (book_keys.txt, made here from packaging/assets/book, data/book or lichess's TSVs), and the
+// and the opening book (book_keys.txt and book_tree.json, made here from packaging/assets/book, data/book or
+// lichess's TSVs), and the
 // endgame drills' tables (endgames/*.bin, from data/endgames, built there first when they're missing or stale).
 //
 // Stockfish comes from packaging/bin/stockfish.exe; if it isn't there the latest official release is fetched into it ($GH_TOKEN, if set, against the API's rate limit). The app is
@@ -20,7 +21,7 @@ import { join } from 'node:path';
 import { parseArgs } from 'node:util';
 
 import { NAMES as TABLE_NAMES, ensureTables, fileName as tableFile } from '../../scripts/build_endgame_tables.js';
-import { bookKeysFromDir } from './book.js';
+import { bookKeysFromDir, bookTreeFromDir } from './book.js';
 import { ROOT } from './paths.js';
 
 const { values: args } = parseArgs({ options: { version: { type: 'string', default: '' } } });
@@ -60,11 +61,10 @@ async function fetchStockfish() {
   rmSync(tmp, { recursive: true, force: true });
 }
 
-// the opening book's keys, from the TSVs fetched here before, a checkout's data/book, or lichess
-async function bookKeys() {
+// the opening book's folder of TSVs: the one fetched here before, a checkout's data/book, or lichess's, fetched now
+async function bookDir() {
   for (const dir of [join(ROOT, 'packaging', 'assets', 'book'), join(ROOT, 'data', 'book')]) {
-    const keys = bookKeysFromDir(dir);
-    if (keys.length) return keys;
+    if (bookKeysFromDir(dir).length) return dir;
   }
   console.log('Downloading the opening book...');
   const dir = join(ROOT, 'packaging', 'assets', 'book');
@@ -74,7 +74,7 @@ async function bookKeys() {
     if (!r.ok) throw new Error(`opening book ${f}.tsv: HTTP ${r.status}`);
     writeFileSync(join(dir, `${f}.tsv`), await r.text());
   }
-  return bookKeysFromDir(dir);
+  return dir;
 }
 
 // What goes into app.asar: the JS (no tests), the page, the puzzles, the book and a package.json that starts
@@ -86,9 +86,11 @@ async function stage(ver) {
   cpSync(join(ROOT, 'chess_review', 'static'), join(STAGE, 'chess_review', 'static'), { recursive: true });
   cpSync(join(ROOT, 'chess_review', 'puzzle_packs', 'puzzles.json'), join(STAGE, 'puzzle_packs', 'puzzles.json'));
   cpSync(join(ROOT, 'chess_review', 'puzzle_packs', 'packs.json'), join(STAGE, 'puzzle_packs', 'packs.json'));
-  const keys = await bookKeys();
+  const book = await bookDir();
+  const keys = bookKeysFromDir(book);
   if (keys.length < 1000) throw new Error(`the opening book has only ${keys.length} positions`);
   writeFileSync(join(STAGE, 'book_keys.txt'), keys.join('\n'));
+  writeFileSync(join(STAGE, 'book_tree.json'), JSON.stringify(bookTreeFromDir(book)));
   // the endgame drills' tables (endgames/kqk.bin ...), built into data/endgames when missing or stale
   const tables = join(ROOT, 'data', 'endgames');
   const t = ensureTables(tables, { log: s => console.log('endgame table', s) });
