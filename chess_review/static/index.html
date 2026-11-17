@@ -435,8 +435,9 @@ body:not(.puzzle) .pzover { display: none; }
 .card.pztile.off { cursor: default; } .card.off .cover { filter: grayscale(1); opacity: .6; }
 @media (hover: hover) { .card.pztile.off:hover { border-color: var(--line); } }
 .card .doff { color: #e0a53a; font-weight: 700; font-size: 12px; }     /* "Needs a computer": the rook endings on a phone */
-/* the endings' cards, three a row: name, one short line, the level as pips */
-.cards.dcards { grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; }
+/* the endings' cards, two a row on a wide screen (the groups of six, two and two fill their rows, and each line fits
+   on one), one on a phone: name, one short line, the level as pips */
+.cards.dcards { grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 10px; }
 .card.dcard { padding: 12px 14px; gap: 12px; }
 .card.dcard .cover { width: 52px; height: 52px; }
 .card.dcard .cover img.m { width: 38px; height: 38px; } .card.dcard .cover img.s1 { width: 21px; height: 21px; } .card.dcard .cover img.s2 { top: 21px; width: 18px; height: 18px; }
@@ -457,6 +458,8 @@ body:not(.puzzle) .pzover { display: none; }
 .dcont .cbody { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 160px; }
 .dcont .src { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
 .dcont .who { font-size: 15px; font-weight: 700; }
+.dcont .desc { color: var(--muted); font-size: 13px; }     /* the ending's coaching line: a wide screen's only */
+@media (max-width: 900px) { .dcont .desc { display: none; } }
 .dcont button { padding: 7px 14px; font-size: 13px; }
 .dcont .cover.cal .mon { font-size: 9px; padding: 1px 0; } .dcont .cover.cal .day { font-size: 19px; margin-bottom: 4px; }
 #homecont { display: none; }     /* phones only: a wide screen shows every tile's state at once */
@@ -472,6 +475,23 @@ body.drill .phead .ptlvl { display: none; }     /* the level is in the box under
 .bud i.short { background: var(--c-miss); }     /* the mate needs more moves than are left */
 .bud i.spare { background: color-mix(in srgb, var(--win) 70%, var(--panel2)); }
 .bkey { margin-top: 5px; font-variant-numeric: tabular-nums; }
+/* a wide screen's drill panel: the ending's standing under the bar (drillSide), Skip / Give up as a quiet button
+   under that, back and forward only. A phone keeps its own rows: the standing is hidden there */
+.dside { display: none; }
+@media (min-width: 901px) {
+  .dside { display: flex; flex-direction: column; gap: 9px; margin: 14px 0 12px; padding: 12px 2px 0; border-top: 1px solid var(--line); font-size: 13px; color: var(--muted); }
+  .dsrow { display: flex; align-items: center; gap: 10px; }
+  .dside .dpips i { width: 18px; height: 6px; }
+  .drun { display: flex; gap: 4px; }
+  .drun i { width: 20px; height: 20px; border-radius: 4px; background: var(--panel2); border: 1px solid var(--line); font-style: normal; font-size: 12px; font-weight: 700; display: flex; align-items: center; justify-content: center; }
+  .drun i.ok { background: color-mix(in srgb, var(--win) 22%, var(--panel2)); color: var(--win); border-color: transparent; }
+  .drun i.no { background: color-mix(in srgb, var(--c-miss) 22%, var(--panel2)); color: var(--c-miss); border-color: transparent; }
+  .dstot { font-size: 12px; font-variant-numeric: tabular-nums; }
+  body.drill .pzhead .mlv, body.drill .pzhead .mlv + br { display: none; }     /* the level is in the standing */
+  .pzbtns.quiet { justify-content: flex-end; }
+  .pzbtns.quiet button { flex: none; padding: 6px 16px; font-size: 13px; font-weight: 500; }
+  body.drill #b-first, body.drill #b-play, body.drill #b-last { display: none; }     /* a few moves: back and forward do */
+}
 .dnote { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 14px; margin: 0 0 12px; font-size: 14px; }
 .dlist { display: flex; flex-direction: column; gap: 1px; margin: 6px 0 2px; font-size: 13px; }
 .drow { display: grid; grid-template-columns: 24px minmax(0, 1fr) auto auto; gap: 8px; align-items: center; padding: 3px 6px; border-radius: 5px; cursor: pointer; font-variant-numeric: tabular-nums; }
@@ -2788,9 +2808,9 @@ function renderDrillCards() {
   const c = drillContinue(), u = drillUntried(), cb = $('drillcont');
   cb.classList.toggle('hidden', !c && !u);
   cb.innerHTML = c
-    ? `${coverHtml('d-' + c.ending)}<div class="cbody"><span class="src">Pick up where you left off</span><span class="who">${esc(DRILL_ENDINGS[c.ending].name)} · level ${c.level} of ${c.top}</span></div>` +
+    ? `${coverHtml('d-' + c.ending)}<div class="cbody"><span class="src">Pick up where you left off</span><span class="who">${esc(DRILL_ENDINGS[c.ending].name)} · level ${c.level} of ${c.top}</span><span class="desc">${esc(DRILL_ENDINGS[c.ending].desc)}</span></div>` +
       `<button class="primary" data-go="#/drills/${c.ending}">Continue</button>` + (u ? `<button data-go="#/drills/${u.ending}">Try ${esc(DRILL_ENDINGS[u.ending].name)}</button>` : '')
-    : u ? `${coverHtml('d-' + u.ending)}<div class="cbody"><span class="src">Start here</span><span class="who">${esc(DRILL_ENDINGS[u.ending].name)}</span></div><button class="primary" data-go="#/drills/${u.ending}">Play</button>` : '';
+    : u ? `${coverHtml('d-' + u.ending)}<div class="cbody"><span class="src">Start here</span><span class="who">${esc(DRILL_ENDINGS[u.ending].name)}</span><span class="desc">${esc(DRILL_ENDINGS[u.ending].desc)}</span></div><button class="primary" data-go="#/drills/${u.ending}">Play</button>` : '';
   box.querySelectorAll('[data-go]').forEach(el => el.onclick = () => { location.hash = el.dataset.go; });
   cb.querySelectorAll('[data-go]').forEach(el => el.onclick = () => { location.hash = el.dataset.go; });
   box.querySelectorAll('[data-off]').forEach(el => el.onclick = () => {
@@ -3208,7 +3228,7 @@ function renderDrillBox() {
     if (d.counter && !dr.over && dist != null) extra = `<br>Mate in ${dist}`;
   } else if (d.mode === 'hold') cnt = `Held ${n} of ${d.hold_moves}`;
   else cnt = drillMoves(n);
-  const head = `<div class="pzhead"><span class="cnt">${cnt}</span><span class="meta">Level ${d.level} of ${s ? s.top : '?'}${s && s.star ? ' ★' : ''}${extra}</span></div>`;
+  const head = `<div class="pzhead"><span class="cnt">${cnt}</span><span class="meta"><span class="mlv">Level ${d.level} of ${s ? s.top : '?'}${s && s.star ? ' ★' : ''}</span>${extra}</span></div>`;
   let btns;
   if (!dr.over) btns = `<button id="dr-a"${dr.busy ? ' disabled' : ''} title="${n ? 'End this one here: it counts as a miss' : 'Another position: this one is not counted'}">${n ? 'Give up' : 'Skip'}</button>`;
   else btns = (dr.reviewOpen ? (rook ? `<button id="dr-a" title="Play Stockfish's line from the chosen move">The engine's line from here</button>`
@@ -3219,7 +3239,9 @@ function renderDrillBox() {
   // above, and Back is the header's
   const bar = drillBar(d, n);
   const info = bar || `<div class="pzinfo">${d.mode === 'attack' ? 'Promote and keep the win' : 'Win rook and pawn against rook'}</div>`;
-  $('pzbox').innerHTML = head + `<div class="pzbtns">${btns}</div>` + info;
+  // the order a wide screen shows (a phone places each by its grid area): the count and its bar together, the
+  // ending's standing, then the buttons; Skip / Give up as a quiet one, the review's two as the row they are
+  $('pzbox').innerHTML = head + info + drillSide(d, s) + `<div class="pzbtns${dr.over ? '' : ' quiet'}">${btns}</div>`;
   const a = $('dr-a');
   a.onclick = !dr.over ? () => { if (dr.answers.length) giveUpDrill(); else drillNext(); } : dr.reviewOpen ? drillBest : openDrillReview;
   if ($('pz-next')) $('pz-next').onclick = drillNext;
@@ -3252,6 +3274,22 @@ function drillBar(d, n) {
   const label = `${total} moves: ${n} played, ${total - n} left${text ? `; ${text}` : ''}`;
   return `<div class="pzinfo dbud" title="${esc(label)}"><div class="bud${total > 30 ? ' dense' : ''}" role="img" aria-label="${esc(label)}">${blocks}</div>` +
     (text ? `<div class="bkey">${esc(text)}</div>` : '') + `</div>`;
+}
+// The ending's standing, under the bar on a wide screen (a phone has no room for it: hidden there): the level as
+// pips, the attempts at this level that count towards the next (three of the last four up, js/server/drills.js), the
+// totals. After an attempt that changed the level the run is the new level's, so it starts empty
+function drillSide(d, s) {
+  if (!s) return '';
+  const top = s.top, lv = d.level;
+  const pips = Array.from({ length: top }, (_, i) => `<i${i < lv ? ' class="on"' : ''}></i>`).join('');
+  const run = s.level === lv ? (s.run || []).slice(-4) : [];
+  const slots = Array.from({ length: 4 }, (_, i) => i < run.length ? `<i class="${run[i] ? 'ok' : 'no'}">${run[i] ? '✓' : '✗'}</i>` : '<i></i>').join('');
+  const goal = lv >= top ? (s.star ? 'The top level, and its star' : 'The top level: solve one for the star')
+    : 'Three of four solved: up a level';
+  const word = d.ending === 'KPK-hold' || d.ending === 'Philidor' ? 'held' : 'solved';
+  return `<div class="dside"><div class="dsrow"><span class="dpips">${pips}</span><span>Level ${lv} of ${top}${s.star ? ' <span class="dstar">★</span>' : ''}</span></div>` +
+    `<div class="dsrow"><span class="drun" title="Your last attempts at this level">${slots}</span><span>${goal}</span></div>` +
+    (s.played ? `<div class="dstot">${s.played} played · ${s.solved} ${word}</div>` : '') + `</div>`;
 }
 
 // ---------- puzzle packs and the puzzle of the day (packs.py) ----------
