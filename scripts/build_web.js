@@ -1,6 +1,7 @@
 // Assembles the browser version (docs/web.md) into web-dist/, a static site.
 //
-//   node scripts/build_web.js [--serve [--port 8200] [--log]] [--engine-wasm URL|cdn]     (npm run build:web -- ...)
+//   node scripts/build_web.js [--serve [--port 8200] [--log]] [--engine-wasm URL|cdn] [--out DIR] [--nodes N]
+//                                                                                    (npm run build:web -- ...)
 //
 // web-dist/
 //   index.html            chess_review/static/index.html with the board's pieces (js/desktop/pieces.json) filled in,
@@ -8,6 +9,8 @@
 //   account.js            the Blundr account, from chess_review/static/ (the desktop app has the same one)
 //   privacy.html, terms.html   from web/pages/
 //   manifest.json, icons/ what "Add to Home Screen" installs (icons from web/icons/, rendered from packaging/chess-review.ico)
+//   offline.js            the service worker (web/offline.js), headed by the list of every file the app needs offline
+//                         with its SHA-256, and the build's offline version: a hash of that list, also in the page's head
 //   themes/               the page's pieces, boards and sounds
 //   v/<version>/          the code, under a name of its own each build (a hash of what is in it), so that browsers keep it
 //                         for good (_headers: a year, immutable) and ask for none of it again until a deploy changes it:
@@ -28,12 +31,13 @@
 //
 // Downloads (cached in data/web-cache): npm stockfish@19.0.1. --engine-wasm points the full engine at another host (the
 // Worker refuses files over 25 MiB); `--engine-wasm cdn` is blundr.gr's: the same npm package's file on unpkg. By
-// default it is served from web/engine/ next to the rest, which is what --serve wants.
+// default it is served from web/engine/ next to the rest, which is what --serve wants. --out: another folder than
+// web-dist/; --nodes: the analysis' node count per position, in config.js (tests: a short review, a second build).
 
 import { createHash } from 'node:crypto';
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
-import { basename, dirname, extname, join, normalize, relative, sep } from 'node:path';
+import { basename, dirname, extname, join, normalize, relative, resolve, sep } from 'node:path';
 import { parseArgs } from 'node:util';
 import { crc32, deflateRawSync, gunzipSync, gzipSync } from 'node:zlib';
 
@@ -45,10 +49,10 @@ import { NAMES as TABLE_NAMES, ensureTables, fileName as tableFile } from './bui
 
 const { values: args } = parseArgs({ options: {
   serve: { type: 'boolean', default: false }, port: { type: 'string', default: '8200' }, 'engine-wasm': { type: 'string' },
-  log: { type: 'boolean', default: false },
+  log: { type: 'boolean', default: false }, out: { type: 'string' }, nodes: { type: 'string' },
 } });
 
-const OUT = join(ROOT, 'web-dist');
+const OUT = args.out ? resolve(args.out) : join(ROOT, 'web-dist');
 const CACHE = join(ROOT, 'data', 'web-cache');
 const STATIC = join(ROOT, 'chess_review', 'static');
 // Pyodide and python-chess only for the one-time move from the Python build's data (legacy/, js/web/legacy.js): the
@@ -68,6 +72,9 @@ const BLOCKED_NAME = new RegExp('analy[sz]|track|stats?\\b|statistic|metric|tele
 // again every time: on a phone each of those questions is a round trip, and the home screen's covers waited seconds for
 // their pieces. A set changed in place reaches a returning visitor within a day.
 const THEMES_CACHE = 'public, max-age=86400, stale-while-revalidate=604800';
+// The service worker: asked for again every time (the page also registers it with updateViaCache 'none'), so a
+// deploy's list of files reaches a phone the next time Blundr opens online.
+const OFFLINE_CACHE = 'no-cache';
 // v/<version>/: a file there never changes (a change is a new version), so a browser keeps it without asking. On a phone
 // the worker's imports, asked again on every visit, were one round trip per level of imports: seconds before the app
 // worker said a word. index.html, the one way in to a version, is asked for every time, so a deploy shows at once.
@@ -117,7 +124,8 @@ function versionIcons(html) {
 }
 const BG = '#232a35';      // the page's --bg: the status bar and the splash while it loads
 // Added to the home screen (iPhone: Share > Add to Home Screen; Android: Install app) the site opens full screen with
-// its own icon. iOS reads the apple-* tags, everything else the manifest. No service worker: it stays an online site.
+// its own icon. iOS reads the apple-* tags, everything else the manifest. The service worker (offline.js) then opens it
+// with no network, once it has been opened online.
 const HEAD = `<meta name="description" content="${DESCRIPTION}">
 <link rel="canonical" href="${SITE}/">
 <meta property="og:type" content="website">
@@ -201,7 +209,8 @@ function page(code, modules) {
   const t = html.indexOf('</title>') + '</title>\n'.length;
   html = html.slice(0, t) + HEAD + html.slice(t);
   // the website's visitor numbers: this build only, so the desktop app (the same page) never has it
-  if (analytics) html = html.replace('</body>', `<script defer src="${ANALYTICS_SCRIPT}" data-cf-beacon='{"token": "${WEB_ANALYTICS_TOKEN}"}'></script>\n</body>`);
+  // async, not defer: a slow connection to its host must not hold back DOMContentLoaded, which the page's start waits on
+  if (analytics) html = html.replace('</body>', `<script async src="${ANALYTICS_SCRIPT}" data-cf-beacon='{"token": "${WEB_ANALYTICS_TOKEN}"}'></script>\n</body>`);
   const i = html.indexOf('<script');    // before the page's own scripts (account.js first): the first fetch must already be redirected
   html = html.slice(0, i) + `<script src="${code}web/shim.js"></script>\n` + html.slice(i);
   const h = html.indexOf('<style');     // first in the head: before the page's style, its body, its scripts
@@ -272,7 +281,8 @@ function codeFiles(config) {
       out[rel] = readFileSync(f);
     }
   }
-  for (const f of readdirSync(join(ROOT, 'web')).filter(f => f.endsWith('.js')).sort()) {
+  // offline.js is the service worker, served from the site's root (offlineWorker), not code the page or worker imports
+  for (const f of readdirSync(join(ROOT, 'web')).filter(f => f.endsWith('.js') && f !== 'offline.js').sort()) {
     check(`web/${f}`);
     out[`web/${f}`] = readFileSync(join(ROOT, 'web', f));
   }
@@ -363,6 +373,28 @@ function legacy(out) {
   return { pyodide: LEGACY_PYODIDE, wheel: `legacy/${LEGACY_WHEEL}`, app: 'legacy/app.zip' };
 }
 
+/** What the service worker keeps for offline use, as { path from the site's root: SHA-256 of the file in out }: the
+ * page's files (account.js, the manifest, icons, themes), the code (v/<ver>/, code's paths), the server's data
+ * (the book, the puzzle packs, the endgame tables) and the engines' scripts. Not the engines' .wasm: web/engines.js
+ * keeps the one it runs itself (Cache Storage chess-review-engines), and a phone never fetches the full one. Not
+ * legacy/ (a one-time move, online) or privacy.html and terms.html. The page itself ('') is added by build(). */
+function offlineFiles(out, code, ver) {
+  const rels = ['account.js', 'manifest.json', 'favicon.ico', 'book_keys.txt', 'puzzles.json', 'packs.json',
+    'web/engine/stockfish-19-lite-single.js', 'web/engine/stockfish-19-single.js',
+    ...readdirSync(join(ROOT, 'web', 'icons')).map(f => `icons/${f}`),
+    ...files(join(out, 'themes')).map(f => relative(out, f).split(sep).join('/')),
+    ...TABLE_NAMES.map(name => `endgames/${tableFile(name)}`),
+    ...Object.keys(code).map(rel => `v/${ver}/${rel}`)];
+  const sha256 = f => createHash('sha256').update(readFileSync(f)).digest('hex');
+  return Object.fromEntries(rels.sort().map(rel => [rel, sha256(join(out, rel))]));
+}
+
+/** The service worker as served: web/offline.js headed by its list (self.OFFLINE). */
+function offlineWorker(version, list) {
+  return `self.OFFLINE = ${JSON.stringify({ version, files: list })};\n`
+    + readFileSync(join(ROOT, 'web', 'offline.js'), 'utf8');
+}
+
 async function build(engineWasm) {
   mkdirSync(join(OUT, 'web'), { recursive: true });
   copyIfChanged(join(STATIC, 'account.js'), join(OUT, 'account.js'));
@@ -408,13 +440,24 @@ async function build(engineWasm) {
     engineLiteSha256: sha256(engines['stockfish-19-lite-single.wasm']),
     engineName: `Stockfish ${STOCKFISH_VERSION.split('.')[0]}`,
     site: '../../',
+    ...(args.nodes ? { nodes: Number(args.nodes) } : {}),
   };
   const code = codeFiles(`self.CR_CONFIG = ${JSON.stringify(config, null, 1)};\n`);
   const ver = version(code);
   mkdirSync(join(OUT, 'v'), { recursive: true });
   codeTree(OUT, code, ver);
-  const html = page(`v/${ver}/`, warmUp(code));
+  let html = page(`v/${ver}/`, warmUp(code));
+  // The offline version: a hash of every file the service worker keeps, of the page and of the service worker's own
+  // code. In the page's head, so the service worker knows a page of its own build from another's; in offline.js, so
+  // a deploy that changes any of them is a new service worker with a cache of its own, which installs whole.
+  const list = offlineFiles(OUT, code, ver);
+  const offline = createHash('sha256').update(html).update(readFileSync(join(ROOT, 'web', 'offline.js')))
+    .update(Object.entries(list).map(([rel, h]) => `${rel}\0${h}\n`).join('')).digest('hex').slice(0, 12);
+  html = html.replace('</title>\n', `</title>\n<meta name="blundr-offline" content="${offline}">\n`);
   writeFileSync(join(OUT, 'index.html'), html);
+  list[''] = createHash('sha256').update(html).digest('hex');
+  if (BLOCKED_NAME.test('offline.js')) throw new Error('offline.js: ad blockers block a file of that name. Rename it.');
+  writeFileSync(join(OUT, 'offline.js'), offlineWorker(offline, list));
   // for search engines (Cloudflare adds its own content signals in front of robots.txt)
   writeFileSync(join(OUT, 'robots.txt'), `User-agent: *\nAllow: /\n\nSitemap: ${SITE}/sitemap.xml\n`);
   writeFileSync(join(OUT, 'sitemap.xml'), '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
@@ -424,8 +467,8 @@ async function build(engineWasm) {
   const rule = (path, headers) => `${path}\n${Object.entries(headers).map(([k, v]) => `  ${k}: ${v}\n`).join('')}`;
   writeFileSync(join(OUT, '_headers'), rule('/*', { ...SECURITY, 'Content-Security-Policy': csp(html, engineWasm) })
     + rule('/themes/*', { 'Cache-Control': THEMES_CACHE }) + rule('/endgames/*', { 'Cache-Control': THEMES_CACHE })
-    + rule('/v/*', { 'Cache-Control': CODE_CACHE }));
-  console.log('built', OUT, 'version', ver);
+    + rule('/v/*', { 'Cache-Control': CODE_CACHE }) + rule('/offline.js', { 'Cache-Control': OFFLINE_CACHE }));
+  console.log('built', OUT, 'version', ver, 'offline', offline, `(${Object.keys(list).length} files)`);
 }
 
 const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript', '.json': 'application/json',

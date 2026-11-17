@@ -144,7 +144,9 @@ export async function send(ctx, { url, params = {}, headers = {}, stream = false
       `${host} didn't answer within ${formatG(timeout)} s`, abort);
   } catch (e) {
     if (e instanceof TimeoutError) throw e;
-    throw new ConnectionError(`couldn't reach ${host}: ${e.message ?? e}`);     // offline, blocked, refused by CORS
+    // offline, blocked, refused by CORS; a browser that knows it has no network says so (Node's navigator doesn't)
+    const why = globalThis.navigator?.onLine === false ? 'no internet connection' : (e.message ?? e);
+    throw new ConnectionError(`couldn't reach ${host}: ${why}`);
   }
   const r = new Reply(full, response, timeout, abort);
   if (!stream) {

@@ -137,6 +137,7 @@
   try { noteOff = noteOff || localStorage.getItem(NOTE_OFF) === '1'; } catch (e) {}
   const state = { app: 'Loading Blundr' };
   let appReady = false, engineReady = false;
+  let updateUp = false, reloadNow = () => location.reload();   // a new build kept and waiting (offline.js, below)
   document.documentElement.classList.add('engine-loading');
   const render = () => {
     const loading = appReady ? '' : `<div>${state.app}</div>`;
@@ -145,11 +146,15 @@
         `<a class="a2hs" style="color:var(--accent)" href="#">add it to your home screen</a>.</div>`
       : `<div style="opacity:.75${loading ? ';margin-top:4px' : ''}">Analysis runs faster in the ` +
         `<a class="dl" style="color:var(--accent)" href="${DOWNLOAD}">Windows app</a>.</div>`;
-    bar.innerHTML = '<button class="x" title="Dismiss" aria-label="Dismiss">×</button>' + loading + note;
+    const upd = !updateUp ? '' : `<div${loading || note ? ' style="margin-top:4px"' : ''}>A new version of Blundr is ready. ` +
+      '<a class="upd" style="color:var(--accent)" href="#">Reload</a></div>';
+    bar.innerHTML = '<button class="x" title="Dismiss" aria-label="Dismiss">×</button>' + loading + note + upd;
     const a2hs = bar.querySelector('.a2hs');
     if (a2hs) a2hs.onclick = addToHome;
     const get = bar.querySelector('.dl');
     if (get) get.onclick = downloading;
+    const reload = bar.querySelector('.upd');
+    if (reload) reload.onclick = e => { e.preventDefault(); reloadNow(); };
     bar.querySelector('.x').onclick = () => {
       closed = true;
       noteUp = false;
@@ -157,7 +162,7 @@
       bar.remove();
       dl.classList.remove('lit');
     };
-    return loading || note;
+    return loading || note || upd;
   };
   // The engine loaded for the first time in this browser: the note, for NOTE_S seconds once the page shows, then never again
   const showNote = () => {
@@ -377,6 +382,49 @@
     }
     return xhrOpen.call(this, method, url, ...rest);
   };
+  // Offline: the service worker (web/offline.js, written to the site's root by scripts/build_web.js) keeps this build's
+  // files, so the app opens and works with no network once it has been opened online. A build only (this file under
+  // v/<version>/): the desktop app's page has no shim, and a checkout's has no offline.js. A deploy installs whole in
+  // the background; the bar then offers a reload, and every tab reloads as the new build takes over, so no page runs
+  // on two builds' files.
+  const sw = nav.serviceWorker;
+  if (sw && window.isSecureContext && src && /\/v\/[0-9a-f]+\/web\/shim\.js$/.test(new URL(src).pathname)) {
+    const had = !!sw.controller;      // this page came from a kept build: a new controller is a newer one
+    let reloading = false;
+    sw.addEventListener('controllerchange', () => {
+      if (!had || reloading) return;
+      reloading = true;
+      location.reload();
+    });
+    const offer = reg => {
+      if (!reg.waiting || !sw.controller) return;     // the first build kept replaces nothing
+      reloadNow = () => (reg.waiting ? reg.waiting.postMessage('skipWaiting') : location.reload());
+      updateUp = true;
+      closed = false;
+      update();
+    };
+    const tracked = new WeakSet();
+    const track = (reg, w) => {
+      if (!w || tracked.has(w)) return;
+      tracked.add(w);
+      w.addEventListener('statechange', () => {
+        if (w.state === 'installed') offer(reg);
+        // the home-screen app's first launch: from now on it opens with no network
+        else if (w.state === 'activated' && !had && standalone && window.toast) toast('Blundr now works offline too', 5000);
+      });
+    };
+    addEventListener('load', () => {
+      sw.register(base + 'offline.js', { scope: base, updateViaCache: 'none' }).then(reg => {
+        offer(reg);
+        track(reg, reg.installing);
+        reg.addEventListener('updatefound', () => track(reg, reg.installing));
+        // an app on a phone's home screen comes back from the background without a navigation: ask then too
+        document.addEventListener('visibilitychange', () => {
+          if (document.visibilityState === 'visible') reg.update().catch(() => {});
+        });
+      }).catch(e => console.warn('Blundr is not kept for offline use:', e));
+    });
+  }
   document.addEventListener('DOMContentLoaded', update);
   addEventListener('blundrshown', update);
 })();
