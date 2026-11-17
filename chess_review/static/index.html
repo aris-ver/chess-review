@@ -2618,7 +2618,9 @@ function rookLeft(d) {
   const n = dr.answers.length;
   if (d.mode === 'philidor') return { left: d.hold_moves - n, promoted: false };
   const p = dr.answers.findIndex(a => a.promoted);
-  return p < 0 ? { left: d.budget - n, promoted: false } : { left: d.post_promo - (n - (p + 1)), promoted: true };
+  if (p < 0) return { left: d.budget - n, promoted: false, piece: null };
+  const m = /=([QRBN])/.exec(dr.answers[p].san || ''), piece = { R: 'rook', B: 'bishop', N: 'knight' }[m && m[1]] || 'queen';
+  return { left: d.post_promo - (n - (p + 1)), promoted: true, piece };     // the page queens; an under-promotion says what it got
 }
 const drillMoves = k => `${k} move${k === 1 ? '' : 's'}`;
 const newDrillId = () => ((window.crypto && crypto.randomUUID) ? crypto.randomUUID()
@@ -2933,13 +2935,13 @@ function drillHeadline() {
 function drillSummary() {
   const d = dr.drill, n = dr.answers.length, r = dr.result;
   if (d.mode === 'lucena') {
-    const promoted = rookLeft(d).promoted;
+    const { promoted, piece } = rookLeft(d);
     return {
-      promoted: `A new queen after ${drillMoves(n)}, and the win is safe: Stockfish sees mate coming.`,
+      promoted: `A new ${piece || 'queen'} after ${drillMoves(n)}, and the win is safe: Stockfish sees mate coming.`,
       won: `Won after ${drillMoves(n)}: the win is safe.`,
       pawn_lost: 'Stockfish took the pawn, and rook against rook is a draw.',
       piece_lost: 'Stockfish won your rook, and the pawn alone is not enough.',
-      threw: promoted ? 'The new queen was lost, and what was left is no win.' : 'That move let Stockfish reach a draw.',
+      threw: promoted ? `The new ${piece} was lost, and what was left is no win.` : 'That move let Stockfish reach a draw.',
       mated: 'Your king was mated.',
       stalemate: "Stockfish's king had no move and wasn't in check: a draw.",
       repetition: 'The same position came up a third time: a draw.',
@@ -3021,9 +3023,9 @@ function drillReviewHtml() {
 }
 // a rook drill under way: the count that replaces the mate counter (long for the coach, short for the box)
 function rookCount(d) {
-  const { left, promoted } = rookLeft(d), moves = drillMoves(left);
+  const { left, promoted, piece } = rookLeft(d), moves = drillMoves(left);
   if (d.mode === 'philidor') return { long: `Hold the draw: ${left} more move${left === 1 ? '' : 's'}`, short: `Hold ${left} more` };
-  return promoted ? { long: `Keep the new queen: ${moves} left`, short: `${moves} left` } : { long: `Promote the pawn: ${moves} left`, short: `${moves} left` };
+  return promoted ? { long: `Keep the new ${piece}: ${moves} left`, short: `${moves} left` } : { long: `Promote the pawn: ${moves} left`, short: `${moves} left` };
 }
 function renderDrillNow() {
   const el = $('now'), d = dr.drill;
