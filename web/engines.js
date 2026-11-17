@@ -14,12 +14,28 @@ export async function checkSha256(url, blob, sha256) {
   }
 }
 
+const ENGINES = 'chess-review-engines';
+
+// Deletes every engine kept in Cache Storage but the ones at urls (this build's): an engine is kept under its URL,
+// which names its version (unpkg's), so each new Stockfish would otherwise leave the last one's 95 MB on the device for
+// good. A tab of the build before, still open, may fetch its engine again (and keep it till the next launch prunes).
+// Returns the URLs it deleted.
+export async function pruneEngines(urls) {
+  if (!self.caches || !(await caches.has(ENGINES))) return [];      // (open() would make an empty one)
+  const keep = new Set(urls.filter(Boolean).map(u => new URL(u).href));
+  const cache = await caches.open(ENGINES), gone = [];
+  for (const req of await cache.keys()) {
+    if (!keep.has(req.url) && await cache.delete(req)) gone.push(req.url);
+  }
+  return gone;
+}
+
 // Fetch a .wasm with progress, keep it in Cache Storage for the next visit, and hand back a blob: URL the engine
 // script takes from its location hash (stockfish.js reads the wasm's URL from there). bytes: the file's size, for
 // the progress bar when the host sends no Content-Length (unpkg doesn't); sha256: what the bytes must hash to
 // (checkSha256), downloaded or kept: a copy kept that doesn't match is dropped and fetched again.
 export async function cachedWasm(url, onProgress, bytes = 0, sha256 = '') {
-  const cache = self.caches ? await caches.open('chess-review-engines') : null;
+  const cache = self.caches ? await caches.open(ENGINES) : null;
   let res = cache && await cache.match(url);
   if (res) {
     const blob = await res.blob();

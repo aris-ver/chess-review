@@ -2,12 +2,15 @@
 // IDBFS (an IndexedDB database named "/data"). Before the Store opens anything, the leading worker loads Pyodide as
 // web/py-worker.js used to (from its CDN, with the legacy app.zip, which holds only what chess_review/migrate_sqlite.py
 // needs), runs migratePyodide (js/web/migrate.js) into the SQLite pool and the OPFS files, and writes DONE. From then on
-// neither Pyodide nor the legacy files are fetched again. IndexedDB is left as it was (deleting it is for later).
+// neither Pyodide nor the legacy files are fetched again. IndexedDB stays as it was for KEEP_DAYS after a move that
+// worked (a copy to go back to, should the move turn out wrong), then dropOldData deletes it: a whole second copy of
+// someone's data, which nothing reads, isn't left on the device for good. A move that failed keeps it: it's all there is.
 
 import { copyFiles, hasPythonData, migratePyodide } from './migrate.js';
 
 export const DONE = 'pyodide-migration.json';
 export const IDB_NAME = '/data';
+export const KEEP_DAYS = 30;
 const TRIES = 3;      // a migration that keeps failing stops being tried, so a visit isn't slowed for good
 const STEP_S = 180;   // a step of it that takes longer is given up for this visit (the app starts; the next visit tries again)
 
@@ -103,5 +106,28 @@ export async function migrateOnce({ driver, files, legacy, load = loadLegacyPyth
   await files.writeText(DONE, JSON.stringify(out));
   log.info?.('moved the old data', out);
   return out;
+}
+
+/** Deletes Pyodide's IndexedDB once the move from it worked ('done' or 'empty') at least KEEP_DAYS ago, and notes
+ * when in DONE (dropped). Returns whether it deleted it. Never for a move that failed or is still to be tried. An
+ * old tab holding the database open only delays the delete: the browser finishes it once that tab lets go. */
+export async function dropOldData({ files, idb = globalThis.indexedDB, now = Date.now(), log = console }) {
+  const done = await files.readText(DONE);
+  if (done === null || !idb) return false;
+  const marker = JSON.parse(done);
+  if (!['done', 'empty'].includes(marker.status) || marker.dropped) return false;
+  if (!(now - Date.parse(marker.at) >= KEEP_DAYS * 86400e3)) return false;     // no date: kept
+  if (await hasPyodideData(idb)) {
+    const deleted = await new Promise(resolve => {
+      const req = idb.deleteDatabase(IDB_NAME);
+      req.onsuccess = () => resolve(true);
+      req.onerror = () => resolve(false);
+      req.onblocked = () => resolve(false);     // still deleted later; noted on a visit after that
+    });
+    if (!deleted) return false;
+  }
+  await files.writeText(DONE, JSON.stringify({ ...marker, dropped: new Date(now).toISOString() }));
+  log.info?.('deleted the old app\'s data, moved', marker.at);
+  return true;
 }
 

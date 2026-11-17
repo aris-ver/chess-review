@@ -222,6 +222,25 @@
       for (const k of await c.keys()) await c.delete(k);
     } catch (e) { /* blocked: nothing was kept */ }
   };
+  // What's kept stays small: the reviews of the last KEPT_REVIEWS games opened (Cache Storage lists its entries in the
+  // order they were put, and each answer is put again, so the first listed are the longest unopened), and nothing of
+  // a profile the home screen no longer lists. Without this, every game ever opened would stay on the device.
+  const KEPT_REVIEWS = 30;
+  const REVIEW = /^p\/[^/]+\/games\/[^/]+\.json$/;
+  const trim = async (c, rel, text) => {
+    const rels = (await c.keys()).map(k => (typeof k === 'string' ? k : k.url).slice(keyOf('').length));
+    let gone = [];
+    if (REVIEW.test(rel)) gone = rels.filter(r => REVIEW.test(r)).slice(0, -KEPT_REVIEWS);
+    else if (rel === 'api/profiles') {
+      let list;
+      try { list = JSON.parse(text); } catch (e) { return; }
+      list = Array.isArray(list) ? list : list && list.profiles;
+      if (!Array.isArray(list)) return;
+      const ids = new Set(list.map(p => p && p.id));
+      gone = rels.filter(r => /^p\/([^/]+)\//.test(r) && !ids.has(decodeURIComponent(/^p\/([^/]+)\//.exec(r)[1])));
+    }
+    for (const r of gone) await c.delete(keyOf(r));
+  };
   let redrawT = null;
   const keep = async (rel, m, shown, hash, owner) => {
     const text = m.status === 200 ? new TextDecoder().decode(m.body) : null;
@@ -230,6 +249,7 @@
       if (owner !== owners) return;
       if (text == null) await c.delete(keyOf(rel));
       else await c.put(keyOf(rel), new Response(text, { headers: m.headers.filter(([k]) => /^content-type$/i.test(k)) }));
+      if (text != null) await trim(c, rel, text);
     } catch (e) { /* full or blocked: next visit waits */ }
     if (shown == null || shown.text === text || location.hash !== hash) return;
     clearTimeout(redrawT);      // the home screen asks for several at once: draw it again once

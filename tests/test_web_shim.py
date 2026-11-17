@@ -15,7 +15,7 @@ const fs = require('fs'), vm = require('vm');
 const kept = new Map();       // Cache Storage 'blundr-kept': url -> text
 const cache = {
   match: async k => kept.has(k) ? new Response(kept.get(k), { headers: { 'Content-Type': 'application/json' } }) : undefined,
-  put: async (k, r) => { kept.set(k, await r.text()); },
+  put: async (k, r) => { const t = await r.text(); kept.delete(k); kept.set(k, t); },     // put again: listed last
   delete: async k => kept.delete(k),
   keys: async () => [...kept.keys()],
 };
@@ -70,6 +70,14 @@ const keys = () => [...kept.keys()].map(k => k.replace('https://blundr.gr/', '')
   out.newOwner = [keys(), kept.get('https://blundr.gr/api/profiles')];
   await sync('api/sync/release', { released: true });        // the account was deleted
   out.afterRelease = keys();
+  // only the last 30 reviews opened stay; a review opened again counts as new
+  for (let i = 0; i < 35; i++) await ask(`p/b/games/g${i}.json`).answer(200, { id: i });
+  await ask('p/b/games/g0.json').answer(200, { id: 0 });
+  out.reviews = keys().filter(k => k.startsWith('p/b/games/'));
+  // a profile the home screen no longer lists: all of it goes
+  await ask('p/c/games.json').answer(200, []);
+  await ask('api/profiles').answer(200, { profiles: [{ id: 'b' }], scan: null });
+  out.afterProfiles = keys().filter(k => !k.startsWith('p/b/games/'));
   console.log('RESULT' + JSON.stringify(out));
 })().catch(e => { console.error(e); process.exit(1); });
 """
@@ -88,6 +96,8 @@ def test_kept_answers_go_when_the_data_changes_owner(tmp_path):
     assert out["afterLateAnswer"] == []
     assert out["newOwner"] == [["api/profiles"], '[{"id":"b"}]']
     assert out["afterRelease"] == []
+    assert sorted(out["reviews"]) == sorted(f"p/b/games/g{i}.json" for i in [0, *range(6, 35)])
+    assert out["afterProfiles"] == ["api/profiles"]
 
 
 REGISTERS = r"""

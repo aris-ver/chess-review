@@ -4,12 +4,12 @@
 // modules as the desktop's run here unchanged.
 
 import '../../web/config.js';
-import { EnginePool, physicalCores } from '../../web/engines.js';
+import { EnginePool, physicalCores, pruneEngines } from '../../web/engines.js';
 import { DrillTables, tablesFromFiles } from '../server/drills.js';
 import { opfsFiles, memoryFiles } from '../server/profiles-files.js';
 import { answer, consoleLog as log, reclassifyAll, startApp } from './app.js';
 import { webSqlite } from './db.js';
-import { migrateOnce, within } from './legacy.js';
+import { dropOldData, migrateOnce, within } from './legacy.js';
 import { Tabs } from './tabs.js';
 
 const CR_CONFIG = self.CR_CONFIG;
@@ -27,10 +27,11 @@ const progress = (what, done, total, text) => tabs.progress({ what, done, total,
 // gives a tab, which it then kills and reloads, over and over. One lite engine (2 MB, a smaller net: evals differ a little from the
 // full engine's) with a small hash instead. Evals never leave the browser, so the two engines' never mix.
 const LITE = self.name === 'lite';
+const LITE_WASM = 'engine/stockfish-19-lite-single.wasm';
 const engineName = (CR_CONFIG.engineName || 'Stockfish') + (LITE ? ' lite' : '');
 const pool = () => new EnginePool({
   ...(LITE ? { size: 1, hash: 16, script: web('engine/stockfish-19-lite-single.js'),
-               wasmUrl: web(CR_CONFIG.engineLiteWasm || 'engine/stockfish-19-lite-single.wasm'), wasmBytes: CR_CONFIG.engineLiteBytes || 0,
+               wasmUrl: web(CR_CONFIG.engineLiteWasm || LITE_WASM), wasmBytes: CR_CONFIG.engineLiteBytes || 0,
                wasmSha256: CR_CONFIG.engineLiteSha256 }
            : { size: physicalCores(), script: web('engine/stockfish-19-single.js'),
                wasmUrl: web(CR_CONFIG.engineWasm), wasmBytes: CR_CONFIG.engineBytes, wasmSha256: CR_CONFIG.engineSha256 }),
@@ -92,6 +93,7 @@ function lead() {
       pyodide: CR_CONFIG.legacy.pyodide, wheel: site(CR_CONFIG.legacy.wheel), app: site(CR_CONFIG.legacy.app),
     };
     const moved = legacy ? await migrateOnce({ driver, files, legacy, log, progress: t => progress('app', 0, 1, t) }) : null;
+    dropOldData({ files, log }).catch(e => log.error('deleting the old app\'s data failed', e));     // not waited on
     const out = await startApp({
       driver, files, pool: engines, log, build: BUILD, ...(CR_CONFIG.nodes ? { nodes: CR_CONFIG.nodes } : {}),   // nodes: tests only
       // a fast analysis: half the nodes, on the full engine only (the phones' lite one offers no choice)
@@ -114,6 +116,12 @@ function lead() {
     log.error('engine failed to load', e);
     tabs.progress({ what: 'engine', done: 0, total: 0, text: engineName, failed: true });
   });
+  // What earlier builds left on the device and nothing reads any more: engines of another version (once this one's
+  // is in, so nothing is deleted under a download) and, a month after the move, the old app's IndexedDB.
+  ready.then(() => engines.load())
+    .then(() => pruneEngines([web(CR_CONFIG.engineWasm), web(CR_CONFIG.engineLiteWasm || LITE_WASM)]))
+    .then(gone => gone.length && log.info('deleted engines of earlier builds', gone))
+    .catch(e => log.error('deleting earlier builds\' engines failed', e));
   return (req, emit, signal) => answer(ready, req, emit, signal);
 }
 

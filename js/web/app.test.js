@@ -11,7 +11,7 @@ import { Profiles } from '../server/profiles.js';
 import { Sync } from '../server/sync.js';
 import { answer, reclassifyAll, startApp } from './app.js';
 import { webSqlite } from './db.js';
-import { hasPyodideData, migrateOnce, DONE } from './legacy.js';
+import { dropOldData, hasPyodideData, migrateOnce, DONE, KEEP_DAYS } from './legacy.js';
 
 const wasmBinary = readFileSync(new URL('../vendor/sqlite-wasm/sqlite3.wasm', import.meta.url));
 const PGN = readFileSync(new URL('../../tests/fixtures/clocks.pgn', import.meta.url), 'utf8').split('\n\n[Event')[0];
@@ -134,6 +134,48 @@ test('the migration is skipped without Pyodide data and runs once with it', asyn
   assert.equal(JSON.parse(await files.readText(DONE)).status, 'empty');
   assert.equal(await migrateOnce({ driver: null, files, legacy: {}, idb: some, load: async () => { loads++; return { FS }; } }), null);
   assert.equal(loads, 1);
+});
+
+test('the old IndexedDB is deleted a month after a move that worked, never after one that failed', async () => {
+  const day = 86400e3, at = Date.parse('2026-10-23T10:00:00Z');
+  const quiet = { info() {}, error() {} };
+  // an IndexedDB holding "/data" whose deleteDatabase answers with `how`
+  const idbOf = (how = 'success') => {
+    const idb = { names: ['/data'], deleted: 0 };
+    idb.databases = async () => idb.names.map(name => ({ name }));
+    idb.deleteDatabase = () => {
+      const req = {};
+      idb.deleted++;
+      setTimeout(() => { if (how === 'success') idb.names = []; req['on' + how](); });
+      return req;
+    };
+    return idb;
+  };
+  const marked = async status => {
+    const files = memoryFiles();
+    await files.writeText(DONE, JSON.stringify({ status, at: new Date(at).toISOString() }));
+    return files;
+  };
+  for (const status of ['failed', 'retry']) {
+    const idb = idbOf();
+    assert.equal(await dropOldData({ files: await marked(status), idb, now: at + 365 * day, log: quiet }), false);
+    assert.equal(idb.deleted, 0);
+  }
+  assert.equal(await dropOldData({ files: memoryFiles(), idb: idbOf(), log: quiet }), false);     // never moved
+  for (const status of ['done', 'empty']) {
+    const files = await marked(status), idb = idbOf();
+    assert.equal(await dropOldData({ files, idb, now: at + (KEEP_DAYS - 1) * day, log: quiet }), false);
+    assert.equal(idb.deleted, 0);
+    assert.equal(await dropOldData({ files, idb, now: at + KEEP_DAYS * day, log: quiet }), true);
+    assert.deepEqual(idb.names, []);
+    assert.ok(JSON.parse(await files.readText(DONE)).dropped);
+    assert.equal(await dropOldData({ files, idb, now: at + 40 * day, log: quiet }), false);
+    assert.equal(idb.deleted, 1);
+  }
+  // another tab holds it open: not noted as dropped, so a later visit checks again
+  const files = await marked('done'), blocked = idbOf('blocked');
+  assert.equal(await dropOldData({ files, idb: blocked, now: at + 40 * day, log: quiet }), false);
+  assert.equal(JSON.parse(await files.readText(DONE)).dropped, undefined);
 });
 
 test('a migration that fails is tried again, three times at most', async () => {
