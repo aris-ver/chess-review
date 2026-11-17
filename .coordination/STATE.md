@@ -38,3 +38,7 @@ Pipeline: Opus plans and checks (Fable until phase 2's first review), Sonnet or 
 - 2026-11-17: offline web app (service worker web/offline.js, docs/web.md Offline) built by Opus, two fix rounds,
   Opus VERDICT: OK, fast-forwarded to main (7be0f85). Pushed with phase 5 on the user's word; round 2b (starts) not
   in it: its lichess /mainline run (Lucena L2-L4) is still going in instinct-p5-starts2 and ships as its own deploy.
+- 2026-11-17: round 2b (textbook Lucena L1/L2, capped Philidor, walk estimate) Opus VERDICT: OK, cherry-picked to
+  main; Lucena slack +4 (12, 10, 9, 8, f43d5c1). Fairness on the new starts: 80/80 Lucena within budget, 80/80
+  Philidor held or pawn taken; reply p90 under 0.2 s native. Pushed (another session had already pushed rounds 1-4
+  with the old starts at 10:51).
