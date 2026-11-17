@@ -250,6 +250,10 @@ CACHED_HASHES = """async version => {
 }"""
 
 
+READY_TO_RELOAD = "#web-loading .upd:not(.fix)"      # "A new version of Blundr is ready. Reload"
+COULD_NOT = "#web-loading .upd.fix"                # "Couldn't update Blundr. Reload"
+
+
 def test_a_deploy_installs_whole_and_no_page_mixes_two_builds(pwr, server, builds, tmp_path):
     a, b = offline_list(builds["a"]), offline_list(builds["b"])
     browser, ctx = phone(pwr, "chromium")
@@ -271,8 +275,9 @@ def test_a_deploy_installs_whole_and_no_page_mixes_two_builds(pwr, server, build
             page.wait_for_function(READY, timeout=60_000)
             assert page.evaluate(SEEN)["page"] == a["version"]
             r = page.evaluate(INSTALLED)
-            assert r == {"waiting": False, "caches": ["blundr-offline-" + a["version"]]}, (n, r)
-            assert page.locator("#web-loading .upd").count() == 0
+            # a's cache, and the failure noted (the page then offers a fresh start: the next test)
+            assert r == {"waiting": False, "caches": sorted(["blundr-offline-" + a["version"], "blundr-offline-failed"])}, (n, r)
+            assert page.locator(READY_TO_RELOAD).count() == 0
 
         # the real deploy: this load is still all a's, b installs alongside, and only what changed is downloaded
         server.root = builds["b"]
@@ -296,9 +301,9 @@ def test_a_deploy_installs_whole_and_no_page_mixes_two_builds(pwr, server, build
         other.goto(server.url)
         other.wait_for_function(READY, timeout=60_000)
         assert other.evaluate(SEEN)["page"] == a["version"]
-        page.wait_for_selector("#web-loading .upd", timeout=30_000)
+        page.wait_for_selector(READY_TO_RELOAD, timeout=30_000)
         with page.expect_navigation(timeout=30_000), other.expect_navigation(timeout=30_000):
-            page.click("#web-loading .upd")
+            page.click(READY_TO_RELOAD)
         for p in (page, other):
             p.wait_for_function(READY, timeout=60_000)
             seen = p.evaluate(SEEN)
@@ -331,6 +336,46 @@ def test_a_slow_network_does_not_hold_the_page_back(pwr, server, builds):
         assert time.monotonic() - t0 < 10
         page.wait_for_function(READY, timeout=60_000)
         assert page.evaluate(SEEN)["page"] == a["version"]
+    finally:
+        ctx.close()
+        browser.close()
+
+
+def test_a_build_that_cannot_be_kept_offers_a_fresh_start(pwr, server, builds, tmp_path):
+    """A newer build whose install fails while online (here: a file of its code not what its list says) isn't left
+    to the console: the page says it couldn't update, then and on the next loads, and its Reload drops the service
+    worker and the builds' caches (not the engine's) and comes back on the newer build from the network."""
+    a, b = offline_list(builds["a"]), offline_list(builds["b"])
+    b_code = next(k for k in b["files"] if k.startswith("v/")).split("/")[1]
+    browser, ctx = phone(pwr, "chromium")
+    try:
+        page = ctx.new_page()
+        page.on("console", lambda m: m.type == "error" and print("console:", m.text[:300]))
+        first_visit(page, server.url, a["version"])
+        broken = tmp_path / "broken"
+        shutil.copytree(builds["b"], broken)
+        (broken / f"v/{b_code}/web/config.js").write_text("self.CR_CONFIG = {};\n")
+        server.root = broken
+        page.goto(server.url)
+        page.wait_for_function(READY, timeout=60_000)
+        assert page.evaluate(INSTALLED) == {"waiting": False, "caches": sorted(["blundr-offline-" + a["version"], "blundr-offline-failed"])}
+        page.wait_for_selector(COULD_NOT, timeout=30_000)           # told as it happened
+        assert "Couldn't update Blundr" in page.text_content("#web-loading")
+        page.goto(server.url)
+        page.wait_for_function(READY, timeout=60_000)
+        assert page.evaluate(SEEN)["page"] == a["version"]
+        page.wait_for_selector(COULD_NOT, timeout=30_000)           # and on the next load, from what was kept
+
+        server.root = builds["b"]                                    # the host has it right now
+        with page.expect_navigation(timeout=30_000):
+            page.click(COULD_NOT)
+        page.wait_for_function(READY, timeout=60_000)
+        seen = page.evaluate(SEEN)
+        assert seen["page"] == b["version"] and seen["code"] == [b_code] and not seen["controlled"], seen
+        until(page, KEPT, b["version"])                              # and it keeps itself again
+        names = page.evaluate("caches.keys()")
+        assert "chess-review-engines" in names and [n for n in names if n.startswith("blundr-offline-")] == ["blundr-offline-" + b["version"]], names
+        assert page.locator(COULD_NOT).count() == 0
     finally:
         ctx.close()
         browser.close()
