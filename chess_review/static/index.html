@@ -423,11 +423,16 @@ body:not(.puzzle) .pzover { display: none; }
 .pzcard .dres { margin: 0 0 10px; text-align: left; }     /* the daily's result, just solved */
 /* the endgame drills (#/drills): the ending cards, and the review of an attempt in the coach's bubble */
 .card .dstar { color: #e8b83a; font-weight: 800; }
+.card .dsub { font-size: 13px; font-weight: 600; }     /* a rook ending's plain line under its name */
+.card.pztile.off { cursor: default; } .card.off .cover { filter: grayscale(1); opacity: .6; }
+@media (hover: hover) { .card.pztile.off:hover { border-color: var(--line); } }
+.card .src .doff { color: #e0a53a; font-weight: 700; }     /* "Needs a computer": the rook endings on a phone */
 body.drill .player .cap { display: none; }     /* an ending has no captures to count: the full set would read as all taken */
 .dnote { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 14px; margin: 0 0 12px; font-size: 14px; }
 .dlist { display: flex; flex-direction: column; gap: 1px; margin: 6px 0 2px; font-size: 13px; }
 .drow { display: grid; grid-template-columns: 24px minmax(0, 1fr) auto auto; gap: 8px; align-items: center; padding: 3px 6px; border-radius: 5px; cursor: pointer; font-variant-numeric: tabular-nums; }
 .drow .n { color: #777; } .drow .san { font-weight: 700; } .drow .dist { color: #555; font-size: 12px; }
+.drow.rook { grid-template-columns: 24px minmax(0, 1fr) auto; }     /* a rook drill: no distance column, the hint's mark only */
 .drow .kind { font-size: 11px; font-weight: 700; padding: 0 6px; border-radius: 4px; color: #10141a; background: var(--kc); white-space: nowrap; }
 .drow .k-best { --kc: #36bcd8; } .drow .k-slack { --kc: #eacb5a; } .drow .k-lost { --kc: #f2944e; } .drow .k-threw { --kc: #e0355e; color: #fff; }
 .drow.worst { box-shadow: inset 3px 0 0 #e0355e; background: #fdecef; }
@@ -435,6 +440,7 @@ body.drill .player .cap { display: none; }     /* an ending has no captures to c
 @media (hover: hover) { .drow:hover { background: #f0f2f5; } }
 .bubble .dworst { font-weight: 600; color: #1b1b1b; }
 .bubble .dlevel { font-weight: 700; color: #1d7f4e; }
+.bubble .dnote2 { color: #666; font-size: 12px; margin-top: -4px; }     /* the hint is an estimate: said every time */
 .bubble a.dlink { color: #1f6fb2; cursor: pointer; }
 
 /* game list */
@@ -932,7 +938,7 @@ svg.graph { width: 100%; height: 52px; display: block; cursor: pointer; backgrou
       </div>
       <h2>Develop your instinct</h2>
       <div class="cards pztiles">
-        <div class="card pztile covered" id="card-drills"><div class="cover" data-cover="drills"></div><div class="cbody"><span class="src">Endgames</span><span class="who">Basic endings, played out</span><span class="desc" id="card-drills-desc">Eight basic endings against a defender that never gives up, from a new position every time.</span></div></div>
+        <div class="card pztile covered" id="card-drills"><div class="cover" data-cover="drills"></div><div class="cbody"><span class="src">Endgames</span><span class="who">Basic endings, played out</span><span class="desc" id="card-drills-desc">Ten endings against a defender that never gives up, from a new position every time.</span></div></div>
       </div>
       <h2>Review something else</h2>
       <div class="acts">
@@ -956,7 +962,7 @@ svg.graph { width: 100%; height: 52px; display: block; cursor: pointer; backgrou
   <section id="drills" class="hidden">
     <div class="home">
       <h2>Develop your instinct</h2>
-      <p class="lead">Each ending starts from a position you haven't seen, against a defender that always picks the most stubborn move. Mate within the moves you're given, or hold the draw. After every attempt you can go through your moves and see where the mate got further away. Three solved out of your last four take you up a level; two misses in a row take you down one.</p>
+      <p class="lead">Each ending starts from a position you haven't seen, against a defender that always picks the most stubborn move. Mate within the moves you're given, or hold the draw. After every attempt you can go through your moves and see where the mate got further away. In the two rook endings Stockfish plays the other side, and the review shows where a deeper search thinks it went wrong. Three solved out of your last four take you up a level; two misses in a row take you down one.</p>
       <div class="dnote hidden" id="drillnote"></div>
       <div class="cards pztiles" id="drillcards"></div>
     </div>
@@ -2561,7 +2567,7 @@ async function renderPuzzleCards() {
 }
 
 // ---------- endgame drills: "Develop your instinct" (docs/training-grounds.md) ----------
-// #/drills lists the eight endings, each at its level, with its star; #/drills/<ending> deals a position at that level
+// #/drills lists the ten endings, each at its level, with its star; #/drills/<ending> deals a position at that level
 // (api/drills/next) and plays it on the review screen, in the puzzles' layout, you as White. The page holds no tables:
 // each of your moves goes to api/drills/move with every position so far, and the answer is the defender's reply and,
 // once the drill is over, the result and its review. The attempt is then recorded (api/drills/attempt) under an id of
@@ -2575,17 +2581,45 @@ const DRILL_ENDINGS = {
   'KPK-hold': { name: 'Stop the pawn', desc: 'You have the lone king. Hold the draw against king and pawn.' },
   KBBK: { name: 'Two bishops', desc: 'Side by side, the bishops build a wall the king can\'t cross. Push it into any corner.' },
   KBNK: { name: 'Bishop and knight', desc: 'The hardest basic mate. Only a corner of the bishop\'s colour will do, so drive the king there.' },
+  // the rook endings: Stockfish plays black, so they need its full engine (status.unavailable says when it isn't here)
+  Lucena: { name: 'Lucena', sub: 'Win rook and pawn against rook', desc: 'Shelter your king from the checks, then promote. Stockfish defends.' },
+  Philidor: { name: 'Philidor', sub: 'Hold rook against rook and pawn', desc: 'Keep the king in front and the rook on the third rank. Stockfish attacks.' },
 };
-const DRILL_ORDER = ['KQRK', 'KRRK', 'KQK', 'KRK', 'KPK', 'KPK-hold', 'KBBK', 'KBNK'];
-const DRILL_SOLVED = { mate: ['solved'], attack: ['promoted'], hold: ['held', 'pawn_taken', 'stalemate'] };
+const DRILL_ORDER = ['KQRK', 'KRRK', 'KQK', 'KRK', 'KPK', 'KPK-hold', 'KBBK', 'KBNK', 'Lucena', 'Philidor'];
+const DRILL_SOLVED = { mate: ['solved'], attack: ['promoted'], hold: ['held', 'pawn_taken', 'stalemate'],
+                       lucena: ['promoted', 'won'], philidor: ['held', 'pawn_taken', 'rook_won', 'stalemate'] };
+// why a rook ending can't be played here (api/drills/status `unavailable`): the card's line and its toast
+const DRILL_OFF = {
+  needs_computer: ['Needs a computer', 'Lucena and Philidor need a computer for now: Stockfish plays them with its full engine, too big for a phone.'],
+  no_engine: ['Needs Stockfish', "Lucena and Philidor need Stockfish, and it isn't installed here."],
+};
 // a move's kind (api/drills/move): its name in the review, and the badge it gets on the board there
 const DRILL_KIND = { best: ['Best', 'best'], slack: ['Slack', 'inaccuracy'], lost: ['Lost ground', 'mistake'], threw: ['Threw it', 'blunder'] };
-const DR_REPLY_MS = 350;      // the defender's reply comes this long after your move
+// the review hint's named hints (api/drills/hint `hint`), finishing "Probably here: <move>."
+const DRILL_HINTS = {
+  pawn_hanging: 'The pawn was left hanging',
+  rook_cut: 'The rook stopped cutting the black king off',
+  king_shelter: 'The king left its shelter before the rook was on the 4th rank to block checks',
+  king_path: "The king left the pawn's path",
+  rook_third: 'The rook left the 3rd rank before the pawn reached it',
+  rook_behind: "The pawn reached the 3rd rank and the rook didn't go to the far end to check from behind",
+};
+const DR_ESTIMATE = 'This is an estimate from a deeper engine search, not a tablebase.';
+const DR_REPLY_MS = 350;      // the defender's reply comes this long after your move (less the time the answer took)
+const DR_THINK_MS = 300;      // a reply out this long: "Stockfish is thinking"
 const DR_LINE_MS = 700;       // each move of "Best from here"
 const dr = { statuses: null, notice: null, drill: null, status: null, hash: null, fens: [], answers: [], token: 0, over: false,
              busy: false, result: null, review: null, worst: null, ms: null, id: null, recorded: false, recording: null,
-             levelMsg: '', reviewOpen: false, chosen: null, line: 0, t0: 0 };
+             levelMsg: '', reviewOpen: false, chosen: null, line: 0, t0: 0, thinking: false, hint: null };
 const drillSolved = (mode, result) => DRILL_SOLVED[mode].includes(result);
+const isRookDrill = d => !!d && (d.mode === 'lucena' || d.mode === 'philidor');
+// a rook drill's count: what's left before the drill ends, and whether the pawn has promoted (Lucena: the user's)
+function rookLeft(d) {
+  const n = dr.answers.length;
+  if (d.mode === 'philidor') return { left: d.hold_moves - n, promoted: false };
+  const p = dr.answers.findIndex(a => a.promoted);
+  return p < 0 ? { left: d.budget - n, promoted: false } : { left: d.post_promo - (n - (p + 1)), promoted: true };
+}
 const drillMoves = k => `${k} move${k === 1 ? '' : 's'}`;
 const newDrillId = () => ((window.crypto && crypto.randomUUID) ? crypto.randomUUID()
   : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`).replace(/[^A-Za-z0-9_-]/g, '');
@@ -2602,7 +2636,7 @@ async function renderDrillTile() {
   const played = (all || []).reduce((n, s) => n + s.played, 0);
   if (!played) return;
   const solved = all.reduce((n, s) => n + s.solved, 0), stars = all.filter(s => s.star).length;
-  $('card-drills-desc').textContent = `${played} played · ${solved} solved${stars ? ` · ${stars} ★` : ''}. Eight basic endings, a new position every time.`;
+  $('card-drills-desc').textContent = `${played} played · ${solved} solved${stars ? ` · ${stars} ★` : ''}. Ten endings, a new position every time.`;
 }
 async function showDrills() {
   leavePuzzleScreen('drills'); $('crumb').textContent = 'Develop your instinct';
@@ -2614,14 +2648,19 @@ async function showDrills() {
 function renderDrillCards() {
   const box = $('drillcards');
   box.innerHTML = DRILL_ORDER.map(e => {
-    const s = drillStatus(e), info = DRILL_ENDINGS[e];
+    const s = drillStatus(e), info = DRILL_ENDINGS[e], off = s && s.unavailable ? DRILL_OFF[s.unavailable] || [s.unavailable, ''] : null;
     const star = s && s.star ? ' <span class="dstar" title="Solved at the top level">★</span>' : '';
-    const counts = s && s.played ? `<br>${s.played} played · ${s.solved} ${e === 'KPK-hold' ? 'held' : 'solved'}` : '';
-    return `<div class="card pztile covered" data-go="#/drills/${e}">${coverHtml('d-' + e)}<div class="cbody">` +
-      `<span class="src">${s ? `Level ${s.level} of ${s.top}` : 'Level 1'}${star}</span><span class="who">${esc(info.name)}</span>` +
+    const counts = s && s.played ? `<br>${s.played} played · ${s.solved} ${e === 'KPK-hold' || e === 'Philidor' ? 'held' : 'solved'}` : '';
+    const level = `${s ? `Level ${s.level} of ${s.top}` : 'Level 1'}${star}`;
+    return `<div class="card pztile covered${off ? ' off' : ''}" ${off ? `data-off="${esc(e)}"` : `data-go="#/drills/${e}"`}>${coverHtml('d-' + e)}<div class="cbody">` +
+      `<span class="src">${off ? `<span class="doff">${esc(off[0])}</span>` : level}</span><span class="who">${esc(info.name)}</span>` +
+      (info.sub ? `<span class="dsub">${esc(info.sub)}</span>` : '') +
       `<span class="desc">${esc(info.desc)}${counts}</span></div></div>`;
   }).join('');
   box.querySelectorAll('[data-go]').forEach(el => el.onclick = () => { location.hash = el.dataset.go; });
+  box.querySelectorAll('[data-off]').forEach(el => el.onclick = () => {
+    const s = drillStatus(el.dataset.off); toast((DRILL_OFF[s && s.unavailable] || [])[1] || "This ending can't be played here.", 5000);
+  });
   $('drillnote').classList.toggle('hidden', !dr.notice);
   $('drillnote').textContent = dr.notice || '';
 }
@@ -2643,7 +2682,8 @@ async function openDrill(ending) {
 }
 // no drill to deal: why, on the endings' page
 function drillUnavailable(status, d) {
-  dr.notice = status === 503 ? "The endgame tables aren't available here, so no drill can be dealt right now."
+  const off = d && DRILL_OFF[d.reason];
+  dr.notice = off ? off[1] : status === 503 ? "The endgame tables aren't available here, so no drill can be dealt right now."
     : `No drill could be dealt: ${(d && d.error) || 'no answer'}.`;
   toast(dr.notice, 5000);
   if (location.hash.startsWith('#/drills/')) leaveDeal('#/drills'); else renderDrillCards();
@@ -2652,13 +2692,14 @@ function drillGame(d) {
   const side = name => ({ name, rating: null, accuracy: null, counts: {} });
   return { id: 'drill-' + dr.id, url: null, puzzle: true, drill: true, played_at: null, time_control: null, time_class: null, termination: null,
            my_colour: 'white', result: null, eco: null, opening_name: null, left_book_ply: 0, white: side('You'),
-           black: side(d.mode === 'hold' ? 'Attacker' : 'Defender'), start_fen: d.fen, start_wp_white: null, start_eval_text: null,
+           black: side(isRookDrill(d) ? 'Stockfish' : d.mode === 'hold' ? 'Attacker' : 'Defender'), start_fen: d.fen, start_wp_white: null, start_eval_text: null,
            analysed: 1, moves: [], key_moments: [] };
 }
 function startDrill(drill, status, hash) {
   dr.token++;
   Object.assign(dr, { drill, status, hash, fens: [drill.fen], answers: [], over: false, busy: false, result: null, review: null,
-                      worst: null, ms: null, id: newDrillId(), recorded: false, levelMsg: '', reviewOpen: false, chosen: null, t0: Date.now() });
+                      worst: null, ms: null, id: newDrillId(), recorded: false, levelMsg: '', reviewOpen: false, chosen: null, t0: Date.now(),
+                      thinking: false, hint: null });
   showPzOver(null);
   state.profile = null; state.games = null; state.game = drillGame(drill);
   state.ply = 0; state.flipped = false; dropVariation(); state.sel = null; state.step = null; state.exploring = false; $('pieces').innerHTML = '';
@@ -2693,19 +2734,27 @@ async function drillMove(uci) {
   dr.busy = true; state.exploring = true;
   renderMoveList(); go(g.moves.length); renderDrillBox();
   let r, d;
+  const t0 = Date.now();
+  // a reply that takes a while (Stockfish's, the first after the engine starts): say so
+  const think = setTimeout(() => { if (tok === dr.token && dr.busy) { dr.thinking = true; renderNow(); renderDrillBox(); } }, DR_THINK_MS);
   try {
     r = await fetch('api/drills/move', { method: 'POST', body: JSON.stringify({ ending: d0.ending, level: d0.level, fens: [...dr.fens, prov.fen] }) });
     d = await r.json();
   } catch (e) { r = { ok: false, status: 0 }; d = { error: String(e.message || e) }; }
+  clearTimeout(think);
   if (tok !== dr.token || state.game !== g) return;
+  const wasThinking = dr.thinking; dr.thinking = false;
   if (!r.ok) {       // taken back: the board as it was
     g.moves.pop(); dr.busy = false; state.exploring = false;
     state.ply = Math.min(state.ply, g.moves.length);
     renderMoveList(); update(false); renderDrillBox();
-    toast(r.status === 503 ? "The endgame tables aren't available right now." : `That move couldn't be checked: ${d.error || 'no answer'}`);
+    const off = DRILL_OFF[d && d.reason];
+    toast(off ? off[1] : d && d.reason === 'engine_failed' ? "Stockfish didn't answer. Try the move again."
+      : r.status === 503 ? "The endgame tables aren't available right now." : `That move couldn't be checked: ${d.error || 'no answer'}`);
     play('illegal');
     return;
   }
+  if (wasThinking) renderNow();
   Object.assign(mv, { san: d.san, fen: d.fen_move });
   dr.fens.push(d.fen_move); dr.answers.push(d);
   renderMoveList(); highlightCurrent();
@@ -2719,7 +2768,7 @@ async function drillMove(uci) {
     renderMoveList();
     if (atEnd) go(g.moves.length); else highlightCurrent();
     if (d.result) finishDrill(d); else { renderDrillBox(); renderNow(); }
-  }, DR_REPLY_MS);
+  }, Math.max(0, DR_REPLY_MS - (Date.now() - t0)));     // a search that took the time already: the reply at once
 }
 // Give up (or leave): the review from the moves so far, the worst of them as the server would pick it
 function giveUpDrill(show = true) {
@@ -2729,7 +2778,8 @@ function giveUpDrill(show = true) {
   const moves = dr.answers.map(a => ({ dtm: a.dtm_after, kind: a.kind, loss: a.loss }));
   let worst = -1, cost = 0;
   moves.forEach((m, k) => { const c = m.loss ?? Infinity; if (c > cost) { cost = c; worst = k; } });
-  finishDrill({ result: 'abandoned', review: { moves, worst }, worst_loss: worst < 0 ? -1 : moves[worst].loss }, show);
+  const worstLoss = isRookDrill(dr.drill) ? null : worst < 0 ? -1 : moves[worst].loss;     // no table grades a rook move
+  finishDrill({ result: 'abandoned', review: { moves, worst }, worst_loss: worstLoss }, show);
   return true;
 }
 function finishDrill(d, show = true) {
@@ -2740,10 +2790,11 @@ function finishDrill(d, show = true) {
   state.exploring = false;
   (d.review.moves || []).forEach((m, k) => { const mv = g.moves[2 * k]; if (mv && DRILL_KIND[m.kind]) mv.label = DRILL_KIND[m.kind][1]; });
   const ok = drillSolved(mode, d.result);
-  g.result = ok ? (mode === 'hold' ? 'draw' : 'win') : null;
+  g.result = ok ? (mode === 'hold' || mode === 'philidor' ? 'draw' : 'win') : null;
   dr.chosen = d.review.worst >= 0 ? d.review.worst : null;
   dr.reviewOpen = !ok;        // a miss opens its review; a solve offers it
   document.body.classList.toggle('drillrev', dr.reviewOpen);
+  if (dr.reviewOpen) drillHint();
   if (ok) play('win', 250);
   renderMoveList(); highlightCurrent(); renderBoard(); renderNow(); renderDrillBox(); renderNav();
   if (ok) {
@@ -2757,7 +2808,7 @@ async function recordDrill() {
   dr.recorded = true;
   const d = dr.drill, tok = dr.token, starBefore = !!(dr.status && dr.status.star);
   const body = JSON.stringify({ id: dr.id, ending: d.ending, level: d.level, fen: d.fen, dtm: d.dtm, budget: d.budget,
-    moves_used: dr.answers.length, result: dr.result, ms: dr.ms, worst_loss: dr.result === 'threw' ? null : dr.worst });
+    moves_used: dr.answers.length, result: dr.result, ms: dr.ms, worst_loss: dr.result === 'threw' || isRookDrill(d) ? null : dr.worst });
   for (let i = 0; i < 5; i++) {
     let r = null;
     try { r = await fetch('api/drills/attempt', { method: 'POST', body, keepalive: true }); } catch (e) {}
@@ -2797,6 +2848,29 @@ function openDrillReview() {
   if (!dr.over) return;
   dr.reviewOpen = true; document.body.classList.add('drillrev');
   showPzOver(null); renderNow(); renderDrillBox();
+  drillHint();
+}
+// a rook drill's review hint (api/drills/hint): asked once, when the review opens; the move list shows at once and
+// the hint fills in when it lands (a second or so on a computer: every position searched again, deeper)
+async function drillHint() {
+  if (!isRookDrill(dr.drill) || dr.hint || dr.fens.length < 2) return;
+  const g = state.game, tok = dr.token, d0 = dr.drill;
+  dr.hint = { loading: true };
+  let r, d;
+  try {
+    r = await fetch('api/drills/hint', { method: 'POST', body: JSON.stringify({ ending: d0.ending, level: d0.level, fens: dr.fens }) });
+    d = await r.json();
+  } catch (e) { r = { ok: false }; d = { error: String(e.message || e) }; }
+  if (tok !== dr.token || state.game !== g) return;
+  if (!r.ok) { dr.hint = { error: (d && d.error) || 'no answer' }; renderNow(); return; }
+  dr.hint = d;
+  console.info(`drill hint: ${d.ms} ms for ${d.moves.length} moves, likely ${d.likely}`);
+  if (d.likely != null) {
+    dr.chosen = d.likely;
+    const mv = g.moves[2 * d.likely]; if (mv) mv.label = 'mistake';
+    renderMoveList(); highlightCurrent(); renderBoard();
+  }
+  renderNow(); renderDrillBox();
 }
 // a move of yours in the review: the board after it
 function chooseDrillMove(k) {
@@ -2808,14 +2882,21 @@ function chooseDrillMove(k) {
 async function drillBest() {
   const g = state.game, k = dr.chosen ?? 0, tok = dr.token;
   const fen = k === 0 ? g.start_fen : g.moves[2 * k - 1].fen;
-  let d; try { d = await (await fetch('api/drills/line', { method: 'POST', body: JSON.stringify({ ending: dr.drill.ending, fen }) })).json(); } catch (e) { d = { error: String(e) }; }
+  let d;
+  if (isRookDrill(dr.drill)) {      // no table: the engine's line from the hint's search of that position
+    const h = dr.hint && dr.hint.moves && dr.hint.moves[k];
+    if (!h || !h.line.length) { toast(dr.hint && dr.hint.loading ? 'The engine is still looking at your moves.' : 'No engine line from this move.'); return; }
+    d = { moves: h.line };
+  } else {
+    try { d = await (await fetch('api/drills/line', { method: 'POST', body: JSON.stringify({ ending: dr.drill.ending, fen }) })).json(); } catch (e) { d = { error: String(e) }; }
+  }
   if (tok !== dr.token || state.game !== g) return;
   if (!d.moves) { toast(d.error || 'No line from here'); return; }
   if (!d.moves.length) { toast("There's no line from here: the position was already a draw."); return; }
   if (state.variation) { dropVariation(); renderMoveList(); }
   const base = 2 * k;
   go(base);
-  state.variation = { basePly: base, back: base + 1, moves: d.moves.map((m, j) => Object.assign(drillPly(m, base + j, j % 2 === 0), j % 2 === 0 ? { label: 'best' } : {})) };
+  state.variation = { basePly: base, back: base + 1, moves: d.moves.map((m, j) => Object.assign(drillPly(m, base + j, j % 2 === 0), j % 2 === 0 && !isRookDrill(dr.drill) ? { label: 'best' } : {})) };
   dr.line = k;
   renderMoveList(); renderNow();
   let at = base;
@@ -2836,6 +2917,14 @@ function showDrillCard() {
 }
 function drillHeadline() {
   const r = dr.result, mode = dr.drill.mode;
+  if (mode === 'lucena') {
+    return { promoted: 'Promoted!', won: 'Won!', pawn_lost: 'Pawn lost', piece_lost: 'Rook lost', threw: 'The win slipped away', mated: 'Mated',
+             stalemate: 'Stalemate', repetition: 'Repetition', fifty: 'Fifty-move rule', budget: 'Out of moves', abandoned: 'Given up' }[r] || 'Over';
+  }
+  if (mode === 'philidor') {
+    return { held: 'Held!', pawn_taken: 'Pawn won!', rook_won: 'Rook won!', stalemate: 'Held!', promoted: 'The pawn promoted',
+             piece_lost: 'Rook lost', threw: 'The draw slipped away', mated: 'Mated', abandoned: 'Given up' }[r] || 'Over';
+  }
   if (drillSolved(mode, r)) return mode === 'mate' ? 'Mate!' : mode === 'attack' ? 'Promoted!' : 'Held!';
   return { budget: 'Out of moves', stalemate: 'Stalemate', piece_lost: 'Piece lost', repetition: 'Repetition', fifty: 'Fifty-move rule',
            threw: mode === 'hold' ? 'The pawn gets through' : 'The win slipped away', promoted: 'The pawn promoted', pawn_lost: 'Pawn lost',
@@ -2843,6 +2932,36 @@ function drillHeadline() {
 }
 function drillSummary() {
   const d = dr.drill, n = dr.answers.length, r = dr.result;
+  if (d.mode === 'lucena') {
+    const promoted = rookLeft(d).promoted;
+    return {
+      promoted: `A new queen after ${drillMoves(n)}, and the win is safe: Stockfish sees mate coming.`,
+      won: `Won after ${drillMoves(n)}: the win is safe.`,
+      pawn_lost: 'Stockfish took the pawn, and rook against rook is a draw.',
+      piece_lost: 'Stockfish won your rook, and the pawn alone is not enough.',
+      threw: promoted ? 'The new queen was lost, and what was left is no win.' : 'That move let Stockfish reach a draw.',
+      mated: 'Your king was mated.',
+      stalemate: "Stockfish's king had no move and wasn't in check: a draw.",
+      repetition: 'The same position came up a third time: a draw.',
+      fifty: 'Fifty moves without a capture or a pawn move: a draw.',
+      budget: promoted ? `The new piece didn't win in time: ${drillMoves(d.post_promo)} after the promotion and still no mate in sight.`
+        : `All ${d.budget} moves used, and the pawn hasn't promoted.`,
+      abandoned: 'You left this one before the end.',
+    }[r] || '';
+  }
+  if (d.mode === 'philidor') {
+    return {
+      held: n >= d.hold_moves ? `${drillMoves(n)} held. Stockfish got nowhere.` : `A draw after ${drillMoves(n)}: Stockfish couldn't make progress.`,
+      pawn_taken: `You won the pawn after ${drillMoves(n)}, and rook against rook is a draw.`,
+      rook_won: "You won Stockfish's rook, and the pawn can't win on its own.",
+      stalemate: 'Stalemate: a draw, so the defence held.',
+      promoted: 'The pawn reached the last rank.',
+      piece_lost: "Stockfish won your rook, and its pawn goes through.",
+      threw: 'That move let Stockfish force a win.',
+      mated: 'Your king was mated.',
+      abandoned: 'You left this one before the end.',
+    }[r] || '';
+  }
   if (r === 'solved') return n === d.dtm ? `Mate in ${n}: the fastest there is.` : `Mate in ${n}, the fastest was ${d.dtm}.`;
   if (d.mode === 'attack' && r === 'promoted') return `A new queen after ${drillMoves(n)}, and the win is safe.`;
   if (d.mode === 'hold' && r === 'held') return `${drillMoves(n)} held. The attacker got nowhere.`;
@@ -2860,9 +2979,28 @@ function drillSummary() {
     abandoned: 'You left this one before the end.',
   }[r] || '';
 }
+// a rook drill's review: your moves (no distance column: no table grades them), the move the hint picked marked,
+// the hint above them once it lands, and always the note that it is an estimate
+function rookReviewHtml() {
+  const g = state.game, h = dr.hint, n = dr.answers.length;
+  const likely = h && h.moves ? h.likely : null;
+  const rows = Array.from({ length: n }, (_, k) => {
+    const mv = g.moves[2 * k]; if (!mv) return '';
+    return `<div class="drow rook${k === likely ? ' worst' : ''}${k === dr.chosen ? ' sel' : ''}" data-k="${k}"><span class="n">${k + 1}.</span>` +
+      `<span class="san">${esc(mv.san)}</span>${k === likely ? '<span class="kind k-threw">Probably here</span>' : '<span></span>'}</div>`;
+  }).join('');
+  let hint;
+  if (!h || h.loading) hint = 'Stockfish is looking over your moves, deeper this time.';
+  else if (h.error) hint = `The hint couldn't be worked out: ${h.error}.`;
+  else if (likely == null) hint = 'No single move stands out.';
+  else hint = `Probably here: move ${likely + 1}, ${g.moves[2 * likely].san}. ${DRILL_HINTS[h.hint] || "After it the engine's score fell the most"}.`;
+  return `<p class="dworst">${esc(hint)}</p><p class="dnote2">${esc(DR_ESTIMATE)}</p><div class="dlist">${rows}</div>` +
+    `<p>Pick a move to see it on the board; The engine's line from here plays Stockfish's line from there instead.</p>`;
+}
 function drillReviewHtml() {
   const rv = dr.review, g = state.game, d = dr.drill;
   if (!rv || !rv.moves.length) return '<p>No moves to go through.</p>';
+  if (isRookDrill(d)) return rookReviewHtml();
   const rows = rv.moves.map((m, k) => {
     const mv = g.moves[2 * k]; if (!mv) return '';
     const dist = d.mode === 'hold' ? (m.kind === 'threw' ? 'lost' : 'holds') : m.dtm === 0 ? 'mate' : m.dtm == null ? 'draw'
@@ -2881,17 +3019,32 @@ function drillReviewHtml() {
   return `<p class="dworst">${esc(worst)}</p><div class="dlist">${rows}</div>` +
     `<p>Pick a move to see it on the board; Best from here plays the table's line from there instead.</p>`;
 }
+// a rook drill under way: the count that replaces the mate counter (long for the coach, short for the box)
+function rookCount(d) {
+  const { left, promoted } = rookLeft(d), moves = drillMoves(left);
+  if (d.mode === 'philidor') return { long: `Hold the draw: ${left} more move${left === 1 ? '' : 's'}`, short: `Hold ${left} more` };
+  return promoted ? { long: `Keep the new queen: ${moves} left`, short: `${moves} left` } : { long: `Promote the pawn: ${moves} left`, short: `${moves} left` };
+}
 function renderDrillNow() {
   const el = $('now'), d = dr.drill;
   if (!d) { el.innerHTML = ''; return; }
   const top = (ic, text, colour) => `<div class="top">${ic ? icon(ic) : ''}<span class="verdict"${colour ? ` style="color:${colour}"` : ''}>${text}</span></div>`;
   if (inVariation()) {
     const end = state.ply === line().length;
-    el.innerHTML = top('best', 'Best from here', COLOR.best) + `<p>The table's line from your move ${dr.line + 1}${end ? '' : ', played out on the board'}. ` +
-      `<a class="dlink" data-act="dback">Back to your moves</a></p>`;
+    el.innerHTML = isRookDrill(d)
+      ? top(null, "The engine's line from here") + `<p>Stockfish's line from your move ${dr.line + 1}${end ? '' : ', played out on the board'}. ` +
+        `${esc(DR_ESTIMATE)} <a class="dlink" data-act="dback">Back to your moves</a></p>`
+      : top('best', 'Best from here', COLOR.best) + `<p>The table's line from your move ${dr.line + 1}${end ? '' : ', played out on the board'}. ` +
+        `<a class="dlink" data-act="dback">Back to your moves</a></p>`;
   } else if (!dr.over) {
     const n = dr.answers.length;
-    if (d.mode === 'mate') {
+    if (isRookDrill(d)) {
+      const c = rookCount(d);
+      const lead = d.mode === 'lucena' ? 'Shelter your king from the checks, then promote. Stockfish defends.'
+        : 'Keep the king in front and the rook on the third rank. Stockfish attacks.';
+      el.innerHTML = top(null, dr.thinking ? 'Stockfish is thinking' : n ? 'Your move' : d.mode === 'lucena' ? 'Win it' : 'Hold it') +
+        `<p>${esc(c.long)}.${n ? '' : ` ${esc(lead)}`}</p>`;
+    } else if (d.mode === 'mate') {
       const dist = n ? dr.answers[n - 1].dtm : d.dtm, left = d.budget - n;
       el.innerHTML = top(null, n ? 'Your move' : 'Mate the king') +
         `<p>${d.counter && dist != null ? `Mate in ${dist}. ` : ''}${drillMoves(left)} left.${n ? '' : ' The defender always finds the most stubborn reply.'}</p>`;
@@ -2914,9 +3067,12 @@ function renderDrillNow() {
 }
 function renderDrillBox() {
   const d = dr.drill; if (!d || !state.game || !state.game.drill) return;
-  const s = dr.status, n = dr.answers.length;
+  const s = dr.status, n = dr.answers.length, rook = isRookDrill(d);
   let cnt, extra = '';
-  if (d.mode === 'mate') {
+  if (rook) {
+    cnt = dr.over ? drillMoves(n) : rookCount(d).short;
+    if (dr.thinking && !dr.over) extra = '<br>Stockfish is thinking';
+  } else if (d.mode === 'mate') {
     cnt = `${drillMoves(d.budget - n)} left`;
     const dist = n ? dr.answers[n - 1].dtm : d.dtm;
     if (d.counter && !dr.over && dist != null) extra = `<br>Mate in ${dist}`;
@@ -2925,10 +3081,12 @@ function renderDrillBox() {
   const head = `<div class="pzhead"><span class="cnt">${cnt}</span><span class="meta">Level ${d.level} of ${s ? s.top : '?'}${s && s.star ? ' ★' : ''}${extra}</span></div>`;
   let btns;
   if (!dr.over) btns = `<button id="dr-a"${dr.busy ? ' disabled' : ''} title="${n ? 'End this one here: it counts as a miss' : 'Another position: this one is not counted'}">${n ? 'Give up' : 'Skip'}</button>`;
-  else btns = (dr.reviewOpen ? `<button id="dr-a" title="Play the table's line from the chosen move">Best from here</button>`
+  else btns = (dr.reviewOpen ? (rook ? `<button id="dr-a" title="Play Stockfish's line from the chosen move">The engine's line from here</button>`
+    : `<button id="dr-a" title="Play the table's line from the chosen move">Best from here</button>`)
     : `<button id="dr-a" title="Go through your moves">Review</button>`) +
     `<button class="primary" id="pz-next" title="Next position (n)">Next position →</button>`;
-  const goal = d.mode === 'mate' ? `mate within ${drillMoves(d.budget)}` : d.mode === 'attack' ? 'promote and keep the win' : `hold ${d.hold_moves} moves`;
+  const goal = d.mode === 'mate' ? `mate within ${drillMoves(d.budget)}` : d.mode === 'attack' ? 'promote and keep the win'
+    : d.mode === 'lucena' ? 'win rook and pawn against rook' : d.mode === 'philidor' ? 'hold rook against rook and pawn' : `hold ${d.hold_moves} moves`;
   $('pzbox').innerHTML = head + `<div class="pzbtns">${btns}</div>` +
     `<div class="pzinfo">${esc(DRILL_ENDINGS[d.ending].name)} · ${goal}</div>` +
     `<div class="pzfoot"><button id="dr-back" title="Back to the endings">← Endings</button></div>`;
@@ -2963,6 +3121,7 @@ const COVERS = {
   'd-KQRK': [['wq', 'wr', 'bk'], null, '#e8604c'], 'd-KRRK': [['wr', 'wr', 'bk'], null, '#5c9fd6'], 'd-KQK': [['wq', 'bk'], null, '#a879e0'],
   'd-KRK': [['wr', 'bk'], null, '#4cc2a8'], 'd-KPK': [['wp', 'wk'], null, '#e0a53a'], 'd-KPK-hold': [['wk', 'bp'], null, '#8fb4bf'],
   'd-KBBK': [['wb', 'wb', 'bk'], null, '#d97ab5'], 'd-KBNK': [['wb', 'wn', 'bk'], null, '#7fb85c'],
+  'd-Lucena': [['wr', 'wp', 'br'], null, '#d9894a'], 'd-Philidor': [['wr', 'br', 'bp'], null, '#6f8fe0'],
 };
 function coverHtml(key, family, day) {
   const [pcs, mark, colour] = COVERS[key] || [['wn']];
