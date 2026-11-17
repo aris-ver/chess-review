@@ -35,3 +35,6 @@ Pipeline: Opus plans and checks (Fable until phase 2's first review), Sonnet or 
   cherry-picked to main (228358f), npm test 321 pass 0 fail 3 skip.
 - 2026-11-17: phase 5 round 3 (logic, opponent, routes) built by Opus, Opus VERDICT: OK, fast-forwarded to main.
 - 2026-11-17: phase 5 round 4 (page, hint) built by Opus, Opus VERDICT: OK, fast-forwarded to main.
+- 2026-11-17: offline web app (service worker web/offline.js, docs/web.md Offline) built by Opus, two fix rounds,
+  Opus VERDICT: OK, fast-forwarded to main (7be0f85). Pushed with phase 5 on the user's word; round 2b (starts) not
+  in it: its lichess /mainline run (Lucena L2-L4) is still going in instinct-p5-starts2 and ships as its own deploy.
