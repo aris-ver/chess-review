@@ -8,7 +8,7 @@ import { join } from 'node:path';
 import { afterEach, test } from 'node:test';
 
 import { ELECTRON_ASSETS, Updater } from '../server/updater.js';
-import { applyScript, asarFiles, isAppAsar, makeApply, makeUnpack, readInstalled, releasesFetch, updateFiles } from './update.js';
+import { applyScript, asarFiles, isAppAsar, lastInstall, makeApply, makeUnpack, readInstalled, releasesFetch, updateFiles } from './update.js';
 
 const dirs = [];
 const tmp = () => {
@@ -110,6 +110,55 @@ test('update: a small update streams to disk, is staged as resources/app.asar an
   assert.match(script, /Wait-Process -Id 42/);
   assert.match(script, /Replace-File/);
   assert.match(script, /\$install = 'C:\\Apps\\Blundr'/);
+  assert.match(script, /Log 'installing v1\.0\.1 \(update\)'/);
+  assert.match(script, /Start-Process -FilePath/);
+});
+
+test('update: install on quit writes the script and starts it, with no relaunch and no second quit', async () => {
+  const data = tmp();
+  mkdirSync(join(data, 'update', 'stage', 'Blundr', 'resources'), { recursive: true });
+  const started = [];
+  let quit = 0;
+  const apply = makeApply({ dataDir: data, install: 'C:\\Apps\\Blundr', pid: 42, quit: () => quit++, start: s => started.push(s), delay: 0 });
+  await apply({ stage: 'update/stage/Blundr', kind: 'update', installed: { version: 'v1.0.0', runtime: 'electron-44' },
+                latest: { version: 'v1.0.1' }, relaunch: false });
+  await new Promise(resolve => setTimeout(resolve, 5));
+  assert.equal(quit, 0, 'the app is closing already');
+  assert.deepEqual(started, [join(data, 'update', 'apply.ps1')]);
+  const script = readFileSync(started[0], 'utf8');
+  assert.match(script, /Log 'installing v1\.0\.1 \(update, on quit\)'/);
+  assert.match(script, /Wait-Process -Id 42/);
+  assert.match(script, /Replace-File/);
+  assert.ok(!/Start-Process/.test(script), 'not started again: the user closed it');
+  assert.deepEqual(JSON.parse(readFileSync(join(data, 'update', 'stage', 'Blundr', 'resources', 'build.json'), 'utf8')),
+                   { version: 'v1.0.1', runtime: 'electron-44' });
+  // a script that can't be started: the error is the caller's to log (Updater.applyOnQuit), and nothing quits here
+  await assert.rejects(makeApply({ dataDir: data, install: 'C:\\B', quit: () => quit++, start: () => { throw new Error('spawn failed'); } })(
+    { stage: 'update/stage/Blundr', kind: 'full', installed: {}, latest: { version: 'v2' }, relaunch: false }), /spawn failed/);
+  assert.equal(quit, 0);
+});
+
+test('update: the script never swaps while the app still runs', () => {
+  for (const relaunch of [true, false]) {
+    const s = applyScript({ pid: 9, stage: 'C:\\S', install: 'C:\\I', kind: 'full', logfile: 'C:\\l', version: 'v2', relaunch });
+    const guard = s.indexOf('if (Get-Process -Id 9 -ErrorAction SilentlyContinue)');
+    assert.ok(guard > s.indexOf('Wait-Process -Id 9') && guard < s.indexOf('Move-Item'), 'checked after the wait, before anything moves');
+    assert.match(s.slice(guard).split('\r\n')[0], /FAILED: Blundr was still running, nothing changed'; exit 1 \}$/);
+    assert.equal(s.includes('Start-Process'), relaunch);
+  }
+});
+
+test('update: the last install in update.log, failed or not', () => {
+  assert.equal(lastInstall(''), null);
+  assert.equal(lastInstall('2026-01-01T00:00:00 waiting for pid 4\r\n2026-01-01T00:00:01 applied\r\n'), null, 'a log from before');
+  const log = [
+    '2026-11-01T10:00:00 installing v1.3.0 (update)', '2026-11-01T10:00:00 waiting for pid 4', '2026-11-01T10:00:02 FAILED: access denied',
+    '2026-11-02T10:00:00 installing v1.4.0 (full, on quit)', '2026-11-02T10:00:00 waiting for pid 5',
+  ];
+  assert.deepEqual(lastInstall(log.slice(0, 3).join('\r\n')), { version: 'v1.3.0', error: 'access denied' });
+  assert.deepEqual(lastInstall([...log, '2026-11-02T10:00:03 applied'].join('\r\n')), { version: 'v1.4.0', error: null });
+  assert.deepEqual(lastInstall([...log, '2026-11-02T10:02:00 FAILED: Blundr was still running, nothing changed'].join('\n')),
+                   { version: 'v1.4.0', error: 'Blundr was still running, nothing changed' });
 });
 
 test('update: a small update that is not this app is refused, the install untouched', async () => {

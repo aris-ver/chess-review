@@ -1954,11 +1954,13 @@ state.engine = null;
 // updates (desktop build only): one check per launch, the banner on the home screen does the rest
 state.update = null;
 const fmtMB = b => b ? `${(b / 1048576).toFixed(b < 10485760 ? 1 : 0)} MB` : '';
+let updT = null;    // the one poll while a download runs
 async function checkUpdate(force = false) {
   let d; try { d = await (await fetch('api/update' + (force ? '?check=1' : ''))).json(); } catch (e) { return; }
   state.update = d; renderUpdate();
   if (force) toast(d.check_error ? 'Could not check: ' + d.check_error : d.newer ? `${d.latest} is available` : `${d.installed} is the latest version`);
-  if (d.state === 'downloading') setTimeout(checkUpdate, 500);
+  clearTimeout(updT);
+  if (d.state === 'downloading') updT = setTimeout(checkUpdate, 500);
 }
 // the release notes GitHub holds for the update, as the workflow writes them: "## What's new", "* item" lines,
 // **bold**, bare links. Enough markdown for that and nothing more.
@@ -2011,18 +2013,24 @@ function renderUpdate() {
   box.classList.toggle('hidden', !u.newer);
   if (!u.newer) return;
   const what = u.kind === 'full' ? `full download, ${fmtMB(u.size)}` : `${fmtMB(u.size)}`;
-  let html = `<div class="msg"><b>${u.latest}</b> is available (you have ${u.installed}).<small>${
+  const notesLink = `<a id="upd-notes">What's new ▸</a>`;
+  // auto (the desktop app): downloaded by itself, installed as the app closes; Restart now does it at once
+  let html = u.auto && u.state === 'ready'
+    ? `<div class="msg"><b>${esc(u.staged || u.latest)}</b> will install when you close Blundr.<small>Downloaded · ${notesLink}</small></div>`
+    : `<div class="msg"><b>${u.latest}</b> is available (you have ${u.installed}).<small>${
     u.state === 'ready' ? 'Downloaded. The app restarts to finish installing it.' :
     u.state === 'downloading' ? `Downloading… ${fmtMB(u.done)} of ${fmtMB(u.total)}` :
-    `${what} · <a id="upd-notes">What's new ▸</a>`}</small></div>`;
-  if (u.state === 'ready') html += `<button class="primary" id="upd-apply">Restart to update</button>`;
+    `${what} · ${notesLink}`}</small></div>`;
+  if (u.state === 'ready') html += `<button class="primary" id="upd-apply">${u.auto ? 'Restart now' : 'Restart to update'}</button>`;
   else if (u.state === 'downloading') html += `<div class="progress"><div style="width:${u.total ? 100 * u.done / u.total : 0}%"></div></div>`;
   else html += `<button class="primary" id="upd-get">Download update</button>`;
-  if (u.state === 'error') html += `<div class="err">Download failed: ${u.error}</div>`;
+  if (u.state === 'error') html += `<div class="err">Download failed: ${u.error}${u.auto ? '. It is tried again at the next check.' : ''}</div>`;
+  // the last install (as the app closed, or a restart) failed; not tried again by itself: the button does
+  else if (u.install_error && u.state !== 'ready' && u.state !== 'downloading') html += `<div class="err">Installing ${esc(u.install_error.version)} failed: ${esc(u.install_error.error)}</div>`;
   box.innerHTML = html;
   const get = $('upd-get'), apply = $('upd-apply'), notes = $('upd-notes');
   if (notes) notes.onclick = showNotes;
-  if (get) get.onclick = async () => { get.disabled = true; try { state.update = await (await fetch('api/update/download', { method: 'POST' })).json(); } catch (e) { get.disabled = false; return; } renderUpdate(); setTimeout(checkUpdate, 500); };
+  if (get) get.onclick = async () => { get.disabled = true; try { state.update = await (await fetch('api/update/download', { method: 'POST' })).json(); } catch (e) { get.disabled = false; return; } renderUpdate(); clearTimeout(updT); updT = setTimeout(checkUpdate, 500); };
   if (apply) apply.onclick = async () => {
     apply.disabled = true;
     let r, d; try { r = await fetch('api/update/apply', { method: 'POST' }); d = await r.json(); } catch (e) { d = { error: String(e) }; r = { ok: false }; }
@@ -2046,6 +2054,8 @@ async function showHome() {
   const srcs = puzzleSources();     // the reviews due: the strip's, and each profile's badge
   await Promise.all([renderPuzzleCards(srcs), renderProfiles(srcs), renderDrillTile()]);     // all drawn before the first screen shows (#boot)
   pollStatus();
+  // the desktop app left open: a newer release found (at most an hour after it comes) downloads by itself
+  if (state.update && state.update.enabled) checkUpdate();
 }
 // the add-profile form and the PGN box stay folded away until their button is clicked
 function openDrawer(id, on, focus = true) {

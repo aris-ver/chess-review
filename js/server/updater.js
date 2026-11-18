@@ -11,6 +11,8 @@
 //     apply        async ({stage, kind, installed, latest}) → void; replaces the running app and restarts it (the
 //                  apply script and closing the window: js/desktop's job). Without it, apply answers an error.
 //     now          seconds since the epoch
+//     auto         download a newer release as soon as a check finds it, and install it as the app closes
+//                  (js/desktop/main.js: applyOnQuit). Off as in Python's, where the page asks for the download.
 //
 // The asset names are Python's by default; the Electron build passes its own (js/desktop/README.md's plan).
 
@@ -92,17 +94,19 @@ export function changesSince(releases, mine, latest) {
 
 export class Updater {
   constructor({ fetch = globalThis.fetch, files = null, installed = null, platform = null, unpack = null, apply = null,
-                now = () => Date.now() / 1000, assets = PYTHON_ASSETS, repo = GITHUB_REPO, log = null } = {}) {
-    Object.assign(this, { fetch, files, unpack, applyHook: apply, now, assets, repo, log, platform });
+                now = () => Date.now() / 1000, assets = PYTHON_ASSETS, repo = GITHUB_REPO, log = null, auto = false } = {}) {
+    Object.assign(this, { fetch, files, unpack, applyHook: apply, now, assets, repo, log, platform, auto });
     this.installed = { version: installed?.version ?? null, runtime: installed?.runtime ?? null };
     this.latest = null;         // {version, url, notes, asset, changes} once checked
     this.checkedAt = 0;
     this.checkError = null;
-    this.state = 'idle';        // idle | downloading | ready | error
+    this.state = 'idle';        // idle | downloading | ready | error | applying (handed to the platform: nothing more)
     this.done = 0;
     this.total = 0;
     this.error = null;
     this.stage = null;          // what apply() swaps in
+    this.staged = null;         // the latest (as check() had it) the stage is the download of
+    this.installFailed = null;  // {version, error}: the last install failed (DATA/update.log, read at launch)
     this.task = null;           // the download under way (a promise)
   }
 
@@ -139,6 +143,9 @@ export class Updater {
       this.checkError = String(e.message ?? e);
     }
     this.checkedAt = this.now();
+    // auto: on to the download. Not of the version whose install just failed: that one waits for the page's button,
+    // or every launch would fetch it and fail again on quit
+    if (this.auto && this.newer && this.latest.version !== this.installFailed?.version) this.download();
   }
 
   get newer() {
@@ -154,18 +161,24 @@ export class Updater {
       Object.assign(out, { latest: this.latest.version, url: this.latest.url, notes: this.latest.notes, newer: this.newer,
                            changes: this.latest.changes ?? [], kind: a ? a.kind : null, size: a ? a.size : null });
     }
+    if (this.auto) Object.assign(out, { auto: true, staged: this.staged?.version ?? null, install_error: this.installFailed });
     return out;
   }
 
-  /** Start fetching the latest release's download in the background. False if nothing to do or already busy. */
+  /** Start fetching the latest release's download in the background. False if nothing to do or already busy: one
+   * download at a time, none once applying, none again of what is staged. A release newer than the staged one
+   * replaces it: the stage goes as its download starts, so a quit before it is in installs nothing. */
   download() {
-    if (!this.newer || this.state === 'downloading' || this.state === 'ready') return false;
+    if (!this.newer || this.state === 'downloading' || this.state === 'applying') return false;
+    if (this.state === 'ready' && (this.staged ?? this.latest).version === this.latest.version) return false;
     [this.state, this.done, this.total, this.error] = ['downloading', 0, this.latest.asset.size || 0, null];
-    this.task = this._download(this.latest.asset);
+    [this.stage, this.staged] = [null, null];
+    this.task = this._download(this.latest);
     return true;
   }
 
-  async _download(asset) {
+  async _download(latest) {
+    const asset = latest.asset;
     try {
       await this.files.remove(UPDATE_DIR);
       await this.files.mkdir(UPDATE_DIR);
@@ -203,6 +216,7 @@ export class Updater {
       } else {
         this.stage = path;
       }
+      this.staged = latest;
       this.state = 'ready';
     } catch (e) {     // whatever went wrong, the page shows it and the install is untouched
       this.log?.error?.(`update download failed: ${e.message}`);
@@ -210,12 +224,33 @@ export class Updater {
     }
   }
 
-  /** Hand over to the platform, which replaces the app and restarts it. Only once state is 'ready'. */
-  async apply() {
+  /** Hand over to the platform, which replaces the app and restarts it (relaunch false: the app is closing and stays
+   * closed, the next launch is the new version). Only once state is 'ready', and then only once. */
+  async apply({ relaunch = true } = {}) {
     if (this.state !== 'ready' || !this.stage) throw new Error('no update ready');
     if (!this.applyHook) throw new Error('this build cannot apply updates');
-    const kind = this.latest.asset.kind === 'update' ? 'update' : 'full';
-    await this.applyHook({ stage: this.stage, kind, installed: this.installed, latest: this.latest });
-    this.log?.info?.(`update ${this.installed.version} -> ${this.latest.version}: handed to the platform`);
+    const latest = this.staged ?? this.latest;
+    const kind = latest.asset.kind === 'update' ? 'update' : 'full';
+    this.state = 'applying';
+    try {
+      await this.applyHook({ stage: this.stage, kind, installed: this.installed, latest, relaunch });
+    } catch (e) {
+      this.state = 'ready';
+      throw e;
+    }
+    this.log?.info?.(`update ${this.installed.version} -> ${latest.version}: handed to the platform${relaunch ? '' : ' (on quit)'}`);
+  }
+
+  /** The app is closing: a staged update goes in, the app not started again. Never throws; waits on no more than
+   * writing the script and starting it. True if it was handed over. */
+  async applyOnQuit() {
+    if (!this.auto || this.state !== 'ready' || !this.stage || !this.applyHook) return false;
+    try {
+      await this.apply({ relaunch: false });
+      return true;
+    } catch (e) {
+      this.log?.error?.(`installing the update on quit failed: ${e.message}`);
+      return false;
+    }
   }
 }

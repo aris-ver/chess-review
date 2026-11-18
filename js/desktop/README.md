@@ -41,12 +41,26 @@ holds `{version, runtime}`, where `runtime` is `electron-<version>`: what only a
   `update/stage/Blundr/resources/app.asar` with a new `build.json` (the release's version, the same runtime).
 - **Full update:** `Blundr-windows.zip`. Its entries must all be under `Blundr/`; unpacked with Windows' tar into
   `update/stage`, then checked for `Blundr.exe`, an app.asar of this app and `build.json`.
-- **Applying** (`POST /api/update/apply`): `DATA/update/apply.ps1` (BOM, CRLF) is written and started through
-  `cmd /c start` (a detached PowerShell has no console and runs nothing), and the window closes 0.5 s later. The
-  script waits for the app's pid, then: small → each staged file over the install's through a `.new` rename; full →
-  the install folder's contents moved into `.blundr-old`, the stage's copied in, the old ones put back if that
-  fails, `.blundr-old` deleted. The old exe names go, `DATA/update.log` says what happened, and `Blundr.exe`
-  starts again whatever happened.
+- **By itself** (`auto`, this build's Updater only; the page still works with one without): a check (`GET
+  /api/update`: at launch, on the way to Home, as the window comes back into sight; at most once an hour) that finds
+  a newer release starts its download at once. One download at a time; one that fails shows in the banner and is
+  tried again at the next check. A newer release than the staged one replaces it: the stage goes as its download
+  starts. The banner then says "<version> will install when you close Blundr", with *Restart now* and What's new.
+- **On quit:** when the window closes with an update staged, `window-all-closed` writes and starts the script with no
+  relaunch (`Updater.applyOnQuit`: never throws, waits on nothing but writing a file and starting `cmd`), then shuts
+  down as before. A job running doesn't hold it back: closing stops it anyway. The next launch is the new version.
+- **Applying** (*Restart now*, `POST /api/update/apply`): `DATA/update/apply.ps1` (BOM, CRLF) is written and started
+  through `cmd /c start` (a detached PowerShell has no console and runs nothing), and the window closes 0.5 s later.
+  Applied once: the state is then `applying`, so neither a second click nor the quit after it applies again, and no
+  download starts. The script logs `installing <version> (<kind>[, on quit])`, waits for the app's pid (if it is still
+  running after two minutes nothing changes: `FAILED: Blundr was still running`), then: small → each staged file over
+  the install's through a `.new` rename; full → the install folder's contents moved into `.blundr-old`, the stage's
+  copied in, the old ones put back if that fails, `.blundr-old` deleted. The old exe names go, `DATA/update.log` says
+  what happened, and after *Restart now* `Blundr.exe` starts again whatever happened.
+- **A failed install** (the last `installing` in `DATA/update.log` followed by a `FAILED:` line, for a version newer
+  than the one running): shown at launch under the banner, and that version isn't downloaded by itself again (or
+  every launch would fetch it and fail on quit); *Download update* still fetches it, and a newer release downloads by
+  itself as usual.
 - `BLUNDR_UPDATE_API=http://127.0.0.1:<port>/releases` serves GitHub's releases API from elsewhere (a test release).
 - The downloaded asar goes through Electron's `original-fs`: its own `fs` treats an `.asar` file as a folder.
 

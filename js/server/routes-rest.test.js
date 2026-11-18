@@ -232,9 +232,39 @@ test('routes-rest: apply waits for a job the user asked for, not for a backgroun
     router.runner.job.kind = 'build';
     assert.equal((await router.handle('POST', '/api/update/apply')).status, 200);
     router.runner.job = null;
+    // handed over once: a second click (or the quit after it) applies nothing again
+    const again = await router.handle('POST', '/api/update/apply');
+    assert.deepEqual([again.status, JSON.parse(again.body)], [400, { error: 'no update ready' }]);
+    u.state = 'ready';
     u.applyHook = null;
     const no = await router.handle('POST', '/api/update/apply');
     assert.deepEqual([no.status, JSON.parse(no.body)], [400, { error: 'this build cannot apply updates' }]);
+  } finally {
+    await done();
+  }
+});
+
+test('routes-rest: the desktop updater downloads at the first GET, and a POST then starts no second download', async () => {
+  const { router, env, files, done } = await bare();
+  let release, downloads = 0;
+  const held = new Promise(resolve => { release = resolve; });
+  const latest = { tag_name: 'v2', assets: [{ name: 'Blundr-windows.zip', browser_download_url: 'https://dl/v2.zip', size: 3 }] };
+  const fetch = async url => {
+    if (url.includes('api.github.com')) return Response.json(url.endsWith('latest') ? latest : [latest]);
+    downloads++;
+    await held;
+    return new Response(new Uint8Array([1, 2, 3]));
+  };
+  try {
+    env.updater = new Updater({ fetch, files, installed: { version: 'v1' }, platform: 'win32', auto: true });
+    const got = JSON.parse((await router.handle('GET', '/api/update')).body);
+    assert.deepEqual([got.state, got.auto, got.staged, got.newer], ['downloading', true, null, true]);
+    const post = JSON.parse((await router.handle('POST', '/api/update/download')).body);
+    assert.deepEqual([post.ok, post.state], [false, 'downloading']);
+    release();
+    await env.updater.task;
+    const ready = JSON.parse((await router.handle('GET', '/api/update?check=1')).body);
+    assert.deepEqual([ready.state, ready.staged, downloads], ['ready', 'v2', 1]);
   } finally {
     await done();
   }

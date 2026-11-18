@@ -9,7 +9,8 @@
 // and a resources/build.json with the new version). Applying writes DATA/update/apply.ps1, which waits for this
 // process to exit, swaps the files in (a small update file by file through a .new rename; a full one moves the
 // install folder's contents aside, copies the new ones in and puts the old ones back if that fails), logs to
-// DATA/update.log and starts Blundr.exe again, as chess_review/updater.py's write_apply_script does.
+// DATA/update.log and starts Blundr.exe again, as chess_review/updater.py's write_apply_script does. Applied as the app
+// closes (main.js, Updater.applyOnQuit) it doesn't start it again: the user closed it.
 
 import { execFileSync, spawn } from 'node:child_process';
 import * as nodeFs from 'node:fs';
@@ -125,8 +126,10 @@ const q = s => "'" + String(s).replace(/'/g, "''") + "'";
 /** The PowerShell that finishes an update after process `pid` exits (updater.write_apply_script's, for this app's
  * layout). kind 'update': each staged file over the install's, through a .new rename. 'full': the install folder's
  * contents moved aside into .blundr-old, the stage's copied in (put back as they were if that fails), the old ones
- * deleted. Then Blundr.exe starts again, whatever happened; DATA/update.log says what did. */
-export function applyScript({ pid, stage, install, kind, logfile }) {
+ * deleted. Then Blundr.exe starts again, whatever happened (relaunch false: not, the user closed the app); DATA/update.log
+ * says what did, from an 'installing <version>' line (lastInstall reads it at the next launch). Nothing is touched while
+ * the app still runs after two minutes. */
+export function applyScript({ pid, stage, install, kind, logfile, version = '', relaunch = true }) {
   const lines = [
     "$ErrorActionPreference = 'Stop'",
     `$log = ${q(logfile)}`,
@@ -134,8 +137,10 @@ export function applyScript({ pid, stage, install, kind, logfile }) {
     `$install = ${q(install)}`,
     `$aside = Join-Path $install ${q(ASIDE)}`,
     "function Log($m) { Add-Content -Path $log -Value ((Get-Date -Format s) + ' ' + $m) }",
+    `Log ${q(`installing ${version || '?'} (${kind}${relaunch ? '' : ', on quit'})`)}`,
     `Log 'waiting for pid ${pid}'`,
     `try { Wait-Process -Id ${pid} -Timeout 120 -ErrorAction Stop } catch { }`,
+    `if (Get-Process -Id ${pid} -ErrorAction SilentlyContinue) { Log 'FAILED: Blundr was still running, nothing changed'; exit 1 }`,
     'Start-Sleep -Milliseconds 500',
     'function Replace-File($src, $dst) {',
     "  $tmp = $dst + '.new'",
@@ -185,25 +190,39 @@ export function applyScript({ pid, stage, install, kind, logfile }) {
     '} catch {',
     "  Log ('FAILED: ' + $_)",
     '}',
-    `Start-Process -FilePath (Join-Path $install ${q(EXE_NAME)}) -WorkingDirectory $install`,
+    ...(relaunch ? [`Start-Process -FilePath (Join-Path $install ${q(EXE_NAME)}) -WorkingDirectory $install`] : []),
     '',
   );
   return lines.join('\r\n');
 }
 
+/** What the last install in DATA/update.log's text came to: {version, error} (error null when it went in), or null
+ * when there is none (or only a log from before 'installing' lines). */
+export function lastInstall(text) {
+  const lines = String(text ?? '').split(/\r?\n/);
+  let at = -1;
+  for (let i = lines.length - 1; i >= 0 && at < 0; i--) if (/ installing \S+ \(/.test(lines[i])) at = i;
+  if (at < 0) return null;
+  const version = / installing (\S+) \(/.exec(lines[at])[1];
+  const failed = lines.slice(at + 1).find(l => / FAILED: /.test(l));
+  return { version, error: failed ? failed.slice(failed.indexOf('FAILED: ') + 8).trim() : null };
+}
+
 /** The Updater's apply: a small update gets its new build.json, the script is written (with a BOM: PowerShell reads
- * a BOM-less file as ANSI) and started detached, and `quit` runs once the HTTP answer has gone out. */
+ * a BOM-less file as ANSI) and started detached, and `quit` runs once the HTTP answer has gone out. relaunch false
+ * (the app is closing already): no restart after, and no quit. */
 export function makeApply({ dataDir, install, pid = process.pid, quit, fs = rawFs(), start = startScript, delay = 500 }) {
-  return async ({ stage, kind, installed, latest }) => {
+  return async ({ stage, kind, installed, latest, relaunch = true }) => {
     const stageDir = join(dataDir, ...stage.split('/'));
     if (kind === 'update') {
       fs.writeFileSync(join(stageDir, 'resources', 'build.json'),
                        JSON.stringify({ version: latest.version, runtime: installed.runtime }));
     }
     const script = join(dataDir, 'update', 'apply.ps1');
-    fs.writeFileSync(script, '﻿' + applyScript({ pid, stage: stageDir, install, kind, logfile: join(dataDir, 'update.log') }), 'utf8');
+    fs.writeFileSync(script, '﻿' + applyScript({ pid, stage: stageDir, install, kind, logfile: join(dataDir, 'update.log'),
+                                                  version: latest.version, relaunch }), 'utf8');
     start(script);
-    setTimeout(quit, delay);
+    if (relaunch) setTimeout(quit, delay);
   };
 }
 
@@ -213,6 +232,7 @@ export function makeApply({ dataDir, install, pid = process.pid, quit, fs = rawF
 function startScript(script) {
   const cmd = `start "" /min powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "${script}"`;
   spawn('cmd.exe', ['/d', '/s', '/c', `"${cmd}"`], { detached: true, stdio: 'ignore', windowsHide: true, windowsVerbatimArguments: true })
+    .on('error', () => {})      // no cmd.exe: nothing applied, and the app closes as it would (update.log has no 'applied')
     .unref();
 }
 

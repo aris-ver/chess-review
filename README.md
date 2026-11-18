@@ -130,11 +130,12 @@ release notes are the commit subjects since the last tag, and the app shows them
 commits would crowd them, create the release as a draft with desktop-only notes right after pushing the tag (the
 workflow then only uploads the files) and publish it once they are all attached.
 
-**Updates** happen inside the app: the home screen checks the latest release once per launch (and on *Check for
-updates* at the bottom) and offers a *Download update* → *Restart to update* banner. An install whose Electron
-version matches the release's takes the small `blundr-app-<runtime>.asar`; otherwise it downloads the full zip. A
-small PowerShell script waits for the app to exit, swaps the files in and relaunches it; what it did is in
-`%LOCALAPPDATA%\chess-review\update.log`. Details in `js/desktop/README.md`.
+**Updates** happen inside the app: it checks the latest release at launch, on the way to Home and as the window comes
+back into sight (at most once an hour, and on *Check for updates* at the bottom), downloads a newer one by itself and
+installs it when the app is closed; the home screen's banner says so and offers *Restart now*. An install whose
+Electron version matches the release's takes the small `blundr-app-<runtime>.asar`; otherwise it downloads the full
+zip. A small PowerShell script waits for the app to exit and swaps the files in (relaunching it only after *Restart
+now*); what it did is in `%LOCALAPPDATA%\chess-review\update.log`. Details in `js/desktop/README.md`.
 
 ## Tests
 

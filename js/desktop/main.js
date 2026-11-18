@@ -19,7 +19,7 @@ import { setCodeFingerprint } from '../server/classify.js';
 import { DrillTables, tablesFromFiles } from '../server/drills.js';
 import { Pack } from '../server/puzzles.js';
 import { Packs } from '../server/packs.js';
-import { ELECTRON_ASSETS, GITHUB_REPO, Updater } from '../server/updater.js';
+import { ELECTRON_ASSETS, GITHUB_REPO, Updater, cmpVersion, parseVersion } from '../server/updater.js';
 import { bookKeysFromDir, bookTreeFromDir } from './book.js';
 import { EnginePool } from './engines.js';
 import { checkData, restoreClean } from './handover.js';
@@ -27,7 +27,7 @@ import { retireOldExes, unblock } from './launcher.js';
 import { logger, setupLogging } from './log.js';
 import { STATIC_DIR, bundled, dataDir, stockfishPath } from './paths.js';
 import { listen, makeServer, routerApi } from './server.js';
-import { makeApply, makeUnpack, readInstalled, releasesFetch, updateFiles } from './update.js';
+import { lastInstall, makeApply, makeUnpack, readInstalled, releasesFetch, updateFiles } from './update.js';
 
 const HOST = '127.0.0.1', PREFERRED_PORT = 8123;
 const ENGINE_IDLE_SECONDS = 600;    // config.ENGINE_IDLE_SECONDS: idle engines quit (they restart in about a second)
@@ -103,19 +103,30 @@ const appVersion = () => (packaged && readInstalled(process.resourcesPath).versi
 const readJson = path => JSON.parse(readFileSync(path, 'utf8'));
 
 /** updater.py's Updater for this build: resources/build.json says what is installed (nulls from a checkout, which
- * never updates); a small update is app.asar alone (update.js). BLUNDR_UPDATE_API serves the releases from
- * elsewhere (a test release). */
+ * never updates); a small update is app.asar alone (update.js). A newer release downloads by itself and goes in as
+ * the app closes (auto); DATA/update.log says whether the last install failed, which the banner then shows.
+ * BLUNDR_UPDATE_API serves the releases from elsewhere (a test release). */
 function makeUpdater(quit) {
   const api = process.env.BLUNDR_UPDATE_API;
-  return new Updater({
+  const installed = packaged ? readInstalled(process.resourcesPath) : null;
+  const u = new Updater({
     fetch: api ? releasesFetch(api, GITHUB_REPO) : globalThis.fetch, files: updateFiles(DATA),
-    installed: packaged ? readInstalled(process.resourcesPath) : null, platform: process.platform,
+    installed, platform: process.platform, auto: true,
     assets: ELECTRON_ASSETS, unpack: makeUnpack(DATA), apply: makeApply({ dataDir: DATA, install: INSTALL, quit }), log,
   });
+  let last = null;
+  try { last = lastInstall(readFileSync(join(DATA, 'update.log'), 'utf8')); } catch { /* no log: never updated */ }
+  // a failed install of what is still newer than this version (one that went in, or an older one, is done with)
+  const v = parseVersion(last?.version), mine = parseVersion(installed?.version);
+  if (last?.error && u.enabled && v && mine && cmpVersion(v, mine) > 0) {
+    u.installFailed = last;
+    log.warn(`the last install of ${last.version} failed: ${last.error}`);
+  }
+  return u;
 }
 
 /** js/server over the data folder: the router with its job runner (serve.main's start-up). */
-function startServer({ quit }) {
+function startServer({ updater }) {
   // a new version (or book) changes every game's fingerprint: each profile's next build redoes its reviews
   setCodeFingerprint(appVersion(), loadOpeningBook());
   const store = new Store(nodeSqlite(DATA)), files = nodeFiles(DATA);
@@ -134,7 +145,7 @@ function startServer({ quit }) {
   const env = {
     store, files, profiles: new Profiles(files, store), fetch: globalThis.fetch, log, account,
     pack: new Pack(() => readJson(BUNDLED.puzzles)), packs: new Packs(() => readJson(BUNDLED.packs)),
-    updater: makeUpdater(quit),
+    updater,
     openingTree: loadOpeningTree,
     // the endgame drills' tables, read the first time a drill needs one (a file that isn't there: the routes say so)
     drillTables: new DrillTables(tablesFromFiles(path => readFile(path).catch(err => {
@@ -198,7 +209,8 @@ async function main() {
     log.warn(`restoring clean solves: ${err.message}`);
   }
 
-  const router = startServer({ quit: () => win.close() });
+  const updater = makeUpdater(() => win.close());
+  const router = startServer({ updater });
   router.catch(err => log.error('the server failed to start', err));
   const server = makeServer({ staticDir: STATIC_DIR, api: routerApi(router), log });
   // Serve.Runner.reap_idle: engine memory is freed when nothing has used the engines for a while
@@ -214,6 +226,9 @@ async function main() {
   app.on('window-all-closed', async () => {
     log.info('window closed: shutting down');
     clearInterval(reaper);
+    // a staged update goes in once this process has gone (the script waits for it), the app not started again:
+    // the user closed it. Writing and starting the script is all it waits on, and a failure there only logs.
+    if (await updater.applyOnQuit()) log.info('a staged update installs as the app closes');
     server.close();
     await Promise.all([engines.close(), drillEngine.close()]);
     app.quit();
