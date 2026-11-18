@@ -8,7 +8,7 @@ import { join } from 'node:path';
 import { afterEach, test } from 'node:test';
 
 import { ELECTRON_ASSETS, Updater } from '../server/updater.js';
-import { applyScript, asarFiles, isAppAsar, lastInstall, makeApply, makeUnpack, readInstalled, releasesFetch, updateFiles } from './update.js';
+import { MARKER, MARKER_TTL_MS, applyScript, asarFiles, installing, isAppAsar, lastInstall, leftAside, makeApply, makeUnpack, readInstalled, releasesFetch, updateFiles } from './update.js';
 
 const dirs = [];
 const tmp = () => {
@@ -107,7 +107,7 @@ test('update: a small update streams to disk, is staged as resources/app.asar an
                    { version: 'v1.0.1', runtime: 'electron-44.9.3' });
   const script = readFileSync(started[0], 'utf8');
   assert.ok(script.startsWith('\ufeff'));
-  assert.match(script, /Wait-Process -Id 42/);
+  assert.match(script, /waiting for Blundr \(pid 42\) to close/);
   assert.match(script, /Replace-File/);
   assert.match(script, /\$install = 'C:\\Apps\\Blundr'/);
   assert.match(script, /Log 'installing v1\.0\.1 \(update\)'/);
@@ -127,7 +127,7 @@ test('update: install on quit writes the script and starts it, with no relaunch 
   assert.deepEqual(started, [join(data, 'update', 'apply.ps1')]);
   const script = readFileSync(started[0], 'utf8');
   assert.match(script, /Log 'installing v1\.0\.1 \(update, on quit\)'/);
-  assert.match(script, /Wait-Process -Id 42/);
+  assert.match(script, /waiting for Blundr \(pid 42\) to close/);
   assert.match(script, /Replace-File/);
   assert.ok(!/Start-Process/.test(script), 'not started again: the user closed it');
   assert.deepEqual(JSON.parse(readFileSync(join(data, 'update', 'stage', 'Blundr', 'resources', 'build.json'), 'utf8')),
@@ -138,14 +138,91 @@ test('update: install on quit writes the script and starts it, with no relaunch 
   assert.equal(quit, 0);
 });
 
-test('update: the script never swaps while the app still runs', () => {
+test('update: the script never swaps while Blundr (or another copy) runs from the install folder', () => {
   for (const relaunch of [true, false]) {
     const s = applyScript({ pid: 9, stage: 'C:\\S', install: 'C:\\I', kind: 'full', logfile: 'C:\\l', version: 'v2', relaunch });
-    const guard = s.indexOf('if (Get-Process -Id 9 -ErrorAction SilentlyContinue)');
-    assert.ok(guard > s.indexOf('Wait-Process -Id 9') && guard < s.indexOf('Move-Item'), 'checked after the wait, before anything moves');
-    assert.match(s.slice(guard).split('\r\n')[0], /FAILED: Blundr was still running, nothing changed'; exit 1 \}$/);
+    // matched by the processes' path in the folder, not by the pid alone (a pid reused by another program is ignored)
+    assert.match(s, /\$prefix = \$install\.TrimEnd\('\\'\) \+ '\\'/);
+    assert.match(s, /\$p\.StartsWith\(\$prefix, \[StringComparison\]::OrdinalIgnoreCase\)/);
+    const wait = s.indexOf('for ($i = 0; $i -lt 240 -and (Running).Count -gt 0'), guard = s.indexOf('if ($left.Count -gt 0) {');
+    assert.ok(wait > 0 && guard > wait && guard < s.indexOf('Move-Item'), 'checked after the wait, before anything moves');
+    const refuse = s.slice(guard, s.indexOf('Start-Sleep -Milliseconds 500', guard));
+    assert.match(refuse, /\$_\.Id -eq 9 \}\) \{ Log 'FAILED: Blundr was still running, nothing changed' \}/);
+    assert.match(refuse, /FAILED: another copy of Blundr is running from this folder/);
+    assert.match(refuse, /Unmark\r\n {2}exit 1/);
     assert.equal(s.includes('Start-Process'), relaunch);
+    assert.ok(!s.includes('Wait-Process'));
   }
+});
+
+test('update: a full swap keeps how far it got, and a swap cut off is put back before the next one', () => {
+  const s = applyScript({ pid: 9, stage: 'C:\\S', install: 'C:\\I', kind: 'full', logfile: 'C:\\l', version: 'v2', marker: 'C:\\D\\m.json' });
+  const at = t => s.indexOf(t);
+  const order = ["Test-Path -LiteralPath $aside) { $s = Restore-Aside", "-Value 'moving'", "Retry 'move the old files aside'",
+                 "-Value 'copying'", 'Copy-Item -LiteralPath $_.FullName -Destination $install -Recurse', "-Value 'done'", "Log 'applied'"];
+  for (let i = 1; i < order.length; i++) assert.ok(at(order[i - 1]) > 0 && at(order[i - 1]) < at(order[i]), `${order[i - 1]} before ${order[i]}`);
+  assert.ok(!/Remove-Item -LiteralPath \$aside -Recurse -Force \}\r\n {2}New-Item/.test(s), 'a leftover .blundr-old is never just deleted');
+  // put back: 'copying' clears the half-copied new files first; 'done' keeps the new ones; a failed copy restores at once
+  assert.match(s, /if \(\$s -ne 'done'\) \{\r\n {4}if \(\$s -eq 'copying'\) \{ Get-ChildItem -LiteralPath \$install/);
+  assert.match(s, /restoring the old ones: ' \+ \$_\)\r\n {4}Restore-Aside \| Out-Null\r\n {4}throw/);
+  // the marker: written first, its own pid, gone at the end whatever happened
+  assert.ok(at("$marker = 'C:\\D\\m.json'") > 0 && at('\r\nMark\r\n') < at('installing v2'));
+  assert.match(s, /\} finally \{\r\n {2}Unmark\r\n\}/);
+  // a small update recovers a cut-off full one too, before its own copy
+  const u = applyScript({ pid: 9, stage: 'C:\\S', install: 'C:\\I', kind: 'update', logfile: 'C:\\l' });
+  assert.ok(u.indexOf('$s = Restore-Aside') > 0 && u.indexOf('$s = Restore-Aside') < u.indexOf("Retry 'copy'"));
+});
+
+test('update: the marker holds other launches off while the script works, and goes stale', () => {
+  const data = tmp();
+  const now = 1_800_000_000_000;
+  assert.equal(installing(data, { now }), false, 'no marker');
+  const put = (d, raw = false) => writeFileSync(join(data, MARKER), raw ? d : JSON.stringify(d));
+  put({ pid: 123, at: now - 5_000 });
+  assert.equal(installing(data, { now, isAlive: () => false }), true, 'just written by the app: the script may not have its pid in yet');
+  put({ pid: 123, at: now - 60_000 });
+  assert.equal(installing(data, { now, isAlive: pid => pid === 123 }), true, 'the script at work');
+  assert.equal(installing(data, { now, isAlive: () => false }), false, 'its process gone: killed half-way');
+  put({ pid: 123, at: now - MARKER_TTL_MS - 1 });
+  assert.equal(installing(data, { now, isAlive: () => true }), false, 'stale: a reused pid does not hold updates off for good');
+  put('\ufeff{"pid":5,"at":' + (now - 60_000) + '}\r\n', true);      // as PowerShell's Set-Content may write it
+  assert.equal(installing(data, { now, isAlive: pid => pid === 5 }), true);
+  put('junk', true);
+  assert.equal(installing(data, { now }), false);
+});
+
+test('update: makeApply writes the marker before the script starts, and drops it if it cannot start', async () => {
+  const data = tmp();
+  mkdirSync(join(data, 'update', 'stage', 'Blundr', 'resources'), { recursive: true });
+  let seen = null;
+  await makeApply({ dataDir: data, install: 'C:\\B', pid: 77, quit: () => {}, start: () => { seen = JSON.parse(readFileSync(join(data, MARKER), 'utf8')); } })(
+    { stage: 'update/stage/Blundr', kind: 'full', installed: {}, latest: { version: 'v2' }, relaunch: false });
+  assert.equal(seen.pid, 77);
+  assert.ok(Math.abs(seen.at - Date.now()) < 5000);
+  assert.match(readFileSync(join(data, 'update', 'apply.ps1'), 'utf8'), new RegExp(`\\$marker = '${join(data, MARKER).replace(/[\\/.]/g, c => '\\' + c)}'`));
+  rmSync(join(data, MARKER));
+  await assert.rejects(makeApply({ dataDir: data, install: 'C:\\B', quit: () => {}, start: () => { throw new Error('no cmd'); } })(
+    { stage: 'update/stage/Blundr', kind: 'full', installed: {}, latest: { version: 'v2' }, relaunch: false }), /no cmd/);
+  assert.equal(existsSync(join(data, MARKER)), false);
+});
+
+test('update: at launch a .blundr-old left after the new files were all in is cleared; one cut off earlier is left for the script', () => {
+  const install = tmp();
+  assert.equal(leftAside(install), null);
+  const warned = [];
+  const log = { warn: m => warned.push(m) };
+  mkdirSync(join(install, '.blundr-old'));
+  writeFileSync(join(install, '.blundr-old', '.state'), 'done\r\n');
+  assert.equal(leftAside(install, { log }), 'done');
+  assert.equal(existsSync(join(install, '.blundr-old')), false);
+  mkdirSync(join(install, '.blundr-old'));
+  writeFileSync(join(install, '.blundr-old', 'Blundr.exe'), 'old');
+  writeFileSync(join(install, '.blundr-old', '.state'), 'copying');
+  assert.equal(leftAside(install, { log }), 'copying');
+  assert.equal(readFileSync(join(install, '.blundr-old', 'Blundr.exe'), 'utf8'), 'old', 'untouched: the next script puts it back');
+  rmSync(join(install, '.blundr-old', '.state'));
+  assert.equal(leftAside(install, { log }), 'moving');
+  assert.equal(warned.length, 2);
 });
 
 test('update: the last install in update.log, failed or not', () => {

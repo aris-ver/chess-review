@@ -123,24 +123,60 @@ export function makeUnpack(dataDir, { fs = rawFs(), entries = zipEntries, extrac
 
 const q = s => "'" + String(s).replace(/'/g, "''") + "'";
 
-/** The PowerShell that finishes an update after process `pid` exits (updater.write_apply_script's, for this app's
- * layout). kind 'update': each staged file over the install's, through a .new rename. 'full': the install folder's
- * contents moved aside into .blundr-old, the stage's copied in (put back as they were if that fails), the old ones
- * deleted. Then Blundr.exe starts again, whatever happened (relaunch false: not, the user closed the app); DATA/update.log
- * says what did, from an 'installing <version>' line (lastInstall reads it at the next launch). Nothing is touched while
- * the app still runs after two minutes. */
-export function applyScript({ pid, stage, install, kind, logfile, version = '', relaunch = true }) {
+/** DATA/<MARKER>: an install script at work, {pid, at} (at: ms since the epoch). Written by makeApply as it starts the
+ * script, then by the script itself (its own pid), and deleted when it is done. While it is fresh and its process
+ * alive, another launch neither downloads (that would wipe the stage being copied from) nor applies. */
+export const MARKER = 'update-applying.json';
+export const MARKER_TTL_MS = 10 * 60 * 1000;      // past this a marker is left over from a script that was killed
+const MARKER_GRACE_MS = 30_000;                    // the app's marker, before the script has put its own pid in
+const alive = pid => {
+  try { process.kill(pid, 0); return true; } catch (e) { return e.code === 'EPERM'; }
+};
+/** Whether an install script is still at work on this data folder (MARKER). */
+export function installing(dataDir, { fs = rawFs(), now = Date.now(), isAlive = alive } = {}) {
+  let d;
+  try { d = JSON.parse(fs.readFileSync(join(dataDir, MARKER), 'utf8').replace(/^﻿/, '')); } catch { return false; }
+  const age = now - Number(d?.at);
+  if (!(age >= -MARKER_GRACE_MS && age < MARKER_TTL_MS)) return false;
+  return age < MARKER_GRACE_MS || (Number.isInteger(d.pid) && isAlive(d.pid));
+}
+
+/** The PowerShell that finishes an update once the app has closed (updater.write_apply_script's, for this app's
+ * layout). It waits for every process run from the install folder to end (the app's main process `pid`, its helper
+ * processes, and any other copy started from there: matched by path, so a reused pid can't fool it); one still there
+ * after two minutes and nothing changes. kind 'update': each staged file over the install's, through a .new rename.
+ * 'full': the install folder's contents moved aside into .blundr-old, the stage's copied in, the old ones deleted;
+ * .blundr-old/.state says how far that got ('moving', 'copying', 'done'), so a swap cut off (the script killed) is put
+ * back the next time a script runs, before anything else: the old files where 'moving' or 'copying' stopped, the new
+ * ones kept after 'done'. A failed copy puts the old files back at once. Then Blundr.exe starts again, whatever
+ * happened (relaunch false: not, the user closed the app). DATA/update.log says what happened, from an 'installing
+ * <version>' line (lastInstall reads it at the next launch); `marker` (MARKER) is there while it works. */
+export function applyScript({ pid, stage, install, kind, logfile, version = '', relaunch = true, marker = null }) {
   const lines = [
     "$ErrorActionPreference = 'Stop'",
     `$log = ${q(logfile)}`,
     `$stage = ${q(stage)}`,
     `$install = ${q(install)}`,
     `$aside = Join-Path $install ${q(ASIDE)}`,
+    "$state = Join-Path $aside '.state'",
+    `$marker = ${marker ? q(marker) : '$null'}`,
     "function Log($m) { Add-Content -Path $log -Value ((Get-Date -Format s) + ' ' + $m) }",
+    "function Mark { if ($marker) { Set-Content -LiteralPath $marker -Value ('{\"pid\":' + $PID + ',\"at\":' + [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() + '}') } }",
+    "function Unmark { if ($marker) { Remove-Item -LiteralPath $marker -Force -ErrorAction SilentlyContinue } }",
+    // every process whose file is in the install folder (Path is unreadable for some system processes: skipped)
+    "$prefix = $install.TrimEnd('\\') + '\\'",
+    "function Running { @(Get-Process -ErrorAction SilentlyContinue | Where-Object { $p = $null; try { $p = $_.Path } catch { }; $p -and $p.StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase) }) }",
+    'Mark',
     `Log ${q(`installing ${version || '?'} (${kind}${relaunch ? '' : ', on quit'})`)}`,
-    `Log 'waiting for pid ${pid}'`,
-    `try { Wait-Process -Id ${pid} -Timeout 120 -ErrorAction Stop } catch { }`,
-    `if (Get-Process -Id ${pid} -ErrorAction SilentlyContinue) { Log 'FAILED: Blundr was still running, nothing changed'; exit 1 }`,
+    `Log 'waiting for Blundr (pid ${Number(pid)}) to close'`,
+    'for ($i = 0; $i -lt 240 -and (Running).Count -gt 0; $i++) { Start-Sleep -Milliseconds 500 }',
+    '$left = Running',
+    'if ($left.Count -gt 0) {',
+    `  if ($left | Where-Object { $_.Id -eq ${Number(pid)} }) { Log 'FAILED: Blundr was still running, nothing changed' }`,
+    "  else { Log ('FAILED: another copy of Blundr is running from this folder (pid ' + (($left | ForEach-Object { $_.Id }) -join ', ') + '), nothing changed') }",
+    '  Unmark',
+    '  exit 1',
+    '}',
     'Start-Sleep -Milliseconds 500',
     'function Replace-File($src, $dst) {',
     "  $tmp = $dst + '.new'",
@@ -153,7 +189,22 @@ export function applyScript({ pid, stage, install, kind, logfile, version = '', 
     "    try { & $block; return } catch { if ($i -eq 20) { throw }; Log ($what + ' failed, retrying: ' + $_); Start-Sleep -Seconds 1 }",
     '  }',
     '}',
+    // a full swap cut off: its old files back where it stopped before the new ones were all in; kept once they were
+    'function Restore-Aside {',
+    "  $s = ''; if (Test-Path -LiteralPath $state) { $s = (Get-Content -LiteralPath $state -Raw).Trim() }",
+    "  if ($s -ne 'done') {",
+    `    if ($s -eq 'copying') { Get-ChildItem -LiteralPath $install -Force | Where-Object { $_.Name -ne ${q(ASIDE)} } | Remove-Item -Recurse -Force }`,
+    "    Get-ChildItem -LiteralPath $aside -Force | Where-Object { $_.Name -ne '.state' } | ForEach-Object {",
+    '      $dst = Join-Path $install $_.Name',
+    '      if (Test-Path -LiteralPath $dst) { Remove-Item -LiteralPath $dst -Recurse -Force }',
+    '      Move-Item -LiteralPath $_.FullName -Destination $install -Force',
+    '    }',
+    '  }',
+    '  Remove-Item -LiteralPath $aside -Recurse -Force',
+    "  if ($s) { return $s } else { return 'moving' }",
+    '}',
     'try {',
+    "  if (Test-Path -LiteralPath $aside) { $s = Restore-Aside; Log ('an earlier update was cut off (' + $s + '): put back as it was') }",
   ];
   if (kind === 'update') {
     lines.push(
@@ -166,20 +217,20 @@ export function applyScript({ pid, stage, install, kind, logfile, version = '', 
     );
   } else {
     lines.push(
-      '  if (Test-Path -LiteralPath $aside) { Remove-Item -LiteralPath $aside -Recurse -Force }',
       '  New-Item -ItemType Directory -Force -Path $aside | Out-Null',
+      "  Set-Content -LiteralPath $state -Value 'moving'",
       "  Retry 'move the old files aside' {",
       `    Get-ChildItem -LiteralPath $install -Force | Where-Object { $_.Name -ne ${q(ASIDE)} } | ForEach-Object { Move-Item -LiteralPath $_.FullName -Destination $aside -Force }`,
       '  }',
+      "  Set-Content -LiteralPath $state -Value 'copying'",
       '  try {',
       '    Get-ChildItem -LiteralPath $stage -Force | ForEach-Object { Copy-Item -LiteralPath $_.FullName -Destination $install -Recurse -Force }',
       '  } catch {',
       "    Log ('copying the new files in failed, restoring the old ones: ' + $_)",
-      `    Get-ChildItem -LiteralPath $install -Force | Where-Object { $_.Name -ne ${q(ASIDE)} } | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue`,
-      '    Get-ChildItem -LiteralPath $aside -Force | ForEach-Object { Move-Item -LiteralPath $_.FullName -Destination $install -Force }',
-      '    Remove-Item -LiteralPath $aside -Recurse -Force -ErrorAction SilentlyContinue',
+      '    Restore-Aside | Out-Null',
       '    throw',
       '  }',
+      "  Set-Content -LiteralPath $state -Value 'done'",
       '  Remove-Item -LiteralPath $aside -Recurse -Force -ErrorAction SilentlyContinue',
     );
   }
@@ -189,11 +240,29 @@ export function applyScript({ pid, stage, install, kind, logfile, version = '', 
     '  Remove-Item -LiteralPath (Split-Path -Parent $stage) -Recurse -Force -ErrorAction SilentlyContinue',
     '} catch {',
     "  Log ('FAILED: ' + $_)",
+    '} finally {',
+    '  Unmark',
     '}',
     ...(relaunch ? [`Start-Process -FilePath (Join-Path $install ${q(EXE_NAME)}) -WorkingDirectory $install`] : []),
     '',
   );
   return lines.join('\r\n');
+}
+
+/** A swap the script left half done (the machine went down mid-way), seen at launch: only 'done' is cleared here (the
+ * new files are all in; the old ones aren't in use). Otherwise the next script run puts it back before anything else,
+ * as files of this running app can't be moved now. Returns the state found, or null. */
+export function leftAside(install, { fs = rawFs(), log = null } = {}) {
+  const aside = join(install, ASIDE);
+  if (!fs.existsSync(aside)) return null;
+  let s = 'moving';
+  try { s = fs.readFileSync(join(aside, '.state'), 'utf8').trim() || 'moving'; } catch { /* cut off before the state */ }
+  if (s === 'done') {
+    try { fs.rmSync(aside, { recursive: true, force: true }); } catch (e) { log?.warn?.(`could not delete ${aside}: ${e.message}`); }
+  } else {
+    log?.warn?.(`${aside} is left from an update cut off while ${s}: the next update puts it back first`);
+  }
+  return s;
 }
 
 /** What the last install in DATA/update.log's text came to: {version, error} (error null when it went in), or null
@@ -218,10 +287,17 @@ export function makeApply({ dataDir, install, pid = process.pid, quit, fs = rawF
       fs.writeFileSync(join(stageDir, 'resources', 'build.json'),
                        JSON.stringify({ version: latest.version, runtime: installed.runtime }));
     }
-    const script = join(dataDir, 'update', 'apply.ps1');
+    const script = join(dataDir, 'update', 'apply.ps1'), marker = join(dataDir, MARKER);
     fs.writeFileSync(script, '﻿' + applyScript({ pid, stage: stageDir, install, kind, logfile: join(dataDir, 'update.log'),
-                                                  version: latest.version, relaunch }), 'utf8');
-    start(script);
+                                                  version: latest.version, relaunch, marker }), 'utf8');
+    // the marker before the script starts: a launch right after this one waits for it (the script then takes it over)
+    fs.writeFileSync(marker, JSON.stringify({ pid, at: Date.now() }));
+    try {
+      start(script);
+    } catch (e) {
+      fs.rmSync(marker, { force: true });
+      throw e;
+    }
     if (relaunch) setTimeout(quit, delay);
   };
 }

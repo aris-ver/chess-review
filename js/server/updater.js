@@ -13,6 +13,8 @@
 //     now          seconds since the epoch
 //     auto         download a newer release as soon as a check finds it, and install it as the app closes
 //                  (js/desktop/main.js: applyOnQuit). Off as in Python's, where the page asks for the download.
+//     installing   () → true while an install script (this app's or an earlier copy's) is still swapping files in
+//                  (js/desktop/update.js's marker): no download (it would wipe the stage being copied) and no apply
 //
 // The asset names are Python's by default; the Electron build passes its own (js/desktop/README.md's plan).
 
@@ -94,8 +96,8 @@ export function changesSince(releases, mine, latest) {
 
 export class Updater {
   constructor({ fetch = globalThis.fetch, files = null, installed = null, platform = null, unpack = null, apply = null,
-                now = () => Date.now() / 1000, assets = PYTHON_ASSETS, repo = GITHUB_REPO, log = null, auto = false } = {}) {
-    Object.assign(this, { fetch, files, unpack, applyHook: apply, now, assets, repo, log, platform, auto });
+                now = () => Date.now() / 1000, assets = PYTHON_ASSETS, repo = GITHUB_REPO, log = null, auto = false, installing = () => false } = {}) {
+    Object.assign(this, { fetch, files, unpack, applyHook: apply, now, assets, repo, log, platform, auto, installing });
     this.installed = { version: installed?.version ?? null, runtime: installed?.runtime ?? null };
     this.latest = null;         // {version, url, notes, asset, changes} once checked
     this.checkedAt = 0;
@@ -143,6 +145,11 @@ export class Updater {
       this.checkError = String(e.message ?? e);
     }
     this.checkedAt = this.now();
+    // a release pulled after it was downloaded (GitHub's latest is older than the stage now): the stage goes
+    if (this.auto && this.state === 'ready' && this.staged && this.latest && !this.checkError) {
+      const v = parseVersion(this.latest.version), had = parseVersion(this.staged.version);
+      if (v && had && cmpVersion(v, had) < 0) await this.discard(`${this.staged.version} is no longer the latest release`);
+    }
     // auto: on to the download. Not of the version whose install just failed: that one waits for the page's button,
     // or every launch would fetch it and fail again on quit
     if (this.auto && this.newer && this.latest.version !== this.installFailed?.version) this.download();
@@ -169,7 +176,7 @@ export class Updater {
    * download at a time, none once applying, none again of what is staged. A release newer than the staged one
    * replaces it: the stage goes as its download starts, so a quit before it is in installs nothing. */
   download() {
-    if (!this.newer || this.state === 'downloading' || this.state === 'applying') return false;
+    if (!this.newer || this.state === 'downloading' || this.state === 'applying' || this.installing()) return false;
     if (this.state === 'ready' && (this.staged ?? this.latest).version === this.latest.version) return false;
     [this.state, this.done, this.total, this.error] = ['downloading', 0, this.latest.asset.size || 0, null];
     [this.stage, this.staged] = [null, null];
@@ -229,6 +236,7 @@ export class Updater {
   async apply({ relaunch = true } = {}) {
     if (this.state !== 'ready' || !this.stage) throw new Error('no update ready');
     if (!this.applyHook) throw new Error('this build cannot apply updates');
+    if (this.installing()) throw new Error('an update is still being installed');
     const latest = this.staged ?? this.latest;
     const kind = latest.asset.kind === 'update' ? 'update' : 'full';
     this.state = 'applying';
@@ -246,11 +254,26 @@ export class Updater {
   async applyOnQuit() {
     if (!this.auto || this.state !== 'ready' || !this.stage || !this.applyHook) return false;
     try {
+      // what is staged must still be an update: newer than this version, and not newer than the latest release seen
+      // (one pulled since: GitHub's latest dropped below it)
+      const v = parseVersion(this.staged?.version), mine = parseVersion(this.installed.version);
+      const latest = parseVersion(this.latest?.version);
+      if (!v || !mine || cmpVersion(v, mine) <= 0 || (latest && cmpVersion(latest, v) < 0)) {
+        await this.discard(`${this.staged?.version} is not an update now`);
+        return false;
+      }
       await this.apply({ relaunch: false });
       return true;
     } catch (e) {
       this.log?.error?.(`installing the update on quit failed: ${e.message}`);
       return false;
     }
+  }
+
+  /** The stage dropped (and its files, unless an install is copying from them): nothing ready any more. */
+  async discard(why) {
+    this.log?.info?.(`update stage dropped: ${why}`);
+    [this.state, this.stage, this.staged] = ['idle', null, null];
+    if (!this.installing()) await this.files.remove(UPDATE_DIR).catch(() => {});
   }
 }

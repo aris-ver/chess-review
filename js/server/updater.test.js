@@ -180,3 +180,59 @@ test('updater auto: the version whose install failed is not fetched again by its
   await u.task;
   assert.deepEqual([u.staged.version, seen.downloads], ['v3', ['https://dl/v2.zip', 'https://dl/v3.zip']]);
 });
+
+test('updater auto: while an install script works (another launch), nothing downloads, removes update/ or applies', async () => {
+  let now = 10_000, busy = true;
+  const { fetch, seen } = releases(['v2']);
+  const files = memoryFiles();
+  await files.writeText('update/stage/Blundr/resources/app.asar', 'being copied');
+  const handed = [];
+  const u = new Updater({ fetch, files, installed: { version: 'v1' }, platform: 'win32', auto: true, now: () => now,
+                          installing: () => busy, apply: async info => handed.push(info) });
+  await u.check();
+  assert.deepEqual([u.state, seen.downloads.length, u.download()], ['idle', 0, false]);
+  assert.equal(await files.readText('update/stage/Blundr/resources/app.asar'), 'being copied', 'the stage it copies from is left alone');
+  // one downloaded before the marker came (the marker is another instance's): not applied, not on quit either
+  busy = false;
+  now += 3600;
+  await u.check();
+  await u.task;
+  busy = true;
+  await assert.rejects(u.apply(), /still being installed/);
+  assert.equal(u.state, 'ready');
+  assert.equal(await u.applyOnQuit(), false);
+  assert.equal(handed.length, 0);
+  busy = false;
+  assert.equal(await u.applyOnQuit(), true);
+});
+
+test('updater auto: a release pulled after its download is dropped, at the next check and on quit', async () => {
+  let now = 10_000;
+  const tags = ['v3', 'v2'];
+  const { fetch } = releases(tags);
+  const files = memoryFiles();
+  const handed = [];
+  const u = new Updater({ fetch, files, installed: { version: 'v1' }, platform: 'win32', auto: true, now: () => now,
+                          apply: async info => handed.push(info) });
+  await u.check();
+  await u.task;
+  assert.equal(u.staged.version, 'v3');
+  tags.shift();          // v3 pulled: GitHub's latest is v2 again
+  now += 3600;
+  await u.check();
+  assert.equal(u.staged, null, 'v3 dropped');
+  await u.task;
+  assert.deepEqual([u.state, u.staged.version], ['ready', 'v2'], 'and the latest there is now downloaded instead');
+  // on quit: what is staged is no longer an update (installed by hand meanwhile, say)
+  u.installed.version = 'v2';
+  assert.equal(await u.applyOnQuit(), false);
+  assert.deepEqual([u.state, u.stage, handed.length], ['idle', null, 0]);
+  assert.equal(await files.exists('update/Blundr-windows.zip'), false);
+  // and one the latest seen has dropped below
+  const w = new Updater({ fetch, files: memoryFiles(), installed: { version: 'v1' }, platform: 'win32', auto: true, apply: async () => handed.push(1) });
+  await w.check();
+  await w.task;
+  w.latest = { ...w.latest, version: 'v1.5' };
+  assert.equal(await w.applyOnQuit(), false);
+  assert.equal(handed.length, 0);
+});

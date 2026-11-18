@@ -2037,6 +2037,11 @@ function renderUpdate() {
   if (!u.newer) return;
   const what = u.kind === 'full' ? `full download, ${fmtMB(u.size)}` : `${fmtMB(u.size)}`;
   const notesLink = `<a id="upd-notes">What's new ▸</a>`;
+  // handed to the install script (Restart now): nothing more to do here
+  if (u.state === 'applying') {
+    box.innerHTML = `<div class="msg"><b>Installing ${esc(u.staged || u.latest)}…</b><small>Blundr closes and the update goes in.</small></div>`;
+    return;
+  }
   // auto (the desktop app): downloaded by itself, installed as the app closes; Restart now does it at once
   let html = u.auto && u.state === 'ready'
     ? `<div class="msg"><b>${esc(u.staged || u.latest)}</b> will install when you close Blundr.<small>Downloaded · ${notesLink}</small></div>`

@@ -2,7 +2,7 @@
 // "Blundr" window, a failure page if the server doesn't come up. Closing the window shuts everything down. Before
 // anything in the data folder is opened, handover.js checks that data from the Python app has been converted.
 
-import { app, BrowserWindow, Menu, dialog, shell } from 'electron';
+import { app, BrowserWindow, Menu, dialog, powerMonitor, shell } from 'electron';
 import { cpSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
@@ -27,7 +27,7 @@ import { retireOldExes, unblock } from './launcher.js';
 import { logger, setupLogging } from './log.js';
 import { STATIC_DIR, bundled, dataDir, stockfishPath } from './paths.js';
 import { listen, makeServer, routerApi } from './server.js';
-import { lastInstall, makeApply, makeUnpack, readInstalled, releasesFetch, updateFiles } from './update.js';
+import { installing, lastInstall, leftAside, makeApply, makeUnpack, readInstalled, releasesFetch, updateFiles } from './update.js';
 
 const HOST = '127.0.0.1', PREFERRED_PORT = 8123;
 const ENGINE_IDLE_SECONDS = 600;    // config.ENGINE_IDLE_SECONDS: idle engines quit (they restart in about a second)
@@ -42,6 +42,21 @@ process.on('unhandledRejection', err => log.error('unhandled rejection', err));
 // pywebview kept its profile (localStorage: pinned profiles, the auto-analyse switch) in DATA/webview; Electron's
 // goes beside it. It is per origin, so the port matters as it did before.
 app.setPath('userData', join(DATA, 'electron'));
+// One copy per data folder (Electron keys the lock on userData): two would share the databases, both download into
+// DATA/update, and closing one would swap the install under the other. Nothing needs a second copy (listen()'s other
+// port was for something else on 8123); starting one again brings the window that is open to the front.
+const firstCopy = app.requestSingleInstanceLock();
+let mainWindow = null;
+if (!firstCopy) {
+  log.info('already running: the open window comes to the front');
+  app.quit();
+} else {
+  app.on('second-instance', () => {
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.focus();
+  });
+}
 // The first start after the Python app: its WebView2 profile's localStorage comes along (both are Chromium's
 // leveldb, keyed by origin), so the pinned profiles and switches stay. Copied, before Chromium opens its own.
 const oldStorage = join(DATA, 'webview', 'EBWebView', 'Default', 'Local Storage');
@@ -111,7 +126,7 @@ function makeUpdater(quit) {
   const installed = packaged ? readInstalled(process.resourcesPath) : null;
   const u = new Updater({
     fetch: api ? releasesFetch(api, GITHUB_REPO) : globalThis.fetch, files: updateFiles(DATA),
-    installed, platform: process.platform, auto: true,
+    installed, platform: process.platform, auto: true, installing: () => installing(DATA),
     assets: ELECTRON_ASSETS, unpack: makeUnpack(DATA), apply: makeApply({ dataDir: DATA, install: INSTALL, quit }), log,
   });
   let last = null;
@@ -172,13 +187,22 @@ async function main() {
   if (packaged && process.platform === 'win32') {
     unblock(INSTALL, { log });
     retireOldExes(INSTALL, { log }).catch(err => log.warn(`old exes: ${err.message}`));
+    leftAside(INSTALL, { log });
   }
   await app.whenReady();
   Menu.setApplicationMenu(null);    // pywebview's window had no menu bar either
 
   const win = new BrowserWindow({ title: 'Blundr', width: 1400, height: 900, minWidth: 900, minHeight: 600, show: false, backgroundColor: '#232a35',
                                   webPreferences: { contextIsolation: true, sandbox: true } });
+  mainWindow = win;
   win.once('ready-to-show', () => win.show());
+  // Windows ending the session (shutdown, restart, sign-out), or the system shutting down elsewhere: no install on
+  // the way out, as it may kill the script half-way through a swap; the update waits for the next close
+  let ending = false;
+  const sessionEnds = () => { ending = true; };
+  win.on('query-session-end', sessionEnds);
+  win.on('session-end', sessionEnds);
+  powerMonitor.on('shutdown', sessionEnds);
   // links that open a new window (chess.com, lichess, GitHub) go to the user's browser
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (/^https?:/.test(url)) shell.openExternal(url);
@@ -228,7 +252,8 @@ async function main() {
     clearInterval(reaper);
     // a staged update goes in once this process has gone (the script waits for it), the app not started again:
     // the user closed it. Writing and starting the script is all it waits on, and a failure there only logs.
-    if (await updater.applyOnQuit()) log.info('a staged update installs as the app closes');
+    if (ending) log.info('the session is ending: a staged update waits for the next close');
+    else if (await updater.applyOnQuit()) log.info('a staged update installs as the app closes');
     server.close();
     await Promise.all([engines.close(), drillEngine.close()]);
     app.quit();
@@ -251,7 +276,7 @@ async function main() {
   await win.loadURL(`http://${HOST}:${port}/`).catch(() => {});   // did-fail-load has shown why
 }
 
-main().catch(err => {
+if (firstCopy) main().catch(err => {
   // with no window of our own to say it in, a console-less exe would just vanish
   log.error('the app window failed to open', err);
   dialog.showErrorBox('Blundr', `Blundr could not open its window.\n\nDetails are in ${logFile}.`);

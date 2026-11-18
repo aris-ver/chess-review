@@ -45,18 +45,35 @@ holds `{version, runtime}`, where `runtime` is `electron-<version>`: what only a
   /api/update`: at launch, on the way to Home, as the window comes back into sight; at most once an hour) that finds
   a newer release starts its download at once. One download at a time; one that fails shows in the banner and is
   tried again at the next check. A newer release than the staged one replaces it: the stage goes as its download
-  starts. The banner then says "<version> will install when you close Blundr", with *Restart now* and What's new.
+  starts; one pulled after its download (GitHub's latest older than it again) is dropped at the next check. The banner
+  then says "<version> will install when you close Blundr", with *Restart now* and What's new.
 - **On quit:** when the window closes with an update staged, `window-all-closed` writes and starts the script with no
   relaunch (`Updater.applyOnQuit`: never throws, waits on nothing but writing a file and starting `cmd`), then shuts
   down as before. A job running doesn't hold it back: closing stops it anyway. The next launch is the new version.
+  Not when Windows is ending the session (shutdown, restart, sign-out: the window's `query-session-end` and
+  `session-end`; `powerMonitor`'s `shutdown` elsewhere), which may kill the script mid-swap: the update waits for the
+  next close. Nor a stage that is no longer an update (not newer than this version, or newer than the latest release
+  seen): it is dropped.
+- **One copy per data folder:** `requestSingleInstanceLock` (keyed on `DATA/electron`); starting Blundr again brings
+  the open window to the front. Two copies would share the databases and `DATA/update`, and closing one would swap
+  the install under the other. (`listen()`'s other port is for something else on 8123.)
 - **Applying** (*Restart now*, `POST /api/update/apply`): `DATA/update/apply.ps1` (BOM, CRLF) is written and started
   through `cmd /c start` (a detached PowerShell has no console and runs nothing), and the window closes 0.5 s later.
-  Applied once: the state is then `applying`, so neither a second click nor the quit after it applies again, and no
-  download starts. The script logs `installing <version> (<kind>[, on quit])`, waits for the app's pid (if it is still
-  running after two minutes nothing changes: `FAILED: Blundr was still running`), then: small → each staged file over
-  the install's through a `.new` rename; full → the install folder's contents moved into `.blundr-old`, the stage's
-  copied in, the old ones put back if that fails, `.blundr-old` deleted. The old exe names go, `DATA/update.log` says
-  what happened, and after *Restart now* `Blundr.exe` starts again whatever happened.
+  Applied once: the state is then `applying` (the banner says it is installing), so neither a second click nor the
+  quit after it applies again, and no download starts. The script logs `installing <version> (<kind>[, on quit])`,
+  waits until no process runs from the install folder (the app's, its helpers', another copy's: by path, so a reused
+  pid can't fool it; one still there after two minutes and nothing changes: `FAILED: Blundr was still running`, or
+  `another copy of Blundr is running from this folder`), then: small → each staged file over the install's through a
+  `.new` rename; full → the install folder's contents moved into `.blundr-old`, the stage's copied in, the old ones
+  put back if that fails, `.blundr-old` deleted. The old exe names go, `DATA/update.log` says what happened, and after
+  *Restart now* `Blundr.exe` starts again whatever happened.
+- **A swap cut off** (the script killed): `.blundr-old/.state` says how far a full swap got (`moving`, `copying`,
+  `done`). The next script, before anything else, puts the old files back where it stopped in `moving` or `copying`,
+  and keeps the new ones after `done`. At launch a `done` one is deleted; any other is left (and logged) for the next
+  script, as the running app's files can't be moved.
+- **While a script works** (`DATA/update-applying.json`, `{pid, at}`: written by the app as it starts the script, then
+  by the script with its own pid, deleted when it ends; stale after 10 minutes or once that process is gone, 30 s'
+  grace for the app's): a launch neither downloads (that would wipe the stage being copied from) nor applies.
 - **A failed install** (the last `installing` in `DATA/update.log` followed by a `FAILED:` line, for a version newer
   than the one running): shown at launch under the banner, and that version isn't downloaded by itself again (or
   every launch would fetch it and fail on quit); *Download update* still fetches it, and a newer release downloads by
