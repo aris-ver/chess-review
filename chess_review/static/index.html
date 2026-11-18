@@ -108,8 +108,8 @@ main { padding: 16px 18px; max-width: 1800px; margin: 0 auto; }
 .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; cursor: default; position: relative; min-height: 96px; display: flex; flex-direction: column; gap: 4px; }
 .card.pztile { cursor: pointer; }
 @media (hover: hover) { .card.pztile:hover { border-color: var(--accent); } }
-/* Train first (three big tiles), then More training (one-line rows), then Your games (a row per profile, and
-   Analyse folded under its row); the forms open on demand */
+/* the profiles first (a row each: their games, puzzles and openings are behind it), then Train (three big tiles),
+   then Analyse folded under its row; the forms open on demand */
 .home .hhead { display: flex; align-items: center; gap: 10px; margin: 26px 0 10px; }
 .home .hhead h2 { margin: 0; flex: 1; }
 .home .hhead button { padding: 4px 12px; font-size: 13px; }
@@ -132,17 +132,14 @@ main { padding: 16px 18px; max-width: 1800px; margin: 0 auto; }
 .hrows > .hrow:first-child { border-top: 0; }
 @media (hover: hover) { .hrow:hover { background: var(--panel2); } }
 .hrow.pressed { transform: none; filter: none; background: var(--panel2); }
-.hrow .cover { zoom: .5; }
 .hrow .who { flex: 1; min-width: 0; font-size: 15px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.hrow .hst { flex: none; color: var(--muted); font-size: 13px; white-space: nowrap; font-variant-numeric: tabular-nums; }
-.hrow .hst:empty { display: none; }
 .hrow .chev { flex: none; width: 14px; text-align: center; color: var(--muted); font-size: 22px; line-height: 1; transition: transform .15s; }
 .hrow .hico { flex: none; width: 32px; height: 32px; border-radius: 6px; display: flex; align-items: center; justify-content: center;
   background: color-mix(in srgb, var(--accent) 24%, var(--panel2)); border: 1px solid color-mix(in srgb, var(--accent) 60%, transparent); }
 .hrow .hico svg { width: 18px; height: 18px; fill: var(--text); }
 #b-analyse[aria-expanded=true] .chev { transform: rotate(90deg); }
 #analyse { padding: 2px 12px 12px; }
-.hrows.anl { margin-top: 10px; }
+.hrows.anl { margin-top: 22px; }
 /* a keyboard's ring on the tiles and rows; inside a box that clips, drawn inside the row */
 #home [role=button]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 #home .hrow:focus-visible, #profiles .card.profile:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
@@ -154,7 +151,7 @@ main { padding: 16px 18px; max-width: 1800px; margin: 0 auto; }
 #addcard select { width: auto; } #addcard input { flex: 1 1 180px; width: auto; }
 #addcard button { align-self: auto; }
 .card.pgn .row { gap: 8px; } .card.pgn .row .cancel { margin-left: auto; } .card.pgn .row .cancel + button { margin-left: 0; }
-/* Personal puzzles: a card per profile with its puzzles, and the form for a new username */
+/* a profile's Puzzles tab: the card with its puzzles */
 .home .lead { color: var(--muted); font-size: 14px; margin: -2px 0 14px; max-width: 760px; }
 .card.pzp .stats { font-size: 13px; }
 .card.pzp .stats b { font-variant-numeric: tabular-nums; }
@@ -344,6 +341,22 @@ table.games tr.unseen td:first-child { box-shadow: inset 3px 0 0 var(--accent); 
 .card .rc .delta { font-size: 11px; font-weight: 600; }
 .card .rc .delta.up { color: var(--accent); } .card .rc .delta.down { color: var(--c-blunder); } .card .rc .delta.flat { color: var(--muted); }
 .card.profile .who .name { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.card.profile .who .pbadge { align-self: center; padding: 2px 7px; font-size: 11px; cursor: pointer; }     /* its puzzles' reviews due */
+/* a profile's three views, the one bar over each: Games, Puzzles (with the reviews due), Openings. 48px with its
+   margin, which the explorer's board and panel leave room for */
+#pnav { display: flex; justify-content: center; gap: 4px; margin: 0 0 10px; border-bottom: 1px solid var(--line); }
+#pnav a { display: inline-flex; align-items: center; gap: 6px; height: 38px; padding: 0 16px; margin-bottom: -1px; border-bottom: 2px solid transparent;
+  color: var(--muted); font-size: 14px; font-weight: 600; text-decoration: none; white-space: nowrap; }
+#pnav a.on { color: var(--text); border-bottom-color: var(--accent); }
+@media (hover: hover) { #pnav a:not(.on):hover { color: var(--text); } }
+#pnav a.pressed { transform: none; }
+#pnav .pbadge { margin: 0; padding: 2px 7px; font-size: 11px; }
+#pzpick .home { margin-top: 8px; }
+#pzprofiles { grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 901px) {
+  body.openings .review { grid-template-columns: 30px minmax(320px, min(900px, calc(100vh - 240px))) minmax(400px, 540px); }
+  body.openings .panel { height: calc(100vh - 148px); } body.hasbar.openings .panel { height: calc(100vh - 200px); }
+}
 /* the player's picture (chess.com's), or their letter */
 .card.profile .av { grid-area: av; width: 36px; height: 36px; border-radius: 50%; object-fit: cover;
   background: var(--panel2); color: var(--muted); display: flex; align-items: center; justify-content: center; font-size: 16px; font-weight: 700; }
@@ -690,7 +703,8 @@ table.games button.an { padding: 3px 9px; font-size: 12px; font-weight: 600; whi
   .card.profile { grid-template-columns: 36px auto minmax(0, 1fr) auto auto; padding: 8px 2px 8px 12px;
     grid-template-areas: "av who who pin x" "av rat rat rat rat" "av src meta meta meta" "av prog prog prog prog"; }
   .card.profile .ratings { justify-content: flex-start; margin: 1px 0; }
-  /* Train: the big tiles two a row where two fit, one under the other on a phone */
+  #pnav a { flex: 1 1 0; justify-content: center; padding: 0 6px; }     /* the three across the screen */
+  /* Train:the big tiles two a row where two fit, one under the other on a phone */
   #home .pztiles { grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
   #home .pztiles .card { padding: 14px 16px; }
   /* analyse: the three on one line, by their short names */
@@ -752,6 +766,11 @@ table.games button.an { padding: 3px 9px; font-size: 12px; font-weight: 600; whi
   body.hasbar.puzzle .review { grid-template-columns: minmax(0, calc(100dvh - 211px - env(safe-area-inset-bottom))) minmax(0, 1fr); }
   body.hasbar .review .panel { height: calc(100dvh - 135px - env(safe-area-inset-bottom)); }
   body.hasbar .review .panel .body { min-height: 0; }
+  /* the explorer: a profile's bar (48px) over it too */
+  body.openings .review { grid-template-columns: 14px minmax(0, calc(100dvh - 197px)) minmax(0, 1fr); }
+  body.openings .review .panel { height: calc(100dvh - 121px); }
+  body.hasbar.openings .review { grid-template-columns: 14px minmax(0, calc(100dvh - 259px - env(safe-area-inset-bottom))) minmax(0, 1fr); }
+  body.hasbar.openings .review .panel { height: calc(100dvh - 183px - env(safe-area-inset-bottom)); }
   body:has(#review:not(.hidden)) main { padding-bottom: 8px; }      /* it all fits: nothing to scroll clear of */
   body.hasbar:has(#review:not(.hidden)) main { padding-bottom: calc(70px + env(safe-area-inset-bottom)); }
   body:has(#review:not(.hidden)) #toast { top: calc(64px + env(safe-area-inset-top)); bottom: auto !important; }     /* off the panel's nav */
@@ -1079,23 +1098,12 @@ svg.graph { width: 100%; height: 52px; display: block; cursor: pointer; backgrou
   <div id="fetchbar" class="fetchbar hidden"><div></div></div>
 </header>
 <main>
+  <nav id="pnav" class="hidden" aria-label="This profile"></nav>
   <section id="home" class="hidden">
     <div class="home">
       <div id="update" class="update hidden"></div>
       <div id="homecont" class="dcont hidden" role="button" tabindex="0"></div>
-      <h2>Train</h2>
-      <div class="cards pztiles">
-        <div class="card pztile covered wide" id="card-daily" role="button" tabindex="0"><div class="cover" data-cover="daily"></div><div class="cbody"><span class="src">Every day</span><span class="who">Puzzle of the day</span><span class="desc" id="card-daily-desc">One tougher puzzle a day, the same for everyone. Share how you did.</span></div></div>
-        <div class="card pztile covered" id="card-packs" role="button" tabindex="0"><div class="cover" data-cover="packs"></div><div class="cbody"><span class="src">Lichess</span><span class="who">Puzzle packs</span><span class="desc" id="card-packs-desc">Themes laid out as stages that climb from easy to the very top.</span></div></div>
-        <div class="card pztile covered" id="card-drills" role="button" tabindex="0"><div class="cover" data-cover="drills"></div><div class="cbody"><span class="src">Develop your instinct</span><span class="who">Endgame drills</span><span class="desc" id="card-drills-desc">Play ten basic endings out against a defender that never gives up, from a new position every time.</span></div><button class="primary go hidden" id="b-drill-cont"></button></div>
-      </div>
-      <h2>More training</h2>
-      <div class="hrows">
-        <div class="hrow" id="card-mine" role="button" tabindex="0" title="The moves you missed in a player's games, back until you find them"><div class="cover" data-cover="mine"></div><span class="who">Personal puzzles</span><span class="hst" id="card-mine-desc"></span><span class="chev" aria-hidden="true">›</span></div>
-        <div class="hrow" id="card-openings" role="button" tabindex="0" title="Walk the opening book and see how your own games went from every position"><div class="cover" data-cover="op-home"></div><span class="who">Openings</span><span class="chev" aria-hidden="true">›</span></div>
-        <div class="hrow" id="card-library" role="button" tabindex="0" title="Tactics from Lichess, picked near your level, by theme if you like"><div class="cover" data-cover="library"></div><span class="who">Puzzle library</span><span class="hst" id="card-library-desc"></span><span class="chev" aria-hidden="true">›</span></div>
-      </div>
-      <div class="hhead"><h2>Your games</h2><button id="b-addprofile" title="Add a chess.com or lichess username">+ Add profile</button></div>
+      <div class="hhead"><h2>Profiles</h2><button id="b-addprofile" title="Add a chess.com or lichess username">+ Add profile</button></div>
       <div class="card add drawer hidden" id="addcard">
         <form id="addform">
           <select name="source"><option value="chesscom">chess.com</option><option value="lichess">lichess</option></select>
@@ -1104,6 +1112,12 @@ svg.graph { width: 100%; height: 52px; display: block; cursor: pointer; backgrou
         </form>
       </div>
       <div class="cards" id="profiles"><div class="empty">Loading your profiles…</div></div>
+      <h2>Train</h2>
+      <div class="cards pztiles">
+        <div class="card pztile covered wide" id="card-daily" role="button" tabindex="0"><div class="cover" data-cover="daily"></div><div class="cbody"><span class="src">Every day</span><span class="who">Puzzle of the day</span><span class="desc" id="card-daily-desc">One tougher puzzle a day, the same for everyone. Share how you did.</span></div></div>
+        <div class="card pztile covered" id="card-packs" role="button" tabindex="0"><div class="cover" data-cover="packs"></div><div class="cbody"><span class="src">Lichess</span><span class="who">Puzzles</span><span class="desc" id="card-packs-desc">Themed packs that climb stage by stage, and a library near your level.</span></div></div>
+        <div class="card pztile covered" id="card-drills" role="button" tabindex="0"><div class="cover" data-cover="drills"></div><div class="cbody"><span class="src">Develop your instinct</span><span class="who">Endgame drills</span><span class="desc" id="card-drills-desc">Play ten basic endings out against a defender that never gives up, from a new position every time.</span></div><button class="primary go hidden" id="b-drill-cont"></button></div>
+      </div>
       <div class="hrows anl">
         <button class="hrow" id="b-analyse" aria-expanded="false" aria-controls="analyse"><span class="hico" aria-hidden="true"><svg viewBox="0 0 16 16"><path d="M1 1h7v7H1zm7 7h7v7H8z"/><path d="M8 1h7v7H8zM1 8h7v7H1z" opacity=".35"/></svg></span><span class="who">Analyse a game or position</span><span class="chev" aria-hidden="true">›</span></button>
         <div id="analyse" class="hidden">
@@ -1139,8 +1153,7 @@ svg.graph { width: 100%; height: 52px; display: block; cursor: pointer; backgrou
   </section>
   <section id="pzpick" class="hidden">
     <div class="home">
-      <h2>Personal puzzles</h2>
-      <p class="lead">Positions from a player's own games where one move clearly stood out and something else was played. Miss one and it comes back after 1, 3 and 7 days until you find it. They come from analysed games only: making them analyses the games that aren't yet, newest first, and the puzzles appear game by game.</p>
+      <p class="lead">Positions from these games where one move clearly stood out and another was played. Miss one and it comes back after 1, 3 and 7 days until you find it. Only analysed games give puzzles: making them analyses the rest, newest first.</p>
       <div class="cards" id="pzprofiles"></div>
     </div>
   </section>
@@ -1594,10 +1607,12 @@ function upTo(h = location.hash || '#/') {
   if ((m = h.match(/^#\/packs\/([a-z0-9-]+)\/\d+\/\d+$/))) return '#/packs/' + m[1];
   if (h.startsWith('#/packs/')) return '#/packs';
   if (h.startsWith('#/drills/')) return '#/drills';
-  if (h.startsWith('#/puzzles/mine/')) return '#/puzzles/mine';
-  if (/^#\/puzzles\/[A-Za-z0-9]+$/.test(h) && h !== '#/puzzles/mine' && ownPuzzle()) return '#/puzzles/mine';
-  // the explorer: back where it was opened from (Home, a review); a game opened from it: back to it
-  if (/^#\/p\/[A-Za-z0-9_.-]+\/openings/.test(h)) return last(v => !/^#\/p\/[^/]+\/openings/.test(v)) || '#/';
+  // a personal puzzle: to its profile's puzzles; the library's: to the shelf it sits on
+  if ((m = h.match(/^#\/puzzles\/mine\/([A-Za-z0-9_.-]+)$/))) return `#/p/${m[1]}/puzzles`;
+  if (/^#\/puzzles\/[A-Za-z0-9]+$/.test(h) && h !== '#/puzzles/mine' && ownPuzzle()) return `#/p/${pz.p.profile}/puzzles`;
+  if (h === '#/puzzles' || /^#\/puzzles\/[A-Za-z0-9]+$/.test(h) && h !== '#/puzzles/mine') return '#/packs';
+  // the explorer: back where it was opened from (Home, a review), past the profile's other tabs; a game opened from it: back to it
+  if (/^#\/p\/[A-Za-z0-9_.-]+\/openings/.test(h)) return last(v => !/^#\/p\/[^/]+(\/openings.*|\/puzzles)?$/.test(v)) || '#/';
   if ((m = h.match(/^#\/p\/([A-Za-z0-9_.-]+)\/game\//))) {
     const before = visited[visited.length - 2];
     return before && before.startsWith(`#/p/${m[1]}/openings`) ? before : '#/p/' + m[1];
@@ -1606,10 +1621,10 @@ function upTo(h = location.hash || '#/') {
 }
 function upLabel(to) {
   let m;
-  if (to === '#/packs') return 'Puzzle packs';
+  if (to === '#/packs') return 'Puzzles';
   if (to === '#/drills') return 'Endings';
   if ((m = to.match(/^#\/packs\/([a-z0-9-]+)$/))) return (packCache[m[1]] || {}).name || 'Pack';
-  if (to === '#/puzzles/mine') return 'Personal puzzles';
+  if (/^#\/p\/[^/]+\/puzzles$/.test(to)) return 'Personal puzzles';
   if (/^#\/p\/[^/]+$/.test(to)) return 'Games';
   if (/^#\/p\/[^/]+\/openings/.test(to)) return 'Openings';
   if (to.startsWith('#/p/')) return 'Game';
@@ -1648,7 +1663,7 @@ const SWIPE = PLATFORM === 'android'
 const shots = new Map();      // hash -> the screen as it was left: { el (a body, unseen), scrolls }; the last 8
 function keepScreen(h) {
   if (!SWIPE || !h) return;
-  const live = [...document.body.querySelectorAll(':scope > main > section:not(.hidden)')];
+  const live = [...document.body.querySelectorAll(':scope > main > :is(#pnav, section):not(.hidden)')];
   if (!live.length) return;
   const el = document.createElement('body'), main = document.createElement('main'), scrolls = [];
   el.id = 'swipeprev'; el.className = document.body.className; el.setAttribute('aria-hidden', 'true'); el.inert = true;
@@ -1806,7 +1821,9 @@ async function route() {
     return showOpenings(om[1], (q.get('m') || '').split(',').filter(Boolean), ply != null && /^\d+$/.test(ply) ? +ply : null,
                         c === 'white' || c === 'black' ? c : 'all');
   }
-  if (h === '#/puzzles/mine') return showPersonal();
+  const ppm = h.match(/^#\/p\/([A-Za-z0-9_.-]+)\/puzzles$/);
+  if (ppm) return showPersonal(ppm[1]);
+  if (h === '#/puzzles/mine') return toPersonal();
   const mm = h.match(/^#\/puzzles\/mine\/([A-Za-z0-9_.-]+)$/);
   if (mm) return showPuzzle(null, 'mine:' + mm[1]);
   const pm = h.match(/^#\/puzzles(?:\/([A-Za-z0-9]+))?$/);
@@ -1944,13 +1961,17 @@ const updateChecked = checkUpdate();      // its banner sits at the top of home:
 const fmtNodes = n => n >= 1e6 ? `${(n / 1e6).toFixed(n % 1e6 ? 1 : 0)}M nodes` : `${Math.round(n / 1e3)}k nodes`;
 const engineName = snap => (snap && snap.engine) || (state.engine && state.engine.name) || 'Engine';
 const SECTIONS = ['home', 'list', 'review', 'editor', 'imgpage', 'settings', 'pzpick', 'pzpacks', 'drills'];
-function showSection(id) { SECTIONS.forEach(s => $(s).classList.toggle('hidden', s !== id)); }
+function showSection(id) {
+  SECTIONS.forEach(s => $(s).classList.toggle('hidden', s !== id));
+  $('pnav').classList.add('hidden');     // a profile's tabs: its three views show them again (showPnav)
+}
 async function showHome() {
   showSection('home');
   document.body.classList.remove('sandbox', 'puzzle'); stopSandboxStream();
   state.game = null; state.profile = null; state.games = null; dropVariation(); stopPlay();
   setContext(false); $('crumb').textContent = '';
-  await Promise.all([renderPuzzleCards(), renderProfiles(), renderDrillTile()]);     // all drawn before the first screen shows (#boot)
+  const srcs = puzzleSources();     // the reviews due: the strip's, and each profile's badge
+  await Promise.all([renderPuzzleCards(srcs), renderProfiles(srcs), renderDrillTile()]);     // all drawn before the first screen shows (#boot)
   pollStatus();
 }
 // the add-profile form and the PGN box stay folded away until their button is clicked
@@ -1971,10 +1992,7 @@ $('card-setup').onclick = () => location.hash = '#/setup';
 $('card-image').onclick = () => location.hash = '#/image';
 $('card-daily').onclick = () => location.hash = '#/daily';
 $('card-packs').onclick = () => location.hash = '#/packs';
-$('card-library').onclick = () => location.hash = '#/puzzles';
-$('card-mine').onclick = () => location.hash = '#/puzzles/mine';
 $('card-drills').onclick = () => location.hash = '#/drills';
-$('card-openings').onclick = openOpenings;
 // Analyse a game or position: its three ways in fold away under the one row
 function openAnalyse(on) {
   const b = $('b-analyse');
@@ -2153,8 +2171,11 @@ async function autoFetch(ps) {
 let profilesScanT = null;
 // a profile's picture where the site has none (lichess, a PGN profile, a chess.com player without one): its letter
 const avatarLetter = name => `<span class="av" aria-hidden="true">${esc((name || '?').trim().charAt(0).toUpperCase())}</span>`;
-async function renderProfiles() {
+async function renderProfiles(srcs = null) {
   let d; try { d = await (await fetch('api/profiles')).json(); } catch (e) { d = { profiles: [] }; }
+  // each profile's puzzles due for review: from Home's own ask (srcs, a promise), else the last one made
+  const due = {};
+  for (const s of (await srcs) || pz.sources || []) if (s.profile && s.stats && s.stats.due) due[s.profile] = s.stats.due;
   // the launch-time scan for new games on chess.com and lichess may still be running: look again in a moment
   clearTimeout(profilesScanT);
   if (d.scan === 'running') profilesScanT = setTimeout(() => { if (!$('home').classList.contains('hidden')) renderProfiles(); }, 2000);
@@ -2167,7 +2188,7 @@ async function renderProfiles() {
     <div class="card profile ${p.pinned ? 'pinned' : ''}" data-id="${p.id}" data-name="${esc(p.username)}" role="button" tabindex="0">
       ${p.avatar ? `<img class="av" src="${esc(p.avatar)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : avatarLetter(p.username)}
       <span class="src">${SOURCE_LOGO[p.source] || ''}${SOURCE_NAME[p.source] || p.source}</span>
-      <span class="who" title="${esc(p.username)}"><span class="name">${esc(p.username)}</span></span>
+      <span class="who" title="${esc(p.username)}"><span class="name">${esc(p.username)}</span>${due[p.id] ? `<span class="pbadge" title="${due[p.id]} puzzle${due[p.id] > 1 ? 's' : ''} from these games due for review">${due[p.id]} due</span>` : ''}</span>
       ${ratingsHTML(p.ratings)}
       <div class="progress hidden"><div></div></div>
       <span class="meta" title="${p.played ? `${p.games.toLocaleString()} of them loaded here` : ''}">${(p.played || p.games).toLocaleString()} games · ${p.analysed} analysed${p.unseen && p.unseen.length ? ` · <b style="color:var(--accent)">${p.unseen.length} not opened yet</b>` : ''}</span>
@@ -2183,6 +2204,8 @@ async function renderProfiles() {
       if (c.classList.contains('loading')) { toast(`Still fetching ${c.dataset.name}'s games: the profile opens by itself when they're in`, 5000); return; }
       location.hash = '#/p/' + c.dataset.id;
     };
+    const badge = c.querySelector('.who .pbadge');     // straight to the puzzles due
+    if (badge) badge.onclick = e => { e.stopPropagation(); location.hash = `#/p/${c.dataset.id}/puzzles`; };
     c.querySelector('.pin').onclick = async e => {
       e.stopPropagation();
       await fetch(`api/profiles/${c.dataset.id}/pin`, { method: 'POST', body: JSON.stringify({ pinned: !c.classList.contains('pinned') }) });
@@ -2246,7 +2269,7 @@ async function showList() {
   showSection('list');
   document.body.classList.remove('sandbox', 'puzzle'); stopSandboxStream();
   state.game = null; dropVariation(); stopPolling(); stopPlay();
-  setContext(true);
+  setContext(true); showPnav(state.profile, 'games');
   let games;
   try {
     const unseen = fetch(`api/profiles/${state.profile}/unseen`).then(r => r.json()).then(d => new Set(d.unseen || [])).catch(() => new Set());
@@ -2363,7 +2386,6 @@ async function showSandbox(fen) {
 // the next).
 const op = { pid: null, colour: 'all', cache: {}, data: null, token: 0, list: null, profiles: null, live: false, left: null, wrote: null };
 const OP_COLOURS = [['all', 'All'], ['white', 'As White'], ['black', 'As Black']];
-const OP_PROFILE_KEY = 'blundr-openings-profile';
 function openingsGame(path, leftAt) {
   const side = name => ({ name, rating: null, accuracy: null, counts: {} });
   const moves = path.map((m, i) => Object.assign(puzzlePly(m, i, leftAt == null || i < leftAt ? 'book' : null), { is_mine: null }));
@@ -2413,21 +2435,13 @@ async function opProfiles() {
   return op.profiles;
 }
 const opPickable = () => (op.profiles || []).filter(p => p.source !== 'pgn' || p.id === op.pid);
-// the profile the tile opens: the one used last, else the first on Home, never the pasted games'
-async function openOpenings() {
-  const ps = (await opProfiles()).filter(p => p.source !== 'pgn');
-  if (!ps.length) { toast('Add a chess.com or lichess profile first: the explorer shows how your own games went.', 5000); return; }
-  let last = null; try { last = localStorage.getItem(OP_PROFILE_KEY); } catch (e) {}
-  const p = ps.find(x => x.id === last) || ps[0];
-  // the tile again: where the explorer was left, for that profile
-  location.hash = op.left && op.left.pid === p.id ? op.left.hash : `#/p/${p.id}/openings`;
-}
+// a profile's Openings tab: where the explorer was left, for that profile, else its start
+const opHref = pid => op.left && op.left.pid === pid ? op.left.hash : `#/p/${pid}/openings`;
 async function showOpenings(pid, moves, ply, colour) {
   // a new visit asks again: games may have come in (a refresh, a build) since the last; back at the very address it
   // was left at (Back from a game, Settings and back), the games list it had open comes back too
   const back = op.left && op.left.hash === location.hash ? op.left : null;
   op.pid = pid; op.cache = {}; op.list = back ? back.list : null; op.colour = colour;
-  try { localStorage.setItem(OP_PROFILE_KEY, pid); } catch (e) {}
   const h = location.hash, d = await opFetch(moves);
   if (location.hash !== h) return;
   if (!d || d.error) {
@@ -2442,6 +2456,7 @@ async function showOpenings(pid, moves, ply, colour) {
   showSection('review');
   document.body.classList.remove('sandbox', 'puzzle', 'drill', 'drillrev'); document.body.classList.add('openings');
   setContext(false); $('crumb').textContent = 'Openings'; $('ginfo').textContent = ''; $('ptitle-t').textContent = 'Openings';
+  showPnav(pid, 'openings');
   op.data = d; op.live = true;
   renderMoveList(); update(false); renderOpBox();
   opProfiles().then(() => { if (state.game && state.game.openings) renderOpBox(); });
@@ -2538,8 +2553,8 @@ function renderOpBox() {
 // each right answer and the reply to it. A wrong move stays, with the engine's answer to it, until you take it back. Each showing reports
 // one result, the moment you go wrong, take a hint or the solution, or solve it: for a Lichess puzzle only the very
 // first try counts toward the rating; a puzzle from your games goes into its review schedule instead (1, 3, 7 days).
-// Two modes, one per home tile: the library (#/puzzles: Lichess puzzles, by theme, rated) and personal puzzles
-// (#/puzzles/mine/<profile>: from that profile's games, picked on #/puzzles/mine). Either deals a puzzle and
+// Two modes: the library (#/puzzles: Lichess puzzles, by theme, rated) and personal puzzles
+// (#/puzzles/mine/<profile>: from that profile's games, from its Puzzles tab). Either deals a puzzle and
 // replaces its URL with the puzzle's own, #/puzzles/<id>, whose source sets the mode.
 const pz = { p: null, game: null, pending: null, token: 0, over: null, failed: false, hinted: false, reported: false, done: false, shown: false, wrong: null, refute: null, misses: 0, marks: {},
              hint: null, t0: 0, stats: null, review: null, themes: null, theme: '', source: 'lichess', sources: null };
@@ -2596,7 +2611,7 @@ async function showPuzzle(id, source = 'lichess') {
       const building = ((state.status || {}).builds || []).some(b => b.profile === pz.source.slice(5)) ? ' More come as its games are analysed.' : '';
       const msg = d.error || 'No puzzle';
       toast(`${msg[0].toUpperCase() + msg.slice(1)}.${when}${building}`, 6000);
-      leaveDeal('#/puzzles/mine');
+      leaveDeal(`#/p/${pz.source.slice(5)}/puzzles`);
     } else if (!id && pz.theme) { toast(d.error || 'No puzzle'); pz.theme = ''; try { localStorage.setItem('puzzleTheme', ''); } catch (e) {} return showPuzzle(null, 'lichess'); }
     else { toast(d.error || 'No puzzle'); location.hash = '#/'; }
     return;
@@ -2732,7 +2747,7 @@ function pzOverSoon(kind, ms) {
   const tok = pz.token, at = state.ply;
   setTimeout(() => { if (pzLive(tok) && state.ply === at && (kind === 'done' ? pz.done : missOnBoard())) showPzOver(kind); }, ms);
 }
-const pzNextText = () => pz.ctx && pz.ctx.kind === 'daily' ? 'Puzzle packs →' : pz.ctx && pz.ctx.n >= pz.ctx.size ? 'Back to the stages →' : 'Next puzzle →';
+const pzNextText = () => pz.ctx && pz.ctx.kind === 'daily' ? 'Puzzles →' : pz.ctx && pz.ctx.n >= pz.ctx.size ? 'Back to the stages →' : 'Next puzzle →';
 function showPzOver(kind) {
   const el = $('pzover');
   pz.over = kind || null;
@@ -2913,7 +2928,7 @@ function renderPuzzleBox() {
   $('pzbox').innerHTML = head +
     `<div class="pzbtns">${retry}<button id="pz-hint" title="Highlight the piece to move. The puzzle then counts as not solved."${busy ? ' disabled' : ''}>💡 Hint</button>` +
     `<button id="pz-sol" title="Play the solution out. The puzzle counts as not solved."${busy ? ' disabled' : ''}>Solution</button>` +
-    (pz.ctx && pz.ctx.kind === 'daily' ? `<button class="${pz.done ? 'primary' : ''}" id="pz-next" title="To the puzzle packs (n)">${pz.done ? 'Puzzle packs →' : 'Leave'}</button></div>`
+    (pz.ctx && pz.ctx.kind === 'daily' ? `<button class="${pz.done ? 'primary' : ''}" id="pz-next" title="To the puzzles (n)">${pz.done ? 'Puzzles →' : 'Leave'}</button></div>`
       : `<button class="${pz.done ? 'primary' : ''}" id="pz-next" title="${pz.done ? 'Next puzzle (n)' : 'Skip this one: it is not counted (n)'}">${pz.done ? pzNextText() : 'Skip'}</button></div>`) +
     `<div class="pzinfo">${info}</div>` +
     `<div class="pzfoot">${pick}<button id="pz-analyse" title="Open this position in the sandbox">Analyse</button></div>`;
@@ -2949,12 +2964,12 @@ function nextPuzzle() {
 }
 // The home's one next thing to do (shown on phones): a streak at stake today, then reviews due, then the drill played
 // last, then a daily not played yet. Each tile's render fills in its part and redraws it.
-const homeNext = { daily: null, due: 0, drill: null };
+const homeNext = { daily: null, due: 0, duePid: null, drill: null };
 function renderHomeNext() {
   const el = $('homecont'), { daily: d, due, drill: c } = homeNext;
   const daily = (src, who) => ({ go: '#/daily', cover: coverHtml('daily', null, new Date().getDate()), src, who });
   const it = d && !d.played && d.streak ? daily(`Keep your ${d.streak}-day streak`, `Puzzle of the day #${d.n}`)
-    : due ? { go: '#/puzzles/mine', cover: coverHtml('mine'), src: 'Due for review', who: `${due} puzzle${due > 1 ? 's' : ''} from your games` }
+    : due ? { go: `#/p/${homeNext.duePid}/puzzles`, cover: coverHtml('mine'), src: 'Due for review', who: `${due} puzzle${due > 1 ? 's' : ''} from your games` }
     : c && DRILL_ENDINGS[c.ending] ? { go: '#/drills/' + c.ending, cover: coverHtml('d-' + c.ending), src: 'Pick up where you left off',
       who: `${DRILL_ENDINGS[c.ending].name} · ${drillLevelName(c.level, c, 'mid')}` }
     : d && !d.played ? daily('Today', `Puzzle of the day #${d.n} is waiting`) : null;
@@ -2966,8 +2981,9 @@ function renderHomeNext() {
 }
 $('homecont').onclick = e => { location.hash = e.currentTarget.dataset.go; };
 $('homecont').onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); location.hash = e.currentTarget.dataset.go; } };
-// the home tiles: how the library is going once it's started; the puzzles from your games, and the reviews due
-async function renderPuzzleCards() {
+// the home tiles: the daily, the packs done; the reviews due from your games, for the strip (srcs: a promise of
+// puzzleSources(), Home's one ask for them)
+async function renderPuzzleCards(srcs = puzzleSources()) {
   renderCovers($('home'));
   const packs = fetch('api/puzzles/packs').then(r => r.json()).then(d => {
     const dl = d.daily, r = dl.result;
@@ -2979,18 +2995,10 @@ async function renderPuzzleCards() {
     const packs = n => `${n} pack${n > 1 ? 's' : ''}`;     // every one done perfect: just that
     if (done) $('card-packs-desc').textContent = perfect === done ? `${packs(done)} perfect 👑` : `${packs(done)} done${perfect ? ` · ${perfect} perfect 👑` : ''}`;
   }).catch(() => {});
-  let st, srcs;
-  try { [st, srcs] = await Promise.all([fetch('api/puzzles/themes').then(r => r.json()).then(d => d.stats), puzzleSources()]); } catch (e) { return packs; }
-  $('card-library-desc').textContent = st && st.played ? `${st.solved} solved` : '';
-  const mine = (srcs || []).filter(s => s.id !== 'lichess' && s.count);
-  const sum = k => mine.reduce((n, s) => n + s.stats[k], 0);
-  const total = mine.reduce((n, s) => n + s.count, 0), due = sum('due'), fresh = sum('new');
-  homeNext.due = due; renderHomeNext();
-  const names = mine.map(s => s.name).join(', ');
-  // the row's one short status: the reviews due as a badge, else how many there are
-  $('card-mine-desc').innerHTML = due ? `<span class="pbadge">${due} due</span>` : total ? `${total} puzzle${total > 1 ? 's' : ''}` : '';
-  $('card-mine').title = total ? `${due ? `${due} review${due > 1 ? 's' : ''} due · ` : ''}${fresh} new · ${total} puzzle${total > 1 ? 's' : ''} from ${names}'s games`
-    : 'The moves you missed in a player\'s games, back until you find them';
+  // the strip goes to the profile with the most due
+  const mine = ((await srcs) || []).filter(s => s.id !== 'lichess' && s.count && s.stats.due).sort((a, b) => b.stats.due - a.stats.due);
+  homeNext.due = mine.reduce((n, s) => n + s.stats.due, 0); homeNext.duePid = mine.length ? mine[0].profile : null;
+  renderHomeNext();
   return packs;     // the daily's card says which one is waiting: in place before the home screen shows
 }
 
@@ -3854,12 +3862,18 @@ function leavePuzzleScreen(section) {
 const packBadge = k => k.perfect ? '<span class="pbadge crown" title="Every puzzle solved first try">👑 Perfect</span>'
   : k.done ? '<span class="pbadge" title="Every puzzle solved">✓ Complete</span>' : '';
 async function showShelf() {
-  leavePuzzleScreen('pzpacks'); $('crumb').textContent = 'Puzzle packs';
+  leavePuzzleScreen('pzpacks'); $('crumb').textContent = 'Puzzles';
   const box = $('pzpacksbox');
+  const lib = fetch('api/puzzles/themes').then(r => r.json()).then(d => d.stats).catch(() => null);
   let d; try { d = await (await fetch('api/puzzles/packs')).json(); } catch (e) { box.innerHTML = '<div class="empty">Could not load the packs.</div>'; return; }
+  const st = await lib;
   if (location.hash !== '#/packs') return;
   const dl = d.daily, r = dl.result;
-  let html = `<h2>Puzzle of the day</h2><div class="cards"><div class="card pack covered" data-go="#/daily">${coverHtml('daily', null, +dl.date.slice(8))}<div class="cbody">` +
+  // the library first: free play, no stages
+  let html = `<h2>Puzzle library</h2><div class="cards"><div class="card pack covered" data-go="#/puzzles">${coverHtml('library')}<div class="cbody">` +
+    `<span class="who"><span class="wt">Near your level</span></span><span class="desc">Free play, by theme if you like.</span>` +
+    `<span class="meta">${st && st.solved ? `${st.solved.toLocaleString()} solved` : 'Lichess puzzles'}</span></div></div></div>`;
+  html += `<h2>Puzzle of the day</h2><div class="cards"><div class="card pack covered" data-go="#/daily">${coverHtml('daily', null, +dl.date.slice(8))}<div class="cbody">` +
     `<span class="who"><span class="wt">#${dl.n} · ${esc(fmtDay(dl.date))}</span>${r ? `<span class="pbadge">${r.clean ? '✓ Solved clean' : r.solved ? '✓ Solved' : 'Played'}</span>` : ''}</span>` +
     `<span class="desc">${r ? 'Open it again, or copy your result to share.' : 'One tougher puzzle, the same for everyone today.'}</span>` +
     `<span class="meta">${dl.streak ? `🔥 ${dl.streak}-day streak` : 'Solve it to start a streak'}${dl.best_streak > dl.streak ? ` · best ${dl.best_streak}` : ''}</span></div></div></div>`;
@@ -3899,7 +3913,7 @@ async function showLadder(id) {
 }
 function drawLadder(id, k, fx, want) {
   const box = $('pzpacksbox');
-  $('crumb').textContent = `Puzzle packs · ${k.name}`;
+  $('crumb').textContent = `Puzzles · ${k.name}`;
   // which stage to show: one just opened, else the one asked for, else the furthest one open and unfinished that play
   // got to (opened by the stage before, or started); stages open by rating alone count only before any play
   const unfinished = [...k.stages].reverse().filter(s => s.open && s.solved < s.size);
@@ -4104,8 +4118,8 @@ window.addEventListener('progresssynced', e => {
 function ctxCrumb() {
   const c = pz.ctx;
   if (!c) return null;
-  if (c.kind === 'daily') return { crumb: `Puzzle of the day · #${c.n}`, back: '#/packs', label: '← Puzzle packs' };
-  return { crumb: `Puzzle packs · ${c.name} · stage ${c.stage} · ${c.n} of ${c.size}`, back: '#/packs/' + c.pack, label: '← ' + c.name };
+  if (c.kind === 'daily') return { crumb: `Puzzle of the day · #${c.n}`, back: '#/packs', label: '← Puzzles' };
+  return { crumb: `Puzzles · ${c.name} · stage ${c.stage} · ${c.n} of ${c.size}`, back: '#/packs/' + c.pack, label: '← ' + c.name };
 }
 // One mark per move of yours, for the share card: found first time, found after misses ('miss' for one, 'miss2',
 // 'miss3'… for more) or a hint, or shown.
@@ -4183,17 +4197,59 @@ function copyShare() {
   (navigator.clipboard ? navigator.clipboard.writeText(text) : Promise.reject()).then(() => toast('Copied, with a link to the app: paste it to your friends'), () => toast('Could not copy'));
 }
 
-// ---------- personal puzzles: whose games, the state of their puzzles, and a new username to make them for ----------
-async function showPersonal() {
+// ---------- a profile's tabs: its games, its puzzles, its openings ----------
+// The one bar over the three (the games list, the puzzles' card, the explorer), under the header; showSection hides
+// it, each of the three shows it. The pasted games' profile has no Openings tab (the explorer leaves it out too), but
+// keeps it while it's open there (a pasted game's Explore link).
+function showPnav(pid, tab) {
+  const nav = $('pnav'), tabs = [['games', 'Games', '#/p/' + pid], ['puzzles', 'Puzzles', `#/p/${pid}/puzzles`]];
+  if (pid.split('-')[0] !== 'pgn' || tab === 'openings') tabs.push(['openings', 'Openings', opHref(pid)]);
+  const html = tabs.map(([t, label, h]) => `<a href="${esc(h)}" data-tab="${t}"${t === tab ? ' class="on" aria-current="page"' : ''}>${label}` +
+    (t === 'puzzles' ? '<span class="pbadge hidden"></span>' : '') + '</a>').join('');
+  if (nav.dataset.html !== html) { nav.innerHTML = html; nav.dataset.html = html; }     // a redraw of the same tabs keeps the focus
+  nav.classList.remove('hidden'); nav.dataset.pid = pid;
+  const due = srcs => {
+    const s = (srcs || []).find(x => x.profile === pid), n = s && s.stats ? s.stats.due : 0, b = nav.querySelector('.pbadge');
+    if (!b) return;
+    b.textContent = n ? `${n} due` : ''; b.classList.toggle('hidden', !n);
+  };
+  due(pz.sources);
+  puzzleSources().then(s => { if (!nav.classList.contains('hidden') && nav.dataset.pid === pid) due(s); });
+}
+// a tab: in the place of the one open (they're side by side, not one inside another), and none for the open one
+$('pnav').onclick = e => {
+  const a = e.target.closest('a'); if (!a) return;
+  e.preventDefault();
+  if (!a.classList.contains('on')) goTo(a.getAttribute('href'));
+};
+
+// ---------- personal puzzles: a profile's Puzzles tab, the state of its puzzles ----------
+let pzPid = null;     // whose, on the screen
+// #/puzzles/mine, the old list of every profile's: to the one with the most due, else the first on Home
+async function toPersonal() {
+  op.profiles = null;     // (Home's order now: one may have come or gone since the explorer asked)
+  const [srcs, ps] = await Promise.all([puzzleSources(), opProfiles()]);
+  const due = srcs.filter(s => s.profile && s.stats && s.stats.due).sort((a, b) => b.stats.due - a.stats.due)[0];
+  const pid = due ? due.profile : ps.length ? ps[0].id : null;
+  if (location.hash !== '#/puzzles/mine') return;
+  leaveDeal(pid ? `#/p/${pid}/puzzles` : '#/');
+}
+async function showPersonal(pid) {
   showSection('pzpick');
   document.body.classList.remove('sandbox', 'puzzle'); stopSandboxStream();
+  // no state.profile: the status poll would take this for the games list, and draw that over it
   state.game = null; state.profile = null; state.games = null; dropVariation(); stopPolling(); stopPlay();
-  setContext(false); $('crumb').textContent = 'Personal puzzles';
+  setContext(false); $('crumb').textContent = profileName(pid);
+  showPnav(pid, 'puzzles');
+  if (pzPid !== pid) $('pzprofiles').innerHTML = '';     // not the last profile's card while this one's loads
+  pzPid = pid;
   await renderPersonal();
 }
 async function renderPersonal() {
-  const srcs = (await puzzleSources()).filter(s => s.id !== 'lichess');
-  const st = state.status || {}, builds = st.builds || [];
+  const pid = pzPid, srcs = (await puzzleSources()).filter(s => s.profile === pid);
+  if (pid !== pzPid || $('pzpick').classList.contains('hidden')) return;     // gone to another meanwhile
+  $('crumb').textContent = profileName(pid);
+  const st = state.status || {}, builds = (st.builds || []).filter(b => b.profile === pid);
   // a profile still being fetched has no games yet: its card says so
   const waiting = builds.filter(b => !srcs.some(s => s.profile === b.profile)).map(b => ({ id: 'mine:' + b.profile, profile: b.profile, name: b.username,
     source: b.profile.split('-')[0], count: 0, games: 0, analysed: 0, stats: { total: 0, new: 0, due: 0, learning: 0, learned: 0 } }));
@@ -4215,16 +4271,7 @@ async function renderPersonal() {
       <div class="btns">${btns}</div></div>`;
   }).join('');
   const box = $('pzprofiles');
-  box.querySelectorAll('.card.pzp, .empty').forEach(c => c.remove());
-  if (!box.querySelector('.card.add')) {     // the username form stays put while the cards update, so typing isn't lost
-    box.insertAdjacentHTML('afterbegin', `<div class="card add"><span class="src">New player</span><span class="who">Any username</span>
-      <form id="pzaddform"><select name="source"><option value="chesscom">chess.com</option><option value="lichess">lichess</option></select>
-      <input name="username" placeholder="username" autocomplete="off" spellcheck="false" required>
-      <button class="primary" type="submit">Make puzzles</button></form></div>`);
-    $('pzaddform').onsubmit = addForPuzzles;
-    $('pzaddform').username.onkeydown = e => { if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); $('pzaddform').requestSubmit(); } };
-  }
-  box.insertAdjacentHTML('beforeend', cards || '<div class="empty">No profiles yet: add a username to make puzzles from its games.</div>');
+  box.innerHTML = cards || '<div class="empty">No games here yet.</div>';
   box.querySelectorAll('.card.pzp').forEach(c => {
     const pid = c.dataset.id, name = c.dataset.name;
     const act = async (a, e) => {
@@ -4247,23 +4294,6 @@ async function renderPersonal() {
     if (c.classList.contains('pztile')) c.onclick = () => act('solve');
   });
 }
-async function addForPuzzles(e) {
-  e.preventDefault();
-  const f = e.target, body = { source: f.source.value, username: f.username.value.trim(), puzzles: true };
-  if (!body.username || f.dataset.busy) return;
-  f.dataset.busy = '1';
-  let r, d;
-  try { r = await fetch('api/profiles', { method: 'POST', body: JSON.stringify(body) }); d = await r.json(); }
-  catch (err) { r = { ok: false }; d = { error: String(err) }; }
-  finally { delete f.dataset.busy; }
-  if (!r.ok) { toast(d.error === 'busy' ? `Busy: ${jobText(d.job)}. Try again when it's done.` : d.error); return; }
-  f.username.value = '';
-  toast(d.job ? `Fetching ${body.username}'s games from ${SOURCE_NAME[body.source]}. Their puzzles appear as the games are analysed.`
-    : `Making puzzles from ${d.profile.username}'s games.`, 6000);
-  await pollBuild();
-  renderPersonal();
-}
-
 // ---------- the puzzle build: a bar pinned to the bottom of every screen while one runs ----------
 const bbar = { t: null, seen: new Set(), dismissed: new Set(), told: new Set(), sig: null };
 // [headline, detail, fraction done or null] for one build, as plain text
@@ -4288,7 +4318,7 @@ function renderBuildBar(d) {
     [msg, sub, frac] = buildText(b, d.job);
     if (bs.length > 1) sub += `${sub ? ' · ' : ''}then ${bs.slice(1).map(x => x.username).join(', ')}`;
     if (b.puzzles) btns += solve(b.profile);
-    btns += `<button data-act="stop" data-id="${esc(b.profile)}" title="Stop making these puzzles. What is analysed stays; carry on from Personal puzzles.">Stop</button>`;
+    btns += `<button data-act="stop" data-id="${esc(b.profile)}" title="Stop making these puzzles. What is analysed stays; carry on from the profile's Puzzles tab.">Stop</button>`;
   } else {
     // a build this page saw running has ended: say how, until dismissed
     const f = (d.finished || []).filter(x => bbar.seen.has(x.profile) && !bbar.dismissed.has(x.profile + x.ended)).sort((a, b) => b.ended - a.ended)[0];
@@ -4311,7 +4341,7 @@ function renderBuildBar(d) {
     if (el.dataset.act === 'dismiss') { bbar.dismissed.add(el.dataset.key); renderBuildBar(state.status || d); return; }
     el.disabled = true;
     try { state.status = await (await fetch('api/puzzles/build/stop', { method: 'POST', body: JSON.stringify({ profile: el.dataset.id }) })).json(); } catch (e) { el.disabled = false; return; }
-    toast('Stopped. What is analysed stays; carry on from Personal puzzles.', 5000);
+    toast("Stopped. What is analysed stays; carry on from the profile's Puzzles tab.", 5000);
     renderBuildBar(state.status); onBuildChange();
   });
 }
@@ -4328,7 +4358,7 @@ async function pollBuild() {
 }
 function onBuildChange() {     // puzzles came or went, or the build moved on: the screens that show it
   if (!$('pzpick').classList.contains('hidden')) renderPersonal();
-  else if (!$('home').classList.contains('hidden')) { renderPuzzleCards(); renderProfiles(); }
+  else if (!$('home').classList.contains('hidden')) { const s = puzzleSources(); renderPuzzleCards(s); renderProfiles(s); }
   else if (state.profile) pollStatus();     // a review or list of the profile: the game the build is on says so
 }
 pollBuild();
