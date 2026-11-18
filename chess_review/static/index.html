@@ -134,7 +134,6 @@ main { padding: 16px 18px; max-width: 1800px; margin: 0 auto; }
 .anlbox .row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .anlbox .row button { padding: 6px 12px; font-size: 13px; }
 #pgnform .row .primary { margin-left: auto; }
-#pgnform .pbtn { font-size: 13px; }
 .anlpic { border-style: dashed; cursor: pointer; }
 .anlpic.over, .anlpic:focus-visible { border-color: var(--accent); outline: none; }
 .anlpic .t { flex: 1; display: flex; align-items: center; justify-content: center; text-align: center; color: var(--muted); font-size: 14px; min-height: 70px; }
@@ -142,6 +141,14 @@ main { padding: 16px 18px; max-width: 1800px; margin: 0 auto; }
 .anlpic .stm { margin-left: auto; color: var(--muted); font-size: 13px; display: flex; align-items: center; gap: 6px; }
 .anlpic select { font: inherit; color: var(--text); background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; padding: 4px 6px; }
 .anlpic .st { color: var(--accent); font-size: 12px; min-height: 0; } .anlpic .st:empty { display: none; }
+/* Analyse on a wide screen: the board editor, ready, and the two boxes under its tools, beside the board (the board
+   is the way to set a position up, so no button for it; its own side to move and no Cancel) */
+#anlside { display: none; } #editor.anl #anlside { display: block; }
+#anlside #anlbody { grid-template-columns: 1fr; gap: 10px; }
+#anlside .card.anlbox { padding: 10px 12px; }
+#anlside .anlbox textarea { min-height: 0; height: 64px; flex: none; }
+#anlside .anlpic .t { min-height: 0; font-size: 13px; }
+#editor.anl #anl-setup, #editor.anl .anlpic .stm, #editor.anl .setup-row a.pbtn { display: none; }
 /* the profiles: one box, a line between the rows */
 #profiles { display: flex; flex-direction: column; gap: 0; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
 /* a keyboard's ring on the tiles; inside the profiles' box, which clips, drawn inside the row */
@@ -1139,7 +1146,7 @@ svg.graph { width: 100%; height: 52px; display: block; cursor: pointer; backgrou
         <form class="card anlbox" id="pgnform">
           <label class="src" for="anltext">A game or a position</label>
           <textarea id="anltext" name="pgn" rows="6" placeholder="Paste a PGN (one game or many) or a FEN" spellcheck="false" autocomplete="off" required></textarea>
-          <div class="row"><a href="#/setup" class="pbtn">Set up a position on a board</a><button class="primary" type="submit">Analyse</button></div>
+          <div class="row"><button type="button" id="anl-setup" data-go="#/setup" title="Place the pieces on a board, then analyse">Set up a position on a board</button><button class="primary" type="submit">Analyse</button></div>
         </form>
         <div class="card anlbox anlpic" id="anldrop" tabindex="0" title="A screenshot or photo of a board: the pieces are read off it">
           <span class="src">A screenshot</span>
@@ -1197,6 +1204,7 @@ svg.graph { width: 100%; height: 52px; display: block; cursor: pointer; backgrou
           <span style="margin-left:auto"></span>
           <a href="#/" class="pbtn">← Cancel</a><button class="primary" id="s-go">Analyse this position</button>
         </div>
+        <div id="anlside"></div>
       </div>
     </div>
   </section>
@@ -1689,7 +1697,7 @@ function histFix(then) {
 // so once. The desktop's server sends neither header: its page is never stale (an update restarts the app).
 let pageStamp = null, stampless = false;
 const fresh = { stale: false, told: false, going: false, via: null };
-const RESTING = [/^#\/$/, /^#\/p\/[A-Za-z0-9_.-]+$/, /^#\/p\/[A-Za-z0-9_.-]+\/puzzles$/, /^#\/packs$/, /^#\/packs\/[a-z0-9-]+$/, /^#\/drills$/, /^#\/analyse$/];
+const RESTING = [/^#\/$/, /^#\/p\/[A-Za-z0-9_.-]+$/, /^#\/p\/[A-Za-z0-9_.-]+\/puzzles$/, /^#\/packs$/, /^#\/packs\/[a-z0-9-]+$/, /^#\/drills$/];
 const RELOADED_KEY = 'blundrUpdated', RELOADED_AT_KEY = 'blundrUpdatedAt';
 // one reload by itself per 10 minutes: a host (a CDN edge, a kept build) still answering with the old page can't
 // loop it; past that the page waits for a click
@@ -2020,7 +2028,7 @@ async function route() {
   const em = h.match(/^#\/setup(?:\?fen=(.+))?$/);
   if (em) { if (em[1] && loadFen(decodeURIComponent(em[1]))) pendingSetup = setupSnapshot(); return showEditor(); }
   if (h === '#/image') return showImagePage();
-  if (h === '#/analyse') return showAnalyse();
+  if (h === '#/analyse') return WIDE.matches ? showEditor(true) : showAnalyse();
   if (h === '#/packs') return showShelf();
   const km = h.match(/^#\/packs\/([a-z0-9-]+)(?:\/(\d+)\/(\d+))?$/);
   if (km) return km[2] ? playPack(km[1], +km[2], +km[3]) : showLadder(km[1]);
@@ -2218,9 +2226,14 @@ $('card-daily').onclick = () => location.hash = '#/daily';
 $('card-packs').onclick = () => location.hash = '#/packs';
 $('card-drills').onclick = () => location.hash = '#/drills';
 // Analyse a game or position, a screen of its own (#/analyse), ready to use: a box for a PGN or a FEN, and one for a
-// picture of a board (the board editor a link under the first)
+// picture of a board. On a wide screen it's the board editor with the two beside the board (showEditor(true)); on a
+// phone, the two boxes, the picture's first, and a button to the editor. One set of boxes, moved to where it shows.
+const WIDE = matchMedia('(min-width: 901px)');
+const anlTo = id => { const b = $('anlbody'); if (b.parentElement !== $(id)) $(id).append(b); };
 $('card-analyse').onclick = () => location.hash = '#/analyse';
+$('anl-setup').onclick = () => location.hash = '#/setup';
 function showAnalyse() {
+  anlTo('anlhome');
   showSection('anlpage');
   document.body.classList.remove('sandbox', 'puzzle'); stopSandboxStream();
   state.game = null; state.profile = null; state.games = null; dropVariation(); stopPolling(); stopPlay();
@@ -2228,8 +2241,8 @@ function showAnalyse() {
   if (PLATFORM === 'desktop') $('anltext').focus({ preventScroll: true });     // (a phone's keyboard would cover the screen)
 }
 // a picture of a board: picked, pasted (Ctrl+V while Analyse shows, or the Paste button), or dropped on its box
-const anlShows = () => !$('anlpage').classList.contains('hidden');
-const anlUi = () => ({ st: $('anlstatus'), stm: $('anlstm') });
+const anlShows = () => !$('anlpage').classList.contains('hidden') || !$('editor').classList.contains('hidden') && $('editor').classList.contains('anl');
+const anlUi = () => ({ st: $('anlstatus'), stm: $('editor').classList.contains('anl') ? $('stm') : $('anlstm') });
 $('anldrop').onclick = e => { if (!e.target.closest('button, select, label')) $('anlfile').click(); };
 $('anl-pick').onclick = () => $('anlfile').click();
 $('anlfile').onchange = () => { const f = $('anlfile').files[0]; if (f) importBoardImage(f, anlUi()); $('anlfile').value = ''; };
@@ -4737,10 +4750,13 @@ function applySetupHistory(from, to) {
 }
 $('s-undo').onclick = () => applySetupHistory(setup.undo, setup.redo);
 $('s-redo').onclick = () => applySetupHistory(setup.redo, setup.undo);
-function showEditor() {
+// anl: as Analyse's screen on a wide screen, the PGN and picture boxes beside the board
+function showEditor(anl = false) {
+  $('editor').classList.toggle('anl', anl);
+  if (anl) anlTo('anlside');
   showSection('editor');
   document.body.classList.remove('sandbox', 'puzzle'); stopSandboxStream();
-  setContext(false); $('crumb').textContent = 'Set up a position';
+  setContext(false); $('crumb').textContent = anl ? 'Analyse' : 'Set up a position';
   setup.flipped = false; setup.tool = null; setup.undo = []; setup.redo = [];
   if (pendingSetup) { Object.assign(setup, pendingSetup); pendingSetup = null; }
   else if (!Object.keys(setup.board).length) loadFen(START_FEN);
@@ -4766,7 +4782,7 @@ $('s-go').onclick = () => {
   location.hash = '#/sandbox/' + encodeURIComponent(setupFen());
 };
 document.addEventListener('keydown', e => {
-  if ($('editor').classList.contains('hidden') || e.target.tagName === 'INPUT') return;
+  if ($('editor').classList.contains('hidden') || /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return;   // (Analyse's PGN box)
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); (e.shiftKey ? $('s-redo') : $('s-undo')).onclick(); }
   else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') { e.preventDefault(); $('s-redo').onclick(); }
   else if (e.key === 'Escape') setTool(null);
@@ -4965,8 +4981,14 @@ async function importBoardImage(blob, ui = { st: $('imgstatus'), stm: $('imgstm'
   try {
     const board = await readBoardImage(blob);
     st.textContent = '';
-    pendingSetup = { board, turn: ui.stm.value, castle: { K: true, Q: true, k: true, q: true } };
+    const read = { board, turn: ui.stm.value, castle: { K: true, Q: true, k: true, q: true } };
     toast(`Read ${Object.keys(board).length} pieces — check the board, then analyse`, 6000);
+    // Analyse's board on a wide screen: onto it, in place (Undo takes it back); else the editor opens with it
+    if (!$('editor').classList.contains('hidden') && $('editor').classList.contains('anl')) {
+      pushSetupHistory(); Object.assign(setup, read); renderSetupBoard(); renderUndoRedo();
+      return;
+    }
+    pendingSetup = read;
     location.hash = '#/setup';
   } catch (e) { st.textContent = ''; toast(e.message || String(e), 6000); }
 }
