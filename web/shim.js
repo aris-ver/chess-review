@@ -408,23 +408,70 @@
   // Offline: the service worker (web/offline.js, written to the site's root by scripts/build_web.js) keeps this build's
   // files, so the app opens and works with no network once it has been opened online. A build only (this file under
   // v/<version>/): the desktop app's page has no shim, and a checkout's has no offline.js. A deploy installs whole in
-  // the background; the bar then offers a reload, and every tab reloads as the new build takes over, so no page runs
-  // on two builds' files.
+  // the background; the bar then offers a reload, which the page also takes by itself at its first safe moment
+  // (index.html, blundrUpdateReady) when every other open tab is at one too. Every tab reloads as the new build takes
+  // over, so no page runs on two builds' files.
   const sw = nav.serviceWorker;
   if (sw && window.isSecureContext && src && /\/v\/[0-9a-f]+\/web\/shim\.js$/.test(new URL(src).pathname)) {
     const had = !!sw.controller;      // this page came from a kept build: a new controller is a newer one
-    let reloading = false;
+    let reloading = false, changed = false;
     sw.addEventListener('controllerchange', () => {
+      changed = true;
       if (!had || reloading) return;
       reloading = true;
+      try { sessionStorage.setItem('blundrUpdated', '1'); } catch (e) {}     // index.html says so once it's back
       location.reload();
     });
+    const settled = (w, done) => new Promise(resolve => {
+      const f = () => { if (done.includes(w.state)) { w.removeEventListener('statechange', f); resolve(); } };
+      w.addEventListener('statechange', f);
+      f();
+    });
+    // The other tabs, asked whether they are at a safe moment too (index.html's blundrSafe): the new build taking over
+    // reloads them all, and one mid-drill can't stay on this build's files (its worker's next import may be gone). An
+    // answer not in within ASK_MS (a tab frozen in the background) doesn't hold the update back.
+    const CHANNEL = 'blundr-update', ASK_MS = 500;
+    const others = typeof BroadcastChannel === 'function' ? new BroadcastChannel(CHANNEL) : null;
+    if (others) others.onmessage = async e => {
+      if (e.data && e.data.ask) others.postMessage({ id: e.data.ask, safe: window.blundrSafe ? await window.blundrSafe() : true });
+    };
+    const othersSafe = () => new Promise(resolve => {
+      if (!others) return resolve(true);
+      const ask = new BroadcastChannel(CHANNEL), id = Math.random().toString(36).slice(2);
+      let safe = true;
+      ask.onmessage = e => { if (e.data && e.data.id === id && e.data.safe === false) safe = false; };
+      ask.postMessage({ ask: id });
+      setTimeout(() => { ask.close(); resolve(safe); }, ASK_MS);
+    });
+    // Into the newer build: a plain reload would get this one's kept page again while its service worker is in charge
+    // (offline.js's page()), so a newer one waiting is put in charge first. False when there is none to go to yet (none
+    // on the server, offline, still installing: offer() comes once it is in) or, unless asked for (the bar's Reload),
+    // another tab isn't at a safe moment: the page carries on as it is. Never waits on an install, which may take a
+    // while: by then the page may be mid-drill.
+    window.blundrReload = async (asked = false) => {
+      let reg = null;
+      try { reg = await sw.getRegistration(base); } catch (e) {}
+      const plain = () => { reloading = true; location.reload(); return true; };
+      if (!reg || !reg.active || changed) return plain();
+      if (!reg.installing && !reg.waiting) { try { await reg.update(); } catch (e) { return false; } }
+      const w = reg.waiting;
+      // no controller: the page came from the network, and the one active now answers the next load
+      if (!w) return reg.installing || sw.controller ? false : plain();
+      if (!asked && !(await othersSafe())) return false;
+      reloading = true;
+      w.postMessage('skipWaiting');
+      await settled(w, ['activated', 'redundant']);
+      if (w.state === 'redundant' && !changed) { reloading = false; return false; }
+      location.reload();
+      return true;
+    };
     const offer = reg => {
       if (!reg.waiting || !sw.controller) return;     // the first build kept replaces nothing
-      reloadNow = () => (reg.waiting ? reg.waiting.postMessage('skipWaiting') : location.reload());
+      reloadNow = async () => { if ((await window.blundrReload(true)) === false) location.reload(); };
       updateUp = 'ready';
       closed = false;
       update();
+      if (window.blundrUpdateReady) window.blundrUpdateReady(() => window.blundrReload());
     };
     // A newer build couldn't be kept (storage full, a file the host doesn't serve as listed): this page's build would
     // stay, deploy after deploy, with only the console saying so. Reload then starts afresh: no service worker, none

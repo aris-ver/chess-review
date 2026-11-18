@@ -253,6 +253,7 @@ CACHED_HASHES = """async version => {
 }"""
 
 
+BOOTED = "document.documentElement.classList.contains('booted')"     # the first screen shown, whichever it is
 READY_TO_RELOAD = "#web-loading .upd:not(.fix)"      # "A new version of Blundr is ready. Reload"
 COULD_NOT = "#web-loading .upd.fix"                # "Couldn't update Blundr. Reload"
 
@@ -283,11 +284,13 @@ def test_a_deploy_installs_whole_and_no_page_mixes_two_builds(pwr, server, build
             assert r == {"waiting": False, "caches": sorted(["blundr-offline-" + a["version"]] + (["blundr-offline-failed"] if n else []))}, (n, r)
             assert page.locator(READY_TO_RELOAD).count() == 0
 
-        # the real deploy: this load is still all a's, b installs alongside, and only what changed is downloaded
+        # the real deploy: this load is still all a's, b installs alongside, and only what changed is downloaded. On
+        # Settings, not a screen the page reloads on by itself (Home would go straight on to b: the next test)
         server.root = builds["b"]
         server.log.clear()
-        page.goto(server.url)
-        page.wait_for_function(READY, timeout=60_000)
+        page.goto("about:blank")
+        page.goto(server.url + "#/settings")
+        page.wait_for_function(BOOTED, timeout=60_000)
         seen = page.evaluate(SEEN)
         a_code = next(k for k in a["files"] if k.startswith("v/")).split("/")[1]
         assert a_code != b_code
@@ -300,16 +303,25 @@ def test_a_deploy_installs_whole_and_no_page_mixes_two_builds(pwr, server, build
         assert set(kept) == set(b["files"]) and all(kept[k] == b["files"][k] for k in b["files"] if k), \
             [k for k in b["files"] if kept.get(k) != b["files"][k]]
 
-        # a second tab on a; the bar offers the reload, and both tabs come back on b
+        # a second tab on a, mid-drill. The first goes Home, a screen to reload on by itself, but the new build taking
+        # over would reload the second too: it waits. Once the second leaves its drill for the drills list (a drill
+        # left is given up, as any leaving is), both come back on b by themselves, no click
         other = ctx.new_page()
-        other.goto(server.url)
-        other.wait_for_function(READY, timeout=60_000)
+        other.goto(server.url + "#/drills/KQK")
+        other.wait_for_function(f"{BOOTED} && !!dr.drill", timeout=60_000)
         assert other.evaluate(SEEN)["page"] == a["version"]
         page.wait_for_selector(READY_TO_RELOAD, timeout=30_000)
+        until(other, "() => fresh.stale", timeout_s=30)
+        other.evaluate("window.__kept = 1")
+        go(page, "#/")
+        stays(page, 3000)
+        assert other.evaluate("window.__kept === 1 && !!dr.drill"), "a tab mid-drill reloaded"
         with page.expect_navigation(timeout=30_000), other.expect_navigation(timeout=30_000):
-            page.click(READY_TO_RELOAD)
+            go(other, "#/drills")
+        toast(other, "Updated to the latest version")
+        toast(page, "Updated to the latest version")
         for p in (page, other):
-            p.wait_for_function(READY, timeout=60_000)
+            p.wait_for_function(BOOTED, timeout=60_000)
             seen = p.evaluate(SEEN)
             assert seen["page"] == b["version"] and seen["code"] == [b_code] and seen["controlled"], seen
         assert page.evaluate("async () => (await caches.keys()).filter(n => n.startsWith('blundr-offline-'))") \
@@ -322,6 +334,88 @@ def test_a_deploy_installs_whole_and_no_page_mixes_two_builds(pwr, server, build
         page.wait_for_function(READY, timeout=60_000)
         seen = page.evaluate(SEEN)
         assert seen["page"] == b["version"] and seen["code"] == [b_code], seen
+    finally:
+        ctx.close()
+        browser.close()
+
+
+TOAST_CLEARED = "document.getElementById('toast').textContent = ''"
+NO_UPDATE_TOAST = "!/updated/i.test(document.getElementById('toast').textContent)"
+
+
+def go(page, h):
+    """The hash changed as a click would, and the screen given its route."""
+    page.evaluate("h => { location.hash = h; }", h)
+    page.wait_for_timeout(300)
+
+
+def stays(page, ms=2500):
+    """No reload for ms: the mark set now is still there."""
+    page.evaluate("window.__kept = 1")
+    page.wait_for_timeout(ms)
+    assert page.evaluate("window.__kept === 1"), "the page reloaded"
+
+
+@pytest.mark.parametrize("sw", ["service worker", "none"])
+def test_a_deploy_reloads_by_itself_only_at_a_safe_moment(pwr, server, builds, sw):
+    """A deploy while the page is open: mid-puzzle and mid-drill it says so once and stays; on the way onto a screen to
+    rest on it reloads into the new build by itself and says so. With the service worker the reload goes through the
+    new build taking over (a plain one would get the kept page again); without one (as an old browser, or the desktop's
+    page if its stamp ever changed), a plain reload. A host that answers with the old page again right after can't make
+    it reload in a loop."""
+    a, b = offline_list(builds["a"]), offline_list(builds["b"])
+    browser = launch(pwr, "chromium")
+    ctx = browser.new_context(user_agent=LITE, viewport={"width": 390, "height": 844}, is_mobile=True, has_touch=True,
+                              service_workers="allow" if sw == "service worker" else "block")
+    try:
+        page = ctx.new_page()
+        page.on("console", lambda m: m.type == "error" and print("console:", m.text[:300]))
+        loads = []
+        page.on("load", lambda p: loads.append(p.url))
+        if sw == "service worker":
+            first_visit(page, server.url, a["version"])
+            page.goto(server.url)
+        else:
+            page.goto(server.url)
+        page.wait_for_function(READY, timeout=60_000)
+        assert page.evaluate(SEEN)["page"] == a["version"]
+        if sw == "none":
+            assert not page.evaluate("!!navigator.serviceWorker && !!navigator.serviceWorker.controller")
+        (builds["b"] / "index.html").touch()      # newer than a's whatever the builds' times: its Last-Modified differs
+        server.root = builds["b"]
+        # a library puzzle being solved: told once, no reload
+        go(page, "#/puzzles")
+        page.wait_for_function("!!state.game && !!state.game.puzzle && !pz.over", timeout=60_000)
+        toast(page, "The app was updated", timeout=10_000)
+        stays(page)
+        # a drill (and on to another screen that isn't one to rest on): not told again, no reload
+        page.evaluate(TOAST_CLEARED)
+        go(page, "#/drills/KQK")
+        page.wait_for_function("!!dr.drill", timeout=60_000)
+        stays(page)
+        assert page.evaluate(NO_UPDATE_TOAST)
+        n = len(loads)
+        # the drills list: a screen to rest on, so the reload (the drill left behind is given up, as any leaving is)
+        with page.expect_event("load", timeout=120_000):
+            go(page, "#/drills")
+        page.wait_for_function(BOOTED, timeout=60_000)
+        toast(page, "Updated to the latest version", timeout=10_000)
+        assert len(loads) == n + 1
+        assert page.evaluate(SEEN)["page"] == b["version"]
+        assert page.url.endswith("#/drills")
+
+        # no loop: the new page stays as it is on screens to rest on
+        stays(page)
+        go(page, "#/")
+        go(page, "#/packs")
+        stays(page)
+        # an edge answering with the old page again: stale once more, but not reloaded by itself so soon after
+        server.root = builds["a"]
+        page.evaluate(TOAST_CLEARED)
+        go(page, "#/")
+        toast(page, "The app was updated", timeout=10_000)
+        stays(page, 4000)
+        assert len(loads) == n + 1, loads
     finally:
         ctx.close()
         browser.close()

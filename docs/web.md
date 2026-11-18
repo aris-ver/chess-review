@@ -220,11 +220,20 @@ Fetching games from chess.com or lichess, and the account, still need the networ
   service worker checks for its update.
 - **Updates:** `offline.js` is `no-cache` (`_headers`) and registered with `updateViaCache: 'none'`, so every
   launch online (and every return of the home-screen app from the background) asks whether it changed. A new build
-  installs in the background and waits; the notice bar then says "A new version of Blundr is ready. Reload". Reload
-  makes it take over (`skipWaiting`), every open tab reloads on it, and every other build's cache is deleted (a newer
+  installs in the background and waits; the notice bar then says "A new version of Blundr is ready. Reload". The page
+  takes it by itself at its first safe moment (below) once every other open tab says it is at one too (asked over a
+  `BroadcastChannel`; one that doesn't answer within half a second doesn't count), or at once on Reload: it makes the
+  new build take over (`skipWaiting`), every open tab reloads on it, and every other build's cache is deleted (a newer
   build still installing too: its install then fails its last check, that its cache is still there, and is tried
   again). No page ever runs on files of two builds. In the home-screen app, the first build kept says "Blundr now
   works offline too".
+- **Reloading by itself** (index.html): a page is stale once its `HEAD` (on every route change, and as the tab comes
+  back into sight) answers another `ETag` or `Last-Modified`, or once the service worker has a newer build waiting.
+  It then reloads on the way onto a screen to rest on (Home, a profile's Games or Puzzles tab, the Puzzles shelf, a
+  pack's stages, the drills list) or as the tab comes back into sight on one, but not with a job or a puzzle build
+  running, text typed in a form or a dialog open; until then it says once that the app was updated. Through the
+  service worker when one is in charge (a plain reload gets its kept page again), and at most once in 10 minutes,
+  so a host still answering with the old page can't loop it. After it, "Updated to the latest version".
 - **An update that can't be kept** (storage full, a file the host serves other than listed or with an HTTP error, its
   cache deleted under it): the failed install tells the open pages and leaves a note (cache `blundr-offline-failed`)
   for the next ones. A failure that may pass (the connection dropped, the page still the old build mid-deploy) leaves

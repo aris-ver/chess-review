@@ -1583,15 +1583,81 @@ window.addEventListener('hashchange', () => {
   routed = assetsReady.then(route);
   if (!own) checkStale();
 });
-let pageStamp = null;
+// ---------- a newer page: reloaded into at the first safe moment ----------
+// Stale once the page's Last-Modified or ETag changes (checkStale), or once web/shim.js says a newer build is kept by
+// the service worker (blundrUpdateReady). The page then reloads by itself on the way onto a resting screen, or as the
+// tab comes back into sight on one; never mid-drill, mid-puzzle, in a review or the editor, with a job or a build
+// running (on the web they run in this page's worker), with text typed in a form or a dialog open. Until then it says
+// so once. The desktop's server sends neither header: its page is never stale (an update restarts the app).
+let pageStamp = null, stampless = false;
+const fresh = { stale: false, told: false, going: false, via: null };
+const RESTING = [/^#\/$/, /^#\/p\/[A-Za-z0-9_.-]+$/, /^#\/p\/[A-Za-z0-9_.-]+\/puzzles$/, /^#\/packs$/, /^#\/packs\/[a-z0-9-]+$/, /^#\/drills$/];
+const RELOADED_KEY = 'blundrUpdated', RELOADED_AT_KEY = 'blundrUpdatedAt';
+// one reload by itself per 10 minutes: a host (a CDN edge, a kept build) still answering with the old page can't
+// loop it; past that the page waits for a click
+const RELOAD_GAP_MS = 10 * 60 * 1000;
 async function checkStale() {
   // the page by its directory ('.'): blundr.gr redirects index.html there. A server that sends neither header isn't
   // asked again on every route change.
-  let lm; try { const h = (await fetch('.', { method: 'HEAD' })).headers; lm = h.get('Last-Modified') || h.get('ETag'); } catch (e) { return; }
-  if (!lm) { checkStale = () => {}; return; }
-  if (pageStamp === null) pageStamp = lm;
-  else if (lm !== pageStamp) { toast('The app was updated — click here to reload', 15000); $('toast').onclick = () => location.reload(); }
+  if (!stampless) {
+    let lm; try { const h = (await fetch('.', { method: 'HEAD', cache: 'no-store' })).headers; lm = h.get('Last-Modified') || h.get('ETag'); } catch (e) { return; }
+    if (!lm) stampless = true;
+    else if (pageStamp === null) pageStamp = lm;
+    else if (lm !== pageStamp) fresh.stale = true;
+  }
+  await reloadIfSafe();
 }
+// web/shim.js: a newer build is kept and waiting (via: how to reload into it), or has taken over this tab
+window.blundrUpdateReady = via => { fresh.stale = true; fresh.via = via; reloadIfSafe(); };
+const typedField = () => [...document.querySelectorAll('form input, form textarea')]
+  .some(el => !/^(checkbox|radio|range|hidden|file|button|submit|color)$/.test(el.type) && el.value.trim() !== '');
+// own: this tab, about to reload itself, in sight; another tab asking (web/shim.js: the new build taking over reloads
+// every tab) doesn't mind this one being out of sight
+async function safeToReload(own = true) {
+  const h = location.hash || '#/';
+  if (!RESTING.some(r => r.test(h)) || dr.drill || own && document.hidden || document.querySelector('dialog[open]') || typedField()) return false;
+  let d; try { d = await (await fetch('api/status')).json(); } catch (e) { return false; }
+  if (d.job && ACTIVE(d.job.status) || (d.queue || []).length || (d.builds || []).length) return false;
+  return (location.hash || '#/') === h && !typedField() && !document.querySelector('dialog[open]');
+}
+window.blundrSafe = () => safeToReload(false);
+async function reloadIfSafe() {
+  if (!fresh.stale || fresh.going) return;
+  await routed.catch(() => {});
+  let last = 0; try { last = +sessionStorage.getItem(RELOADED_AT_KEY) || 0; } catch (e) {}
+  if (Date.now() - last > RELOAD_GAP_MS && await safeToReload()) return reloadPage();
+  // the shim's bar already offers its Reload
+  if (fresh.told || fresh.via) return;
+  fresh.told = true;
+  toast('The app was updated — click here to reload', 15000); $('toast').onclick = () => reloadPage();
+}
+async function reloadPage() {
+  if (fresh.going) return;
+  fresh.going = true;
+  try { sessionStorage.setItem(RELOADED_KEY, '1'); sessionStorage.setItem(RELOADED_AT_KEY, String(Date.now())); } catch (e) {}
+  // with a service worker in charge a plain reload gets its kept build again: the shim goes through it (false: no
+  // newer build to go to yet, tried again at the next safe moment)
+  const go = fresh.via || window.blundrReload;
+  if (go && (await go()) === false) {
+    fresh.going = false;
+    try { sessionStorage.removeItem(RELOADED_KEY); sessionStorage.removeItem(RELOADED_AT_KEY); } catch (e) {}
+    return;
+  }
+  if (!go) location.reload();
+}
+try {
+  if (sessionStorage.getItem(RELOADED_KEY)) {
+    sessionStorage.removeItem(RELOADED_KEY);
+    addEventListener('blundrshown', () => toast('Updated to the latest version', 4000), { once: true });
+  }
+} catch (e) {}
+// a tab left open for days never routes: asked again each time it comes back into sight (and the desktop's updater:
+// a release found then downloads by itself)
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) return;
+  checkStale();
+  if (state.update && state.update.enabled) checkUpdate();
+});
 checkStale();
 // the pages visited in this app (for upTo(): where a screen reachable from several places was opened from)
 const visited = [];
