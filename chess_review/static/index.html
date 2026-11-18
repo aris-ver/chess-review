@@ -1607,43 +1607,66 @@ async function checkStale() {
   }
   await reloadIfSafe();
 }
-// web/shim.js: a newer build is kept and waiting (via: how to reload into it), or has taken over this tab
-window.blundrUpdateReady = via => { fresh.stale = true; fresh.via = via; reloadIfSafe(); };
+// web/shim.js: a newer build is kept and waiting (through: the shim's reload into it), or has taken over this tab
+window.blundrUpdateReady = () => { fresh.stale = true; fresh.via = true; reloadIfSafe(); };
 const typedField = () => [...document.querySelectorAll('form input, form textarea')]
   .some(el => !/^(checkbox|radio|range|hidden|file|button|submit|color)$/.test(el.type) && el.value.trim() !== '');
-// own: this tab, about to reload itself, in sight; another tab asking (web/shim.js: the new build taking over reloads
-// every tab) doesn't mind this one being out of sight
-async function safeToReload(own = true) {
+const jobsRunning = d => !!d && (d.job && ACTIVE(d.job.status) || (d.queue || []).length > 0 || (d.builds || []).length > 0);
+// what can be told at once, from what the page holds: a screen to rest on, no drill, no dialog, nothing typed, and no
+// job or build in the last status the page polled (pollBuild asks every 10 s, every second while a build runs)
+const restingNow = () => RESTING.some(r => r.test(location.hash || '#/')) && !dr.drill && !document.querySelector('dialog[open]')
+  && !typedField() && !jobsRunning(state.status);
+// another tab asking (web/shim.js: the new build taking over reloads every tab): answered at once, with no fetch, so
+// a tab throttled in the background still answers in time; out of sight doesn't matter there
+window.blundrSafe = () => restingNow();
+// this tab, about to reload itself: in sight, and the status asked afresh
+async function safeToReload() {
   const h = location.hash || '#/';
-  if (!RESTING.some(r => r.test(h)) || dr.drill || own && document.hidden || document.querySelector('dialog[open]') || typedField()) return false;
+  if (document.hidden || !restingNow()) return false;
   let d; try { d = await (await fetch('api/status')).json(); } catch (e) { return false; }
-  if (d.job && ACTIVE(d.job.status) || (d.queue || []).length || (d.builds || []).length) return false;
-  return (location.hash || '#/') === h && !typedField() && !document.querySelector('dialog[open]');
+  return !jobsRunning(d) && (location.hash || '#/') === h && restingNow();
 }
-window.blundrSafe = () => safeToReload(false);
+// when this tab last reloaded by itself: sessionStorage, else window.name (it too lasts through a reload of the tab),
+// and this page's memory
+let reloadedAtMem = 0;
+const reloadedAt = () => {
+  let s = 0; try { s = +sessionStorage.getItem(RELOADED_AT_KEY) || 0; } catch (e) {}
+  const n = /^blundrUpdatedAt=(\d+)$/.exec(window.name || '');
+  return Math.max(s, n ? +n[1] : 0, reloadedAtMem);
+};
+const noteReloaded = on => {
+  reloadedAtMem = on ? Date.now() : 0;
+  try {
+    if (on) { sessionStorage.setItem(RELOADED_KEY, '1'); sessionStorage.setItem(RELOADED_AT_KEY, String(reloadedAtMem)); }
+    else { sessionStorage.removeItem(RELOADED_KEY); sessionStorage.removeItem(RELOADED_AT_KEY); }
+  } catch (e) {
+    if (!window.name || /^blundrUpdatedAt=/.test(window.name)) window.name = on ? 'blundrUpdatedAt=' + reloadedAtMem : '';
+  }
+};
 async function reloadIfSafe() {
   if (!fresh.stale || fresh.going) return;
   await routed.catch(() => {});
-  let last = 0; try { last = +sessionStorage.getItem(RELOADED_AT_KEY) || 0; } catch (e) {}
-  if (Date.now() - last > RELOAD_GAP_MS && await safeToReload()) return reloadPage();
+  if (Date.now() - reloadedAt() > RELOAD_GAP_MS && await safeToReload()) return reloadPage();
   // the shim's bar already offers its Reload
   if (fresh.told || fresh.via) return;
   fresh.told = true;
-  toast('The app was updated — click here to reload', 15000); $('toast').onclick = () => reloadPage();
+  toast('The app was updated — click here to reload', 15000); $('toast').onclick = () => reloadPage(true);
 }
-async function reloadPage() {
+// asked: a click, which always reloads. Otherwise the safe moment found a moment ago is checked again right before
+// the reload goes (and, through the shim, before the new build takes over): the user may have opened a puzzle since.
+async function reloadPage(asked = false) {
   if (fresh.going) return;
   fresh.going = true;
-  try { sessionStorage.setItem(RELOADED_KEY, '1'); sessionStorage.setItem(RELOADED_AT_KEY, String(Date.now())); } catch (e) {}
+  const h = location.hash || '#/';
+  const still = () => asked || (location.hash || '#/') === h && restingNow();
+  noteReloaded(true);
   // with a service worker in charge a plain reload gets its kept build again: the shim goes through it (false: no
-  // newer build to go to yet, tried again at the next safe moment)
-  const go = fresh.via || window.blundrReload;
-  if (go && (await go()) === false) {
-    fresh.going = false;
-    try { sessionStorage.removeItem(RELOADED_KEY); sessionStorage.removeItem(RELOADED_AT_KEY); } catch (e) {}
-    return;
-  }
-  if (!go) location.reload();
+  // newer build to go to yet, or no longer a safe moment: tried again at the next one)
+  const ok = window.blundrReload ? await window.blundrReload(asked, still) : still() && (location.reload(), true);
+  if (ok !== false) return;
+  if (asked) { location.reload(); return; }
+  fresh.going = false;
+  noteReloaded(false);
 }
 try {
   if (sessionStorage.getItem(RELOADED_KEY)) {

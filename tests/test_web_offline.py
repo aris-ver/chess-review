@@ -421,6 +421,57 @@ def test_a_deploy_reloads_by_itself_only_at_a_safe_moment(pwr, server, builds, s
         browser.close()
 
 
+@pytest.mark.parametrize("sw", ["service worker", "none"])
+def test_a_reload_by_itself_never_lands_mid_puzzle_and_a_click_always_reloads(pwr, server, builds, sw):
+    """The safe moment is asked again right before the reload goes (and before the new build takes over): Home, then a
+    puzzle opened a quarter of a second later, while the reload is on its way, keeps the puzzle. The toast's click
+    reloads whatever the screen, through the new build taking over when there is a service worker."""
+    a, b = offline_list(builds["a"]), offline_list(builds["b"])
+    browser = launch(pwr, "chromium")
+    ctx = browser.new_context(user_agent=LITE, viewport={"width": 390, "height": 844}, is_mobile=True, has_touch=True,
+                              service_workers="allow" if sw == "service worker" else "block")
+    try:
+        page = ctx.new_page()
+        loads = []
+        page.on("load", lambda p: loads.append(p.url))
+        if sw == "service worker":
+            first_visit(page, server.url, a["version"])
+        page.goto("about:blank")
+        page.goto(server.url + "#/settings")
+        page.wait_for_function(BOOTED, timeout=60_000)
+        (builds["b"] / "index.html").touch()
+        server.root = builds["b"]
+        if sw == "service worker":
+            # b installed and waiting while the page is on Settings (not a screen to reload on): the bar offers it.
+            # Home, and a puzzle opened 250 ms later, while the reload by itself is on its way (asking the other
+            # tabs, the new build taking over): the puzzle stays, the page with it
+            page.evaluate("navigator.serviceWorker.getRegistration().then(r => r.update())")
+            page.wait_for_selector(READY_TO_RELOAD, timeout=60_000)
+            n = len(loads)
+            for attempt in range(3):
+                page.evaluate("() => { location.hash = '#/'; setTimeout(() => { location.hash = '#/puzzles'; }, 250); }")
+                page.wait_for_function("location.hash.startsWith('#/puzzles') && !!state.game && !!state.game.puzzle", timeout=60_000)
+                stays(page, 3000)
+                assert len(loads) == n, f"reloaded mid-puzzle (attempt {attempt}): {loads}"
+                assert page.evaluate(SEEN)["page"] == a["version"]
+                go(page, "#/settings")
+            page.evaluate("fresh.via = false")       # the toast, which the bar's being up keeps away
+        # mid-puzzle the toast's click reloads, into b (without a service worker the HEAD made the page stale)
+        go(page, "#/puzzles")
+        page.wait_for_function("!!state.game && !!state.game.puzzle", timeout=60_000)
+        page.evaluate("fresh.stale = true; fresh.told = false; reloadIfSafe()")
+        toast(page, "The app was updated", timeout=10_000)
+        with page.expect_event("load", timeout=120_000):
+            page.click("#toast")
+        page.wait_for_function(BOOTED, timeout=60_000)
+        toast(page, "Updated to the latest version", timeout=10_000)
+        assert page.evaluate(SEEN)["page"] == b["version"]
+        assert "#/puzzles" in page.url
+    finally:
+        ctx.close()
+        browser.close()
+
+
 def test_a_slow_network_does_not_hold_the_page_back(pwr, server, builds):
     """The page waits a few seconds at most for the network before the kept one is shown."""
     a = offline_list(builds["a"])

@@ -418,6 +418,9 @@
     sw.addEventListener('controllerchange', () => {
       changed = true;
       if (!had || reloading) return;
+      // another tab put the new build in charge after asking this one; should this one have moved on to a drill or a
+      // puzzle since, it reloads at its next safe moment instead (index.html)
+      if (window.blundrSafe && !window.blundrSafe() && window.blundrUpdateReady) { window.blundrUpdateReady(); return; }
       reloading = true;
       try { sessionStorage.setItem('blundrUpdated', '1'); } catch (e) {}     // index.html says so once it's back
       location.reload();
@@ -433,7 +436,7 @@
     const CHANNEL = 'blundr-update', ASK_MS = 500;
     const others = typeof BroadcastChannel === 'function' ? new BroadcastChannel(CHANNEL) : null;
     if (others) others.onmessage = async e => {
-      if (e.data && e.data.ask) others.postMessage({ id: e.data.ask, safe: window.blundrSafe ? await window.blundrSafe() : true });
+      if (e.data && e.data.ask) others.postMessage({ id: e.data.ask, safe: window.blundrSafe ? window.blundrSafe() : true });
     };
     const othersSafe = () => new Promise(resolve => {
       if (!others) return resolve(true);
@@ -447,21 +450,27 @@
     // (offline.js's page()), so a newer one waiting is put in charge first. False when there is none to go to yet (none
     // on the server, offline, still installing: offer() comes once it is in) or, unless asked for (the bar's Reload),
     // another tab isn't at a safe moment: the page carries on as it is. Never waits on an install, which may take a
-    // while: by then the page may be mid-drill.
-    window.blundrReload = async (asked = false) => {
+    // while: by then the page may be mid-drill. still(): whether it is still a safe moment (index.html), asked again
+    // right before the new build takes over and right before the reload, as the steps between take a second or two.
+    window.blundrReload = async (asked = false, still = () => true) => {
       let reg = null;
       try { reg = await sw.getRegistration(base); } catch (e) {}
-      const plain = () => { reloading = true; location.reload(); return true; };
+      const plain = () => { if (!still()) return false; reloading = true; location.reload(); return true; };
       if (!reg || !reg.active || changed) return plain();
       if (!reg.installing && !reg.waiting) { try { await reg.update(); } catch (e) { return false; } }
+      // asked for (a click): an install under way is waited for, then taken
+      if (asked && !reg.waiting && reg.installing) await settled(reg.installing, ['installed', 'activating', 'activated', 'redundant']);
+      if (changed) return plain();
       const w = reg.waiting;
       // no controller: the page came from the network, and the one active now answers the next load
       if (!w) return reg.installing || sw.controller ? false : plain();
       if (!asked && !(await othersSafe())) return false;
+      if (!still()) return false;
       reloading = true;
       w.postMessage('skipWaiting');
       await settled(w, ['activated', 'redundant']);
-      if (w.state === 'redundant' && !changed) { reloading = false; return false; }
+      // the new build is in charge now (changed): the page stays stale, and its next safe moment reloads it plainly
+      if (w.state === 'redundant' && !changed || !still()) { reloading = false; return false; }
       location.reload();
       return true;
     };
@@ -471,7 +480,7 @@
       updateUp = 'ready';
       closed = false;
       update();
-      if (window.blundrUpdateReady) window.blundrUpdateReady(() => window.blundrReload());
+      if (window.blundrUpdateReady) window.blundrUpdateReady();
     };
     // A newer build couldn't be kept (storage full, a file the host doesn't serve as listed): this page's build would
     // stay, deploy after deploy, with only the console saying so. Reload then starts afresh: no service worker, none

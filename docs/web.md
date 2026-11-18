@@ -231,9 +231,14 @@ Fetching games from chess.com or lichess, and the account, still need the networ
   back into sight) answers another `ETag` or `Last-Modified`, or once the service worker has a newer build waiting.
   It then reloads on the way onto a screen to rest on (Home, a profile's Games or Puzzles tab, the Puzzles shelf, a
   pack's stages, the drills list) or as the tab comes back into sight on one, but not with a job or a puzzle build
-  running, text typed in a form or a dialog open; until then it says once that the app was updated. Through the
-  service worker when one is in charge (a plain reload gets its kept page again), and at most once in 10 minutes,
-  so a host still answering with the old page can't loop it. After it, "Updated to the latest version".
+  running, text typed in a form or a dialog open; until then it says once that the app was updated, and a click on
+  that always reloads. Through the service worker when one is in charge (a plain reload gets its kept page again).
+  The steps there take a second or two, so the safe moment is checked again (the same screen, no drill, dialog or
+  typed text, no job in the last status polled) right before the new build takes over and right before the reload;
+  it is kept stale if the user has moved on. Other tabs answer whether they are at a safe moment from what they hold,
+  with no request, so one throttled in the background still answers in time. At most once in 10 minutes (kept in
+  sessionStorage, else `window.name`), so a host still answering with the old page can't loop it. After it, "Updated
+  to the latest version".
 - **An update that can't be kept** (storage full, a file the host serves other than listed or with an HTTP error, its
   cache deleted under it): the failed install tells the open pages and leaves a note (cache `blundr-offline-failed`)
   for the next ones. A failure that may pass (the connection dropped, the page still the old build mid-deploy) leaves
