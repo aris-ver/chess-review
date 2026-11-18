@@ -57,10 +57,10 @@ header h1 a.away:active { background: #38424f; }
 /* Back: one level up (a puzzle -> its pack, a game -> its list), never a replay of the history */
 header button.back { color: var(--text); white-space: nowrap; font-size: 15px; font-weight: 600; padding: 4px 10px; }
 @media (hover: hover) { header button.back:hover { border-color: var(--accent); } }
-/* Back: on an iPhone or iPad the swipe right is the main way back (the browser's own from the edge; a home-screen
-   app, which has none, the page's own from anywhere: swipeBack), so the button is a quiet arrow there; Android has the button as well as its back gesture and
-   the swipe; a desktop, the button. The history is kept one level up at each step (goTo), so every one of them goes
-   where this one would */
+/* Back: on an iPhone or iPad the swipe right from the edge is the main way back (the system's own, in the browser and
+   as a home-screen app), so the button is a quiet arrow there; Android has the button as well as its back gesture and
+   the page's swipe (swipeBack); a desktop, the button. The history is the screens' levels (histFix), so every one of
+   them goes where this one would */
 html.pf-ios header button.back { background: none; border-color: transparent; color: var(--muted); padding: 4px 8px; }
 html.pf-ios header button.back .t { display: none; }
 header h1 a { -webkit-touch-callout: none; }
@@ -1565,13 +1565,75 @@ paintSound();
 
 // ---------- routing ----------
 let routed = Promise.resolve();     // the route to the hash last changed to, drawn (swipeBack: the screen gone back to)
-window.addEventListener('hashchange', () => {
+window.addEventListener('hashchange', e => {
+  if (hist.busy || e.newURL !== location.href) return;     // a step of histFix going back, not a screen to draw
   // the explorer writing its own line into the address (opSync), a move at a time: no snapshot, no update check
   const own = op.live && (location.hash || '#/') === op.wrote;
   if (!own) keepScreen(atHash);
-  routed = assetsReady.then(route);
-  if (!own) checkStale();
+  histFix(() => {
+    routed = assetsReady.then(route);
+    if (!own) checkStale();
+  });
 });
+// ---------- the history as the screens' levels ----------
+// Under each screen's history entry is the screen Back goes to, down to Home at the bottom, however the screen was
+// reached (a tile, a link, the Home button, a reload, an address typed in). So the browser's back, an iPhone's swipe,
+// Android's back and the page's Back all go one level up, never through every screen seen on the way, and on Home
+// there is nothing of the app's left to go back to. Each entry keeps its screens from Home in its state (chain);
+// `visited` is the chain of the one showing.
+const hist = { replaced: false, busy: false };
+function replaceHash(h) { hist.replaced = true; location.replace(h); }     // in place, no entry of its own
+const setChain = c => visited.splice(0, visited.length, ...c);
+const histUrl = h => h === '#/' && !location.hash ? undefined : h;     // Home's bare address stays bare
+// the screens from Home to h, reached from the screens `from` (Home first): those up to the one Back goes to, and h
+function chainTo(h, from = ['#/'], depth = 0) {
+  if (h === '#/') return ['#/'];
+  const keep = visited.slice();
+  setChain([...from, h]);
+  let up; try { up = upTo(h) || '#/'; } finally { setChain(keep); }
+  const i = from.lastIndexOf(up);
+  if (i >= 0) return [...from.slice(0, i + 1), h];
+  return [...(up === h || depth > 8 ? ['#/'] : chainTo(up, ['#/'], depth + 1)), h];
+}
+// The page opened (or reloaded) on h: the levels under it put in, unseen, so Back from a link to a puzzle goes to its pack
+function histInit() {
+  const h = location.hash || '#/', st = history.state;
+  if (st && Array.isArray(st.chain) && st.chain[st.chain.length - 1] === h) { setChain(st.chain); return; }
+  const c = chainTo(h);
+  history.replaceState({ chain: ['#/'] }, '', c.length > 1 ? '#/' : undefined);
+  for (let k = 1; k < c.length; k++) history.pushState({ chain: c.slice(0, k + 1) }, '', c[k]);
+  setChain(c);
+}
+// A new screen's entry: the history made the chain it should be. Back or forward to an entry of ours is already
+// right. Else the entries that aren't its levels go (history.go, which ends in a popstate) and the missing ones go in.
+function histFix(then) {
+  const h = location.hash || '#/', st = history.state, replaced = hist.replaced;
+  hist.replaced = false;
+  if (st && Array.isArray(st.chain) && st.chain[st.chain.length - 1] === h) { setChain(st.chain); return then(); }
+  const S = visited.length ? visited.slice() : ['#/'];
+  const R = [...(replaced ? S.slice(0, -1) : S), h];     // the history as it is now, from Home
+  const C = chainTo(h, S);                                // and as it should be
+  let p = 0;
+  while (p < R.length && p < C.length && R[p] === C[p]) p++;
+  const L = Math.min(p, C.length - 1), steps = R.length - 1 - L;
+  const finish = () => {
+    history.replaceState({ chain: C.slice(0, L + 1) }, '', histUrl(C[L]));
+    for (let k = L + 1; k < C.length; k++) history.pushState({ chain: C.slice(0, k + 1) }, '', C[k]);
+    setChain(C);
+    then();
+  };
+  if (!steps) return finish();
+  hist.busy = true;
+  let done = false, t = 0;
+  const landed = () => {
+    if (done) return;
+    done = true; removeEventListener('popstate', landed); clearTimeout(t); hist.busy = false;
+    finish();
+  };
+  addEventListener('popstate', landed);
+  t = setTimeout(landed, 800);     // (should a browser not say it went back)
+  history.go(-steps);
+}
 // ---------- a newer page: reloaded into at the first safe moment ----------
 // Stale once the page's Last-Modified or ETag changes (checkStale), or once web/shim.js says a newer build is kept by
 // the service worker (blundrUpdateReady). The page then reloads by itself on the way onto a resting screen, or as the
@@ -1676,9 +1738,7 @@ const visited = [];
 let fromHash = null, atHash = null;   // the screen before this one, and this one (showLadder: back from which puzzle)
 function noteVisit(h) {
   if (h !== atHash) { fromHash = atHash; atHash = h; }
-  if (visited.length > 1 && visited[visited.length - 2] === h) visited.pop();   // went back (browser, Alt+Left)
-  else if (visited[visited.length - 1] !== h) visited.push(h);
-  updateBack();
+  updateBack();     // (visited: histFix keeps it)
 }
 // Back goes one level up, towards Home -- a puzzle to its pack, a pack to the shelf, a game to its list -- never back
 // through every puzzle opened on the way. A screen opened from more than one place (the daily, the sandbox, settings)
@@ -1733,18 +1793,19 @@ function goBack() {
   else location.hash = to;
 }
 $('b-back').onclick = goBack;
-// Swipe right to go back, from anywhere on a phone or tablet (the main way back on an iPhone: its button is quiet).
-// Not from what a finger drags sideways itself (the stages, a board, anything that scrolls sideways, a slider), not
-// once it turns out a scroll (it never blocks one) or a pinch, and only where there is somewhere to go back to (on
-// Home there isn't). It needs 70 px to the right, within 30 degrees of level. Not in an iPhone's browser at all: it has
-// its own swipe back from the edge, which goes where this would, and the two can't be kept apart (it takes a thumb
-// starting well in from the edge, and the page still gets the touch, so both moved). A home-screen app has none.
+// Swipe right to go back, from anywhere on an Android phone or tablet. Not from what a finger drags sideways itself
+// (the stages, a board, anything that scrolls sideways, a slider), not from the screen's edges (Android's own back
+// gesture starts there), not once it turns out a scroll (it never blocks one) or a pinch, and only where there is
+// somewhere to go back to (on Home there isn't). It needs 70 px to the right, within 30 degrees of level. Never on an
+// iPhone or iPad, in the browser or as a home-screen app: both have their own swipe back from the edge, which goes
+// where this would (the history is the screens' levels: histFix), and the two can't be kept apart (it takes a thumb
+// starting well in from the edge, and the page still gets the touch, so both screens slid at once).
 // As on an iPhone the screen follows the finger and the one it goes back to peeks in under it; let go past the 70 px
 // and the one slides off, else back. With reduced motion nothing slides: the one gone back to fades in over it.
 // The screens share their sections and draw them anew, so the one gone back to isn't there until it's back: what
 // peeks in is a copy of it as it was left (keepScreen), or the bare page for one not seen yet (a link to a puzzle).
-const SWIPE = PLATFORM === 'android'
-  || PLATFORM === 'ios' && (navigator.standalone === true || matchMedia('(display-mode: standalone)').matches);
+const SWIPE = PLATFORM === 'android';
+const SWIPE_EDGE = 28;     // px at either side left to Android's own back gesture
 const shots = new Map();      // hash -> the screen as it was left: { el (a body, unseen), scrolls }; the last 8
 function keepScreen(h) {
   if (!SWIPE || !h) return;
@@ -1829,7 +1890,7 @@ function keepScreen(h) {
     if (sw) cancel();
     if (busy || e.touches.length !== 1 || !upTo() || !$('home').classList.contains('hidden')) return;   // (Home, whatever the address says)
     const t = e.touches[0];
-    if (draggable(e.target)) return;
+    if (t.clientX < SWIPE_EDGE || t.clientX > innerWidth - SWIPE_EDGE || draggable(e.target)) return;
     sw = { x: t.clientX, y: t.clientY, dx: 0, dy: 0, on: false };
   }, { passive: true });
   document.addEventListener('touchmove', e => {
@@ -1865,11 +1926,7 @@ function keepScreen(h) {
 function goTo(h) {
   const here = location.hash || '#/', up = upTo(here) || '#/';
   if (visited.length > 1 && visited[visited.length - 2] === h) { history.back(); return; }
-  if (h === up || (upTo(h) || '#/') === up) {
-    if (visited[visited.length - 1] === here) visited.pop();
-    location.replace(h);
-    return;
-  }
+  if (h === up || (upTo(h) || '#/') === up) { replaceHash(h); return; }
   location.hash = h;
 }
 async function route() {
@@ -2508,9 +2565,8 @@ function opSync() {
   if (!op.live || !state.game || !state.game.openings) return;
   const h = opHash();
   if ((location.hash || '#/') === h) return;
-  if (visited[visited.length - 1] === atHash) visited[visited.length - 1] = h;
   atHash = h; op.wrote = h;
-  location.replace(h);
+  replaceHash(h);
 }
 // one position's numbers, once a visit: null when the request failed (said in a toast), {error, status} when refused
 async function opFetch(moves) {
@@ -2545,7 +2601,7 @@ async function showOpenings(pid, moves, ply, colour) {
   const h = location.hash, d = await opFetch(moves);
   if (location.hash !== h) return;
   if (!d || d.error) {
-    if (d && d.status === 400 && moves.length) { toast(d.error); location.replace(`#/p/${pid}/openings`); return; }
+    if (d && d.status === 400 && moves.length) { toast(d.error); replaceHash(`#/p/${pid}/openings`); return; }
     toast(d ? (d.reason === 'no_tree' ? "The opening tree isn't available here." : d.error) : "Couldn't open the explorer.", 5000);
     location.hash = '#/'; return;
   }
@@ -2666,8 +2722,7 @@ const profileName = pid => { const s = (pz.sources || []).find(x => x.profile ==
 // off a dealing URL that dealt nothing: back to `to` if that's where we came from, else in its place
 function leaveDeal(to) {
   if (visited.length > 1 && visited[visited.length - 2] === to) { history.back(); return; }
-  if (visited[visited.length - 1] === location.hash) visited.pop();
-  location.replace(to);
+  replaceHash(to);
 }
 function puzzleGame(p) {
   const opp = p.game && p.game.opponent;
@@ -2718,8 +2773,7 @@ async function showPuzzle(id, source = 'lichess') {
   }
   if (!id) {     // the URL names the puzzle, so a reload keeps it; Back skips the dealing URL that would deal a new one
     pz.pending = d;
-    if (visited[visited.length - 1] === location.hash) visited.pop();
-    location.replace('#/puzzles/' + d.puzzle.id);
+    replaceHash('#/puzzles/' + d.puzzle.id);
     return;
   }
   startPuzzle(d.puzzle, d.stats);
@@ -3380,7 +3434,7 @@ async function fetchDrill(ending) {
   catch (e) { return { r: { ok: false, status: 0 }, d: { error: String(e.message || e) } }; }
 }
 async function openDrill(ending) {
-  if (!DRILL_ENDINGS[ending]) { location.replace('#/drills'); return; }
+  if (!DRILL_ENDINGS[ending]) { replaceHash('#/drills'); return; }
   const h = location.hash;
   const { r, d } = await fetchDrill(ending);
   if (location.hash !== h) return;
@@ -4004,7 +4058,7 @@ async function showLadder(id) {
   let d; try { d = await loadPack(id); } catch (e) { d = { error: String(e) }; }
   box.style.visibility = '';
   if (location.hash !== h) return;
-  if (!d.pack) { if (!drawn) { toast(d.error || 'No such pack'); location.replace('#/packs'); } return; }
+  if (!d.pack) { if (!drawn) { toast(d.error || 'No such pack'); replaceHash('#/packs'); } return; }
   if (JSON.stringify(d.pack) !== drawn) drawLadder(id, d.pack, fx, drawn ? packStage[id] : back);
 }
 function drawLadder(id, k, fx, want) {
@@ -4171,8 +4225,8 @@ async function playPack(id, stage, n) {
   const h = location.hash;
   if (!k) { try { k = (await loadPack(id)).pack; } catch (e) { k = null; } if (location.hash !== h) return; }
   const s = k && k.stages.find(x => x.n === stage), c = s && s.puzzles[n - 1];
-  if (!c) { toast('No such puzzle'); location.replace(k ? '#/packs/' + id : '#/packs'); return; }
-  if (!s.open) { toast(`Stage ${stage} isn't open yet`); location.replace('#/packs/' + id); return; }
+  if (!c) { toast('No such puzzle'); replaceHash(k ? '#/packs/' + id : '#/packs'); return; }
+  if (!s.open) { toast(`Stage ${stage} isn't open yet`); replaceHash('#/packs/' + id); return; }
   pz.ctx = { kind: 'pack', pack: id, name: k.name, stage, n, size: s.size };
   packStage[id] = stage;
   // opened again from the ladder (or anywhere but the sandbox and settings): a new go, not the last one carried on.
@@ -4184,7 +4238,7 @@ async function playDaily() {
   const h = location.hash;
   let d; try { d = await (await fetch('api/puzzles/daily')).json(); } catch (e) { d = {}; }
   if (location.hash !== h) return;
-  if (!d.id) { toast('No puzzle of the day'); location.replace('#/'); return; }
+  if (!d.id) { toast('No puzzle of the day'); replaceHash('#/'); return; }
   const was = pz.ctx, same = was && was.kind === 'daily' && was.date === d.date && pz.p && pz.p.id === d.id && pz.game;
   if (!(same && was.played)) {     // (a go played here, back from the sandbox, say, stays where it was left)
     pz.ctx = { kind: 'daily', n: d.n, date: d.date, result: d.result, streak: d.streak, best: d.best_streak, played: !!d.result, replay: false, review: !!d.result };
@@ -6387,6 +6441,7 @@ function moveLabel(ply, san) { return `${moveNo(ply)} ${san}`; }
 (async () => {
   const soon = (p, ms) => Promise.race([Promise.resolve(p).catch(() => {}), new Promise(r => setTimeout(r, ms))]);
   const extras = Promise.all([window.accountReady, updateChecked]);
+  histInit();     // the levels under the screen opened on, before it's drawn
   await soon(assetsReady.then(route), 20000);
   await soon(extras, 500);
   const imgs = [...document.querySelectorAll('header img, main > section:not(.hidden) img')].filter(i => !i.complete);
