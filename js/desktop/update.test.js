@@ -144,7 +144,7 @@ test('update: the script never swaps while Blundr (or another copy) runs from th
     // matched by the processes' path in the folder, not by the pid alone (a pid reused by another program is ignored)
     assert.match(s, /\$prefix = \$install\.TrimEnd\('\\'\) \+ '\\'/);
     assert.match(s, /\$p\.StartsWith\(\$prefix, \[StringComparison\]::OrdinalIgnoreCase\)/);
-    const wait = s.indexOf('for ($i = 0; $i -lt 240 -and (Running).Count -gt 0'), guard = s.indexOf('if ($left.Count -gt 0) {');
+    const wait = s.indexOf('while ((Running).Count -gt 0 -and (Get-Date) -lt $until)'), guard = s.indexOf('if ($left.Count -gt 0) {');
     assert.ok(wait > 0 && guard > wait && guard < s.indexOf('Move-Item'), 'checked after the wait, before anything moves');
     const refuse = s.slice(guard, s.indexOf('Start-Sleep -Milliseconds 500', guard));
     assert.match(refuse, /\$_\.Id -eq 9 \}\) \{ Log 'FAILED: Blundr was still running, nothing changed' \}/);
