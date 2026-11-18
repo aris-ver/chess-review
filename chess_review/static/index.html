@@ -357,6 +357,13 @@ table.games tr.unseen td:first-child { box-shadow: inset 3px 0 0 var(--accent); 
   body.openings .review { grid-template-columns: 30px minmax(320px, min(900px, calc(100vh - 240px))) minmax(400px, 540px); }
   body.openings .panel { height: calc(100vh - 148px); } body.hasbar.openings .panel { height: calc(100vh - 200px); }
 }
+/* the explorer's panel keeps the screen's height: its moves table scrolls inside it, and the line's moves get a share,
+   so the move buttons at its foot stay on screen (the table as tall as its rows pushed them off it). Not on a phone
+   upright: the page scrolls there, the buttons are pinned to the bottom */
+@media (min-width: 901px), (orientation: landscape) and (max-height: 500px) {
+  body.openings .panel > .opbox { flex: 1 1 0; min-height: 35%; overflow: auto; }
+  body.openings .review .panel .body { flex: 0 1 auto; min-height: 0; max-height: 35%; }
+}
 /* the player's picture (chess.com's), or their letter */
 .card.profile .av { grid-area: av; width: 36px; height: 36px; border-radius: 50%; object-fit: cover;
   background: var(--panel2); color: var(--muted); display: flex; align-items: center; justify-content: center; font-size: 16px; font-weight: 700; }
@@ -704,7 +711,7 @@ table.games button.an { padding: 3px 9px; font-size: 12px; font-weight: 600; whi
     grid-template-areas: "av who who pin x" "av rat rat rat rat" "av src meta meta meta" "av prog prog prog prog"; }
   .card.profile .ratings { justify-content: flex-start; margin: 1px 0; }
   #pnav a { flex: 1 1 0; justify-content: center; padding: 0 6px; }     /* the three across the screen */
-  /* Train:the big tiles two a row where two fit, one under the other on a phone */
+  /* Train: the big tiles two a row where two fit, one under the other on a phone */
   #home .pztiles { grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
   #home .pztiles .card { padding: 14px 16px; }
   /* analyse: the three on one line, by their short names */
@@ -1624,7 +1631,7 @@ function upLabel(to) {
   if (to === '#/packs') return 'Puzzles';
   if (to === '#/drills') return 'Endings';
   if ((m = to.match(/^#\/packs\/([a-z0-9-]+)$/))) return (packCache[m[1]] || {}).name || 'Pack';
-  if (/^#\/p\/[^/]+\/puzzles$/.test(to)) return 'Personal puzzles';
+  if (/^#\/p\/[^/]+\/puzzles$/.test(to)) return 'Puzzles';     // the profile's tab, as Games and Openings
   if (/^#\/p\/[^/]+$/.test(to)) return 'Games';
   if (/^#\/p\/[^/]+\/openings/.test(to)) return 'Openings';
   if (to.startsWith('#/p/')) return 'Game';
@@ -2188,7 +2195,7 @@ async function renderProfiles(srcs = null) {
     <div class="card profile ${p.pinned ? 'pinned' : ''}" data-id="${p.id}" data-name="${esc(p.username)}" role="button" tabindex="0">
       ${p.avatar ? `<img class="av" src="${esc(p.avatar)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : avatarLetter(p.username)}
       <span class="src">${SOURCE_LOGO[p.source] || ''}${SOURCE_NAME[p.source] || p.source}</span>
-      <span class="who" title="${esc(p.username)}"><span class="name">${esc(p.username)}</span>${due[p.id] ? `<span class="pbadge" title="${due[p.id]} puzzle${due[p.id] > 1 ? 's' : ''} from these games due for review">${due[p.id]} due</span>` : ''}</span>
+      <span class="who" title="${esc(p.username)}"><span class="name">${esc(p.username)}</span>${due[p.id] ? `<span class="pbadge" role="button" tabindex="0" title="${due[p.id]} puzzle${due[p.id] > 1 ? 's' : ''} from these games due for review">${due[p.id]} due</span>` : ''}</span>
       ${ratingsHTML(p.ratings)}
       <div class="progress hidden"><div></div></div>
       <span class="meta" title="${p.played ? `${p.games.toLocaleString()} of them loaded here` : ''}">${(p.played || p.games).toLocaleString()} games · ${p.analysed} analysed${p.unseen && p.unseen.length ? ` · <b style="color:var(--accent)">${p.unseen.length} not opened yet</b>` : ''}</span>
@@ -4201,20 +4208,23 @@ function copyShare() {
 // The one bar over the three (the games list, the puzzles' card, the explorer), under the header; showSection hides
 // it, each of the three shows it. The pasted games' profile has no Openings tab (the explorer leaves it out too), but
 // keeps it while it's open there (a pasted game's Explore link).
-function showPnav(pid, tab) {
+// ask: fetch the reviews due for the badge (the Puzzles tab fetches them itself, and calls pnavDue)
+function showPnav(pid, tab, ask = true) {
   const nav = $('pnav'), tabs = [['games', 'Games', '#/p/' + pid], ['puzzles', 'Puzzles', `#/p/${pid}/puzzles`]];
   if (pid.split('-')[0] !== 'pgn' || tab === 'openings') tabs.push(['openings', 'Openings', opHref(pid)]);
   const html = tabs.map(([t, label, h]) => `<a href="${esc(h)}" data-tab="${t}"${t === tab ? ' class="on" aria-current="page"' : ''}>${label}` +
     (t === 'puzzles' ? '<span class="pbadge hidden"></span>' : '') + '</a>').join('');
   if (nav.dataset.html !== html) { nav.innerHTML = html; nav.dataset.html = html; }     // a redraw of the same tabs keeps the focus
   nav.classList.remove('hidden'); nav.dataset.pid = pid;
-  const due = srcs => {
-    const s = (srcs || []).find(x => x.profile === pid), n = s && s.stats ? s.stats.due : 0, b = nav.querySelector('.pbadge');
-    if (!b) return;
-    b.textContent = n ? `${n} due` : ''; b.classList.toggle('hidden', !n);
-  };
-  due(pz.sources);
-  puzzleSources().then(s => { if (!nav.classList.contains('hidden') && nav.dataset.pid === pid) due(s); });
+  pnavDue(pz.sources);
+  if (ask) puzzleSources().then(s => { if (nav.dataset.pid === pid) pnavDue(s); });
+}
+// the Puzzles tab's badge: the reviews due of the profile the bar is for, from puzzleSources()' list
+function pnavDue(srcs) {
+  const nav = $('pnav'), b = nav.querySelector('.pbadge');
+  if (!b || nav.classList.contains('hidden')) return;
+  const s = (srcs || []).find(x => x.profile === nav.dataset.pid), n = s && s.stats ? s.stats.due : 0;
+  b.textContent = n ? `${n} due` : ''; b.classList.toggle('hidden', !n);
 }
 // a tab: in the place of the one open (they're side by side, not one inside another), and none for the open one
 $('pnav').onclick = e => {
@@ -4240,15 +4250,16 @@ async function showPersonal(pid) {
   // no state.profile: the status poll would take this for the games list, and draw that over it
   state.game = null; state.profile = null; state.games = null; dropVariation(); stopPolling(); stopPlay();
   setContext(false); $('crumb').textContent = profileName(pid);
-  showPnav(pid, 'puzzles');
+  showPnav(pid, 'puzzles', false);
   if (pzPid !== pid) $('pzprofiles').innerHTML = '';     // not the last profile's card while this one's loads
   pzPid = pid;
   await renderPersonal();
 }
 async function renderPersonal() {
-  const pid = pzPid, srcs = (await puzzleSources()).filter(s => s.profile === pid);
+  const pid = pzPid, all = await puzzleSources(), srcs = all.filter(s => s.profile === pid);
   if (pid !== pzPid || $('pzpick').classList.contains('hidden')) return;     // gone to another meanwhile
   $('crumb').textContent = profileName(pid);
+  pnavDue(all);     // the tab's badge with the card (a build's redraw, a reset)
   const st = state.status || {}, builds = (st.builds || []).filter(b => b.profile === pid);
   // a profile still being fetched has no games yet: its card says so
   const waiting = builds.filter(b => !srcs.some(s => s.profile === b.profile)).map(b => ({ id: 'mine:' + b.profile, profile: b.profile, name: b.username,

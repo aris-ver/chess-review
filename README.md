@@ -22,15 +22,18 @@ bash scripts/fetch_book.sh      # the opening book, once
 npm run desktop                 # the Electron app on the checkout's data/ (Stockfish from bin/ or $STOCKFISH)
 ```
 
-The home screen leads with the **profile list** (one per chess.com or lichess user; **+ Add profile** in its
-heading opens the username form, ✕ removes one), pinnable (★) so favourites stay on top in the order they were
-pinned. Below it come the two **Puzzles** tiles, then a row of small buttons for one-off reviews: **Paste a PGN**
+The home screen opens with a **Continue** strip (the one next thing to do: a daily streak at stake, reviews due,
+the drill played last), then the **profile list** (one per chess.com or lichess user; **+ Add profile** in its
+heading opens the username form, ✕ removes one, a badge says how many of its puzzles are due), pinnable (★) so
+favourites stay on top in the order they were pinned. Below it, **Train**: the puzzle of the day, **Puzzles** and
+**Endgame drills**. Last, **Analyse a game or position** folds open on three ways in: **Paste a PGN**
 (opens a box for it; the game lands in a "Pasted games" profile and opens at once), **Set up a position**
 (position editor: piece palette with undo/redo/eraser, side to move, castling rights, an editable FEN box)
 and **From a screenshot** (drop, paste or link a picture of a board; the 8×8 grid is found and every square
 classified against the app's piece silhouettes, in the browser, and the result opens in the editor for a check
 before analysis). A position from the editor opens the **sandbox**: the engine's top 3
-lines and best-move arrows update live as it searches. Open a profile → its games; any game
+lines and best-move arrows update live as it searches. A profile has three tabs: **Games**, **Puzzles** (its
+personal puzzles, below) and **Openings** (the opening explorer over its games; not for pasted games). Its games: any game
 not fully analysed has an **Analyse** button right in the list; open a game → **Analyse game**
 (≈1-2 min for a rapid game on the desktop: MultiPV=3, 1M nodes/position, one engine per core). The board, graph,
 move list and key moments fill in while it runs. **⟳ Refresh games** re-fetches the newest games; nothing is
@@ -49,7 +52,8 @@ different move** — it is evaluated on the spot (`js/server/explore.js`, one mu
 as a variation under the move it branches from; stepping back before the branch discards it.
 `index.html?selftest=1#/game/<id>` runs an in-page smoke test of navigation + exploration.
 
-**Puzzles** come from two tiles on the home screen.
+**Puzzles** come from the home screen's **Puzzles** tile (`#/packs`: the library first, then the puzzle of the day
+and the packs) and from each profile's **Puzzles** tab.
 
 **Puzzle library** (`#/puzzles`): about 32,000 rated puzzles from the Lichess puzzle database (CC0),
 shipped in `chess_review/puzzle_packs/puzzles.json` and picked within ±150 of your puzzle rating, never one
@@ -65,21 +69,22 @@ download (a build tool; it needs pyarrow).
 in stages of 20 puzzles, each a step harder than the last; solving 16 opens the next stage. No puzzle appears in two
 packs. There is also a **puzzle of the day**.
 
-**Personal puzzles** (`#/puzzles/mine`, `js/server/own-puzzles.js`): pick one of your profiles, or type any
-chess.com or lichess username (a new profile, fetched the way **Add a profile** does it). The puzzles are the moves
+**Personal puzzles** (a profile's **Puzzles** tab, `#/p/<id>/puzzles`, `js/server/own-puzzles.js`; the old
+`#/puzzles/mine` goes to the profile with the most reviews due). To make them for any player, add the player as a
+profile, then **Make puzzles** on its tab. The puzzles are the moves
 where the player went wrong while level or better although MultiPV says one move clearly stood out, replayed from the
 opponent's move before. The solution follows the engine's line for as long as each move in it is the only good
 one; the line after it is there to step through with →, and **View in game** opens the review on the move that
 was played. These stay out of the rating: every showing is logged with the profile, and a miss comes back after 1,
 then 3, then 7 days (a miss starts it over); found first time or at the 7-day review, it is learned. **Start the
-reviews over** on a profile's card archives that record, and every puzzle from its games is new again. It doesn't
+reviews over** on the tab archives that record, and every puzzle from its games is new again. It doesn't
 touch the library rating.
 
 Puzzles come only from analysed games, so making them is a background job ("build", in `js/server/jobs.js` and
 `routes-puzzles.js`). It fetches the games of a new username, analyses the games that aren't analysed yet, newest
 first, and reclassifies the profile after each game (at most every 20 s). The puzzles are playable as they appear.
 Then it settles their lines. A bar pinned to the bottom of every screen shows its progress, with **Solve** and
-**Stop** (what is analysed stays; carry on from the profile's card). A build can take hours, so it never makes you
+**Stop** (what is analysed stays; carry on from the profile's Puzzles tab). A build can take hours, so it never makes you
 wait. Analysing a game, refreshing or adding a profile stops it at the next position and gets every core, the bar
 says "paused" while that runs, and the build carries on where it was once it's done. The other options were worse.
 A plain queue would leave an Analyse click waiting behind hours of batch work. Sharing the cores would slow the
