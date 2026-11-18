@@ -67,15 +67,14 @@ header h1 a { -webkit-touch-callout: none; }
 /* the swipe back, as an iPhone's own: the screen follows the finger (over a backing of the page's colour, with a shadow
    on its edge), the one it goes back to peeks in under it, a little behind and dimmed. That one as it was last seen
    (keepScreen): a second body after the page's, so its body.puzzle and the like hold for it alone */
+/* (each moved by its own transform, set by the finger: no style shared down the page, which made every frame restyle it all) */
 html.swiping { overflow-x: hidden; } html.swiping body:not(#swipeprev) { background: none; }     /* (it'd cover them) */
-html.swiping body:not(#swipeprev) > :is(header, main) { transform: translateX(var(--swx, 0)); }
-html.swiping body:not(#swipeprev)::before { content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none; background: var(--bg);
-  transform: translateX(var(--swx, 0)); box-shadow: -8px 0 24px rgba(0,0,0,.5); }
-#swipeprev { position: fixed !important; inset: 0; height: auto !important; overflow: hidden !important; z-index: -2; pointer-events: none;
-  transform: translateX(var(--swp, 0)); opacity: var(--swo, 1); }
+html.swiping body:not(#swipeprev) > :is(header, main), #swipebg, #swipeprev { will-change: transform; }
+#swipebg { position: fixed; inset: 0; z-index: -1; pointer-events: none; background: var(--bg); box-shadow: -8px 0 24px rgba(0,0,0,.5); }
+#swipeprev { position: fixed !important; inset: 0; height: auto !important; overflow: hidden !important; z-index: -2; pointer-events: none; }
 #swipeprev * { animation: none !important; transition: none !important; }
 html.swipeon #swipeprev { z-index: 99999; }     /* over the screen: reduced motion's fade, and while the screen gone back to draws */
-html.swipeease body:not(#swipeprev) > :is(header, main), html.swipeease body:not(#swipeprev)::before, html.swipeease #swipeprev {
+html.swipeease body:not(#swipeprev) > :is(header, main), html.swipeease #swipebg, html.swipeease #swipeprev {
   transition: transform .2s ease-out, opacity .2s ease-out; }
 header .crumb { color: var(--muted); }
 /* games being fetched: a thin line along the header's bottom edge, how far it has got or, when that isn't known, a sliding stripe */
@@ -113,29 +112,28 @@ main { padding: 16px 18px; max-width: 1800px; margin: 0 auto; }
 .home .hhead { display: flex; align-items: center; gap: 10px; margin: 26px 0 10px; }
 .home .hhead h2 { margin: 0; flex: 1; }
 .home .hhead button { padding: 4px 12px; font-size: 13px; }
-.home .hhead button.open, .acts button.open { border-color: var(--accent); color: var(--accent); }
+.home .hhead button.open { border-color: var(--accent); color: var(--accent); }
 .cards.pztiles .card { min-height: 0; }
 .cards.pztiles .card .who { font-size: 15px; }
-/* the four tiles: one shape each (cover, kicker, title, one status line), so they're the same height whatever they say */
+/* the four tiles: one shape each (cover, kicker, title, one status line), so they're the same height whatever they say.
+   Analyse's screen: its three ways in as the same tiles, three a row */
 #home .pztiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-#home .pztiles .card { padding: 14px 16px; height: 88px; }
-#home .pztiles .cover { width: 56px; height: 56px; }
-#home .pztiles .cover img.m { width: 40px; height: 40px; } #home .pztiles .cover img.s1 { width: 22px; height: 22px; } #home .pztiles .cover img.s2 { top: 22px; width: 19px; height: 19px; }
+#anlpage .pztiles { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+:is(#home, #anlpage) .pztiles .card { padding: 14px 16px; height: 88px; }
+:is(#home, #anlpage) .pztiles .cover { width: 56px; height: 56px; }
+:is(#home, #anlpage) .pztiles .cover img.m { width: 40px; height: 40px; } :is(#home, #anlpage) .pztiles .cover img.s1 { width: 22px; height: 22px; } :is(#home, #anlpage) .pztiles .cover img.s2 { top: 22px; width: 19px; height: 19px; }
 #home .pztiles .cover.cal .day { font-size: 24px; margin-bottom: 6px; } #home .pztiles .cover.cal .mon { font-size: 10px; }
-#home .pztiles .cbody { gap: 2px; }
-#home .pztiles .who { font-size: 16px; padding-right: 0; }
-#home .pztiles .desc { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-#card-analyse[aria-expanded=true] { border-color: var(--accent); }
-#analyse { margin-top: 12px; }
+:is(#home, #anlpage) .pztiles .cbody { gap: 2px; }
+:is(#home, #anlpage) .pztiles .who { font-size: 16px; padding-right: 0; }
+:is(#home, #anlpage) .pztiles .desc { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#b-pgn.open { border-color: var(--accent); }     /* the PGN box open under the tiles */
+#pgncard { margin-top: 12px; }
 /* the profiles: one box, a line between the rows */
 #profiles { display: flex; flex-direction: column; gap: 0; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
 /* a keyboard's ring on the tiles; inside the profiles' box, which clips, drawn inside the row */
 #home [role=button]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 #profiles .card.profile:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
-.acts { display: flex; flex-wrap: wrap; gap: 8px; }
-.acts button { padding: 7px 14px; font-size: 14px; }
 .card.drawer { min-height: 0; margin-bottom: 12px; }
-.acts + .card.drawer { margin: 10px 0 0; }
 #addcard form { flex-direction: row; align-items: center; flex-wrap: wrap; }
 #addcard select { width: auto; } #addcard input { flex: 1 1 180px; width: auto; }
 #addcard button { align-self: auto; }
@@ -354,7 +352,6 @@ table.games tr.unseen td:first-child { box-shadow: inset 3px 0 0 var(--accent); 
 /* the player's picture (chess.com's), or their letter */
 .card.profile .av { grid-area: av; width: 36px; height: 36px; border-radius: 50%; object-fit: cover;
   background: var(--panel2); color: var(--muted); display: flex; align-items: center; justify-content: center; font-size: 16px; font-weight: 700; }
-.acts .sm { display: none; }
 .card.profile :is(.pin, .x) { color: var(--muted); padding: 4px 7px; border-radius: 4px; font-size: 14px; line-height: 1.4; }
 .card.profile .pin { grid-area: pin; } .card.profile .x { grid-area: x; }
 @media (hover: hover) { .card.profile .pin:hover { background: var(--bg); color: var(--text); } .card.profile .x:hover { background: var(--bg); color: var(--c-blunder); } }
@@ -687,7 +684,6 @@ table.games button.an { padding: 3px 9px; font-size: 12px; font-weight: 600; whi
   .home .hhead { margin: 18px 0 8px; }
   #addcard form { flex-direction: column; align-items: stretch; }
   #addcard select, #addcard input { width: 100%; flex: none; }
-  .acts button { flex: 1 1 auto; padding: 10px 12px; }
   .cards { grid-template-columns: 1fr; gap: 10px; }
   .card { padding: 12px 14px; min-height: 0; }
   html body :is(input:not([type=checkbox]):not([type=radio]):not([type=range]), select, textarea) { font-size: 16px; }
@@ -699,12 +695,8 @@ table.games button.an { padding: 3px 9px; font-size: 12px; font-weight: 600; whi
   .card.profile .ratings { justify-content: flex-start; margin: 1px 0; }
   #pnav a { flex: 1 1 0; justify-content: center; padding: 0 6px; }     /* the three across the screen */
   /* the tiles: one under the other on a phone, a little shorter */
-  #home .pztiles { grid-template-columns: 1fr; }
-  #home .pztiles .card { padding: 12px 14px; height: 80px; }
-  /* analyse: the three on one line, by their short names */
-  .acts { flex-wrap: nowrap; }
-  .acts button { flex: 1 1 0; min-width: 0; padding: 10px 6px; }
-  .acts .lg { display: none; } .acts .sm { display: inline; }
+  :is(#home, #anlpage) .pztiles { grid-template-columns: 1fr; }
+  :is(#home, #anlpage) .pztiles .card { padding: 12px 14px; height: 80px; }
   /* profile: filters live behind a hamburger; open = one group per line */
   .filters { flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
   .filters .fbtn { display: inline-flex; }
@@ -1113,25 +1105,26 @@ svg.graph { width: 100%; height: 52px; display: block; cursor: pointer; backgrou
         <div class="card pztile covered" id="card-daily" role="button" tabindex="0" title="One tougher puzzle a day, the same for everyone. Share how you did."><div class="cover" data-cover="daily"></div><div class="cbody"><span class="src">Every day</span><span class="who">Puzzle of the day</span><span class="desc" id="card-daily-desc">The same puzzle for everyone</span></div></div>
         <div class="card pztile covered" id="card-packs" role="button" tabindex="0" title="Themed packs that climb stage by stage, and a library near your level."><div class="cover" data-cover="packs"></div><div class="cbody"><span class="src">Lichess</span><span class="who">Puzzles</span><span class="desc" id="card-packs-desc">Themed packs and a library</span></div></div>
         <div class="card pztile covered" id="card-drills" role="button" tabindex="0" title="Play ten basic endings out against a defender that never gives up, from a new position every time."><div class="cover" data-cover="drills"></div><div class="cbody"><span class="src">Develop your instinct</span><span class="who">Endgame drills</span><span class="desc" id="card-drills-desc">Ten basic endings to play out</span></div></div>
-        <div class="card pztile covered" id="card-analyse" role="button" tabindex="0" aria-expanded="false" aria-controls="analyse" title="Paste a PGN, set up a position, or read one off a screenshot."><div class="cover" data-cover="analyse"></div><div class="cbody"><span class="src">Any game</span><span class="who">Analyse</span><span class="desc">A PGN, a position or a screenshot</span></div></div>
-      </div>
-      <div>
-        <div id="analyse" class="hidden">
-          <div class="acts">
-            <button id="b-pgn" title="Paste the PGN of one game or many"><span class="lg">Paste a </span>PGN</button>
-            <button id="card-setup" title="Place the pieces, or paste a FEN, then analyse"><span class="lg">Set up a position</span><span class="sm">Position</span></button>
-            <button id="card-image" title="Read the pieces off a picture of a board, then analyse"><span class="lg">From a screenshot</span><span class="sm">Screenshot</span></button>
-          </div>
-          <div class="card fen pgn drawer hidden" id="pgncard">
-            <form id="pgnform">
-              <textarea name="pgn" rows="5" placeholder="[Event &quot;…&quot;]&#10;1. e4 e5 2. Nf3 …" spellcheck="false" required></textarea>
-              <div class="row"><button type="button" class="cancel">Cancel</button><button class="primary" type="submit">Review</button></div>
-            </form>
-          </div>
-        </div>
+        <div class="card pztile covered" id="card-analyse" role="button" tabindex="0" title="Paste a PGN, set up a position, or read one off a screenshot."><div class="cover" data-cover="analyse"></div><div class="cbody"><span class="src">Any game</span><span class="who">Analyse</span><span class="desc">A PGN, a position or a screenshot</span></div></div>
       </div>
       <div class="ver hidden" id="ver"></div>
       <div class="homefoot"><a href="https://blundr.gr/privacy.html" target="_blank" rel="noopener">Privacy</a><a href="https://blundr.gr/terms.html" target="_blank" rel="noopener">Terms</a><a href="https://github.com/aris-ver/chess-review/blob/main/chess_review/static/themes/CREDITS.md" target="_blank" rel="noopener">Credits</a><a href="https://github.com/aris-ver/chess-review" target="_blank" rel="noopener">Source code</a></div>
+    </div>
+  </section>
+  <section id="anlpage" class="hidden">
+    <div class="home">
+      <h2>Analyse a game or position</h2>
+      <div class="cards pztiles">
+        <div class="card pztile covered" id="b-pgn" role="button" tabindex="0" title="Paste the PGN of one game or many"><div class="cover" data-cover="pgn"></div><div class="cbody"><span class="src">A game</span><span class="who">Paste a PGN</span><span class="desc">One game or many, reviewed</span></div></div>
+        <div class="card pztile covered" id="card-setup" role="button" tabindex="0" title="Place the pieces, or paste a FEN, then analyse"><div class="cover" data-cover="setup"></div><div class="cbody"><span class="src">A position</span><span class="who">Set up a position</span><span class="desc">Place the pieces or paste a FEN</span></div></div>
+        <div class="card pztile covered" id="card-image" role="button" tabindex="0" title="Read the pieces off a picture of a board, then analyse"><div class="cover" data-cover="image"></div><div class="cbody"><span class="src">A picture</span><span class="who">From a screenshot</span><span class="desc">The board read off an image</span></div></div>
+      </div>
+      <div class="card fen pgn drawer hidden" id="pgncard">
+        <form id="pgnform">
+          <textarea name="pgn" rows="8" placeholder="[Event &quot;…&quot;]&#10;1. e4 e5 2. Nf3 …" spellcheck="false" required></textarea>
+          <div class="row"><button type="button" class="cancel">Cancel</button><button class="primary" type="submit">Review</button></div>
+        </form>
+      </div>
     </div>
   </section>
   <section id="pzpacks" class="hidden">
@@ -1669,7 +1662,7 @@ function histFix(then) {
 // so once. The desktop's server sends neither header: its page is never stale (an update restarts the app).
 let pageStamp = null, stampless = false;
 const fresh = { stale: false, told: false, going: false, via: null };
-const RESTING = [/^#\/$/, /^#\/p\/[A-Za-z0-9_.-]+$/, /^#\/p\/[A-Za-z0-9_.-]+\/puzzles$/, /^#\/packs$/, /^#\/packs\/[a-z0-9-]+$/, /^#\/drills$/];
+const RESTING = [/^#\/$/, /^#\/p\/[A-Za-z0-9_.-]+$/, /^#\/p\/[A-Za-z0-9_.-]+\/puzzles$/, /^#\/packs$/, /^#\/packs\/[a-z0-9-]+$/, /^#\/drills$/, /^#\/analyse$/];
 const RELOADED_KEY = 'blundrUpdated', RELOADED_AT_KEY = 'blundrUpdatedAt';
 // one reload by itself per 10 minutes: a host (a CDN edge, a kept build) still answering with the old page can't
 // loop it; past that the page waits for a click
@@ -1776,6 +1769,7 @@ function upTo(h = location.hash || '#/') {
   if (h === '#/') return null;
   if (h === '#/settings' || h.startsWith('#/sandbox/')) return last(v => v !== h && v !== '#/settings') || '#/';
   if (h === '#/daily') return last(v => v === '#/' || v === '#/packs') || '#/';
+  if (h === '#/setup' || h === '#/image') return '#/analyse';     // Analyse's ways in (a position set up from a review: back to it)
   if ((m = h.match(/^#\/packs\/([a-z0-9-]+)\/\d+\/\d+$/))) return '#/packs/' + m[1];
   if (h.startsWith('#/packs/')) return '#/packs';
   if (h.startsWith('#/drills/')) return '#/drills';
@@ -1802,6 +1796,7 @@ function upLabel(to) {
   if (to.startsWith('#/p/')) return 'Game';
   if (to.startsWith('#/sandbox/')) return 'Sandbox';
   if (to === '#/daily') return 'Puzzle of the day';
+  if (to === '#/analyse') return 'Analyse';
   if (to === '#/setup') return 'Set up';
   if (to === '#/image') return 'Screenshot';
   if (to.startsWith('#/puzzles')) return 'Puzzle';
@@ -1849,13 +1844,13 @@ function keepScreen(h) {
     main.append(c);
   }
   main.style.marginTop = -scrollY + 'px';     // the page as it was scrolled, under the header
-  shots.delete(h); shots.set(h, { el, scrolls });
+  shots.delete(h); shots.set(h, { el, scrolls, y: scrollY });
   if (shots.size > 8) shots.delete(shots.keys().next().value);
 }
 (function swipeBack() {
   if (!SWIPE) return;
   const TAN = Math.tan(30 * Math.PI / 180), FAR = 70;
-  const root = document.documentElement, rs = root.style;
+  const root = document.documentElement;
   const OWN = '.sttrack, svg.board, .boardbox, .setup-board, .palette, input, select, textarea, dialog, .vol';
   const draggable = el => {
     for (let e = el; e && e.nodeType === 1 && e !== document.body; e = e.parentElement) {
@@ -1864,21 +1859,30 @@ function keepScreen(h) {
     }
     return false;
   };
-  let sw = null, prev = null, pinned = [], still = false, busy = false;
+  let sw = null, prev = null, shot = null, pinned = [], layers = [], still = false, busy = false, frame = 0;
   const far = s => s.dx > FAR && Math.abs(s.dy) < s.dx * TAN;
-  // the screen dx to the right; the one gone back to from a third of the way behind and dimmed, to in place
+  // the screen (header, main and the backing under them) dx to the right; the one gone back to from a third of the
+  // way behind and dimmed, to in place. Each by its own transform: nothing else on the page is restyled
+  const place = (x, px, o) => {
+    const t = `translate3d(${x}px,0,0)`;
+    for (const e of layers) e.style.transform = t;
+    if (prev) { prev.style.transform = `translate3d(${px}px,0,0)`; prev.style.opacity = o; }
+  };
   const at = dx => {
     const W = innerWidth, p = Math.min(1, Math.max(0, dx) / W);
-    if (still) { rs.setProperty('--swo', Math.min(.9, 2 * p)); return; }
-    rs.setProperty('--swx', Math.max(0, dx) + 'px'); rs.setProperty('--swp', (p - 1) * W * .3 + 'px'); rs.setProperty('--swo', .5 + .5 * p);
+    if (still) { if (prev) prev.style.opacity = Math.min(.9, 2 * p); return; }
+    place(Math.max(0, dx), (p - 1) * W * .3, .5 + .5 * p);
   };
   const show = () => {
-    const shot = shots.get(upTo());
+    shot = shots.get(upTo());
     still = reducedMotion();
     prev = shot ? shot.el : Object.assign(document.createElement('body'), { id: 'swipeprev', inert: true });
     // a bar fixed to the foot of the screen (a phone's move buttons) would go to main's foot once main moves: kept
     pinned = [...document.body.querySelectorAll(':scope > main .panel .nav')].filter(e => getComputedStyle(e).position === 'fixed')
       .map(e => [e, e.getBoundingClientRect(), e.closest('main').getBoundingClientRect()]);
+    const bg = Object.assign(document.createElement('div'), { id: 'swipebg' });
+    document.body.prepend(bg);
+    layers = [bg, ...document.body.querySelectorAll(':scope > :is(header, main)')];
     at(0);
     root.append(prev);
     if (shot) shot.scrolls.forEach(([e, l, t]) => { e.scrollLeft = l; e.scrollTop = t; });
@@ -1886,14 +1890,18 @@ function keepScreen(h) {
     pinned.forEach(([e, r, m]) => Object.assign(e.style, { top: r.top - m.top + 'px', bottom: 'auto', width: r.width + 'px' }));
   };
   const clear = () => {     // the screen back as it was
-    root.classList.remove('swiping', 'swipeease'); rs.removeProperty('--swx');
+    cancelAnimationFrame(frame); frame = 0;
+    root.classList.remove('swiping', 'swipeease');
+    for (const e of layers) if (e.id === 'swipebg') e.remove(); else e.style.transform = '';
+    layers = [];
     pinned.forEach(([e]) => Object.assign(e.style, { top: '', bottom: '', width: '' })); pinned = [];
   };
   const drop = () => {      // and the one gone back to's copy away
     if (prev) prev.remove();
-    prev = null; busy = false; root.classList.remove('swipeon'); rs.removeProperty('--swp'); rs.removeProperty('--swo');
+    prev = null; shot = null; busy = false; root.classList.remove('swipeon');
   };
   const settle = (dx, then) => {
+    cancelAnimationFrame(frame); frame = 0;     // (the finger's last frame, not drawn yet, would undo this)
     if (still) return then();
     root.classList.add('swipeease'); at(dx);
     setTimeout(then, 220);
@@ -1904,14 +1912,18 @@ function keepScreen(h) {
     if (!on) return;
     busy = true; settle(0, () => { clear(); drop(); });
   };
-  // gone: the copy over the screen until the one gone back to is drawn (or 1.5 s, should that hang)
+  // gone: the copy over the screen until the one gone back to is drawn (or 1.5 s, should that hang), and that one
+  // scrolled to where the copy shows it, so it doesn't shift as the copy goes
   const go = () => {
     busy = true;
     settle(innerWidth, () => {
-      root.classList.remove('swipeease'); root.classList.add('swipeon'); rs.setProperty('--swp', '0px'); rs.setProperty('--swo', 1);
+      const y = shot ? shot.y : 0;
+      root.classList.remove('swipeease'); root.classList.add('swipeon');
+      if (prev) { prev.style.transform = 'none'; prev.style.opacity = 1; }
       clear();
+      const done = () => { if (!busy) return; clearTimeout(t); scrollTo(0, y); requestAnimationFrame(drop); };
       const t = setTimeout(drop, 1500);
-      addEventListener('hashchange', () => routed.finally(() => requestAnimationFrame(() => { if (busy) { clearTimeout(t); drop(); } })), { once: true });
+      addEventListener('hashchange', () => routed.finally(() => requestAnimationFrame(done)), { once: true });
       goBack();
     });
   };
@@ -1922,6 +1934,7 @@ function keepScreen(h) {
     if (t.clientX < swipeEdge() || t.clientX > innerWidth - swipeEdge() || draggable(e.target)) return;
     sw = { x: t.clientX, y: t.clientY, dx: 0, dy: 0, on: false };
   }, { passive: true });
+  // once the swipe is on, the page doesn't scroll under it (so not passive), and the screen moves once a frame
   document.addEventListener('touchmove', e => {
     if (!sw) return;
     if (e.touches.length !== 1) { cancel(); return; }     // a pinch
@@ -1932,8 +1945,9 @@ function keepScreen(h) {
       if (sw.dx < 16 || Math.abs(sw.dy) > sw.dx * TAN) return;
       sw.on = true; sw.from = sw.dx; show();     // from here: no jump by the way it took to tell
     }
-    at(sw.dx - sw.from);
-  }, { passive: true });
+    if (e.cancelable) e.preventDefault();
+    if (!frame) frame = requestAnimationFrame(() => { frame = 0; if (sw && sw.on) at(sw.dx - sw.from); });
+  }, { passive: false });
   document.addEventListener('touchend', e => {
     if (!sw || e.touches.length) return;
     if (sw.on && far(sw)) { sw = null; go(); } else cancel();
@@ -1979,6 +1993,7 @@ async function route() {
   const em = h.match(/^#\/setup(?:\?fen=(.+))?$/);
   if (em) { if (em[1] && loadFen(decodeURIComponent(em[1]))) pendingSetup = setupSnapshot(); return showEditor(); }
   if (h === '#/image') return showImagePage();
+  if (h === '#/analyse') return showAnalyse();
   if (h === '#/packs') return showShelf();
   const km = h.match(/^#\/packs\/([a-z0-9-]+)(?:\/(\d+)\/(\d+))?$/);
   if (km) return km[2] ? playPack(km[1], +km[2], +km[3]) : showLadder(km[1]);
@@ -2144,7 +2159,7 @@ function renderUpdate() {
 const updateChecked = checkUpdate();      // its banner sits at the top of home: given a moment before that shows (#boot)
 const fmtNodes = n => n >= 1e6 ? `${(n / 1e6).toFixed(n % 1e6 ? 1 : 0)}M nodes` : `${Math.round(n / 1e3)}k nodes`;
 const engineName = snap => (snap && snap.engine) || (state.engine && state.engine.name) || 'Engine';
-const SECTIONS = ['home', 'list', 'review', 'editor', 'imgpage', 'settings', 'pzpick', 'pzpacks', 'drills'];
+const SECTIONS = ['home', 'anlpage', 'list', 'review', 'editor', 'imgpage', 'settings', 'pzpick', 'pzpacks', 'drills'];
 function showSection(id) {
   SECTIONS.forEach(s => $(s).classList.toggle('hidden', s !== id));
   $('pnav').classList.add('hidden');     // a profile's tabs: its three views show them again (showPnav)
@@ -2164,7 +2179,6 @@ async function showHome() {
 function openDrawer(id, on, focus = true) {
   const card = $(id), btn = $(id === 'addcard' ? 'b-addprofile' : 'b-pgn');
   on = on ?? card.classList.contains('hidden');
-  if (on && id === 'pgncard') openAnalyse(true);
   card.classList.toggle('hidden', !on); btn.classList.toggle('open', on);
   if (on && focus) card.querySelector('input[name=username], textarea').focus();
 }
@@ -2179,17 +2193,24 @@ $('card-image').onclick = () => location.hash = '#/image';
 $('card-daily').onclick = () => location.hash = '#/daily';
 $('card-packs').onclick = () => location.hash = '#/packs';
 $('card-drills').onclick = () => location.hash = '#/drills';
-// Analyse a game or position: its three ways in fold away under the tiles
-function openAnalyse(on) {
-  const b = $('card-analyse');
-  on = on ?? b.getAttribute('aria-expanded') !== 'true';
-  b.setAttribute('aria-expanded', on); $('analyse').classList.toggle('hidden', !on);
+$('card-analyse').onclick = () => location.hash = '#/analyse';
+// Analyse a game or position, a screen of its own: its three ways in (the PGN box opens under them)
+function showAnalyse() {
+  showSection('anlpage');
+  document.body.classList.remove('sandbox', 'puzzle'); stopSandboxStream();
+  state.game = null; state.profile = null; state.games = null; dropVariation(); stopPolling(); stopPlay();
+  setContext(false); $('crumb').textContent = 'Analyse';
+  renderCovers($('anlpage'));
 }
-$('card-analyse').onclick = () => openAnalyse();
-// the home's tiles and rows are divs acting as buttons: Enter or Space opens one, as a click would (the strip has its own)
-$('home').addEventListener('keydown', e => {
+// the tiles and rows are divs acting as buttons: Enter or Space opens one, as a click would (the strip has its own)
+for (const s of ['home', 'anlpage']) $(s).addEventListener('keydown', e => {
   if ((e.key === 'Enter' || e.key === ' ') && e.target.matches('[role=button]:not(#homecont)')) { e.preventDefault(); e.target.click(); }
 });
+// the editor's and the screenshot page's Cancel: one level up (Analyse, or the review a position was set up from)
+for (const a of document.querySelectorAll('#editor a.pbtn[href="#/"], #imgpage a.pbtn[href="#/"]')) {
+  a.href = '#/analyse';
+  a.onclick = e => { e.preventDefault(); goBack(); };
+}
 
 // ---------- settings: pick pieces, board and sounds; the preview shows the pick, Apply makes it the app's ----------
 const settings = { tab: 'pieces', pend: null };
@@ -4003,6 +4024,7 @@ const COVERS = {
   // the home tiles
   'daily': [['wk'], null, '#e8b83a'], 'packs': [['wn', 'wb', 'wr'], null, '#5c9fd6'], 'library': [['wq', 'bk'], null, '#4cc2a8'], 'mine': [['wp', 'bp'], null, '#a879e0'],
   'drills': [['wk', 'wr', 'bk'], null, '#e0a53a'], 'op-home': [['wn', 'wp', 'bp'], null, '#7fb85c'], 'analyse': [['wb', 'bq'], null, '#36bcd8'],
+  'pgn': [['wp', 'bp', 'wn'], null, '#5c9fd6'], 'setup': [['wr', 'bk'], null, '#7fb85c'], 'image': [['wq', 'bb'], null, '#a879e0'],
   // the endgame drills' cards (DRILL_ENDINGS)
   'd-KQRK': [['wq', 'wr', 'bk'], null, '#e8604c'], 'd-KRRK': [['wr', 'wr', 'bk'], null, '#5c9fd6'], 'd-KQK': [['wq', 'bk'], null, '#a879e0'],
   'd-KRK': [['wr', 'bk'], null, '#4cc2a8'], 'd-KPK': [['wp', 'wk'], null, '#e0a53a'], 'd-KPK-hold': [['wk', 'bp'], null, '#8fb4bf'],
