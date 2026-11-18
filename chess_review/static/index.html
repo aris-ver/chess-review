@@ -108,41 +108,30 @@ main { padding: 16px 18px; max-width: 1800px; margin: 0 auto; }
 .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; cursor: default; position: relative; min-height: 96px; display: flex; flex-direction: column; gap: 4px; }
 .card.pztile { cursor: pointer; }
 @media (hover: hover) { .card.pztile:hover { border-color: var(--accent); } }
-/* the profiles first (a row each: their games, puzzles and openings are behind it), then Train (three big tiles),
-   then Analyse folded under its row; the forms open on demand */
+/* the profiles first (a row each: their games, puzzles and openings are behind it), then four equal tiles (the daily,
+   puzzles, drills, analyse), two a row; Analyse's three ways in open under them */
 .home .hhead { display: flex; align-items: center; gap: 10px; margin: 26px 0 10px; }
 .home .hhead h2 { margin: 0; flex: 1; }
 .home .hhead button { padding: 4px 12px; font-size: 13px; }
 .home .hhead button.open, .acts button.open { border-color: var(--accent); color: var(--accent); }
 .cards.pztiles .card { min-height: 0; }
 .cards.pztiles .card .who { font-size: 15px; }
-/* the big tiles: the puzzle of the day across the row, packs and drills side by side under it */
-#home .pztiles .card { padding: 16px 18px; align-items: flex-start; }
-#home .pztiles .card .who { font-size: 17px; }
-#home .pztiles .card.wide { grid-column: 1 / -1; align-items: center; }
-/* the drills' Continue: under its text, so the tile keeps its half of the row */
-#card-drills { flex-wrap: wrap; row-gap: 10px; }
-#card-drills .cbody { flex: 1 1 calc(100% - 78px); }
-#card-drills .go { flex: none; margin-left: 78px; max-width: calc(100% - 78px); padding: 7px 14px; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-#home.cont-drill #b-drill-cont { display: none; }     /* the strip at the top already picks that drill up */
-/* rows: one box, a line between them; the whole row is the button */
-.hrows, #profiles { display: flex; flex-direction: column; gap: 0; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
-.hrow { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 50px; padding: 8px 12px; margin: 0; border: 0; border-top: 1px solid var(--line); border-radius: 0;
-  background: none; color: var(--text); font: inherit; text-align: left; cursor: pointer; }
-.hrows > .hrow:first-child { border-top: 0; }
-@media (hover: hover) { .hrow:hover { background: var(--panel2); } }
-.hrow.pressed { transform: none; filter: none; background: var(--panel2); }
-.hrow .who { flex: 1; min-width: 0; font-size: 15px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.hrow .chev { flex: none; width: 14px; text-align: center; color: var(--muted); font-size: 22px; line-height: 1; transition: transform .15s; }
-.hrow .hico { flex: none; width: 32px; height: 32px; border-radius: 6px; display: flex; align-items: center; justify-content: center;
-  background: color-mix(in srgb, var(--accent) 24%, var(--panel2)); border: 1px solid color-mix(in srgb, var(--accent) 60%, transparent); }
-.hrow .hico svg { width: 18px; height: 18px; fill: var(--text); }
-#b-analyse[aria-expanded=true] .chev { transform: rotate(90deg); }
-#analyse { padding: 2px 12px 12px; }
-.hrows.anl { margin-top: 22px; }
-/* a keyboard's ring on the tiles and rows; inside a box that clips, drawn inside the row */
+/* the four tiles: one shape each (cover, kicker, title, one status line), so they're the same height whatever they say */
+#home .pztiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+#home .pztiles .card { padding: 14px 16px; height: 88px; }
+#home .pztiles .cover { width: 56px; height: 56px; }
+#home .pztiles .cover img.m { width: 40px; height: 40px; } #home .pztiles .cover img.s1 { width: 22px; height: 22px; } #home .pztiles .cover img.s2 { top: 22px; width: 19px; height: 19px; }
+#home .pztiles .cover.cal .day { font-size: 24px; margin-bottom: 6px; } #home .pztiles .cover.cal .mon { font-size: 10px; }
+#home .pztiles .cbody { gap: 2px; }
+#home .pztiles .who { font-size: 16px; padding-right: 0; }
+#home .pztiles .desc { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#card-analyse[aria-expanded=true] { border-color: var(--accent); }
+#analyse { margin-top: 12px; }
+/* the profiles: one box, a line between the rows */
+#profiles { display: flex; flex-direction: column; gap: 0; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+/* a keyboard's ring on the tiles; inside the profiles' box, which clips, drawn inside the row */
 #home [role=button]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-#home .hrow:focus-visible, #profiles .card.profile:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+#profiles .card.profile:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .acts { display: flex; flex-wrap: wrap; gap: 8px; }
 .acts button { padding: 7px 14px; font-size: 14px; }
 .card.drawer { min-height: 0; margin-bottom: 12px; }
@@ -709,9 +698,9 @@ table.games button.an { padding: 3px 9px; font-size: 12px; font-weight: 600; whi
     grid-template-areas: "av who who pin x" "av rat rat rat rat" "av src meta meta meta" "av prog prog prog prog"; }
   .card.profile .ratings { justify-content: flex-start; margin: 1px 0; }
   #pnav a { flex: 1 1 0; justify-content: center; padding: 0 6px; }     /* the three across the screen */
-  /* Train: the big tiles two a row where two fit, one under the other on a phone */
-  #home .pztiles { grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
-  #home .pztiles .card { padding: 14px 16px; }
+  /* the tiles: one under the other on a phone, a little shorter */
+  #home .pztiles { grid-template-columns: 1fr; }
+  #home .pztiles .card { padding: 12px 14px; height: 80px; }
   /* analyse: the three on one line, by their short names */
   .acts { flex-wrap: nowrap; }
   .acts button { flex: 1 1 0; min-width: 0; padding: 10px 6px; }
@@ -1119,14 +1108,14 @@ svg.graph { width: 100%; height: 52px; display: block; cursor: pointer; backgrou
         </form>
       </div>
       <div class="cards" id="profiles"><div class="empty">Loading your profiles…</div></div>
-      <h2>Train</h2>
+      <h2>Train and analyse</h2>
       <div class="cards pztiles">
-        <div class="card pztile covered wide" id="card-daily" role="button" tabindex="0"><div class="cover" data-cover="daily"></div><div class="cbody"><span class="src">Every day</span><span class="who">Puzzle of the day</span><span class="desc" id="card-daily-desc">One tougher puzzle a day, the same for everyone. Share how you did.</span></div></div>
-        <div class="card pztile covered" id="card-packs" role="button" tabindex="0"><div class="cover" data-cover="packs"></div><div class="cbody"><span class="src">Lichess</span><span class="who">Puzzles</span><span class="desc" id="card-packs-desc">Themed packs that climb stage by stage, and a library near your level.</span></div></div>
-        <div class="card pztile covered" id="card-drills" role="button" tabindex="0"><div class="cover" data-cover="drills"></div><div class="cbody"><span class="src">Develop your instinct</span><span class="who">Endgame drills</span><span class="desc" id="card-drills-desc">Play ten basic endings out against a defender that never gives up, from a new position every time.</span></div><button class="primary go hidden" id="b-drill-cont"></button></div>
+        <div class="card pztile covered" id="card-daily" role="button" tabindex="0" title="One tougher puzzle a day, the same for everyone. Share how you did."><div class="cover" data-cover="daily"></div><div class="cbody"><span class="src">Every day</span><span class="who">Puzzle of the day</span><span class="desc" id="card-daily-desc">The same puzzle for everyone</span></div></div>
+        <div class="card pztile covered" id="card-packs" role="button" tabindex="0" title="Themed packs that climb stage by stage, and a library near your level."><div class="cover" data-cover="packs"></div><div class="cbody"><span class="src">Lichess</span><span class="who">Puzzles</span><span class="desc" id="card-packs-desc">Themed packs and a library</span></div></div>
+        <div class="card pztile covered" id="card-drills" role="button" tabindex="0" title="Play ten basic endings out against a defender that never gives up, from a new position every time."><div class="cover" data-cover="drills"></div><div class="cbody"><span class="src">Develop your instinct</span><span class="who">Endgame drills</span><span class="desc" id="card-drills-desc">Ten basic endings to play out</span></div></div>
+        <div class="card pztile covered" id="card-analyse" role="button" tabindex="0" aria-expanded="false" aria-controls="analyse" title="Paste a PGN, set up a position, or read one off a screenshot."><div class="cover" data-cover="analyse"></div><div class="cbody"><span class="src">Any game</span><span class="who">Analyse</span><span class="desc">A PGN, a position or a screenshot</span></div></div>
       </div>
-      <div class="hrows anl">
-        <button class="hrow" id="b-analyse" aria-expanded="false" aria-controls="analyse"><span class="hico" aria-hidden="true"><svg viewBox="0 0 16 16"><path d="M1 1h7v7H1zm7 7h7v7H8z"/><path d="M8 1h7v7H8zM1 8h7v7H1z" opacity=".35"/></svg></span><span class="who">Analyse a game or position</span><span class="chev" aria-hidden="true">›</span></button>
+      <div>
         <div id="analyse" class="hidden">
           <div class="acts">
             <button id="b-pgn" title="Paste the PGN of one game or many"><span class="lg">Paste a </span>PGN</button>
@@ -1419,7 +1408,7 @@ const $ = id => document.getElementById(id);
 // Press feedback: what's under a finger or the mouse button gets .pressed at pointerdown and keeps it at least 90 ms,
 // so a quick tap shows too; a touch that turns into a scroll lets go at once (pointercancel). After a click with the
 // pointer, the button or link doesn't keep the focus (no ring left on it: the Home mark showed one after a tap)
-const PRESSABLE = 'button:not(:disabled), a[href], [data-go], [data-act], .card.pztile, .card.profile, .hrow, .tile, .stdots i';
+const PRESSABLE = 'button:not(:disabled), a[href], [data-go], [data-act], .card.pztile, .card.profile, .tile, .stdots i';
 let pressedEl = null, pressedAt = 0;
 function unpress() {
   const el = pressedEl; if (!el) return;
@@ -2104,13 +2093,13 @@ $('card-image').onclick = () => location.hash = '#/image';
 $('card-daily').onclick = () => location.hash = '#/daily';
 $('card-packs').onclick = () => location.hash = '#/packs';
 $('card-drills').onclick = () => location.hash = '#/drills';
-// Analyse a game or position: its three ways in fold away under the one row
+// Analyse a game or position: its three ways in fold away under the tiles
 function openAnalyse(on) {
-  const b = $('b-analyse');
+  const b = $('card-analyse');
   on = on ?? b.getAttribute('aria-expanded') !== 'true';
   b.setAttribute('aria-expanded', on); $('analyse').classList.toggle('hidden', !on);
 }
-$('b-analyse').onclick = () => openAnalyse();
+$('card-analyse').onclick = () => openAnalyse();
 // the home's tiles and rows are divs acting as buttons: Enter or Space opens one, as a click would (the strip has its own)
 $('home').addEventListener('keydown', e => {
   if ((e.key === 'Enter' || e.key === ' ') && e.target.matches('[role=button]:not(#homecont)')) { e.preventDefault(); e.target.click(); }
@@ -2302,7 +2291,7 @@ async function renderProfiles(srcs = null) {
       <span class="who" title="${esc(p.username)}"><span class="name">${esc(p.username)}</span>${due[p.id] ? `<span class="pbadge" role="button" tabindex="0" title="${due[p.id]} puzzle${due[p.id] > 1 ? 's' : ''} from these games due for review">${due[p.id]} due</span>` : ''}</span>
       ${ratingsHTML(p.ratings)}
       <div class="progress hidden"><div></div></div>
-      <span class="meta" title="${p.played ? `${p.games.toLocaleString()} of them loaded here` : ''}">${(p.played || p.games).toLocaleString()} games · ${p.analysed} analysed${p.unseen && p.unseen.length ? ` · <b style="color:var(--accent)">${p.unseen.length} not opened yet</b>` : ''}</span>
+      <span class="meta" title="${p.played ? `${p.games.toLocaleString()} of them loaded here` : ''}">${(p.played || p.games) ? `${(p.played || p.games).toLocaleString()} games · ${p.analysed} analysed` : 'No games yet'}${p.unseen && p.unseen.length ? ` · <b style="color:var(--accent)">${p.unseen.length} not opened yet</b>` : ''}</span>
       <span class="pin" title="${p.pinned ? 'Unpin' : 'Pin to the top'}">${p.pinned ? '★' : '☆'}</span>
       <span class="x" title="Remove this profile (the engine cache is kept)">✕</span>
     </div>`).join('') || `<div class="empty intro"><b>Free, unlimited reviews of your chess.com and Lichess games.</b>Enter a username above to start. No sign-up, and the analysis runs on your own device.<button id="b-sample" type="button">Try a sample game</button></div>`;
@@ -3085,7 +3074,6 @@ function renderHomeNext() {
       who: `${DRILL_ENDINGS[c.ending].name} · ${drillLevelName(c.level, c, 'mid')}` }
     : d && !d.played ? daily('Today', `Puzzle of the day #${d.n} is waiting`) : null;
   el.classList.toggle('hidden', !it);
-  $('home').classList.toggle('cont-drill', !!it && it.go.startsWith('#/drills/'));
   if (!it) return;
   el.innerHTML = `${it.cover}<div class="cbody"><span class="src">${esc(it.src)}</span><span class="who">${esc(it.who)}</span></div><span class="chev" aria-hidden="true">›</span>`;
   el.dataset.go = it.go;
@@ -3099,8 +3087,8 @@ async function renderPuzzleCards(srcs = puzzleSources()) {
   const packs = fetch('api/puzzles/packs').then(r => r.json()).then(d => {
     const dl = d.daily, r = dl.result;
     homeNext.daily = { n: dl.n, streak: dl.streak, played: !!r }; renderHomeNext();
-    $('card-daily-desc').textContent = r ? `#${dl.n} ${r.clean ? 'solved without a mistake' : r.solved ? 'solved' : 'played'}.${dl.streak ? ` 🔥 ${dl.streak}-day streak.` : ''} Open it to share your result.`
-      : `#${dl.n} is waiting.${dl.streak ? ` 🔥 ${dl.streak}-day streak, keep it going.` : ''} One tougher puzzle, the same for everyone today.`;
+    // one line: which one, how it went, the streak
+    $('card-daily-desc').textContent = `#${dl.n} ${r ? (r.clean ? 'solved clean' : r.solved ? 'solved' : 'played') : 'is waiting'}${dl.streak ? ` · 🔥 ${dl.streak}-day streak` : ''}`;
     // the packs done, and those perfect (no totals); none done yet: what the packs are
     const done = d.packs.filter(k => k.done).length, perfect = d.packs.filter(k => k.perfect).length;
     const packs = n => `${n} pack${n > 1 ? 's' : ''}`;     // every one done perfect: just that
@@ -3330,11 +3318,8 @@ async function renderDrillTile() {
   homeNext.drill = played ? drillContinue() : null; renderHomeNext();
   if (!played) return;
   const solved = all.reduce((n, s) => n + s.solved, 0), stars = all.filter(s => s.star).length, clocks = all.filter(s => s.clock_star).length;
-  // what's been done first: a phone shows one line of it
-  $('card-drills-desc').textContent = `${solved} of ${played} solved${stars ? `, ${stars} ★` : ''}${clocks ? `, ${clocks} on the fastest clock` : ''}. Ten basic endings against a defender that never gives up.`;
-  const c = drillContinue(), b = $('b-drill-cont');
-  b.classList.toggle('hidden', !c);
-  if (c) { b.textContent = `Continue: ${DRILL_ENDINGS[c.ending].name}, ${drillLevelName(c.level, c, 'brief')}`; b.onclick = ev => { ev.stopPropagation(); location.hash = '#/drills/' + c.ending; }; }
+  // one line: what's been done (picking the last one up is the strip's job, and the drills page's)
+  $('card-drills-desc').textContent = `${solved} of ${played} solved${stars ? ` · ${stars} ★` : ''}${clocks ? ` · ${clocks} on the fastest clock` : ''}`;
 }
 // where to pick up: the ending played last (one that can be played here), and one not tried yet to suggest
 const drillTs = t => typeof t === 'number' ? t : Date.parse(t) || 0;
@@ -3934,7 +3919,7 @@ const COVERS = {
   'openings': [['wn', 'wp', 'bp']], 'mixed': [['wk', 'bq', 'wn']],
   // the home tiles
   'daily': [['wk'], null, '#e8b83a'], 'packs': [['wn', 'wb', 'wr'], null, '#5c9fd6'], 'library': [['wq', 'bk'], null, '#4cc2a8'], 'mine': [['wp', 'bp'], null, '#a879e0'],
-  'drills': [['wk', 'wr', 'bk'], null, '#e0a53a'], 'op-home': [['wn', 'wp', 'bp'], null, '#7fb85c'],
+  'drills': [['wk', 'wr', 'bk'], null, '#e0a53a'], 'op-home': [['wn', 'wp', 'bp'], null, '#7fb85c'], 'analyse': [['wb', 'bq'], null, '#36bcd8'],
   // the endgame drills' cards (DRILL_ENDINGS)
   'd-KQRK': [['wq', 'wr', 'bk'], null, '#e8604c'], 'd-KRRK': [['wr', 'wr', 'bk'], null, '#5c9fd6'], 'd-KQK': [['wq', 'bk'], null, '#a879e0'],
   'd-KRK': [['wr', 'bk'], null, '#4cc2a8'], 'd-KPK': [['wp', 'wk'], null, '#e0a53a'], 'd-KPK-hold': [['wk', 'bp'], null, '#8fb4bf'],

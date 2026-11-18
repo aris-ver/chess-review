@@ -435,7 +435,7 @@ def test_solved_tiles_look_done_and_first_tries_get_a_star(site, browser):
         page.evaluate("location.hash = '#/'")
         page.wait_for_selector("#home:not(.hidden)")
         home = page.locator("#card-packs-desc").inner_text().strip()     # no pack done yet: what the packs are
-        assert home == "Themed packs that climb stage by stage, and a library near your level.", home
+        assert home == "Themed packs and a library", home
         page.evaluate("""async () => {      // the rest of Mate in one, all first try: a pack done, and perfect
             const post = (u, b) => fetch(u, { method: 'POST', body: JSON.stringify(b) });
             const mates = (await (await fetch('api/puzzles/pack?id=mate-in-one')).json()).pack;
