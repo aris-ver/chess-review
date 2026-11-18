@@ -108,17 +108,44 @@ main { padding: 16px 18px; max-width: 1800px; margin: 0 auto; }
 .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; cursor: default; position: relative; min-height: 96px; display: flex; flex-direction: column; gap: 4px; }
 .card.pztile { cursor: pointer; }
 @media (hover: hover) { .card.pztile:hover { border-color: var(--accent); } }
-/* profiles first, then the two puzzle tiles, then a row of small one-off entries; the forms open on demand */
+/* Train first (three big tiles), then More training (one-line rows), then Your games (a row per profile, and
+   Analyse folded under its row); the forms open on demand */
 .home .hhead { display: flex; align-items: center; gap: 10px; margin: 26px 0 10px; }
 .home .hhead h2 { margin: 0; flex: 1; }
 .home .hhead button { padding: 4px 12px; font-size: 13px; }
 .home .hhead button.open, .acts button.open { border-color: var(--accent); color: var(--accent); }
 .cards.pztiles .card { min-height: 0; }
 .cards.pztiles .card .who { font-size: 15px; }
-/* the endgame drills' tile: the row's width, so it never sits alone after the four puzzle tiles; Continue on its right */
-.cards.pztiles .card.wide { grid-column: 1 / -1; }
-.card.wide .go { flex: none; padding: 7px 14px; font-size: 13px; }
-@media (max-width: 520px) { .card.wide { flex-wrap: wrap; } .cards .card.wide .cbody { flex: 1 1 calc(100% - 78px); } .card.wide .go { margin-left: 78px; } }
+/* the big tiles: the puzzle of the day across the row, packs and drills side by side under it */
+#home .pztiles .card { padding: 16px 18px; align-items: flex-start; }
+#home .pztiles .card .who { font-size: 17px; }
+#home .pztiles .card.wide { grid-column: 1 / -1; align-items: center; }
+/* the drills' Continue: under its text, so the tile keeps its half of the row */
+#card-drills { flex-wrap: wrap; row-gap: 10px; }
+#card-drills .cbody { flex: 1 1 calc(100% - 78px); }
+#card-drills .go { flex: none; margin-left: 78px; max-width: calc(100% - 78px); padding: 7px 14px; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#home.cont-drill #b-drill-cont { display: none; }     /* the strip at the top already picks that drill up */
+/* rows: one box, a line between them; the whole row is the button */
+.hrows, #profiles { display: flex; flex-direction: column; gap: 0; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.hrow { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 50px; padding: 8px 12px; margin: 0; border: 0; border-top: 1px solid var(--line); border-radius: 0;
+  background: none; color: var(--text); font: inherit; text-align: left; cursor: pointer; }
+.hrows > .hrow:first-child { border-top: 0; }
+@media (hover: hover) { .hrow:hover { background: var(--panel2); } }
+.hrow.pressed { transform: none; filter: none; background: var(--panel2); }
+.hrow .cover { zoom: .5; }
+.hrow .who { flex: 1; min-width: 0; font-size: 15px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hrow .hst { flex: none; color: var(--muted); font-size: 13px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.hrow .hst:empty { display: none; }
+.hrow .chev { flex: none; width: 14px; text-align: center; color: var(--muted); font-size: 22px; line-height: 1; transition: transform .15s; }
+.hrow .hico { flex: none; width: 32px; height: 32px; border-radius: 6px; display: flex; align-items: center; justify-content: center;
+  background: color-mix(in srgb, var(--accent) 24%, var(--panel2)); border: 1px solid color-mix(in srgb, var(--accent) 60%, transparent); }
+.hrow .hico svg { width: 18px; height: 18px; fill: var(--text); }
+#b-analyse[aria-expanded=true] .chev { transform: rotate(90deg); }
+#analyse { padding: 2px 12px 12px; }
+.hrows.anl { margin-top: 10px; }
+/* a keyboard's ring on the tiles and rows; inside a box that clips, drawn inside the row */
+#home [role=button]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+#home .hrow:focus-visible, #profiles .card.profile:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .acts { display: flex; flex-wrap: wrap; gap: 8px; }
 .acts button { padding: 7px 14px; font-size: 14px; }
 .card.drawer { min-height: 0; margin-bottom: 12px; }
@@ -266,8 +293,6 @@ body.hasbar #toast { bottom: 72px; }
 .card .src .logo.lichess { fill: var(--text); }
 .card .who { font-size: 17px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-right: 22px; }
 .card .meta { color: var(--muted); font-size: 12px; margin-top: auto; }
-.card .x { position: absolute; top: 8px; right: 8px; color: var(--muted); font-size: 14px; padding: 2px 6px; border-radius: 4px; }
-@media (hover: hover) { .card .x:hover { background: var(--panel2); color: var(--c-blunder); } }
 .card .progress { margin-top: 6px; }
 .card.add, .card.fen { border-style: dashed; justify-content: center; }
 .card.add form, .card.fen form { display: flex; flex-direction: column; gap: 8px; }
@@ -288,13 +313,23 @@ body.hasbar #toast { bottom: 72px; }
 .imgpage .row select { font: inherit; color: var(--text); background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px; }
 .imgpage .st { color: var(--muted); font-size: 12px; }
 .card .desc { color: var(--muted); font-size: 13px; }
-/* profile list: pinned ones first (in the order they were pinned), then the rest newest first */
-.card.profile { cursor: pointer; }
-@media (hover: hover) { .card.profile:hover { border-color: var(--accent); } }
+/* profile list: pinned ones first (in the order they were pinned), then the rest newest first. A row each: the picture,
+   the name over where from and the counts, the ratings on the right, then pin and remove */
+.card.profile { cursor: pointer; display: grid; grid-template-columns: 36px auto minmax(0, 1fr) auto auto auto; align-items: center; gap: 1px 8px;
+  grid-template-areas: "av who who rat pin x" "av src meta rat pin x" "av prog prog prog prog prog";
+  min-height: 0; padding: 8px 6px 8px 12px; border: 0; border-top: 1px solid var(--line); border-radius: 0; background: none; }
+#profiles > .card.profile:first-child { border-top: 0; }
+@media (hover: hover) { .card.profile:hover { background: var(--panel2); } }
+.card.profile.pressed { transform: none; }
 /* a new profile still fetching its games: says so, and doesn't open until they're in */
 .card.profile.loading { cursor: progress; } .card.profile.loading .meta { color: var(--accent); }
-@media (hover: hover) { .card.profile.loading:hover { border-color: var(--line); } }
-.card.profile .who { padding-right: 52px; display: flex; align-items: baseline; gap: 8px; }
+@media (hover: hover) { .card.profile.loading:hover { background: none; } }
+.card.profile .who { grid-area: who; padding-right: 0; font-size: 15px; display: flex; align-items: baseline; gap: 8px; }
+.card.profile .src { grid-area: src; margin-right: -4px; text-transform: none; letter-spacing: 0; font-size: 12px; white-space: nowrap; }
+.card.profile .src::after { content: " ·"; }
+.card.profile .meta { grid-area: meta; margin: 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.card.profile .ratings { grid-area: rat; justify-content: flex-end; gap: 2px 12px; margin: 0 6px 0 8px; }
+.card.profile .progress { grid-area: prog; margin-top: 5px; }
 table.games tr.unseen td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
 .newtag { display: inline-block; margin-left: 6px; background: var(--accent); color: #1b1b1b; font-size: 10px; font-weight: 700; padding: 1px 5px; border-radius: 8px; vertical-align: 1px; }
 /* new games being fetched into a profile (a refresh): a light sweeping along the card's bottom edge, over it, so
@@ -309,13 +344,14 @@ table.games tr.unseen td:first-child { box-shadow: inset 3px 0 0 var(--accent); 
 .card .rc .delta { font-size: 11px; font-weight: 600; }
 .card .rc .delta.up { color: var(--accent); } .card .rc .delta.down { color: var(--c-blunder); } .card .rc .delta.flat { color: var(--muted); }
 .card.profile .who .name { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
-/* the player's picture (chess.com's), or their letter: left of the card, the rest of it beside */
-.card.profile { padding-left: 74px; }
-.card.profile .av { position: absolute; left: 16px; top: 14px; width: 44px; height: 44px; border-radius: 50%; object-fit: cover;
-  background: var(--panel2); color: var(--muted); display: flex; align-items: center; justify-content: center; font-size: 19px; font-weight: 700; }
+/* the player's picture (chess.com's), or their letter */
+.card.profile .av { grid-area: av; width: 36px; height: 36px; border-radius: 50%; object-fit: cover;
+  background: var(--panel2); color: var(--muted); display: flex; align-items: center; justify-content: center; font-size: 16px; font-weight: 700; }
 .acts .sm { display: none; }
-.card.profile .pin { position: absolute; top: 8px; right: 30px; color: var(--muted); padding: 2px 6px; border-radius: 4px; font-size: 14px; line-height: 1.4; }
-@media (hover: hover) { .card.profile .pin:hover { background: var(--panel2); color: var(--text); } } .card.profile.pinned .pin { color: var(--accent); }
+.card.profile :is(.pin, .x) { color: var(--muted); padding: 4px 7px; border-radius: 4px; font-size: 14px; line-height: 1.4; }
+.card.profile .pin { grid-area: pin; } .card.profile .x { grid-area: x; }
+@media (hover: hover) { .card.profile .pin:hover { background: var(--bg); color: var(--text); } .card.profile .x:hover { background: var(--bg); color: var(--c-blunder); } }
+.card.profile.pinned .pin { color: var(--accent); }
 .cards .empty { padding: 10px 12px; color: var(--muted); font-size: 13px; grid-column: 1 / -1; text-align: left; }
 .cards .empty.intro { font-size: 14px; line-height: 1.5; } .cards .empty.intro b { color: var(--text); display: block; font-size: 16px; margin-bottom: 2px; }
 .cards .empty.intro button { display: block; margin-top: 10px; padding: 7px 14px; font-size: 14px; }
@@ -504,7 +540,10 @@ svg.dclk { width: 1em; height: 1em; vertical-align: -.14em; color: #e8b83a; }   
 @media (max-width: 900px) { .dcont .desc { display: none; } }
 .dcont button { padding: 7px 14px; font-size: 13px; }
 .dcont .cover.cal .mon { font-size: 9px; padding: 1px 0; } .dcont .cover.cal .day { font-size: 19px; margin-bottom: 4px; }
-#homecont { display: none; }     /* phones only: a wide screen shows every tile's state at once */
+/* the one next thing to do, at the top of Home: the whole strip is the button */
+#homecont { flex-wrap: nowrap; cursor: pointer; margin: 4px 0 0; border-color: var(--accent); }
+#homecont .cbody { min-width: 0; } #homecont .who { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#homecont .chev { color: var(--accent); font-size: 24px; line-height: 1; flex: none; }
 body.drill .player .cap { display: none; }     /* an ending has no captures to count: the full set would read as all taken */
 body.drill .phead .ptlvl { display: none; }     /* the level is in the box under it (Level 2 of 5) */
 /* a drill's move budget: a block per move allowed */
@@ -646,24 +685,14 @@ table.games button.an { padding: 3px 9px; font-size: 12px; font-weight: 600; whi
   .card { padding: 12px 14px; min-height: 0; }
   html body :is(input:not([type=checkbox]):not([type=radio]):not([type=range]), select, textarea) { font-size: 16px; }
   .card.add button, .card.fen button { align-self: stretch; padding: 10px; }
-  .card .x, .card.profile .pin { font-size: 18px; padding: 6px 10px; top: 2px; }
-  .card .x { right: 2px; } .card.profile .pin { right: 38px; }
-  .card.profile .who { padding-right: 84px; }
-  .card.profile { padding-left: 64px; } .card.profile .av { left: 12px; top: 12px; width: 40px; height: 40px; font-size: 17px; }
-  /* Train: one list of rows, not a stack of cards: a smaller icon, the title, and one line of how it's going */
-  #home .pztiles { grid-template-columns: minmax(0, 1fr); gap: 0; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
-  #home .pztiles > .card { border: 0; border-top: 1px solid var(--line); border-radius: 0; background: none; padding: 9px 12px; gap: 12px; }
-  #home .pztiles > .card:first-child { border-top: 0; }
-  #home .pztiles > .card::after { content: "›"; color: var(--muted); font-size: 22px; line-height: 1; flex: none; }
-  #home .pztiles .cover { zoom: .625; }
-  #home .pztiles .src { display: none; }
-  #home .pztiles .cbody { gap: 1px; }
-  #home .pztiles .desc { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  #home .pztiles .card.wide .go { display: none; }     /* the strip at the top picks the drill up instead */
-  /* the one next thing to do, above the profiles: the whole strip is the button */
-  #homecont { display: flex; flex-wrap: nowrap; cursor: pointer; margin: 4px 0 0; border-color: var(--accent); }
-  #homecont .cbody { min-width: 0; } #homecont .who { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  #homecont .chev { color: var(--accent); font-size: 24px; line-height: 1; flex: none; }
+  .card.profile :is(.pin, .x) { font-size: 18px; padding: 6px 10px; }
+  /* a profile's row: the ratings get a line of their own under the name */
+  .card.profile { grid-template-columns: 36px auto minmax(0, 1fr) auto auto; padding: 8px 2px 8px 12px;
+    grid-template-areas: "av who who pin x" "av rat rat rat rat" "av src meta meta meta" "av prog prog prog prog"; }
+  .card.profile .ratings { justify-content: flex-start; margin: 1px 0; }
+  /* Train: the big tiles two a row where two fit, one under the other on a phone */
+  #home .pztiles { grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+  #home .pztiles .card { padding: 14px 16px; }
   /* analyse: the three on one line, by their short names */
   .acts { flex-wrap: nowrap; }
   .acts button { flex: 1 1 0; min-width: 0; padding: 10px 6px; }
@@ -1054,7 +1083,19 @@ svg.graph { width: 100%; height: 52px; display: block; cursor: pointer; backgrou
     <div class="home">
       <div id="update" class="update hidden"></div>
       <div id="homecont" class="dcont hidden" role="button" tabindex="0"></div>
-      <div class="hhead"><h2>Profiles</h2><button id="b-addprofile" title="Add a chess.com or lichess username">+ Add profile</button></div>
+      <h2>Train</h2>
+      <div class="cards pztiles">
+        <div class="card pztile covered wide" id="card-daily" role="button" tabindex="0"><div class="cover" data-cover="daily"></div><div class="cbody"><span class="src">Every day</span><span class="who">Puzzle of the day</span><span class="desc" id="card-daily-desc">One tougher puzzle a day, the same for everyone. Share how you did.</span></div></div>
+        <div class="card pztile covered" id="card-packs" role="button" tabindex="0"><div class="cover" data-cover="packs"></div><div class="cbody"><span class="src">Lichess</span><span class="who">Puzzle packs</span><span class="desc" id="card-packs-desc">Themes laid out as stages that climb from easy to the very top.</span></div></div>
+        <div class="card pztile covered" id="card-drills" role="button" tabindex="0"><div class="cover" data-cover="drills"></div><div class="cbody"><span class="src">Develop your instinct</span><span class="who">Endgame drills</span><span class="desc" id="card-drills-desc">Play ten basic endings out against a defender that never gives up, from a new position every time.</span></div><button class="primary go hidden" id="b-drill-cont"></button></div>
+      </div>
+      <h2>More training</h2>
+      <div class="hrows">
+        <div class="hrow" id="card-mine" role="button" tabindex="0" title="The moves you missed in a player's games, back until you find them"><div class="cover" data-cover="mine"></div><span class="who">Personal puzzles</span><span class="hst" id="card-mine-desc"></span><span class="chev" aria-hidden="true">›</span></div>
+        <div class="hrow" id="card-openings" role="button" tabindex="0" title="Walk the opening book and see how your own games went from every position"><div class="cover" data-cover="op-home"></div><span class="who">Openings</span><span class="chev" aria-hidden="true">›</span></div>
+        <div class="hrow" id="card-library" role="button" tabindex="0" title="Tactics from Lichess, picked near your level, by theme if you like"><div class="cover" data-cover="library"></div><span class="who">Puzzle library</span><span class="hst" id="card-library-desc"></span><span class="chev" aria-hidden="true">›</span></div>
+      </div>
+      <div class="hhead"><h2>Your games</h2><button id="b-addprofile" title="Add a chess.com or lichess username">+ Add profile</button></div>
       <div class="card add drawer hidden" id="addcard">
         <form id="addform">
           <select name="source"><option value="chesscom">chess.com</option><option value="lichess">lichess</option></select>
@@ -1063,26 +1104,21 @@ svg.graph { width: 100%; height: 52px; display: block; cursor: pointer; backgrou
         </form>
       </div>
       <div class="cards" id="profiles"><div class="empty">Loading your profiles…</div></div>
-      <h2>Train</h2>
-      <div class="cards pztiles">
-        <div class="card pztile covered" id="card-daily"><div class="cover" data-cover="daily"></div><div class="cbody"><span class="src">Every day</span><span class="who">Puzzle of the day</span><span class="desc" id="card-daily-desc">One tougher puzzle a day, the same for everyone. Share how you did.</span></div></div>
-        <div class="card pztile covered" id="card-packs"><div class="cover" data-cover="packs"></div><div class="cbody"><span class="src">Lichess</span><span class="who">Puzzle packs</span><span class="desc" id="card-packs-desc">Themes laid out as stages that climb from easy to the very top.</span></div></div>
-        <div class="card pztile covered" id="card-library"><div class="cover" data-cover="library"></div><div class="cbody"><span class="src">Lichess</span><span class="who">Puzzle library</span><span class="desc" id="card-library-desc">Tactics from Lichess, picked near your level, by theme if you like.</span></div></div>
-        <div class="card pztile covered" id="card-mine"><div class="cover" data-cover="mine"></div><div class="cbody"><span class="src">Your games</span><span class="who">Personal puzzles</span><span class="desc" id="card-mine-desc">The moves you missed in a player's games, from a profile or any username, back until you find them.</span></div></div>
-        <div class="card pztile covered" id="card-openings"><div class="cover" data-cover="op-home"></div><div class="cbody"><span class="src">Your games</span><span class="who">Openings</span><span class="desc" id="card-openings-desc">Walk the opening book and see how your own games went from every position.</span></div></div>
-        <div class="card pztile covered wide" id="card-drills"><div class="cover" data-cover="drills"></div><div class="cbody"><span class="src">Develop your instinct</span><span class="who">Endgame drills</span><span class="desc" id="card-drills-desc">Play ten basic endings out against a defender that never gives up, from a new position every time.</span></div><button class="primary go hidden" id="b-drill-cont"></button></div>
-      </div>
-      <h2>Analyse a game or position</h2>
-      <div class="acts">
-        <button id="b-pgn" title="Paste the PGN of one game or many"><span class="lg">Paste a </span>PGN</button>
-        <button id="card-setup" title="Place the pieces, or paste a FEN, then analyse"><span class="lg">Set up a position</span><span class="sm">Position</span></button>
-        <button id="card-image" title="Read the pieces off a picture of a board, then analyse"><span class="lg">From a screenshot</span><span class="sm">Screenshot</span></button>
-      </div>
-      <div class="card fen pgn drawer hidden" id="pgncard">
-        <form id="pgnform">
-          <textarea name="pgn" rows="5" placeholder="[Event &quot;…&quot;]&#10;1. e4 e5 2. Nf3 …" spellcheck="false" required></textarea>
-          <div class="row"><button type="button" class="cancel">Cancel</button><button class="primary" type="submit">Review</button></div>
-        </form>
+      <div class="hrows anl">
+        <button class="hrow" id="b-analyse" aria-expanded="false" aria-controls="analyse"><span class="hico" aria-hidden="true"><svg viewBox="0 0 16 16"><path d="M1 1h7v7H1zm7 7h7v7H8z"/><path d="M8 1h7v7H8zM1 8h7v7H1z" opacity=".35"/></svg></span><span class="who">Analyse a game or position</span><span class="chev" aria-hidden="true">›</span></button>
+        <div id="analyse" class="hidden">
+          <div class="acts">
+            <button id="b-pgn" title="Paste the PGN of one game or many"><span class="lg">Paste a </span>PGN</button>
+            <button id="card-setup" title="Place the pieces, or paste a FEN, then analyse"><span class="lg">Set up a position</span><span class="sm">Position</span></button>
+            <button id="card-image" title="Read the pieces off a picture of a board, then analyse"><span class="lg">From a screenshot</span><span class="sm">Screenshot</span></button>
+          </div>
+          <div class="card fen pgn drawer hidden" id="pgncard">
+            <form id="pgnform">
+              <textarea name="pgn" rows="5" placeholder="[Event &quot;…&quot;]&#10;1. e4 e5 2. Nf3 …" spellcheck="false" required></textarea>
+              <div class="row"><button type="button" class="cancel">Cancel</button><button class="primary" type="submit">Review</button></div>
+            </form>
+          </div>
+        </div>
       </div>
       <div class="ver hidden" id="ver"></div>
       <div class="homefoot"><a href="https://blundr.gr/privacy.html" target="_blank" rel="noopener">Privacy</a><a href="https://blundr.gr/terms.html" target="_blank" rel="noopener">Terms</a><a href="https://github.com/aris-ver/chess-review/blob/main/chess_review/static/themes/CREDITS.md" target="_blank" rel="noopener">Credits</a><a href="https://github.com/aris-ver/chess-review" target="_blank" rel="noopener">Source code</a></div>
@@ -1363,7 +1399,7 @@ const $ = id => document.getElementById(id);
 // Press feedback: what's under a finger or the mouse button gets .pressed at pointerdown and keeps it at least 90 ms,
 // so a quick tap shows too; a touch that turns into a scroll lets go at once (pointercancel). After a click with the
 // pointer, the button or link doesn't keep the focus (no ring left on it: the Home mark showed one after a tap)
-const PRESSABLE = 'button:not(:disabled), a[href], [data-go], [data-act], .card.pztile, .card.profile, .tile, .stdots i';
+const PRESSABLE = 'button:not(:disabled), a[href], [data-go], [data-act], .card.pztile, .card.profile, .hrow, .tile, .stdots i';
 let pressedEl = null, pressedAt = 0;
 function unpress() {
   const el = pressedEl; if (!el) return;
@@ -1921,6 +1957,7 @@ async function showHome() {
 function openDrawer(id, on, focus = true) {
   const card = $(id), btn = $(id === 'addcard' ? 'b-addprofile' : 'b-pgn');
   on = on ?? card.classList.contains('hidden');
+  if (on && id === 'pgncard') openAnalyse(true);
   card.classList.toggle('hidden', !on); btn.classList.toggle('open', on);
   if (on && focus) card.querySelector('input[name=username], textarea').focus();
 }
@@ -1938,6 +1975,17 @@ $('card-library').onclick = () => location.hash = '#/puzzles';
 $('card-mine').onclick = () => location.hash = '#/puzzles/mine';
 $('card-drills').onclick = () => location.hash = '#/drills';
 $('card-openings').onclick = openOpenings;
+// Analyse a game or position: its three ways in fold away under the one row
+function openAnalyse(on) {
+  const b = $('b-analyse');
+  on = on ?? b.getAttribute('aria-expanded') !== 'true';
+  b.setAttribute('aria-expanded', on); $('analyse').classList.toggle('hidden', !on);
+}
+$('b-analyse').onclick = () => openAnalyse();
+// the home's tiles and rows are divs acting as buttons: Enter or Space opens one, as a click would (the strip has its own)
+$('home').addEventListener('keydown', e => {
+  if ((e.key === 'Enter' || e.key === ' ') && e.target.matches('[role=button]:not(#homecont)')) { e.preventDefault(); e.target.click(); }
+});
 
 // ---------- settings: pick pieces, board and sounds; the preview shows the pick, Apply makes it the app's ----------
 const settings = { tab: 'pieces', pend: null };
@@ -2116,7 +2164,7 @@ async function renderProfiles() {
     return (b.created || '') < (a.created || '') ? -1 : 1;          // the rest: newest first
   });
   $('profiles').innerHTML = ps.map(p => `
-    <div class="card profile ${p.pinned ? 'pinned' : ''}" data-id="${p.id}" data-name="${esc(p.username)}">
+    <div class="card profile ${p.pinned ? 'pinned' : ''}" data-id="${p.id}" data-name="${esc(p.username)}" role="button" tabindex="0">
       ${p.avatar ? `<img class="av" src="${esc(p.avatar)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : avatarLetter(p.username)}
       <span class="src">${SOURCE_LOGO[p.source] || ''}${SOURCE_NAME[p.source] || p.source}</span>
       <span class="who" title="${esc(p.username)}"><span class="name">${esc(p.username)}</span></span>
@@ -2911,6 +2959,7 @@ function renderHomeNext() {
       who: `${DRILL_ENDINGS[c.ending].name} · ${drillLevelName(c.level, c, 'mid')}` }
     : d && !d.played ? daily('Today', `Puzzle of the day #${d.n} is waiting`) : null;
   el.classList.toggle('hidden', !it);
+  $('home').classList.toggle('cont-drill', !!it && it.go.startsWith('#/drills/'));
   if (!it) return;
   el.innerHTML = `${it.cover}<div class="cbody"><span class="src">${esc(it.src)}</span><span class="who">${esc(it.who)}</span></div><span class="chev" aria-hidden="true">›</span>`;
   el.dataset.go = it.go;
@@ -2932,15 +2981,16 @@ async function renderPuzzleCards() {
   }).catch(() => {});
   let st, srcs;
   try { [st, srcs] = await Promise.all([fetch('api/puzzles/themes').then(r => r.json()).then(d => d.stats), puzzleSources()]); } catch (e) { return packs; }
-  $('card-library-desc').textContent = st && st.played ? `${st.solved} solved. Pick a theme, or take them as they come.`
-    : 'Tactics from Lichess, picked near your level, by theme if you like.';
+  $('card-library-desc').textContent = st && st.played ? `${st.solved} solved` : '';
   const mine = (srcs || []).filter(s => s.id !== 'lichess' && s.count);
   const sum = k => mine.reduce((n, s) => n + s.stats[k], 0);
   const total = mine.reduce((n, s) => n + s.count, 0), due = sum('due'), fresh = sum('new');
   homeNext.due = due; renderHomeNext();
   const names = mine.map(s => s.name).join(', ');
-  $('card-mine-desc').textContent = total ? `${due ? `${due} review${due > 1 ? 's' : ''} due · ` : ''}${fresh} new · ${total} puzzle${total > 1 ? 's' : ''} from ${names}'s games.`
-    : 'The moves you missed in a player\'s games, from a profile or any username, back until you find them.';
+  // the row's one short status: the reviews due as a badge, else how many there are
+  $('card-mine-desc').innerHTML = due ? `<span class="pbadge">${due} due</span>` : total ? `${total} puzzle${total > 1 ? 's' : ''}` : '';
+  $('card-mine').title = total ? `${due ? `${due} review${due > 1 ? 's' : ''} due · ` : ''}${fresh} new · ${total} puzzle${total > 1 ? 's' : ''} from ${names}'s games`
+    : 'The moves you missed in a player\'s games, back until you find them';
   return packs;     // the daily's card says which one is waiting: in place before the home screen shows
 }
 
