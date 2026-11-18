@@ -57,9 +57,9 @@ header h1 a.away:active { background: #38424f; }
 /* Back: one level up (a puzzle -> its pack, a game -> its list), never a replay of the history */
 header button.back { color: var(--text); white-space: nowrap; font-size: 15px; font-weight: 600; padding: 4px 10px; }
 @media (hover: hover) { header button.back:hover { border-color: var(--accent); } }
-/* Back: on an iPhone or iPad the swipe right from the edge is the main way back (the system's own, in the browser and
-   as a home-screen app), so the button is a quiet arrow there; Android has the button as well as its back gesture and
-   the page's swipe (swipeBack); a desktop, the button. The history is the screens' levels (histFix), so every one of
+/* Back: on an iPhone or iPad the swipe right is the main way back (in the browser the system's own from the edge, the
+   page's from further in; in the home-screen app the page's alone: swipeBack), so the button is a quiet arrow there; Android has the button as well as its back gesture and
+   the page's swipe; a desktop, the button. The history is the screens' levels (histFix), so every one of
    them goes where this one would */
 html.pf-ios header button.back { background: none; border-color: transparent; color: var(--muted); padding: 4px 8px; }
 html.pf-ios header button.back .t { display: none; }
@@ -1430,6 +1430,24 @@ document.addEventListener('click', e => {
   const el = e.detail && e.target.closest && e.target.closest('a[href], button');
   if (el && document.activeElement === el) el.blur();
 });
+// A tap that opens another screen: the press let go and drawn first, then the click. An iPhone's back swipe slides in a
+// picture of the screen gone back to taken the moment it was left; with the tile still pressed in it, it showed
+// pressed for a moment after every way back. Only for what changes the screen (no click needing the tap's own
+// permission, a share or a sound, comes through here); the keyboard's clicks (detail 0) as they are.
+const NAVIGATES = 'a[href^="#"], [data-go], .card.pztile:not([aria-controls]), .card.profile, #homecont';
+document.addEventListener('click', e => {
+  if (!e.detail || !e.isTrusted || !e.target.closest) return;
+  const pressed = e.target.closest('.pressed');
+  if (!pressed || !e.target.closest(NAVIGATES) || e.target.closest('.card.profile :is(.pin, .x)')) return;   // (a row's pin and remove stay)
+  e.preventDefault(); e.stopImmediatePropagation();
+  if (pressedEl === pressed) pressedEl = null;
+  pressed.classList.remove('pressed');
+  // drawn let go, then on its way (two frames; 60 ms at most, should frames be held up)
+  const target = e.target;
+  let gone = false;
+  const go = () => { if (!gone) { gone = true; target.click(); } };
+  requestAnimationFrame(() => requestAnimationFrame(go)); setTimeout(go, 60);
+}, { capture: true });
 // The platform, for the ways back (html.pf-ios, pf-android, pf-desktop): the UA's client hints where there are some
 // (Chromium), else the user-agent string; an iPad's Safari says it's a Mac, but one with a touch screen
 const PLATFORM = (() => {
@@ -1439,6 +1457,11 @@ const PLATFORM = (() => {
   return 'desktop';
 })();
 document.documentElement.classList.add('pf-' + PLATFORM);
+// Blundr as an app on an iPhone's or iPad's home screen (not in Safari or another browser there): its history is kept
+// to the one entry (histFix), so the system's own swipe back has nothing to go back to and the page's is the only one
+const IOS_APP = PLATFORM === 'ios' && (navigator.standalone === true || matchMedia('(display-mode: standalone)').matches);
+// one level up: back in the history, which is the screens' levels; in the home-screen app, the screen above in place
+const histBack = () => IOS_APP ? replaceHash(visited[visited.length - 2] || '#/') : history.back();
 const state = { profile: null, games: null, username: '', filters: { result:'', colour:'', analysed:'', brilliant:'' }, game: null, ply: 0, flipped: false,
                 sound: true, poll: null,
                 variation: null,      // { basePly, moves: [...] } - a "what if" line branching after basePly main-line moves
@@ -1600,25 +1623,29 @@ function histInit() {
   const h = location.hash || '#/', st = history.state;
   if (st && Array.isArray(st.chain) && st.chain[st.chain.length - 1] === h) { setChain(st.chain); return; }
   const c = chainTo(h);
+  if (IOS_APP) { history.replaceState({ chain: c }, ''); setChain(c); return; }     // the one entry
   history.replaceState({ chain: ['#/'] }, '', c.length > 1 ? '#/' : undefined);
   for (let k = 1; k < c.length; k++) history.pushState({ chain: c.slice(0, k + 1) }, '', c[k]);
   setChain(c);
 }
-// A new screen's entry: the history made the chain it should be. Back or forward to an entry of ours is already
-// right. Else the entries that aren't its levels go (history.go, which ends in a popstate) and the missing ones go in.
+// A new screen's entry: the history made what it should be, the screen's levels (in the home-screen app, the screen
+// alone). Back or forward to an entry of ours is already right. Else the entries that shouldn't be there go
+// (history.go, which ends in a popstate) and the missing ones go in. Each entry's state: the levels up to its screen.
 function histFix(then) {
   const h = location.hash || '#/', st = history.state, replaced = hist.replaced;
   hist.replaced = false;
   if (st && Array.isArray(st.chain) && st.chain[st.chain.length - 1] === h) { setChain(st.chain); return then(); }
-  const S = visited.length ? visited.slice() : ['#/'];
-  const R = [...(replaced ? S.slice(0, -1) : S), h];     // the history as it is now, from Home
-  const C = chainTo(h, S);                                // and as it should be
+  const S = visited.length ? visited.slice() : ['#/'];    // the levels of the screen left
+  const Sh = IOS_APP ? S.slice(-1) : S;                   // its entries in the history
+  const R = [...(replaced ? Sh.slice(0, -1) : Sh), h];    // the history as it is now
+  const C = chainTo(h, S);                                // the new screen's levels
+  const H = IOS_APP ? [h] : C, off = C.length - H.length; // and the history as it should be
   let p = 0;
-  while (p < R.length && p < C.length && R[p] === C[p]) p++;
-  const L = Math.min(p, C.length - 1), steps = R.length - 1 - L;
+  while (p < R.length && p < H.length && R[p] === H[p]) p++;
+  const L = Math.min(p, H.length - 1), steps = R.length - 1 - L;
   const finish = () => {
-    history.replaceState({ chain: C.slice(0, L + 1) }, '', histUrl(C[L]));
-    for (let k = L + 1; k < C.length; k++) history.pushState({ chain: C.slice(0, k + 1) }, '', C[k]);
+    history.replaceState({ chain: C.slice(0, off + L + 1) }, '', histUrl(H[L]));
+    for (let k = L + 1; k < H.length; k++) history.pushState({ chain: C.slice(0, off + k + 1) }, '', H[k]);
     setChain(C);
     then();
   };
@@ -1789,23 +1816,25 @@ function updateBack() {
 }
 function goBack() {
   const to = upTo() || '#/';
-  if (visited.length > 1 && visited[visited.length - 2] === to) history.back();   // the screen before was that one: keep the history tidy
+  if (visited.length > 1 && visited[visited.length - 2] === to) histBack();   // the screen before was that one: keep the history tidy
   else location.hash = to;
 }
 $('b-back').onclick = goBack;
-// Swipe right to go back, from anywhere on an Android phone or tablet. Not from what a finger drags sideways itself
-// (the stages, a board, anything that scrolls sideways, a slider), not from the screen's edges (Android's own back
-// gesture starts there), not once it turns out a scroll (it never blocks one) or a pinch, and only where there is
-// somewhere to go back to (on Home there isn't). It needs 70 px to the right, within 30 degrees of level. Never on an
-// iPhone or iPad, in the browser or as a home-screen app: both have their own swipe back from the edge, which goes
-// where this would (the history is the screens' levels: histFix), and the two can't be kept apart (it takes a thumb
-// starting well in from the edge, and the page still gets the touch, so both screens slid at once).
+// Swipe right to go back, from anywhere on a phone or tablet but the edges. Not from what a finger drags sideways
+// itself (the stages, a board, anything that scrolls sideways, a slider), not once it turns out a scroll (it never
+// blocks one) or a pinch, and only where there is somewhere to go back to (on Home there isn't). It needs 70 px to the
+// right, within 30 degrees of level. The edges are the system's: Android's back gesture, and an iPhone's own swipe
+// back (in the browser and as a home-screen app), which goes where this would (the history is the screens' levels:
+// histFix). In an iPhone's browser that strip is wider: its swipe takes a thumb a little way in from the edge, and the
+// page still gets the touch, so a swipe started there slid both at once. The home-screen app has no strip: its history
+// is the one entry, so the system's swipe has nothing to go back to and this one is the only one.
 // As on an iPhone the screen follows the finger and the one it goes back to peeks in under it; let go past the 70 px
 // and the one slides off, else back. With reduced motion nothing slides: the one gone back to fades in over it.
 // The screens share their sections and draw them anew, so the one gone back to isn't there until it's back: what
 // peeks in is a copy of it as it was left (keepScreen), or the bare page for one not seen yet (a link to a puzzle).
-const SWIPE = PLATFORM === 'android';
-const SWIPE_EDGE = 28;     // px at either side left to Android's own back gesture
+const SWIPE = PLATFORM === 'android' || PLATFORM === 'ios';
+// px at either side left to the system's own back: Android's; an iPhone browser's (at least 50 px, a seventh of the width)
+const swipeEdge = () => IOS_APP ? 0 : PLATFORM === 'ios' ? Math.max(50, innerWidth / 7) : 28;
 const shots = new Map();      // hash -> the screen as it was left: { el (a body, unseen), scrolls }; the last 8
 function keepScreen(h) {
   if (!SWIPE || !h) return;
@@ -1890,7 +1919,7 @@ function keepScreen(h) {
     if (sw) cancel();
     if (busy || e.touches.length !== 1 || !upTo() || !$('home').classList.contains('hidden')) return;   // (Home, whatever the address says)
     const t = e.touches[0];
-    if (t.clientX < SWIPE_EDGE || t.clientX > innerWidth - SWIPE_EDGE || draggable(e.target)) return;
+    if (t.clientX < swipeEdge() || t.clientX > innerWidth - swipeEdge() || draggable(e.target)) return;
     sw = { x: t.clientX, y: t.clientY, dx: 0, dy: 0, on: false };
   }, { passive: true });
   document.addEventListener('touchmove', e => {
@@ -1925,7 +1954,7 @@ function keepScreen(h) {
 // So the history keeps to the levels Back goes by, and the browser's or the phone's back goes where Back would.
 function goTo(h) {
   const here = location.hash || '#/', up = upTo(here) || '#/';
-  if (visited.length > 1 && visited[visited.length - 2] === h) { history.back(); return; }
+  if (visited.length > 1 && visited[visited.length - 2] === h) { histBack(); return; }
   if (h === up || (upTo(h) || '#/') === up) { replaceHash(h); return; }
   location.hash = h;
 }
@@ -2721,7 +2750,7 @@ const dealHash = src => src.startsWith('mine:') ? '#/puzzles/mine/' + src.slice(
 const profileName = pid => { const s = (pz.sources || []).find(x => x.profile === pid); return s ? s.name : (pid || '').replace(/^[a-z]+-/, ''); };
 // off a dealing URL that dealt nothing: back to `to` if that's where we came from, else in its place
 function leaveDeal(to) {
-  if (visited.length > 1 && visited[visited.length - 2] === to) { history.back(); return; }
+  if (visited.length > 1 && visited[visited.length - 2] === to) { histBack(); return; }
   replaceHash(to);
 }
 function puzzleGame(p) {
