@@ -116,9 +116,12 @@ main { padding: 16px 18px; max-width: 1800px; margin: 0 auto; }
 .cards.pztiles .card { min-height: 0; }
 .cards.pztiles .card .who { font-size: 15px; }
 /* the four tiles: one shape each (cover, kicker, title, one status line), so they're the same height whatever they say.
-   Analyse's screen: its three ways in as the same tiles, three a row */
+   Analyse's three ways in: the same tiles, three a row, opened under Home's on a wide screen, a screen of their own on
+   a phone (openAnalyse) */
 #home .pztiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-#anlpage .pztiles { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+#anltiles.pztiles { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+#anlslot { margin-top: 12px; }
+#card-analyse[aria-expanded=true] { border-color: var(--accent); }
 :is(#home, #anlpage) .pztiles .card { padding: 14px 16px; height: 88px; }
 :is(#home, #anlpage) .pztiles .cover { width: 56px; height: 56px; }
 :is(#home, #anlpage) .pztiles .cover img.m { width: 40px; height: 40px; } :is(#home, #anlpage) .pztiles .cover img.s1 { width: 22px; height: 22px; } :is(#home, #anlpage) .pztiles .cover img.s2 { top: 22px; width: 19px; height: 19px; }
@@ -1107,14 +1110,16 @@ svg.graph { width: 100%; height: 52px; display: block; cursor: pointer; backgrou
         <div class="card pztile covered" id="card-drills" role="button" tabindex="0" title="Play ten basic endings out against a defender that never gives up, from a new position every time."><div class="cover" data-cover="drills"></div><div class="cbody"><span class="src">Develop your instinct</span><span class="who">Endgame drills</span><span class="desc" id="card-drills-desc">Ten basic endings to play out</span></div></div>
         <div class="card pztile covered" id="card-analyse" role="button" tabindex="0" title="Paste a PGN, set up a position, or read one off a screenshot."><div class="cover" data-cover="analyse"></div><div class="cbody"><span class="src">Any game</span><span class="who">Analyse</span><span class="desc">A PGN, a position or a screenshot</span></div></div>
       </div>
+      <div id="anlslot" class="hidden"></div>
       <div class="ver hidden" id="ver"></div>
       <div class="homefoot"><a href="https://blundr.gr/privacy.html" target="_blank" rel="noopener">Privacy</a><a href="https://blundr.gr/terms.html" target="_blank" rel="noopener">Terms</a><a href="https://github.com/aris-ver/chess-review/blob/main/chess_review/static/themes/CREDITS.md" target="_blank" rel="noopener">Credits</a><a href="https://github.com/aris-ver/chess-review" target="_blank" rel="noopener">Source code</a></div>
     </div>
   </section>
   <section id="anlpage" class="hidden">
-    <div class="home">
+    <div class="home" id="anlhome">
       <h2>Analyse a game or position</h2>
-      <div class="cards pztiles">
+      <div id="anlbody">
+      <div class="cards pztiles" id="anltiles">
         <div class="card pztile covered" id="b-pgn" role="button" tabindex="0" title="Paste the PGN of one game or many"><div class="cover" data-cover="pgn"></div><div class="cbody"><span class="src">A game</span><span class="who">Paste a PGN</span><span class="desc">One game or many, reviewed</span></div></div>
         <div class="card pztile covered" id="card-setup" role="button" tabindex="0" title="Place the pieces, or paste a FEN, then analyse"><div class="cover" data-cover="setup"></div><div class="cbody"><span class="src">A position</span><span class="who">Set up a position</span><span class="desc">Place the pieces or paste a FEN</span></div></div>
         <div class="card pztile covered" id="card-image" role="button" tabindex="0" title="Read the pieces off a picture of a board, then analyse"><div class="cover" data-cover="image"></div><div class="cbody"><span class="src">A picture</span><span class="who">From a screenshot</span><span class="desc">The board read off an image</span></div></div>
@@ -1124,6 +1129,7 @@ svg.graph { width: 100%; height: 52px; display: block; cursor: pointer; backgrou
           <textarea name="pgn" rows="8" placeholder="[Event &quot;…&quot;]&#10;1. e4 e5 2. Nf3 …" spellcheck="false" required></textarea>
           <div class="row"><button type="button" class="cancel">Cancel</button><button class="primary" type="submit">Review</button></div>
         </form>
+      </div>
       </div>
     </div>
   </section>
@@ -2193,9 +2199,21 @@ $('card-image').onclick = () => location.hash = '#/image';
 $('card-daily').onclick = () => location.hash = '#/daily';
 $('card-packs').onclick = () => location.hash = '#/packs';
 $('card-drills').onclick = () => location.hash = '#/drills';
-$('card-analyse').onclick = () => location.hash = '#/analyse';
-// Analyse a game or position, a screen of its own: its three ways in (the PGN box opens under them)
+// Analyse a game or position: its three ways in (the PGN box opens under them). On a wide screen they open under
+// Home's tiles; on a phone (the layout's own width) they're a screen of their own, #/analyse. One set of tiles, moved
+// to where it shows.
+const PHONE_WIDTH = matchMedia('(max-width: 900px)');
+const anlTo = id => { const b = $('anlbody'); if (b.parentElement !== $(id)) $(id).append(b); };
+function openAnalyse(on) {
+  const t = $('card-analyse');
+  on = on ?? t.getAttribute('aria-expanded') !== 'true';
+  if (on) { anlTo('anlslot'); renderCovers($('anlslot')); }
+  else openDrawer('pgncard', false, false);
+  t.setAttribute('aria-expanded', on); $('anlslot').classList.toggle('hidden', !on);
+}
+$('card-analyse').onclick = () => { if (PHONE_WIDTH.matches) location.hash = '#/analyse'; else openAnalyse(); };
 function showAnalyse() {
+  openAnalyse(false); anlTo('anlhome');
   showSection('anlpage');
   document.body.classList.remove('sandbox', 'puzzle'); stopSandboxStream();
   state.game = null; state.profile = null; state.games = null; dropVariation(); stopPolling(); stopPlay();
