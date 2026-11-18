@@ -115,22 +115,33 @@ main { padding: 16px 18px; max-width: 1800px; margin: 0 auto; }
 .home .hhead button.open { border-color: var(--accent); color: var(--accent); }
 .cards.pztiles .card { min-height: 0; }
 .cards.pztiles .card .who { font-size: 15px; }
-/* the four tiles: one shape each (cover, kicker, title, one status line), so they're the same height whatever they say.
-   Analyse's three ways in: the same tiles, three a row, opened under Home's on a wide screen, a screen of their own on
-   a phone (openAnalyse) */
+/* the four tiles: one shape each (cover, kicker, title, one status line), so they're the same height whatever they say */
 #home .pztiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-#anltiles.pztiles { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-#anlslot { margin-top: 12px; }
-#card-analyse[aria-expanded=true] { border-color: var(--accent); }
-:is(#home, #anlpage) .pztiles .card { padding: 14px 16px; height: 88px; }
-:is(#home, #anlpage) .pztiles .cover { width: 56px; height: 56px; }
-:is(#home, #anlpage) .pztiles .cover img.m { width: 40px; height: 40px; } :is(#home, #anlpage) .pztiles .cover img.s1 { width: 22px; height: 22px; } :is(#home, #anlpage) .pztiles .cover img.s2 { top: 22px; width: 19px; height: 19px; }
+#home .pztiles .card { padding: 14px 16px; height: 88px; }
+#home .pztiles .cover { width: 56px; height: 56px; }
+#home .pztiles .cover img.m { width: 40px; height: 40px; } #home .pztiles .cover img.s1 { width: 22px; height: 22px; } #home .pztiles .cover img.s2 { top: 22px; width: 19px; height: 19px; }
 #home .pztiles .cover.cal .day { font-size: 24px; margin-bottom: 6px; } #home .pztiles .cover.cal .mon { font-size: 10px; }
-:is(#home, #anlpage) .pztiles .cbody { gap: 2px; }
-:is(#home, #anlpage) .pztiles .who { font-size: 16px; padding-right: 0; }
-:is(#home, #anlpage) .pztiles .desc { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-#b-pgn.open { border-color: var(--accent); }     /* the PGN box open under the tiles */
-#pgncard { margin-top: 12px; }
+#home .pztiles .cbody { gap: 2px; }
+#home .pztiles .who { font-size: 16px; padding-right: 0; }
+#home .pztiles .desc { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Analyse's screen, ready to use: a box for a PGN or a FEN, and one for a picture of a board, side by side (on a
+   phone, one under the other) */
+#anlbody { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.card.anlbox { min-height: 0; gap: 8px; }
+.anlbox textarea { font: 13px/1.4 ui-monospace, monospace; color: var(--text); background: var(--panel2); border: 1px solid var(--line);
+  border-radius: 6px; padding: 8px; width: 100%; flex: 1; min-height: 110px; resize: vertical; }
+.anlbox textarea::placeholder { color: var(--muted); font-family: inherit; }
+.anlbox .row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.anlbox .row button { padding: 6px 12px; font-size: 13px; }
+#pgnform .row .primary { margin-left: auto; }
+#pgnform .pbtn { font-size: 13px; }
+.anlpic { border-style: dashed; cursor: pointer; }
+.anlpic.over, .anlpic:focus-visible { border-color: var(--accent); outline: none; }
+.anlpic .t { flex: 1; display: flex; align-items: center; justify-content: center; text-align: center; color: var(--muted); font-size: 14px; min-height: 70px; }
+.anlpic .narrow { display: none; }
+.anlpic .stm { margin-left: auto; color: var(--muted); font-size: 13px; display: flex; align-items: center; gap: 6px; }
+.anlpic select { font: inherit; color: var(--text); background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; padding: 4px 6px; }
+.anlpic .st { color: var(--accent); font-size: 12px; min-height: 0; } .anlpic .st:empty { display: none; }
 /* the profiles: one box, a line between the rows */
 #profiles { display: flex; flex-direction: column; gap: 0; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
 /* a keyboard's ring on the tiles; inside the profiles' box, which clips, drawn inside the row */
@@ -698,8 +709,15 @@ table.games button.an { padding: 3px 9px; font-size: 12px; font-weight: 600; whi
   .card.profile .ratings { justify-content: flex-start; margin: 1px 0; }
   #pnav a { flex: 1 1 0; justify-content: center; padding: 0 6px; }     /* the three across the screen */
   /* the tiles: one under the other on a phone, a little shorter */
-  :is(#home, #anlpage) .pztiles { grid-template-columns: 1fr; }
-  :is(#home, #anlpage) .pztiles .card { padding: 12px 14px; height: 80px; }
+  #home .pztiles { grid-template-columns: 1fr; }
+  #home .pztiles .card { padding: 12px 14px; height: 80px; }
+  /* Analyse on a phone: a screenshot is the usual way in, so its box comes first, its button big; the text box short */
+  #anlbody { grid-template-columns: 1fr; }
+  .anlpic { order: -1; cursor: default; }
+  .anlpic .t { min-height: 0; } .anlpic .wide { display: none; } .anlpic .narrow { display: inline; }
+  #anl-pick { flex: 1 1 100%; padding: 12px; font-size: 15px; font-weight: 700; background: var(--accent); color: #1b1b1b; border-color: var(--accent); }
+  .anlpic .stm { margin-left: 0; }
+  .anlbox textarea { min-height: 0; height: 84px; flex: none; }
   /* profile: filters live behind a hamburger; open = one group per line */
   .filters { flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
   .filters .fbtn { display: inline-flex; }
@@ -1110,7 +1128,6 @@ svg.graph { width: 100%; height: 52px; display: block; cursor: pointer; backgrou
         <div class="card pztile covered" id="card-drills" role="button" tabindex="0" title="Play ten basic endings out against a defender that never gives up, from a new position every time."><div class="cover" data-cover="drills"></div><div class="cbody"><span class="src">Develop your instinct</span><span class="who">Endgame drills</span><span class="desc" id="card-drills-desc">Ten basic endings to play out</span></div></div>
         <div class="card pztile covered" id="card-analyse" role="button" tabindex="0" title="Paste a PGN, set up a position, or read one off a screenshot."><div class="cover" data-cover="analyse"></div><div class="cbody"><span class="src">Any game</span><span class="who">Analyse</span><span class="desc">A PGN, a position or a screenshot</span></div></div>
       </div>
-      <div id="anlslot" class="hidden"></div>
       <div class="ver hidden" id="ver"></div>
       <div class="homefoot"><a href="https://blundr.gr/privacy.html" target="_blank" rel="noopener">Privacy</a><a href="https://blundr.gr/terms.html" target="_blank" rel="noopener">Terms</a><a href="https://github.com/aris-ver/chess-review/blob/main/chess_review/static/themes/CREDITS.md" target="_blank" rel="noopener">Credits</a><a href="https://github.com/aris-ver/chess-review" target="_blank" rel="noopener">Source code</a></div>
     </div>
@@ -1119,17 +1136,21 @@ svg.graph { width: 100%; height: 52px; display: block; cursor: pointer; backgrou
     <div class="home" id="anlhome">
       <h2>Analyse a game or position</h2>
       <div id="anlbody">
-      <div class="cards pztiles" id="anltiles">
-        <div class="card pztile covered" id="b-pgn" role="button" tabindex="0" title="Paste the PGN of one game or many"><div class="cover" data-cover="pgn"></div><div class="cbody"><span class="src">A game</span><span class="who">Paste a PGN</span><span class="desc">One game or many, reviewed</span></div></div>
-        <div class="card pztile covered" id="card-setup" role="button" tabindex="0" title="Place the pieces, or paste a FEN, then analyse"><div class="cover" data-cover="setup"></div><div class="cbody"><span class="src">A position</span><span class="who">Set up a position</span><span class="desc">Place the pieces or paste a FEN</span></div></div>
-        <div class="card pztile covered" id="card-image" role="button" tabindex="0" title="Read the pieces off a picture of a board, then analyse"><div class="cover" data-cover="image"></div><div class="cbody"><span class="src">A picture</span><span class="who">From a screenshot</span><span class="desc">The board read off an image</span></div></div>
-      </div>
-      <div class="card fen pgn drawer hidden" id="pgncard">
-        <form id="pgnform">
-          <textarea name="pgn" rows="8" placeholder="[Event &quot;…&quot;]&#10;1. e4 e5 2. Nf3 …" spellcheck="false" required></textarea>
-          <div class="row"><button type="button" class="cancel">Cancel</button><button class="primary" type="submit">Review</button></div>
+        <form class="card anlbox" id="pgnform">
+          <label class="src" for="anltext">A game or a position</label>
+          <textarea id="anltext" name="pgn" rows="6" placeholder="Paste a PGN (one game or many) or a FEN" spellcheck="false" autocomplete="off" required></textarea>
+          <div class="row"><a href="#/setup" class="pbtn">Set up a position on a board</a><button class="primary" type="submit">Analyse</button></div>
         </form>
-      </div>
+        <div class="card anlbox anlpic" id="anldrop" tabindex="0" title="A screenshot or photo of a board: the pieces are read off it">
+          <span class="src">A screenshot</span>
+          <div class="t"><span class="wide">Paste (Ctrl+V) or drop a picture of a board here</span><span class="narrow">A screenshot or photo of a board</span></div>
+          <div class="row">
+            <button type="button" id="anl-pick"><span class="wide">Upload a picture</span><span class="narrow">Choose a screenshot</span></button><button type="button" id="anl-paste">Paste</button>
+            <label class="stm">Side to move <select id="anlstm"><option value="w">White</option><option value="b">Black</option></select></label>
+          </div>
+          <span class="st" id="anlstatus"></span>
+          <input type="file" id="anlfile" accept="image/*" class="hidden">
+        </div>
       </div>
     </div>
   </section>
@@ -2183,43 +2204,57 @@ async function showHome() {
 }
 // the add-profile form and the PGN box stay folded away until their button is clicked
 function openDrawer(id, on, focus = true) {
-  const card = $(id), btn = $(id === 'addcard' ? 'b-addprofile' : 'b-pgn');
+  const card = $(id), btn = $('b-addprofile');
   on = on ?? card.classList.contains('hidden');
   card.classList.toggle('hidden', !on); btn.classList.toggle('open', on);
   if (on && focus) card.querySelector('input[name=username], textarea').focus();
 }
 $('b-addprofile').onclick = () => openDrawer('addcard');
-$('b-pgn').onclick = () => openDrawer('pgncard');
 document.querySelectorAll('.drawer').forEach(d => {
   d.querySelector('.cancel').onclick = () => openDrawer(d.id, false);
   d.addEventListener('keydown', e => { if (e.key === 'Escape') openDrawer(d.id, false); });
 });
-$('card-setup').onclick = () => location.hash = '#/setup';
-$('card-image').onclick = () => location.hash = '#/image';
 $('card-daily').onclick = () => location.hash = '#/daily';
 $('card-packs').onclick = () => location.hash = '#/packs';
 $('card-drills').onclick = () => location.hash = '#/drills';
-// Analyse a game or position: its three ways in (the PGN box opens under them). On a wide screen they open under
-// Home's tiles; on a phone (the layout's own width) they're a screen of their own, #/analyse. One set of tiles, moved
-// to where it shows.
-const PHONE_WIDTH = matchMedia('(max-width: 900px)');
-const anlTo = id => { const b = $('anlbody'); if (b.parentElement !== $(id)) $(id).append(b); };
-function openAnalyse(on) {
-  const t = $('card-analyse');
-  on = on ?? t.getAttribute('aria-expanded') !== 'true';
-  if (on) { anlTo('anlslot'); renderCovers($('anlslot')); }
-  else openDrawer('pgncard', false, false);
-  t.setAttribute('aria-expanded', on); $('anlslot').classList.toggle('hidden', !on);
-}
-$('card-analyse').onclick = () => { if (PHONE_WIDTH.matches) location.hash = '#/analyse'; else openAnalyse(); };
+// Analyse a game or position, a screen of its own (#/analyse), ready to use: a box for a PGN or a FEN, and one for a
+// picture of a board (the board editor a link under the first)
+$('card-analyse').onclick = () => location.hash = '#/analyse';
 function showAnalyse() {
-  openAnalyse(false); anlTo('anlhome');
   showSection('anlpage');
   document.body.classList.remove('sandbox', 'puzzle'); stopSandboxStream();
   state.game = null; state.profile = null; state.games = null; dropVariation(); stopPolling(); stopPlay();
   setContext(false); $('crumb').textContent = 'Analyse';
-  renderCovers($('anlpage'));
+  if (PLATFORM === 'desktop') $('anltext').focus({ preventScroll: true });     // (a phone's keyboard would cover the screen)
 }
+// a picture of a board: picked, pasted (Ctrl+V while Analyse shows, or the Paste button), or dropped on its box
+const anlShows = () => !$('anlpage').classList.contains('hidden');
+const anlUi = () => ({ st: $('anlstatus'), stm: $('anlstm') });
+$('anldrop').onclick = e => { if (!e.target.closest('button, select, label')) $('anlfile').click(); };
+$('anl-pick').onclick = () => $('anlfile').click();
+$('anlfile').onchange = () => { const f = $('anlfile').files[0]; if (f) importBoardImage(f, anlUi()); $('anlfile').value = ''; };
+$('anldrop').ondragover = e => { e.preventDefault(); $('anldrop').classList.add('over'); };
+$('anldrop').ondragleave = () => $('anldrop').classList.remove('over');
+$('anldrop').ondrop = e => {
+  e.preventDefault(); $('anldrop').classList.remove('over');
+  const f = [...e.dataTransfer.files].find(x => x.type.startsWith('image/'));
+  if (f) importBoardImage(f, anlUi());
+  else { const u = e.dataTransfer.getData('text/uri-list') || e.dataTransfer.getData('text/plain'); if (/^https?:\/\//.test(u)) importBoardUrl(u, anlUi()); }
+};
+$('anl-paste').onclick = async () => {
+  try {
+    for (const it of await navigator.clipboard.read()) {
+      const type = it.types.find(t => t.startsWith('image/'));
+      if (type) { importBoardImage(await it.getType(type), anlUi()); return; }
+    }
+    toast('No picture to paste: copy a screenshot of a board first', 5000);
+  } catch (e) { toast(PLATFORM === 'desktop' ? 'Press Ctrl+V to paste the picture' : 'Couldn’t read a picture from the clipboard', 5000); }
+};
+document.addEventListener('paste', e => {
+  if (!anlShows()) return;
+  const it = [...(e.clipboardData?.items || [])].find(x => x.type.startsWith('image/'));
+  if (it) { e.preventDefault(); importBoardImage(it.getAsFile(), anlUi()); }
+});
 // the tiles and rows are divs acting as buttons: Enter or Space opens one, as a click would (the strip has its own)
 for (const s of ['home', 'anlpage']) $(s).addEventListener('keydown', e => {
   if ((e.key === 'Enter' || e.key === ' ') && e.target.matches('[role=button]:not(#homecont)')) { e.preventDefault(); e.target.click(); }
@@ -2359,18 +2394,26 @@ async function openSample() {
   usage('sample_game');
   location.hash = `#/p/${d.profile.id}/game/${d.games[0]}`;
 }
+// Analyse's box: a FEN straight to the board to analyse it; anything else read as PGN, one game to its review, many to
+// their list
 $('pgnform').onsubmit = async e => {
   e.preventDefault();
-  const f = e.target, btn = f.querySelector('button[type=submit]');
+  const f = e.target, btn = f.querySelector('button[type=submit]'), text = f.pgn.value.trim();
+  if (/^[pnbrqkPNBRQK1-8]+(\/[pnbrqkPNBRQK1-8]+){7}(\s|$)/.test(text)) {
+    if (!loadFen(text)) { toast('Not a valid FEN'); return; }
+    f.pgn.value = '';
+    location.hash = '#/sandbox/' + encodeURIComponent(setupFen());
+    return;
+  }
   btn.disabled = true; btn.textContent = 'Reading…';
   let r, d;
   try {
     r = await fetch('api/pgn', { method: 'POST', body: JSON.stringify({ pgn: f.pgn.value }) });
     d = await r.json();
   } catch (err) { d = { error: String(err) }; r = { ok: false }; }
-  btn.disabled = false; btn.textContent = 'Review';
+  btn.disabled = false; btn.textContent = 'Analyse';
   if (!r.ok) { toast(d.error === 'busy' ? `Busy: ${jobText(d.job)}` : d.error); return; }
-  f.pgn.value = ''; openDrawer('pgncard', false);
+  f.pgn.value = '';
   location.hash = d.games.length === 1 ? `#/p/${d.profile.id}/game/${d.games[0]}` : `#/p/${d.profile.id}`;
 };
 // New games on a profile's site (the launch-time scan's new_games) are fetched with no click: the same refresh as the
@@ -4042,7 +4085,6 @@ const COVERS = {
   // the home tiles
   'daily': [['wk'], null, '#e8b83a'], 'packs': [['wn', 'wb', 'wr'], null, '#5c9fd6'], 'library': [['wq', 'bk'], null, '#4cc2a8'], 'mine': [['wp', 'bp'], null, '#a879e0'],
   'drills': [['wk', 'wr', 'bk'], null, '#e0a53a'], 'op-home': [['wn', 'wp', 'bp'], null, '#7fb85c'], 'analyse': [['wb', 'bq'], null, '#36bcd8'],
-  'pgn': [['wp', 'bp', 'wn'], null, '#5c9fd6'], 'setup': [['wr', 'bk'], null, '#7fb85c'], 'image': [['wq', 'bb'], null, '#a879e0'],
   // the endgame drills' cards (DRILL_ENDINGS)
   'd-KQRK': [['wq', 'wr', 'bk'], null, '#e8604c'], 'd-KRRK': [['wr', 'wr', 'bk'], null, '#5c9fd6'], 'd-KQK': [['wq', 'bk'], null, '#a879e0'],
   'd-KRK': [['wr', 'bk'], null, '#4cc2a8'], 'd-KPK': [['wp', 'wk'], null, '#e0a53a'], 'd-KPK-hold': [['wk', 'bp'], null, '#8fb4bf'],
@@ -4916,13 +4958,14 @@ async function readBoardImage(blob) {
   }
   return board;
 }
-async function importBoardImage(blob) {
-  const st = $('imgstatus');
+// ui: where it says how it's going and which side is to move (the screenshot page's, or Analyse's picture box)
+async function importBoardImage(blob, ui = { st: $('imgstatus'), stm: $('imgstm') }) {
+  const st = ui.st;
   st.textContent = 'Reading…';
   try {
     const board = await readBoardImage(blob);
     st.textContent = '';
-    pendingSetup = { board, turn: $('imgstm').value, castle: { K: true, Q: true, k: true, q: true } };
+    pendingSetup = { board, turn: ui.stm.value, castle: { K: true, Q: true, k: true, q: true } };
     toast(`Read ${Object.keys(board).length} pieces — check the board, then analyse`, 6000);
     location.hash = '#/setup';
   } catch (e) { st.textContent = ''; toast(e.message || String(e), 6000); }
@@ -4942,12 +4985,12 @@ document.addEventListener('paste', e => {
   const it = [...(e.clipboardData?.items || [])].find(x => x.type.startsWith('image/'));
   if (it) { e.preventDefault(); importBoardImage(it.getAsFile()); }
 });
-async function importBoardUrl(url) {
-  const st = $('imgstatus'); st.textContent = 'Fetching…';
+async function importBoardUrl(url, ui = { st: $('imgstatus'), stm: $('imgstm') }) {
+  const st = ui.st; st.textContent = 'Fetching…';
   try {
     const r = await fetch(`api/fetch_image?url=${encodeURIComponent(url)}`);
     if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(d.error || `HTTP ${r.status}`); }
-    await importBoardImage(await r.blob());
+    await importBoardImage(await r.blob(), ui);
   } catch (e) { st.textContent = ''; toast(e.message || String(e), 6000); }
 }
 $('imgurl').onsubmit = e => { e.preventDefault(); const u = e.target.url.value.trim(); if (u) importBoardUrl(u); };
