@@ -356,11 +356,9 @@ table.games tr.unseen td:first-child { box-shadow: inset 3px 0 0 var(--accent); 
 @media (min-width: 901px) {
   body.openings .review { grid-template-columns: 30px minmax(320px, min(900px, calc(100vh - 240px))) minmax(400px, 540px); }
   body.openings .panel { height: calc(100vh - 148px); } body.hasbar.openings .panel { height: calc(100vh - 200px); }
-}
-/* the explorer's panel keeps the screen's height: its moves table scrolls inside it, and the line's moves get a share,
-   so the move buttons at its foot stay on screen (the table as tall as its rows pushed them off it). Not on a phone
-   upright: the page scrolls there, the buttons are pinned to the bottom */
-@media (min-width: 901px), (orientation: landscape) and (max-height: 500px) {
+  /* the explorer's panel keeps the screen's height: its moves table scrolls inside it, and the line's moves get a
+     share, so the move buttons at its foot stay on screen (the table as tall as its rows pushed them off it). A phone
+     on its side does the same (below); upright, the page scrolls and the buttons are pinned to the bottom */
   body.openings .panel > .opbox { flex: 1 1 0; min-height: 35%; overflow: auto; }
   body.openings .review .panel .body { flex: 0 1 auto; min-height: 0; max-height: 35%; }
 }
@@ -778,6 +776,8 @@ table.games button.an { padding: 3px 9px; font-size: 12px; font-weight: 600; whi
   body.openings .review .panel { height: calc(100dvh - 121px); }
   body.hasbar.openings .review { grid-template-columns: 14px minmax(0, calc(100dvh - 259px - env(safe-area-inset-bottom))) minmax(0, 1fr); }
   body.hasbar.openings .review .panel { height: calc(100dvh - 183px - env(safe-area-inset-bottom)); }
+  body.openings .panel > .opbox { flex: 1 1 0; min-height: 35%; overflow: auto; }
+  body.openings .review .panel .body { flex: 0 1 auto; min-height: 0; max-height: 35%; }
   body:has(#review:not(.hidden)) main { padding-bottom: 8px; }      /* it all fits: nothing to scroll clear of */
   body.hasbar:has(#review:not(.hidden)) main { padding-bottom: calc(70px + env(safe-area-inset-bottom)); }
   body:has(#review:not(.hidden)) #toast { top: calc(64px + env(safe-area-inset-top)); bottom: auto !important; }     /* off the panel's nav */
